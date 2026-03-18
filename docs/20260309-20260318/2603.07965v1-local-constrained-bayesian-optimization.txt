@@ -1,0 +1,2341 @@
+Title: Local Constrained Bayesian Optimization
+
+URL Source: https://arxiv.org/pdf/2603.07965v1
+
+Published Time: Tue, 10 Mar 2026 01:47:10 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Local Constrained Bayesian Optimization 
+
+Jingzhe Jing 1 Zheyi Fan 1 Szu Hui Ng 2 Qingpei Hu 1
+
+## Abstract 
+
+Bayesian optimization (BO) for high-dimensional constrained problems remains a significant chal-lenge due to the curse of dimensionality. We pro-pose Local Constrained Bayesian Optimization (LCBO), a novel framework tailored for such set-tings. Unlike trust-region methods that are prone to premature shrinking when confronting tight or complex constraints, LCBO leverages the differ-entiable landscape of constraint-penalized surro-gates to alternate between rapid local descent and uncertainty-driven exploration. Theoretically, we prove that LCBO achieves a convergence rate for the Karush-Kuhn-Tucker (KKT) residual that de-pends polynomially on the dimension d for com-mon kernels under mild assumptions, offering a rigorous alternative to global BO where regret bounds typically scale exponentially. Extensive evaluations on high-dimensional benchmarks (up to 100D) demonstrate that LCBO consistently out-performs state-of-the-art baselines. 
+
+## 1. Introduction 
+
+Bayesian Optimization (BO) has established itself as a pow-erful paradigm for the global optimization of black-box functions that are expensive to evaluate (Shahriari et al., 2015). While standard BO focuses on unconstrained ob-jectives, many real-world applications inherently involve unknown and expensive-to-evaluate constraints. Examples span various domains: in machine learning, hyperparameter tuning often requires optimizing validation accuracy subject to constraints on training time or memory usage (Snoek et al., 2012); in engineering, the design of chemical pro-cesses or new materials aims to maximize performance met-rics while satisfying safety thresholds or physical stability constraints (Sharpe et al., 2018); and in robotics, controller 
+
+> 1
+
+Academy of Mathematics and Systems Science, Chinese Academy of Sciences, Beijing, China 2Department of Industrial Systems Engineering & Management, National University of Singapore, Singapore. Correspondence to: Qingpei Hu <qing-peihu@amss.ac.cn >.
+
+Preprint. March 10, 2026. 
+
+parameters must be tuned to maximize rewards without vio-lating safety limits during the learning process (Berkenkamp et al., 2017). Consequently, Constrained Bayesian Optimiza-tion (CBO) has attracted significant attention. Despite its success in low-dimensional settings, BO faces a severe challenge known as the “curse of dimensionality” (CoD). Theoretical results show that the regret bound of standard BO algorithms typically depends exponentially on the dimension d of the search space (Srinivas et al., 2009). To mitigate this, Local Bayesian Optimization (LBO) has emerged as a practical compromise, aiming to find high-quality local optima rather than guaranteeing global conver-gence. Unlike subspace embedding (Eriksson & Jankowiak, 2021) or additive kernel (Kandasamy et al., 2015) meth-ods which rely on structural assumptions, local methods like TuRBO (based on local trust regions, (Eriksson et al., 2019)) and GIBO (gradient-based local search, (M ¨uller et al., 2021)), regarded as less restrictive alternatives, have demon-strated superior sample efficiency in high-dimensional un-constrained tasks. However, scaling CBO to high dimensions remains an open challenge. Similar to the unconstrained case, the regret bounds of standard CBO methods deteriorate rapidly as di-mensionality increases. For instance, EPBO (Lu & Paulson, 2022) shows that for Radial Basis Function (RBF) kernels, the regret bound scales as ˜O((log K)(d+1) /2K−1/2), ren-dering standard global CBO inefficient for d > 20 . While recent advances have extended local trust region methods to the constrained setting (e.g., SCBO (Eriksson & Poloczek, 2021) and HDsafeBO (Wei et al., 2025)), these approaches typically rely on rigid geometric regions to manage explo-ration. A critical limitation of this paradigm arises when the primary descent direction is obstructed by complex or tight constraints. In such scenarios, failing to find suffi-cient improvement within the current region often triggers the premature shrinkage of the trust region radius (a phe-nomenon we explicitly demonstrate on the truss design task in Section 6.3). Consequently, there is a notable scarcity of methods that can navigate these constrained landscapes effectively. More critically, existing high-dimensional CBO algorithms often lack rigorous theoretical guarantees regard-ing the dependence of convergence rates on dimensionality under mild conditions. 1
+
+> arXiv:2603.07965v1 [stat.ML] 9 Mar 2026 Local Constrained Bayesian Optimization
+
+To address these limitations, we propose Local Constrained Bayesian Optimization (LCBO) , a novel framework that efficiently solves high-dimensional constrained problems. Our contributions are summarized as follows: • We extend the local search paradigm of GIBO to the constrained setting. Unlike trust-region methods that rely on rigid geometric regions and are prone to pre-mature shrinkage, LCBO exploits the differentiable landscape of constraint-penalized surrogates to alter-nate between a local “exploration” step and a local “exploitation” step to update the candidate solution. • We provide a rigorous theoretical analysis of LCBO. Under mild assumptions, we prove that the KKT resid-ual of the iterative sequence {xk} exhibits a polyno-mial dependence on the dimension d, effectively miti-gating the curse of dimensionality found in global CBO bounds. • We evaluate LCBO on a diverse set of high-dimensional benchmarks, including synthetic func-tions, engineering design problems, and reinforcement learning tasks. Our results demonstrate that LCBO achieves state-of-the-art performance, consistently out-performing existing CBO baselines. Formally, the optimization problem is defined as: 
+
+min  
+
+> x∈X
+
+f (x) s.t. c(x) = 0 , (1) where f : X → R denotes the objective function, c : X → 
+
+Rm represents the vector-valued constraint function, and 
+
+X ⊂ Rd is the compact domain. We assume that the exact values of the objective and constraints are inaccessible. In-stead, we interact with a noisy zero-order oracle. At time step k, for a query point xk ∈ X , we observe: 
+
+y0,k = f (xk) + ξ0,k , yi,k = ci(xk) + ξi,k , (2) where ξ·,k are independent zero-mean Gaussian noise vari-ables. Although our current formulation focuses on equality constraints, we note that this framework naturally extends to problems involving inequality constraints. Specifically, inequalities can be reformulated as equality constraints through the introduction of slack variables. This is a stan-dard technique in classical optimization (Nocedal, 2006) that has been successfully applied within the context of BO (Picheny et al., 2016). 
+
+Remark 1.1 . The CBO problem under consideration permits function evaluations in the infeasible region and considers these points to be informative and useful for updating the surrogate model, which is in contrast to safe BO (Sui et al., 2018). 
+
+## 2. Related Work 
+
+Constrained Bayesian Optimization Generally, strate-gies for extending unconstrained BO to constrained opti-mization problems fall into two primary categories. The first strategy involves developing an acquisition function (AF) that explicitly incorporates constraint information. Most methods in this category are modifications of vanilla AFs. A representative example is Constrained Expected Improvement (CEI) (Gardner et al., 2014), which weights the standard EI by the Probability of Feasibility (PoF). Recently, (Wang et al., 2025) proved that CEI enjoys a sub-linear convergence rate. Other well-established AFs—including Probability of Improvement (PI), Predic-tive Entropy Search (PES), Max-value Entropy Search (MES), and Knowledge Gradient (KG)—have also been ex-tended to handle constrained scenarios (Carpio et al., 2018; Hern ´andez-Lobato et al., 2015; Perrone et al., 2019; Takeno et al., 2022; Lam & Willcox, 2017; Zhang et al., 2021; Un-gredda & Branke, 2024). Additionally, some approaches utilize the Upper Confidence Bound (UCB) and Lower Con-fidence Bound (LCB) to construct confidence intervals for the constraints. By optimizing the AF within this high-confidence domain, these methods enable explicit control over the probability of constraint violations during candi-date selection (Xu et al., 2023a; Nguyen et al., 2024; Zhang & Chen, 2025). The second strategy transforms the constrained problem into an unconstrained one, leveraging techniques from classical optimization such as penalty functions (Lu & Paulson, 2022; Pourmohamad & Lee, 2022) or (Augmented) Lagrangian methods (Picheny et al., 2016; Ariafar et al., 2019; Zhou & Ji, 2022; Xu et al., 2023b; Guo et al., 2023). In this framework, standard AFs are optimized on the resulting unconstrained surrogate problem. 
+
+Local Bayesian Optimization Restricting the over-exploration of standard BO in high-dimensional spaces via local strategies is an effective path to mitigate the CoD. One prominent approach involves maintaining local trust regions, as seen in methods like TuRBO (Eriksson et al., 2019) and TREGO (Diouane et al., 2023). To address the CoD specifi-cally in constrained settings, several extensions of TuRBO have been proposed for CBO (Eriksson & Poloczek, 2021; Wei et al., 2025). Another paradigm is based on local “exploration” and “ex-ploitation”. For instance, (M ¨uller et al., 2021) proposed a gradient-based local search method (GIBO). Notably, (Wu et al., 2023) theoretically proved that the convergence bound of this approach depends polynomially on the dimension-ality. Furthermore, (Nguyen et al., 2022) replaced the ap-proximate gradient with the direction of maximum descent probability, while (Fan et al., 2024) demonstrated that the 2Local Constrained Bayesian Optimization 
+
+UCB serves as a local upper bound of the objective function and performs local search by minimizing UCB. However, extending these local “exploration” and “exploita-tion” strategies to the CBO landscape remains an open prob-lem. To address this gap, this work proposes a local search strategy specifically tailored for CBO scenarios. We further prove that, under mild conditions, the convergence bound of the proposed algorithm exhibits a polynomial dependence on the dimensionality. 
+
+## 3. Preliminaries 
+
+3.1. Gaussian Process Fundamentals 
+
+Gaussian Processes (GP) serve as the predominant surrogate models in BO due to their flexibility and analytical tractabil-ity. A GP is fully specified by its mean function m(x) and a positive definite kernel function k(x, x′). Without loss of generality, we assume a zero-mean prior. Given a dataset D = {X, y} comprising n input locations 
+
+X = [ x1, . . . , xn]⊤ and corresponding noisy observations 
+
+y = [ y1, . . . , y n]⊤, the posterior distribution over f remains a Gaussian Process. Assuming additive Gaussian noise 
+
+ϵ ∼ N (0 , σ 2), the posterior mean μD (x) and covariance 
+
+kD (x, x′) are derived analytically as: 
+
+μD (x) = k(x, X)K−1y, (3) 
+
+kD (x, x′) = k(x, x′) − k(x, X)K−1k(X, x′), (4) where K = k(X, X) + σ2I, k(x, X) =[k(x, x1), . . . , k (x, xn)] , and k(X, x) = k(x, X)⊤.Utilizing differentiable kernels ensures that the function 
+
+f (x) and its gradient ∇f (x) follow a joint Gaussian dis-tribution (Williams & Rasmussen, 2006). The covariance between the function and its gradient is determined by dif-ferentiating the kernel with respect to the corresponding arguments. Conditioned on the dataset D, the posterior distribution of the gradient remains Gaussian and is given by: 
+
+∇f (x) | D ∼ N  ∇μD (x), ∇kD (x, x)∇⊤ , (5) Here, the differential operator ∇ preceding μD (xk) and 
+
+k(·, ·) denotes differentiation with respect to its first argu-ment, whereas the operator following k(·, ·) indicates differ-entiation with respect to its second argument. 
+
+3.2. Modeling for Constrained Bayesian Optimization 
+
+In CBO we typically model the objective function f (x)
+
+and m constraint functions ci(x), i = 1 , . . . , m , with m +1 independent GPs. The GP posterior then provides, for each function, both a point estimate (posterior mean) and a quantification of uncertainty (posterior variance) for the function values and their gradients. To distinguish between the objective and constraints, we employ superscripts for the posterior statistics. The pos-terior mean of the objective function and its gradient are denoted by μ(f ) 
+
+> D
+
+(x) and ∇μ(f ) 
+
+> D
+
+(x), respectively. Simi-larly, for the constraints, we define the vector of poste-rior means as μ(c) 
+
+> D
+
+(x) = ( μ(c1) 
+
+> D
+
+(x), . . . , μ (cm) 
+
+> D
+
+(x)) ⊤ and the Jacobian matrix of the constraints as ∇μ(c) 
+
+> D
+
+(x) =(∇μ(c1) 
+
+> D
+
+(x), . . . , ∇μ(cm) 
+
+> D
+
+(x)) ⊤.
+
+3.3. Notations and Definitions 
+
+The following notation is adopted throughout this paper. The standard inner product and the Euclidean norm are denoted by ⟨· , ·⟩ and ∥ · ∥ , respectively. For matrices, ∥ · ∥ specifically denotes the spectral norm. The distance from a vector x
+
+to a convex set Ω is defined as d(x, Ω) = inf y∈Ω ∥y −
+
+x∥. Similarly, the Euclidean projection of x onto the set 
+
+X is denoted by PX (x) = arg min y∈X 12 ∥y − x∥2. We denote the normal cone of a closed convex set X at a point 
+
+x by NX (x), which is defined as NX (x) = {v ∈ Rd |⟨v, y − x⟩ ≤ 0, ∀y ∈ X } . 0b×d denotes the zero matrix in 
+
+Rb×d. Finally, we use O(·) to denote the asymptotic upper bound, and ˜O(·) to denote the asymptotic upper bound up to logarithmic factors. To facilitate the subsequent theoretical analysis, we provide the following definitions regarding smoothness, optimality conditions, and error metrics. 
+
+Definition 3.1 (L-smoothness) . A differentiable function 
+
+g : X → Rm is said to be L-smooth if for all x, y ∈ X ,
+
+∥∇ g(x) − ∇ g(y)∥ ≤ L∥x − y∥, (6) where ∇g denotes the transpose of the Jacobian of g.
+
+Definition 3.2 (KKT Residuals) . To assess the quality of the approximate solutions produced by our algorithm, we quantify the violation of the Karush-Kuhn-Tucker (KKT) conditions by means of two residuals. For a candidate pri-mal–dual pair (x, λ ), we define the stationarity residual 
+
+rs(x, λ ) := d2 ∇f (x) + ∇c(x)⊤λ, −NX (x), (7) that is, the distance from the vector ∇f (x) + ∇c(x)⊤λ to the negative normal cone −NX (x). In addition, we measure the violation of the equality constraints via the constraint residual or feasibility residual 
+
+rf (x) := ∥c(x)∥2. (8) Both residuals vanish simultaneously if and only if (x, λ )
+
+satisfies the KKT conditions, i.e., x is a first-order stationary point of the constrained problem with associated multiplier 
+
+λ. In our theoretical analysis, we therefore use rs(x, λ ) and 
+
+rf (x) to evaluate the accuracy of the solutions computed by the algorithm. 3Local Constrained Bayesian Optimization 
+
+Definition 3.3 (Error Function) . We define the error func-tion Ed,k,σ (b) and ek,σ (b) to bound the uncertainty in the gradient and function estimation, respectively. Formally, they are defined as: 
+
+Ed,k,σ (b) = inf 
+
+> Z∈Rb×d
+
+tr  ∇k(0, 0)∇⊤− (9) 
+
+∇k(0, Z)( k(Z, Z) + σ2I)−1k(Z, 0)∇⊤,ek,σ (b) = k(0, 0) − k(0, 0b×d) (10) 
+
+ k(0b×d, 0b×d) + σ2I−1k(0b×d, 0).
+
+## 4. Proposed Algorithm 
+
+The LCBO method we propose is outlined in Algorithm 1. This approach generalizes GIBO (M ¨uller et al., 2021) to han-dle constrained optimization problems defined on a compact set X . To address the constraints, we employ a quadratic penalty method. For a penalty factor ρ > 0, we define the penalized objective function Qρ(x) as: 
+
+Qρ(x) = f (x) + ρ
+
+2 ∥c(x)∥2, (11) where f (x) is the objective function and c(x) represents the constraint vector. The algorithm operates iteratively, constructing GP surrogates for both the objective and the constraints using observed data Dk.In the k-th iteration, our algorithm comprises two distinct phases: “local exploration” and “local exploitation”. In the local exploration phase, we actively sample data points to mitigate the uncertainty at the current design vari-able xk. Specifically, we select a batch of candidate points 
+
+Z by minimizing the following acquisition function: 
+
+α(xk, Z) = max  
+
+> i
+
+αi(xk, Z) i ∈ { f, c 1, . . . , c m} (12) 
+
+αi(xk, Z) = tr  ∇k(i) 
+
+> Dk−1∪Z
+
+(xk, xk)∇⊤ (13) Here, for each modelled quantity (the objective f and the constraints c1, . . . , c m), ∇k(·) 
+
+> Dk−1∪Z
+
+(xk, xk)∇⊤ denotes the posterior covariance matrix of the gradient evaluated at 
+
+xk given the augmented dataset Dk−1 ∪ Z. This acquisition function can be viewed as the trace of the worst-case poste-rior covariance matrix of the gradients at xk, conditioned on the current dataset augmented with the hypothetical batch 
+
+Z. By minimizing α(xk, Z) over Z, we identify a batch of evaluation points that is expected to provide the largest reduction in local gradient uncertainty in a one-step looka-head sense, thereby yielding the most informative design for subsequent optimization steps. It should be noted that during the local exploration phase, we perform repeated es-timations of the function value at the current design variable 
+
+xk. This strategy serves a dual purpose: it reduces the pos-terior uncertainty of the constraints and ensures theoretical convergence. In the local exploitation phase, we update the design vari-ables by performing a gradient descent step on the penalty function Eq. (11), utilizing the posterior distribution of the GPs. The gradient is given by: 
+
+ˆ∇Qρk (xk) = ∇μ(f ) 
+
+> Dk
+
+(xk)+ ρk∇μ(c) 
+
+> Dk
+
+(xk)⊤μ(c) 
+
+> Dk
+
+(xk) (14) As the negative gradient represents the direction of steepest descent, this step can be interpreted as a localized coun-terpart to EI, which typically selects the point offering the maximum expected reduction in function value on a global scale. 
+
+Remark 4.1 . As discussed in Section 3.1, the posterior quan-tities used in the acquisition function are not based on the exact posterior mean of the composite term ∇c(x)⊤c(x).In fact, ∇c(x) and c(x) are statistically dependent under the joint GP model. We deliberately work with a simplified surrogate for two reasons. First, it leads to simpler and more efficient computations. Second, the exact posterior distri-bution of ∇c(x)⊤c(x) is no longer Gaussian, which makes it technically challenging to derive tight high-probability bounds on 
+
+∇c(x)⊤c(x) − E[∇c(x)⊤c(x) | D ] . (15) By relying on a tractable Gaussian approximation instead, we obtain gradient-uncertainty measures that are easier to analyze and implement, while still capturing the main de-pendence structure relevant for our optimization procedure. A distinct feature of our approach is its single-loop structure. Classical penalty methods typically require solving an inner unconstrained subproblem to convergence for a fixed ρ be-fore updating the penalty factor. However, in the black-box setting with noisy observations, determining the termination condition for such an inner loop is practically infeasible due to the lack of exact gradient norms. Consequently, our algorithm performs only a single gradient step per itera-tion. Despite this simplification, appropriate scheduling of the penalty factor ρk and the step size ηk ensures that the sequence of iterates converges to an approximate KKT point. 
+
+## 5. Theoretical Analysis 
+
+5.1. Assumptions 
+
+We invoke the following assumptions to establish our theo-retical results: 
+
+Assumption 5.1 (Gaussian Process Prior) . The objective function f and constraint functions ci are sampled from zero mean GPs. Furthermore, the kernel functions are stationary, four times continuously differentiable, positive definite and bounded. Common kernels including RBF kernels and Mat ´ern kernels with ν > 2 satisfy the aforementioned assumptions. 4Local Constrained Bayesian Optimization 
+
+Algorithm 1 Local Constrained Bayesian Optimization 
+
+1: Input: Convex and compact set X ; Black-box functions 
+
+f (x) and c(x).
+
+2: Initialization: Initial point x1 ∈ X and dataset D0;sequences for step size {ηk} and penalty factor {ρk}.. 
+
+3: for k = 1 , 2, . . . , K do 
+
+4: Local Exploration: 
+
+5: Generate Z1 = [ xk, . . . , xk]⊤ ∈ Rb(1)   
+
+> k×d
+
+(Repeated evaluations at current iterate). 
+
+6: Solve for active learning candidates: 
+
+Z2 = arg min Z α(xk, Z) where Z ∈ Rb(2)  
+
+> k×d
+
+7: Form the combined batch Z = [ Z⊤ 
+
+> 1
+
+, Z⊤ 
+
+> 2
+
+]⊤.
+
+8: Evaluate noisy functions at Z to obtain observa-tions yf , yc and update dataset: Dk = Dk−1 ∪{(Z, yf , yc)}.
+
+9: Local Exploitation: 
+
+10: Compute approximate gradient using GP posterior means: 
+
+ˆ∇Qρk (xk) = ∇μ(f ) 
+
+> Dk
+
+(xk)+ ρk∇μ(c) 
+
+> Dk
+
+(xk)⊤μ(c) 
+
+> Dk
+
+(xk)
+
+11: Update decision variable (with projection onto X if necessary): 
+
+xk+1 = PX (xk − ηk ˆ∇Qρk (xk)) 
+
+12: end for Assumption 5.2 (Domain) . The search space X is compact and convex. 
+
+Assumption 5.3 (Regularity Condition) . We assume a regu-larity condition on the constraints that generalizes standard constraint qualifications. Specifically, there exists a con-stant γ > 0 such that for any sequence {xk}, the following inequality holds: d(∇c(xk)⊤c(xk), −NX (xk)) ≥ γ∥c(xk)∥. (16) 
+
+Remark 5.4 . Assumption 5.3 introduces a regularity con-dition essential for constrained optimization. Intuitively, it guarantees a steep enough descent direction towards the fea-sible set, preventing the optimization from stalling in infeasi-ble regions with flat geometry. This type of condition is stan-dard in the analysis of numerical optimization algorithms involving general constraints (Sahin et al., 2019; Li et al., 2021; Lin et al., 2022; Li et al., 2024; Alacaoglu & Wright, 2024; Lu et al., 2026). Notably, this condition is known to be equivalent to the Mangasarian-Fromovitz Constraint Qualification (MFCQ) and is strictly weaker than Linear Independence Constraint Qualification (LICQ) (Robinson, 1976). 
+
+5.2. Theoretical Analysis 
+
+In this section, we establish a high-probability convergence bound for Algorithm 1, which scales polynomially with the problem dimension d. All detailed proofs are deferred to Section A. 
+
+Theorem 5.5. For any δ ∈ (0 , 1) , suppose Assumptions 5.1 to 5.3 hold and the parameters in Algorithm 1 are selected according to 
+
+ηk = 12Lm
+
+k− 12 , ρk = k 14 . (17) 
+
+Then for the total iteration count K > ˜Km, there exists 
+
+λk+1 such that, with probability at least 1 − δ, the sequence 
+
+{xk} generated by Algorithm 1 satisfies: 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+rs(xk+1 , λ k+1 ) ≤ C1,m + C2EK
+
+√K , (18) 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+rf (xk+1 ) ≤ C3
+
+√K + C4,m + C5EK
+
+K . (19) 
+
+Here, EK is the cumulative estimation error defined as: 
+
+EK =
+
+> K
+
+X
+
+> k=1
+
+βk
+
+ c1,m ek,σ (b(1)  
+
+> k
+
+)+( c2,m ˜B2
+
+> k,m
+
++c3,m ηk)Ed,k,σ (b(2)  
+
+> k
+
+),
+
+(20) 
+
+The orders of βk and ˜Bk,m are O(log( mk )) 
+
+and O(√m log k), respectively. The terms 
+
+Lm, ˜Km, C 1,m , C 2, C 3, C 4,m , C 5 and c1,m , c 2,m , c 3,m 
+
+depend polynomially on γ, m and the function boundaries. Detailed expressions are provided in Section A.3. 
+
+Theorem 5.5 establishes that, with the exception of the cumulative error term EK , the remaining components of the KKT residual converges at a sublinear rate. Fur-thermore, there exists an index 1 ≤ ˆk ≤ K such that both rs(xˆk+1 , λ ˆk+1 ) and rf (xˆk+1 ) are of order O((1 + 
+
+EK )K−1/2).Note that EK is constructed from the error functions de-scribed in Eq. (9). By further investigating the properties of these error functions, we derive the following corollary, which characterizes the polynomial dependence of the KKT residual on the dimension d.
+
+Corollary 5.6. Let k(·, ·) be the RBF kernel or ν = 2 .5
+
+Mat ´ern kernel. Under the same conditions as in Theo-rem 5.5, if we set b(1)  
+
+> k
+
+= k and b(2)  
+
+> k
+
+= dk 2, then 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+rs(xk+1 , λ k+1 ) = ˜O(m 73 K− 12 + σm 2dK − 12 )= ˜O(m 52 d 16 n− 16 + σm 13 6 d 76 n− 16 ),
+
+(21) 5Local Constrained Bayesian Optimization 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+rf (xk+1 ) = ˜O(K− 12 + m 73 K−1 + σm 2dK −1)= ˜O(m 16 d 16 n− 16 + m 83 d 13 n− 13 + σm 73 d 43 n− 13 )
+
+(22) 
+
+hold with probability at least 1 − δ. Here, K denotes the iteration count and n denotes the number of zero-order oracle calls. Remark 5.7 . In the unconstrained optimization setting, the corresponding result is established as 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+rs(xk+1 ) = ˜O(σd 43 n− 13 + σ 12 d 23 n− 16 ) (23) (see Theorem 3 in (Wu et al., 2023)). Although our derived convergence bound exhibits a slightly increased dependence on the dimension d, this is a justifiable trade-off for the capability to handle constraints. 
+
+## 6. Experiments 
+
+In this section, we evaluate the performance of our proposed algorithm, LCBO, against state-of-the-art CBO methods. We conduct experiments on three categories of problems: (1) high-dimensional synthetic functions, (2) realistic engi-neering design benchmarks, and (3) a continuous control reinforcement learning task. 
+
+6.1. Baselines and Experimental Setup Baselines We compare LCBO with four representative al-gorithms to demonstrate its efficacy across different aspects of constrained optimization: • CEI (Gardner et al., 2014): The canonical Constrained Expected Improvement, representing standard global CBO methods. • EPBO (Lu & Paulson, 2022): A method utilizing exact penalty functions, serving as a direct comparison to our penalty-based formulation. • SCBO (Eriksson & Poloczek, 2021) and HD-safeBO (Wei et al., 2025): Two state-of-the-art ap-proaches designed specifically for high-dimensional constrained settings. We exclude LineBO (Kirschner et al., 2019) from our com-parison as it requires a feasible starting point and a con-nected feasible region—assumptions that are frequently vio-lated in the scenarios we target. 
+
+Initialization and Protocol We employ a cold-start strat-egy for all experiments. For a problem of dimension d, we randomly sample d initial points from the search space X
+
+and evaluate both the objective and constraint functions. To ensure a fair comparison, all algorithms share the same ini-tial training set Dinit for GP initialization. For algorithms requiring a specific starting candidate (e.g., SCBO), we se-lect the “best” point from Dinit , defined as the feasible point with the minimum objective value, or the point with the minimum constraint violation if no feasible solution exists. All experiments are repeated 10 times with different ran-dom seeds. Observations are corrupted by Gaussian noise 
+
+ϵ ∼ N (0 , 0.12). The optimization budget is set to 1,000 evaluations (For simplicity, we define a single evaluation as the computation of both the objective function and all constraints at a given point. Therefore, the reported evalu-ation count effectively corresponds to the total number of zeroth-order oracle calls divided by (m + 1) ). Since the algorithms may not find a feasible solution immediately, and “infeasible” values cannot be averaged, we report the median and interquartile range of the best feasible objective found so far. Infeasibility is treated as infinity. 
+
+Implementation Details To enhance both algorithmic per-formance and computational efficiency, we adopt several implementation strategies following the GIBO framework, specifically: (1) maintaining a local GP model trained exclu-sively on the Nm most recent data points; (2) normalizing 
+
+ˆ∇Qρk (xk) using the Euclidean norm to stabilize step size; (3) restricting the search space for optimizing the acquisition function Eq. (12) to the dynamic local region [xk −δ, xk +δ];and (4) employing a fixed batch size in each iteration to guar-antee sample efficiency. Also, to enable efficient gradient-based optimization for Eq. (12)—which involves maximization over multiple terms—we employ the LogSumExp function as a smooth approximation to the hard maximum operator. Detailed hyperparameter settings are provided in Section D. 
+
+Remark 6.1 (Batch Size Schedule) . While our theoretical analysis assumes growing batch sizes to ensure exact conver-gence, strictly following this schedule is impractical under finite evaluation budgets. Thus, we employed fixed mini-batches to facilitate more frequent updates. A systematic ablation study was conducted in Section B to bridge this theory-practice gap and justify our choice of fixed mini-batches in the main experiments. 
+
+6.2. Synthetic Benchmarks 
+
+We extend the within-model comparison framework estab-lished in GIBO (M ¨uller et al., 2021). In this context, “within-model” implies that both the objective and constraint func-tions adhere to Assumption 5.1. For a comprehensive de-scription of the synthetic objectives and specific experimen-tal settings, we refer the reader to Section 4.1 of the GIBO paper. Our implementation diverges slightly from GIBO 6Local Constrained Bayesian Optimization 
+
+in that we utilize Random Fourier Features (RFF) to ap-proximate function samples from the GP posterior (Rahimi & Recht, 2007). Furthermore, we modify the constraints to ci(x) + 0 .5 ≤ 0. This positive offset tightens the fea-sible region, thereby increasing the optimization difficulty. We generate problems with dimensions d ∈ { 25 , 50 , 100 }
+
+within the domain [0 , 1] d. Each problem includes two con-straints. Figure 1 illustrates the progressive best feasible objective values. The performance across 25D, 50D, and 100D syn-thetic tasks demonstrates that LCBO consistently outper-forms all state-of-the-art baselines, with its advantage be-coming increasingly pronounced as dimensionality scales up. Specifically, LCBO exhibits exceptional sample effi-ciency, achieving significantly lower objective values in the early stages of optimization compared to what other methods reach even after 1000 iterations. While the per-formance gap is clear in 25D, it expands dramatically in the 100D scenario, where LCBO maintains a steep descent while competitors quickly plateau, highlighting its superior scalability and robustness in navigating high-dimensional constrained search spaces. 
+
+6.3. Real-world Benchmarks 
+
+We evaluate the performance of our proposed method on three challenging benchmark problems: the 25-Bar Truss Design ( d = 25 ), the Stepped Cantilever Beam Design (d = 50 ), and the MuJoCo HalfCheetah environment (d = 102 ). These tasks were selected to represent a diverse range of black-box constrained optimization scenarios, span-ning from medium to high dimensionality. Specifically, the 25-Bar Truss and Stepped Cantilever Beam problems are canonical benchmarks in the field of structural optimiza-tion, widely used to test algorithms under complex physical constraints. Furthermore, the HalfCheetah task serves as a standard high-dimensional control benchmark from the rein-forcement learning domain, demonstrating the scalability of our approach. Detailed descriptions of the experimental se-tups and problem configurations are provided in Section C. Results on the 25-bar truss design task ( d = 25 ) high-light the critical advantage of our approach in boundary-constrained settings. Since the optimum lies on the con-straint boundary, trust-region methods like SCBO exhibit premature stagnation—rapidly descending but then flatten-ing out as their regions shrink against the constraints. This empirical observation corroborates our discussion in Sec-tion 1. Conversely, LCBO demonstrates continuous descent throughout the entire optimization process. This confirms that LCBO successfully mitigates the premature shrinkage issue by navigating along the constraint boundary, ultimately outperforming all baselines. Notably, EPBO exhibits poor performance on this task, remaining stuck at a very high objective level, which indicates its difficulty in effectively exploring the feasible region for this structural design prob-lem. For the stepped cantilever beam task ( d = 50 ), although LCBO is slower to locate the initial feasible region (as in-dicated by the delayed start of the red curve compared to CEI and SCBO), it exhibits rapid and sustained convergence once feasibility is established. Unlike CEI and HDsafeBO, which suffer from obvious premature convergence and stag-nate early, LCBO avoids such local optima and continues to descend even as it approaches the 1000-call limit. It is also worth noting that EPBO fails to find any feasible points within the allotted budget for this task, highlighting the superiority of LCBO in handling the tight and complex constraints typical of high-dimensional engineering chal-lenges. Experimental results on the MuJoCo Halfcheetah task 
+
+(d = 102) demonstrate the superior sample efficiency and stability of LCBO. Regarding minor discrepancies in initial objective values, note that while all algorithms utilized iden-tical initial input sets (averaged over five repetitions), the inherent stochasticity of the MuJoCo physics engine results in reasonable fluctuations in initial performance. During the optimization phase, LCBO exhibits the most rapid ini-tial rate of descent, outperforming both SCBO and CEI. Although HDsafeBO achieves median performance com-parable to that of LCBO between 500 and 800 evaluations, LCBO demonstrates greater overall stability across 10 inde-pendent trials and exhibits stronger continuous optimization capability as the number of function evaluations approaches 1,000. These findings substantiate the enhanced robustness and reliability of our method in complex robotic control tasks characterized by environmental noise. 
+
+## 7. Conclusion 
+
+In this work, we presented LCBO, a novel framework for high-dimensional CBO. By replacing the rigid trust-region mechanism with a flexible local alternating exploration-exploitation strategy, LCBO avoids premature shrinking while addressing the scalability challenges inherent in global CBO methods. Our theoretical analysis establishes that for common kernels, LCBO’s KKT residual scales polynomi-ally with dimension. This offers a more favorable scalability guarantee than the exponential dimensionality dependence typically found in the regret bounds of global CBO meth-ods. Extensive evaluations on synthetic and real-world engi-neering and reinforcement learning tasks demonstrate that LCBO consistently surpasses state-of-the-art CBO base-lines, offering superior sample efficiency, lower perfor-mance variance, and a sustained ability to refine solutions without suffering from premature convergence. 7Local Constrained Bayesian Optimization 0 500 1000                   
+
+> (a) 25D Synthetic Task
+> −4
+> −2
+> 0
+> Best Feasible Objective
+> 500 1000
+> (b) 50D Synthetic Task
+> −8
+> −6
+> −4
+> −2
+> 250 500 750 1000
+> (c) 100D Synthetic Task
+> −5
+> 0
+> Number of Evaluations
+> LCBO SCBO CEI HDSAFEBO EPBO
+> Figure 1. Optimization progress on synthetic tasks. The x-axis represents the number of function evaluations, while the y-axis shows the best feasible objective value found so far (lower is better). The solid curves represent the median performance over 10 independent runs. The shaded regions depict the interquartile range (25th–75th percentiles). 0500 1000
+> (a) Truss Task
+> 400
+> 600
+> Best Feasible Objective
+> 500 1000
+> (b) Beam Task
+> 400
+> 600
+> 800
+> 250 500 750 1000
+> (c) Halfcheetah Task
+> −2
+> −1
+> Number of Evaluations
+> Figure 2. Optimization progress on real-world tasks. The plotting conventions and axes definitions are identical to Figure 1.
+
+While LCBO exhibits strong local convergence, it may oc-casionally converge to local optima in highly multi-modal landscapes, a common trade-off in local search methods. Fu-ture work will focus on integrating global restart strategies or meta-learning techniques to enhance global exploration while maintaining the current efficiency. Overall, LCBO offers a robust and theoretically-grounded tool for solving complex, high-dimensional engineering and machine learn-ing problems. 
+
+## Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal consequences of our work, none which we feel must be specifically highlighted here. 
+
+## References 
+
+Adler, R. J. and Taylor, J. E. Random fields and geometry .Springer, 2007. Alacaoglu, A. and Wright, S. J. Complexity of single loop algorithms for nonlinear programming with stochastic objective and constraints. In International Conference on Artificial Intelligence and Statistics , pp. 4627–4635. PMLR, 2024. Ariafar, S., Coll-Font, J., Brooks, D., and Dy, J. Admmbo: Bayesian optimization with unknown constraints using admm. Journal of Machine Learning Research , 20(123): 1–26, 2019. Berkenkamp, F., Turchetta, M., Schoellig, A., and Krause, A. Safe model-based reinforcement learning with stability guarantees. Advances in neural information processing systems , 30, 2017. Camp, C. V. and Bichon, B. J. Design of space trusses using ant colony optimization. Journal of structural engineer-ing , 130(5):741–751, 2004. Carpio, R. R., Giordano, R. C., and Secchi, A. R. Enhanced surrogate assisted framework for constrained global opti-mization of expensive black-box functions. Computers & Chemical Engineering , 118:91–102, 2018. 8Local Constrained Bayesian Optimization 
+
+Diouane, Y., Picheny, V., Riche, R. L., and Perrotolo, A. S. D. Trego: a trust-region framework for efficient global optimization. Journal of Global Optimization , 86(1): 1–23, 2023. Eriksson, D. and Jankowiak, M. High-dimensional bayesian optimization with sparse axis-aligned subspaces. In Un-certainty in Artificial Intelligence , pp. 493–503. PMLR, 2021. Eriksson, D. and Poloczek, M. Scalable constrained bayesian optimization. In International conference on artificial intelligence and statistics , pp. 730–738. PMLR, 2021. Eriksson, D., Pearce, M., Gardner, J., Turner, R. D., and Poloczek, M. Scalable global optimization via local bayesian optimization. Advances in neural information processing systems , 32, 2019. Fan, Z., Wang, W., Ng, S. H., and Hu, Q. Minimizing ucb: a better local search strategy in local bayesian optimization. 
+
+Advances in Neural Information Processing Systems , 37: 130602–130634, 2024. Gardner, J. R., Kusner, M. J., Xu, Z. E., Weinberger, K. Q., and Cunningham, J. P. Bayesian optimization with in-equality constraints. In ICML , volume 2014, pp. 937–945, 2014. Guo, H., Qi, Z., and Liu, X. Rectified pessimistic-optimistic learning for stochastic continuum-armed bandit with con-straints. In Learning for Dynamics and Control Confer-ence , pp. 1333–1344. PMLR, 2023. Hern ´andez-Lobato, J. M., Gelbart, M., Hoffman, M., Adams, R., and Ghahramani, Z. Predictive entropy search for bayesian optimization with unknown constraints. In 
+
+International conference on machine learning , pp. 1699– 1707. PMLR, 2015. Kandasamy, K., Schneider, J., and P ´oczos, B. High di-mensional bayesian optimisation and bandits via additive models. In International conference on machine learning ,pp. 295–304. PMLR, 2015. Kirschner, J., Mutny, M., Hiller, N., Ischebeck, R., and Krause, A. Adaptive and safe bayesian optimization in high dimensions via one-dimensional subspaces. In 
+
+International Conference on Machine Learning , pp. 3429– 3438. PMLR, 2019. Lam, R. and Willcox, K. Lookahead bayesian optimization with inequality constraints. Advances in neural informa-tion processing systems , 30, 2017. Li, Z., Chen, P.-Y., Liu, S., Lu, S., and Xu, Y. Rate-improved inexact augmented lagrangian method for constrained nonconvex optimization. In International Conference on Artificial Intelligence and Statistics , pp. 2170–2178. PMLR, 2021. Li, Z., Chen, P.-Y., Liu, S., Lu, S., and Xu, Y. Stochas-tic inexact augmented lagrangian method for nonconvex expectation constrained optimization. Computational Optimization and Applications , 87(1):117–147, 2024. Lin, Q., Ma, R., and Xu, Y. Complexity of an inexact proximal-point penalty method for constrained smooth non-convex optimization. Computational optimization and applications , 82(1):175–224, 2022. Lu, C. and Paulson, J. A. No-regret bayesian optimization with unknown equality and inequality constraints using exact penalty functions. IFAC-PapersOnLine , 55(7):895– 902, 2022. Lu, Z., Mei, S., and Xiao, Y. Variance-reduced first-order methods for deterministically constrained stochastic non-convex optimization with strong convergence guarantees. 
+
+SIAM Journal on Optimization , 36(1):1–31, 2026. M ¨uller, S., von Rohr, A., and Trimpe, S. Local policy search with bayesian optimization. Advances in Neural Information Processing Systems , 34:20708–20720, 2021. Nguyen, Q., Wu, K., Gardner, J., and Garnett, R. Local bayesian optimization via maximizing probability of de-scent. Advances in neural information processing systems ,35:13190–13202, 2022. Nguyen, Q. P., Chew, W. T. R., Song, L., Low, B. K. H., and Jaillet, P. Optimistic bayesian optimization with unknown constraints. In The Twelfth International Conference on Learning Representations , 2024. Nocedal, J. Numerical optimization. Springer Ser. Oper. Res. Financ. Eng./Springer , 2006. Perrone, V., Shcherbatyi, I., Jenatton, R., Archambeau, C., and Seeger, M. Constrained bayesian optimiza-tion with max-value entropy search. arXiv preprint arXiv:1910.07003 , 2019. Picheny, V., Gramacy, R. B., Wild, S., and Le Digabel, S. Bayesian optimization under mixed constraints with a slack-variable augmented lagrangian. Advances in neural information processing systems , 29, 2016. Pourmohamad, T. and Lee, H. K. Bayesian optimization via barrier functions. Journal of Computational and Graphi-cal Statistics , 31(1):74–83, 2022. Rahimi, A. and Recht, B. Random features for large-scale kernel machines. Advances in neural information pro-cessing systems , 20, 2007. 9Local Constrained Bayesian Optimization 
+
+Robinson, S. M. Stability theory for systems of inequalities, part ii: Differentiable nonlinear systems. SIAM Journal on Numerical Analysis , 13(4):497–513, 1976. Sahin, M. F., Alacaoglu, A., Latorre, F., Cevher, V., et al. An inexact augmented lagrangian framework for nonconvex optimization with nonlinear constraints. Advances in Neural Information Processing Systems , 32, 2019. Shahriari, B., Swersky, K., Wang, Z., Adams, R. P., and De Freitas, N. Taking the human out of the loop: A review of bayesian optimization. Proceedings of the IEEE , 104 (1):148–175, 2015. Sharpe, C., Seepersad, C. C., Watts, S., and Tortorelli, D. Design of mechanical metamaterials via constrained bayesian optimization. In International Design Engi-neering Technical Conferences and Computers and In-formation in Engineering Conference , volume 51753, pp. V02AT03A029. American Society of Mechanical Engi-neers, 2018. Snoek, J., Larochelle, H., and Adams, R. P. Practical bayesian optimization of machine learning algorithms. 
+
+Advances in neural information processing systems , 25, 2012. Srinivas, N., Krause, A., Kakade, S. M., and Seeger, M. Gaussian process optimization in the bandit set-ting: No regret and experimental design. arXiv preprint arXiv:0912.3995 , 2009. Sui, Y., Zhuang, V., Burdick, J., and Yue, Y. Stagewise safe bayesian optimization with gaussian processes. In 
+
+International conference on machine learning , pp. 4781– 4789. PMLR, 2018. Takeno, S., Tamura, T., Shitara, K., and Karasuyama, M. Sequential and parallel constrained max-value entropy search via information lower bound. In International Con-ference on Machine Learning , pp. 20960–20986. PMLR, 2022. Thanedar, P. and Vanderplaats, G. Survey of discrete vari-able optimization for structural design. Journal of Struc-tural Engineering , 121(2):301–306, 1995. Todorov, E., Erez, T., and Tassa, Y. Mujoco: A physics engine for model-based control. In 2012 IEEE/RSJ inter-national conference on intelligent robots and systems , pp. 5026–5033. IEEE, 2012. Ungredda, J. and Branke, J. Bayesian optimisation for constrained problems. ACM Transactions on Modeling and Computer Simulation , 34(2):1–26, 2024. Wang, H., Wang, J., Dai, Z., Chiang, N.-Y., Ng, S. H., and Petra, C. G. Convergence rates of constrained expected improvement. arXiv preprint arXiv:2505.11323 , 2025. Wei, Y., Yi, Z., Li, H., Soedarmadji, S., and Sui, Y. Safe bayesian optimization for the control of high-dimensional embodied systems. In Conference on Robot Learning , pp. 4771–4792. PMLR, 2025. Williams, C. K. and Rasmussen, C. E. Gaussian processes for machine learning , volume 2. MIT press Cambridge, MA, 2006. Wu, K., Kim, K., Garnett, R., and Gardner, J. The be-havior and convergence of local bayesian optimization. 
+
+Advances in neural information processing systems , 36: 73497–73523, 2023. Xu, W., Jiang, Y., Svetozarevic, B., and Jones, C. Con-strained efficient global optimization of expensive black-box functions. In International Conference on Machine Learning , pp. 38485–38498. PMLR, 2023a. Xu, W., Jiang, Y., Svetozarevic, B., and Jones, C. N. Primal-dual contextual bayesian optimization for control system online optimization with time-average constraints. In 
+
+2023 62nd IEEE Conference on Decision and Control (CDC) , pp. 4112–4117. IEEE, 2023b. Zhang, F. and Chen, Y. Finding interior optimum of black-box constrained objective with bayesian optimization. In 
+
+The 41st Conference on Uncertainty in Artificial Intelli-gence , 2025. Zhang, Y., Zhang, X., and Frazier, P. Constrained two-step look-ahead bayesian optimization. Advances in Neural Information Processing Systems , 34:12563–12575, 2021. Zhou, X. and Ji, B. On kernelized multi-armed bandits with constraints. Advances in neural information processing systems , 35:14–26, 2022. 10 Local Constrained Bayesian Optimization 
+
+## A. Proof of Main Theorem and Corollary 
+
+A.1. Properties of Gaussian Process and its Derivative 
+
+In this section, we present lemmas establishing high-probability error bounds for the posterior mean estimator μDk (xk)
+
+and ∇μDk (xk). Note that the GP posterior covariance does not depend on the observed responses but only on the design points and the kernel hyperparameters. In the coupled setting where the objective and all constraints are eval-uated at the same inputs, their posterior variances are identical, differing only by their hyperparameters (assuming all GPs utilize the same kernel function). Since our primary focus is on an order-of-magnitude analysis, for the sake of notational simplicity in the following proof, we will not use superscripts to distinguish between different error func-tions; instead, we will uniformly denote them as Ed,k,σ (bk) and ek,σ (bk) for the gradient and function-value error func-tions, respectively. In addition, let tr  ∇kDk (xk, xk)∇⊤ and tr (kDk (xk, xk) denote max i{tr 
+
+
+
+∇k(i) 
+
+> Dk
+
+(xk, xk)∇⊤
+
+
+
+} and 
+
+max i{k(i) 
+
+> Dk
+
+(xk, xk)}, i ∈ { f, c 1, . . . , c m} respectively. 
+
+Lemma A.1. Let X ⊂ Rd be compact and convex, and let g : X → R be a zero-mean GP with kernel k ∈ C 4(X × X ). Set 
+
+T := X × Sd−1 × Sd−1, Z(x, u, v) := u⊤∇2g(x) v,
+
+and let 
+
+σ2 
+
+> ∗
+
+:= sup 
+
+> (x,u,v)∈T
+
+Var  Z(x, u, v), M := E sup 
+
+> (x,u,v)∈T
+
+|Z(x, u, v)|.
+
+Then for any δ ∈ (0 , 1) , with probability at least 1 − δ,
+
+sup 
+
+> x∈X
+
+∥∇ 2g(x)∥ ≤ M + σ∗
+
+r
+
+2 log 2
+
+δ . (24) 
+
+Consequently, ∇g is L-Lipschitz continuous on X , with 
+
+L := M + σ∗
+
+r
+
+2 log 2
+
+δ .
+
+Proof. Since k ∈ C 4, all mixed partial derivatives of order up to four exist and are continuous. This ensures that g admits a modification with almost surely continuous first and second derivatives on X , so ∇2g(x) is well-defined and continuous almost surely (Theorem 1.4.2. in (Adler & Taylor, 2007)). For any x ∈ X ,
+
+∥∇ 2g(x)∥ = sup 
+
+> u,v∈Sd−1
+
+|u⊤∇2g(x) v|,
+
+hence 
+
+sup 
+
+> x∈X
+
+∥∇ 2g(x)∥ = sup 
+
+> (x,u,v)∈T
+
+|Z(x, u, v)|.
+
+The process Z is Gaussian, centered, and continuous on the compact index set T . Its expected supremum M is finite. Its variance is uniformly bounded by σ2 
+
+> ∗
+
+< +∞ because the fourth derivatives of k are bounded on X × X .Applying the Borell–TIS inequality to U := sup (x,u,v)∈T |Z(x, u, v)| yields 
+
+P(U ≥ M + t) ≤ 2 exp 
+
+
+
+− t2
+
+2σ2
+
+> ∗
+
+
+
+.
+
+Choosing t = σ∗
+
+p2 log(2 /δ ) gives Eq. (24). Finally, by the mean-value inequality for vector-valued functions, 
+
+∥∇ g(x) − ∇ g(y)∥ ≤ L∥x − y∥ for all x, y ∈ X ,
+
+so ∇g is L-Lipschitz continuous. This completes the proof. 11 Local Constrained Bayesian Optimization 
+
+Corollary A.2. Suppose Assumptions 5.1 and 5.2 hold. Then for any δ ∈ (0 , 1) , there exist a constant L∇f > 0 and a base constant ˜L∇c > 0 (weakly dependent on log m) such that, defining L∇c,m := √m ˜L∇c, with probability at least 1 − δ/ 6, f
+
+and c are L∇f - and L∇c,m -smooth on X , respectively. That is, for all x, y ∈ X ,
+
+∥∇ f (x) − ∇ f (y)∥ ≤ L∇f ∥x − y∥, (25) 
+
+∥∇ c(x) − ∇ c(y)∥ ≤ L∇c,m ∥x − y∥. (26) 
+
+Proof. The proof proceeds by bounding the spectral norm of the Hessians of the Gaussian processes using the Borell-TIS inequality. For f , choose a failure budget δf := δ/ 12 . Let Mf and σ∗,f be the mean-envelope and variance-envelope constants of the Hessian process of f (as in Lemma A.1). We obtain 
+
+sup 
+
+> x∈X
+
+∥∇ 2f (x)∥ ≤ L∇f := Mf + σ∗,f 
+
+s
+
+2 log 2
+
+δf
+
+with probability at least 1 − δf .For the vector-valued function c, we analyze its components ci (i = 1 , . . . , m ). We allocate a failure budget δi := δ/ (12 m)
+
+to each component. Let Mc := max i Mi and σ∗,c := max i σ∗,i be the maximum envelope constants across all components. With probability at least 1 − m · δi = 1 − δ/ 12 , all components satisfy: 
+
+sup 
+
+> x∈X
+
+∥∇ 2ci(x)∥ ≤ ˜L∇c := Mc + σ∗,c 
+
+r
+
+2 log 24 mδ , ∀i = 1 , . . . , m. 
+
+Thus, each ci is ˜L∇c-smooth. To obtain the Lipschitz constant for the Jacobian ∇c, we bound its spectral norm by the Frobenius norm. Note that ∇c(x) − ∇ c(y) is a matrix whose rows are (∇ci(x) − ∇ ci(y)) ⊤.
+
+∥∇ c(x) − ∇ c(y)∥ ≤ ∥∇ c(x) − ∇ c(y)∥F
+
+=
+
+vuut mX
+
+> i=1
+
+∥∇ ci(x) − ∇ ci(y)∥2
+
+≤
+
+vuut mX
+
+> i=1
+
+˜L2
+
+> ∇c
+
+∥x − y∥2
+
+= √m ˜L∇c∥x − y∥.
+
+We define L∇c,m := √m ˜L∇c. Combining the failure probabilities for f and c (δ/ 12 + δ/ 12 = δ/ 6), the joint smoothness holds with probability at least 1 − δ/ 6.
+
+Corollary A.3. Under the same condition as Corollary A.2, for any δ ∈ (0 , 1) , there exist constants Bf , B ∇f > 0 and base constants ˜Bc, ˜B∇c > 0 (which scale logarithmically with m) such that, defining Bc,m := √m ˜Bc and B∇c,m := √m ˜B∇c,with probability at least 1 − δ/ 6, the following bounds hold: 
+
+sup 
+
+> x∈X
+
+|f (x)| ≤ Bf , sup 
+
+> x∈X
+
+∥c(x)∥ ≤ Bc,m . (27) 
+
+sup 
+
+> x∈X
+
+∥∇ f (x)∥ ≤ B∇f , sup 
+
+> x∈X
+
+∥∇ c(x)∥ ≤ B∇c,m (28) 
+
+Proof. The proof follows the same strategy as Lemma A.1 by applying the Borell-TIS inequality. We allocate the total failure budget δ/ 6 across the four terms. Bounding f and c:Consider the centered GP f on the compact set X . Let Mf, 0 := E[sup x∈X |f (x)|] and σ2 
+
+> f, 0
+
+:= sup x∈X Var( f (x)) . By the Borell-TIS inequality, with probability at least 1 − δ/ 24 ,
+
+sup 
+
+> x∈X
+
+|f (x)| ≤ Bf := Mf, 0 + σf, 0
+
+r
+
+2 log 48 
+
+δ .
+
+12 Local Constrained Bayesian Optimization 
+
+For the vector-valued function c(x) = [ c1(x), . . . , c m(x)] ⊤, we apply the bound component-wise. We allocate a failure probability of δ/ (24 m) to each component ci. Let Mc, 0 = max i E[sup x |ci(x)|] and σ2 
+
+> c, 0
+
+= max i sup x Var( ci(x)) . With probability at least 1 − m · δ 
+
+> 24 m
+
+= 1 − δ/ 24 , all components satisfy: 
+
+sup 
+
+> x∈X
+
+|ci(x)| ≤ ˜Bc := Mc, 0 + σc, 0
+
+r
+
+2 log 48 mδ , ∀i = 1 , . . . , m. 
+
+Consequently, the Euclidean norm of c(x) is bounded by: 
+
+sup 
+
+> x∈X
+
+∥c(x)∥ = sup 
+
+> x∈X
+
+vuut mX
+
+> i=1
+
+|ci(x)|2 ≤
+
+vuut mX
+
+> i=1
+
+˜B2 
+
+> c
+
+= √m ˜Bc =: Bc,m .
+
+Bounding ∇f and ∇c:To bound the gradient norm, we define the scalarized process on T1 := X × Sd−1 as Z∇f (x, u) := u⊤∇f (x). Using parameters Mf, 1 and σ2 
+
+> f, 1
+
+for this process, Borell-TIS yields that with probability at least 1 − δ/ 24 :
+
+sup 
+
+> x∈X
+
+∥∇ f (x)∥ ≤ B∇f := Mf, 1 + σf, 1
+
+r
+
+2 log 48 
+
+δ .
+
+For the Jacobian ∇c(x), we bound the spectral norm via the Frobenius norm: ∥∇ c(x)∥ ≤ ∥∇ c(x)∥F =pP mi=1 ∥∇ ci(x)∥2. Similar to the case for c, we apply Borell-TIS to each gradient component ∇ci (considered as a vector field) with failure budget δ/ (24 m). Let ˜B∇c be the uniform upper bound for sup x ∥∇ ci(x)∥. With probability at least 1 − δ/ 24 , we have sup x ∥∇ ci(x)∥ ≤ ˜B∇c for all i, which implies: 
+
+sup 
+
+> x∈X
+
+∥∇ c(x)∥ ≤ 
+
+vuut mX
+
+> i=1
+
+˜B2 
+
+> ∇c
+
+= √m ˜B∇c =: B∇c,m .
+
+Summing the failure probabilities, the bounds hold simultaneously with probability at least 1 − δ/ 6.
+
+Lemma A.4. Fix 0 < δ < 1 and define β′ 
+
+> k
+
+= 2 log  π2k2/(3 δ). Let (uk)k≥1 be random variables such that for each k,
+
+uk | D k ∼ N (0 , Σk). Then with probability at least 1 − δ, for all k ≥ 1 simultaneously, 
+
+∥uk∥2 ≤ β′
+
+> k
+
+tr (Σ k). (29) 
+
+Proof. Fix k ≥ 1. Conditional on Dk, we have uk = Σ 1/2 
+
+> k
+
+g with g ∼ N (0 , I ). By a standard Gaussian quadratic-form tail bound (lemma 10 in (Wu et al., 2023) applied conditional on Dk), 
+
+P  ∥uk∥2 ≥ β′ 
+
+> k
+
+tr (Σ k) Dk
+
+ ≤ 2 exp  − β′
+
+> k
+
+2
+
+.
+
+With the above choice of β′
+
+> k
+
+, the right-hand side equals 6δ/ (π2k2). Taking a union bound over all k ≥ 1 and using P∞ 
+
+> k=1
+
+k−2 = π2/6 yield 
+
+P  ∃k ≥ 1 : ∥uk∥2 ≥ βk tr (Σ k) ≤
+
+> ∞
+
+X
+
+> k=1
+
+6δπ2k2 = δ, 
+
+Corollary A.5. Suppose Assumptions 5.1 and 5.2 hold. On the event that sup x∈X ∥c(x)∥ ≤ Bc,m < +∞, for any 
+
+δ ∈ (0 , 1) and k ≥ 1, with probability at least 1 − δ/ 3,
+
+sup 
+
+> x∈X
+
+∥μ(c) 
+
+> Dk
+
+(x)∥ ≤ ˜Bk,m , (30) 
+
+where ˜Bk,m = Bc,m +
+
+q
+
+2mκ log  π2k2/δ  and κ = max i sup x∈X k(ci)(x, x) < +∞, i = 1 , 2, · · · , m .
+
+13 Local Constrained Bayesian Optimization 
+
+Proof. For a fixed k ≥ 1, let x⋆k ∈ arg max x∈X ∥μ(c) 
+
+> Dk
+
+(x)∥. Conditioned on the given Dk, the point x⋆k is deterministic. By the triangle inequality, 
+
+∥μ(c) 
+
+> Dk
+
+(x⋆k)∥ ≤ ∥ c(x⋆k)∥ + ∥μ(c) 
+
+> Dk
+
+(x⋆k) − c(x⋆k)∥ ≤ sup 
+
+> x∈X
+
+∥c(x)∥ + ∥μ(c) 
+
+> Dk
+
+(x⋆k) − c(x⋆k)∥. (31) Specifically, the difference μ(c) 
+
+> Dk
+
+(x⋆k) − c(x⋆k) follows a N (0, Σk) distribution, satisfying the condition that tr (Σ k) ≤ mκ .Applying Lemma A.4, in conjunction with Eq. (31), we establish that with probability at least 1 − δ/ 3, the following holds for any k ≥ 1:
+
+sup 
+
+> x∈X
+
+∥μ(c) 
+
+> Dk
+
+(x)∥ ≤ sup 
+
+> x∈X
+
+∥c(x)∥ + ∥μ(c) 
+
+> Dk
+
+(x⋆k) − c(x⋆k)∥≤ Bc,m + tk.
+
+where tk,m = p2mκ log( π2k2/δ ). Setting ˜Bk,m = Bc,m + tk,m concludes the proof. 
+
+Corollary A.6. For any 0 < δ < 1, let βk = 2 log  2( m + 1) π2k2/δ . Then, for any iteration k ≥ 1, the following bounds hold: 
+
+f (xk) − μ(f ) 
+
+> Dk
+
+(xk) 2 ≤ βk kDk (xk, xk), with prob. at least 1 − δ/ (6 m + 6) , (32) 
+
+∇f (xk) − ∇ μ(f ) 
+
+> Dk
+
+(xk) 2 ≤ βktr  ∇kDk (xk, xk)∇⊤, with prob. at least 1 − δ/ (6 m + 6) , (33) 
+
+c(xk) − μ(c) 
+
+> Dk
+
+(xk) 2 ≤ m β k kDk (xk, xk), with prob. at least 1 − mδ/ (6 m + 6) , (34) 
+
+∇c(xk) − ∇ μ(c) 
+
+> Dk
+
+(xk) 2 ≤ m β ktr  ∇kDk (xk, xk)∇⊤, with prob. at least 1 − mδ/ (6 m + 6) . (35) 
+
+Proof. The first and second inequalities (Eq. (32) and Eq. (33)) follow by applying Lemma A.4. For the constraints, applying the same bound to each component ci(xk) − μ(ci) 
+
+> Dk
+
+(xk) and ∇ci(xk) − ∇ μ(ci) 
+
+> Dk
+
+(xk) yields, for 
+
+i ∈ { 1, . . . , m },
+
+ci(xk) − μ(ci) 
+
+> Dk
+
+(xk) 2 ≤ βk kDk (xk, xk), ∇ci(xk) − ∇ μ(ci) 
+
+> Dk
+
+(xk) 2 ≤ βk tr  ∇kDk (xk, xk)∇⊤,
+
+each with probability at least 1 − δ/ (6 m + 6) . A union bound over i = 1 , . . . , m gives probability at least 1 − mδ/ (6 m + 6) 
+
+that all component-wise bounds hold simultaneously. On this event, we have 
+
+c(xk) − μ(c) 
+
+> Dk
+
+(xk) 2 =
+
+> m
+
+X
+
+> i=1
+
+ci(xk) − μ(ci) 
+
+> Dk
+
+(xk) 2 ≤ m β k kDk (xk, xk),
+
+which proves Eq. (34). Moreover, letting A := ∇c(xk) − ∇ μ(c) 
+
+> Dk
+
+(xk) ∈ Rm×d, we first bound its Frobenius norm: 
+
+∥A∥2 
+
+> F
+
+=
+
+> m
+
+X
+
+> i=1
+
+∇ci(xk) − ∇ μ(ci) 
+
+> Dk
+
+(xk) 2 ≤ m β k tr  ∇kDk (xk, xk)∇⊤.
+
+Finally, since ∥A∥ ≤ ∥ A∥F for the spectral norm ∥ · ∥ , we obtain 
+
+∇c(xk) − ∇ μ(c) 
+
+> Dk
+
+(xk) 2 = ∥A∥2 ≤ ∥ A∥2 
+
+> F
+
+≤ m β k tr  ∇kDk (xk, xk)∇⊤,
+
+which proves Eq. (35). 
+
+Remark A.7 . Let E1, . . . , E 7 denote the events where Eq. (25), Eq. (27), Eq. (30), Eq. (32), Eq. (33), Eq. (34) and Eq. (35) hold, respectively, and define E = ∩7
+
+> i=1
+
+Ei. According to Corollary A.5, we have P(E3 | E2) ≥ 1 − δ/ 3; consequently, 
+
+P(E2E3) = P(E3 | E2)P(E2) ≥ 1 − δ/ 2. Then it follows that 
+
+P(E) = P(∩7
+
+> i=1
+
+Ei) = 1 − P(∪7
+
+> i=1
+
+Eci ) ≥ 1 −  P(E1) + P(( E2E3)c) + 
+
+> 7
+
+X
+
+> i=4
+
+P(Eci )
+
+≥ 1 − δ
+
+6 − δ
+
+2 − (2 m + 2) δ
+
+6m + 6 = 1 − δ. 
+
+14 Local Constrained Bayesian Optimization 
+
+For notational convenience, the subsequent discussion proceeds conditioned on the occurrence of event E.Furthermore, let the constant Lm be defined as 
+
+Lm = L∇f + Bc,m L∇c,m + B2
+
+> ∇c,m
+
+and Lρ,m = ρL m. It is straightforward to verify that the penalty function Qρ(·) is Lρ,m -smooth (assuming ρ ≥ 1). Specifically, note that from Corollary A.3, sup x ∥∇ c(x)∥ ≤ B∇c,m , which implies that c is B∇c,m -Lipschitz continuous. Then for any x, y ∈ X :
+
+∥∇ Qρ(x) − ∇ Qρ(y)∥≤ ∥∇ f (x) − ∇ f (y)∥ + ρ∥∇ c(x)⊤c(x) − ∇ c(y)⊤c(y)∥≤ ∥∇ f (x) − ∇ f (y)∥ + ρ∥∇ c(x)⊤(c(x) − c(y)) + ( ∇c(x) − ∇ c(y)) ⊤c(y)∥≤ L∇f ∥x − y∥ + ρ (∥∇ c(x)∥∥ c(x) − c(y)∥ + ∥∇ c(x) − ∇ c(y)∥∥ c(y)∥)
+
+≤ L∇f ∥x − y∥ + ρ (B∇c,m · B∇c,m ∥x − y∥ + L∇c,m ∥x − y∥ · Bc,m )=  L∇f + ρ(B2 
+
+> ∇c,m
+
++ Bc,m L∇c,m ) ∥x − y∥≤ ρ  L∇f + B2 
+
+> ∇c,m
+
++ Bc,m L∇c,m 
+
+ ∥x − y∥ (since ρ ≥ 1) = Lρ,m ∥x − y∥.
+
+Lemma A.8. In the k-th iteration of Algorithm 1, we have: tr (∇kDk (xk, xk)∇⊤) ≤ Ed,k,σ (b(2)  
+
+> k
+
+). (36) 
+
+Proof. During the k-th iteration of Algorithm 1, the candidate set can be partitioned into two components. Specifically, one component is derived by optimizing Eq. (12). Let us denote this subset of data as {Z2, y2} and define D′ 
+
+> k
+
+= Dk−1 ∪{ Z2, y2}.Given that D′ 
+
+> k
+
+is a subset of Dk, it follows that: tr (∇kDk (xk, xk)∇⊤) ≤ tr (∇kD′
+
+> k
+
+(xk, xk)∇⊤).
+
+By applying an analysis analogous to Lemma 8 in (Wu et al., 2023), we can establish that tr (∇kD′
+
+> k
+
+(xk, xk)∇⊤) ≤
+
+Ed,k,σ (b(2)  
+
+> k
+
+) which yields the desired conclusion. 
+
+Lemma A.9. In the k-th iteration of Algorithm 1, we have: 
+
+kDk (xk, xk) ≤ ek,σ (b(1)  
+
+> k
+
+). (37) 
+
+Proof. The proof follows a procedure identical to that of Lemma A.8, with the sole modification being the substitution of tr (∇kDk (xk, xk) and Ed,k,σ (b(2)  
+
+> k
+
+) with kDk (xk, xk) and ek,σ (b(1)  
+
+> k
+
+), respectively. 
+
+Lemma A.10. Let k(x1, x2) be the RBF kernel or the ν = 2 .5 Mat´ ern kernel. We have: 
+
+Ed,k,σ (b) ≲ O(σd 32 b− 12 ). (38) 
+
+Proof. See Lemmas 4 and 5 in (Wu et al., 2023). 
+
+Lemma A.11. For any kernel function satisfying k(0, 0) = κ0 < +∞, we have: 
+
+ek,σ (b) ≲ O(σ2b−1). (39) 
+
+Proof. Let Z = ( z1, . . . , zb) = ( 0, 0, . . . , 0). We analyze the variance reduction term A(Z):
+
+A(Z) = k(0, 0) − k(0, Z)( k(Z, Z) + σ2Ib)−1k(Z, 0)= κ0
+
+ 1 − 1⊤(11 ⊤ + σ2Ib)−11.
+
+15 Local Constrained Bayesian Optimization 
+
+Using the rank-1 update inverse, we have: 
+
+(11 ⊤ + σ2Ib)−1 = 1
+
+σ2 Ib − 1
+
+σ2(σ2 + b) 11 ⊤.
+
+Substituting this back into the expression for A(Z):
+
+A(Z) = κ0
+
+
+
+1 − 1⊤  Ib
+
+σ2 − 11 ⊤
+
+σ2(σ2 + b)
+
+1
+
+
+
+= κ0σ2
+
+σ2 + b
+
+= O  σ2b−1 .
+
+Lemma A.12. Suppose Assumptions 5.1 and 5.2 hold, and Qρk (x) be defined as Eq. (11) . Then, the sequence xk generated by Algorithm 1 satisfies: 
+
+∇Qρk (xk) − ˆ∇Qρk (xk) 2 ≤ 3βkEd,k,σ (b(2)  
+
+> k
+
+) + 3 mρ 2 
+
+> k
+
+˜B2
+
+> k,m
+
+βkEd,k,σ (b(2)  
+
+> k
+
+) + 3 mρ 2
+
+> k
+
+B2
+
+> ∇c,m
+
+βkek,σ (b(1)  
+
+> k
+
+). (40) 
+
+Proof. By the definition of Qρk in Eq. (11) and its surrogate ˆ∇Qρk , we can write 
+
+∇Qρk (xk) − ˆ∇Qρk (xk) 2 = ∇f (xk) − ∇ μ(f ) 
+
+> Dk
+
+(xk) + ρk
+
+ ∇c(xk)⊤c(xk) − ∇ c(xk)⊤μ(c) 
+
+> Dk
+
+(xk)
+
++ ρk
+
+ ∇c(xk)⊤μ(c) 
+
+> Dk
+
+(xk) − ∇ μ(c) 
+
+> Dk
+
+(xk)⊤μ(c) 
+
+> Dk
+
+(xk) 2
+
+1⃝≤ 3 ∇f (xk) − ∇ μ(f ) 
+
+> Dk
+
+(xk) 2 + 3 ρ2 
+
+> k
+
+∇c(xk)⊤ c(xk) − μ(c) 
+
+> Dk
+
+(xk) 2
+
++ 3 ρ2
+
+> k
+
+ ∇c(xk) − ∇ μ(c) 
+
+> Dk
+
+(xk)⊤μ(c) 
+
+> Dk
+
+(xk) 2
+
+2⃝≤ 3 ∇f (xk) − ∇ μ(f ) 
+
+> Dk
+
+(xk) 2 + 3 ρ2 
+
+> k
+
+∇c(xk) 2 c(xk) − μ(c) 
+
+> Dk
+
+(xk) 2
+
++ 3 ρ2 
+
+> k
+
+∇c(xk) − ∇ μ(c) 
+
+> Dk
+
+(xk) 2 μ(c) 
+
+> Dk
+
+(xk) 2
+
+3⃝≤ 3βkEd,k,σ (b(2)  
+
+> k
+
+) + 3 mρ 2 
+
+> k
+
+˜B2
+
+> k,m
+
+βkEd,k,σ (b(2)  
+
+> k
+
+) + 3 mρ 2
+
+> k
+
+B2
+
+> ∇c,m
+
+βkek,σ (b(1)  
+
+> k
+
+),
+
+In the derivation above: 1⃝ utilizes the inequality: ∥x + y + z∥2 ≤ 3( ∥x∥2 + ∥y∥2 + ∥z∥2).2⃝ leverages the property of the spectral norm, i.e., ∥Ax ∥ ≤ ∥ A∥∥ x∥.3⃝ follows from the application of Corollary A.5, Corollary A.6 and Lemma A.8. 
+
+A.2. Technical Lemmas Lemma A.13. Suppose Assumptions 5.1 to 5.3 hold, and the parameters in Algorithm 1 are selected according to Eq. (17) .Then, the sequence xk generated by Algorithm 1 satisfies: d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 ) ≤ 6η−2 
+
+> k
+
+∥xk+1 − xk∥2 + 3 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2. (41) 
+
+Proof. By the optimality condition of the projection step, we have: 
+
+0 ∈ xk+1 − xk + ηk ˆ∇Qρk (xk) + NX (xk+1 ).
+
+16 Local Constrained Bayesian Optimization 
+
+Rearranging the terms implies: 
+
+1
+
+ηk
+
+(xk − xk+1 ) + ∇Qρk (xk) − ˆ∇Qρk (xk) + ∇Qρk (xk+1 ) − ∇ Qρk (xk) ∈ ∇ Qρk (xk+1 ) + NX (xk+1 ).
+
+Therefore, considering the squared distance to the normal cone: d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+= d2 (∇Qρk (xk+1 ), −NX (xk+1 )) 
+
+> 1⃝
+
+≤ 1
+
+ηk
+
+(xk − xk+1 ) + ∇Qρk (xk) − ˆ∇Qρk (xk) + ∇Qρk (xk+1 ) − ∇ Qρk (xk)
+
+> 2
+> 2⃝
+
+≤ 3
+
+h
+
+η−2 
+
+> k
+
+∥xk − xk+1 ∥2 + ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2 + ∥∇ Qρk (xk+1 ) − ∇ Qρk (xk)∥2i
+
+> 3⃝
+
+≤ (3 η−2 
+
+> k
+
++ 3 L2 
+
+> ρk,m
+
+)∥xk+1 − xk∥2 + 3 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
+> 4⃝
+
+≤ 6η−2 
+
+> k
+
+∥xk+1 − xk∥2 + 3 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2.
+
+In the derivation above: 1⃝ follows from the definition of the distance function d (·, ·).2⃝ utilizes the inequality ∥x + y + z∥2 ≤ 3( ∥x∥2 + ∥y∥2 + ∥z∥2).3⃝ is derived from the smoothness property of Qρk (x).4⃝ follows from the definitions of ηk and ρk, which satisfy ηk ≤ L−1 
+
+> ρk,m
+
+.
+
+Lemma A.14. Suppose Assumptions 5.1 to 5.3 hold, and the parameters in Algorithm 1 are selected according to Eq. (17) .Then, the sequence xk generated by Algorithm 1 satisfies: 
+
+Qρk+1 (xk+1 ) − Qρk (xk+1 ) ≤ ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+B2 
+
+> ∇f
+
++ ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 ) .
+
+(42) 
+
+Proof. By the definition of the penalty function, we have: 
+
+Qρk+1 (xk+1 ) − Qρk (xk+1 ) = 12 (ρk+1 − ρk)∥c(xk+1 )∥2
+
+> 1⃝
+
+≤ ρk+1 − ρk
+
+2γ2 d2  ∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+= ρk+1 − ρk
+
+2γ2ρ2
+
+> k
+
+d2  ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+> 2⃝
+
+≤ ρk+1 − ρk
+
+2γ2ρ2
+
+> k
+
+ ∥∇ f (xk+1 )∥ + d  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 ) 2
+
+> 3⃝
+
+≤ ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+B2 
+
+> ∇f
+
++ ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 ) .
+
+In the derivation above: 1⃝ follows from Assumption 5.3, which implies ∥c(x)∥ ≤ 1 
+
+> γ
+
+d(∇c(x)⊤c(x), −NX (x)) .17 Local Constrained Bayesian Optimization 
+
+2⃝ utilizes the triangle inequality for the distance to a convex set. Specifically, for any vectors u, v and a convex set C:d(u, C ) = inf  
+
+> z∈C
+
+∥u − z∥ ≤ inf 
+
+> z∈C
+
+(∥u − v∥ + ∥v − z∥) = ∥u − v∥ + d(v, C ).
+
+Here, we set u = ρk∇c(xk+1 )⊤c(xk+1 ) and v = ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ).3⃝ combines the inequality ∥x + y∥2 ≤ 2( ∥x∥2 + ∥y∥2) with the boundedness of the gradient, i.e., ∥∇ f (x)∥ ≤ B∇f .
+
+Lemma A.15. Suppose Assumptions 5.1 to 5.3 hold, and the parameters in Algorithm 1 are selected according to Eq. (17) .Then, the sequence xk generated by Algorithm 1 satisfies: 
+
+Qρk (xk+1 ) − Qρk (xk) ≤ ηk
+
+2 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2 − 14ηk
+
+∥xk+1 − xk∥2. (43) 
+
+Proof. By the optimality of the projection step, we have: 
+
+⟨xk+1 − xk + ηk ˆ∇Qρk (xk), xk − xk+1 ⟩ ≥ 0.
+
+Rearranging this inequality implies: 
+
+⟨ ˆ∇Qρk (xk), xk+1 − xk⟩ ≤ − 1
+
+ηk
+
+∥xk+1 − xk∥2. (44) Now, consider the expansion of the penalty function. We have: 
+
+Qρk (xk+1 ) 1⃝
+
+≤ Qρk (xk) + ⟨ ˆ∇Qρk (xk), xk+1 − xk⟩ + ⟨∇ Qρk (xk) − ˆ∇Qρk (xk), xk+1 − xk⟩ + Lρk ,m 
+
+2 ∥xk+1 − xk∥2
+
+> 2⃝
+
+≤ Qρk (xk) + ⟨∇ Qρk (xk) − ˆ∇Qρk (xk), xk+1 − xk⟩ +
+
+ Lρk ,m 
+
+2 − 1
+
+ηk
+
+
+
+∥xk+1 − xk∥2
+
+> 3⃝
+
+≤ Qρk (xk) + ηk
+
+2 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2 +
+
+
+
+− 12ηk
+
++ Lρk ,m 
+
+2
+
+
+
+∥xk+1 − xk∥2
+
+> 4⃝
+
+≤ Qρk (xk) + ηk
+
+2 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2 − 14ηk
+
+∥xk+1 − xk∥2.
+
+In the derivation above: 1⃝ follows from the property that Qρk (x) is Lρk ,m -smooth. Note that the linear term ⟨∇ Qρk (xk), xk+1 − xk⟩ is decomposed into ⟨ ˆ∇Q, . . . ⟩ + ⟨∇ Q − ˆ∇Q, . . . ⟩.2⃝ obtained by directly substituting the projection inequality (44) into the expression. 3⃝ utilizes Young’s inequality in the form ⟨x, y⟩ ≤ ηk ∥x∥2 
+
+> 2
+
++ ∥y∥2 
+
+> 2ηk
+
+.4⃝ holds because our parameter selection satisfies the condition ηk ≤ (2 Lρk ,m )−1.
+
+Lemma A.16. Suppose Assumptions 5.1 to 5.3 hold, and the parameters in Algorithm 1 are selected according to Eq. (17) .Let {xk} be the sequence generated by Algorithm 1 and ˜Km be a sufficiently large number (specifically, ˜Km = 70 γ− 83 L 43
+
+> m
+
+). For any k > ˜Km, the following inequality holds: 
+
+ηk
+
+48 d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+≤ Qρk (xk) − Qρk+1 (xk+1 ) + 5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2 + (ρk+1 − ρk)B2
+
+> ∇f
+
+γ2ρ2
+
+> k
+
+. (45) 18 Local Constrained Bayesian Optimization 
+
+Proof. The proof proceeds by combining previous lemmas and analyzing the parameter selection for large k. Based on the properties of Algorithm 1, we derive the bound as follows: 
+
+ηk
+
+24 d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+1⃝≤ 14ηk
+
+∥xk+1 − xk∥2 − ηk
+
+2 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2 + 5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
+2⃝≤ Qρk (xk) − Qρk+1 (xk+1 ) + Qρk+1 (xk+1 ) − Qρk (xk+1 ) + 5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
+3⃝≤ Qρk (xk) − Qρk+1 (xk+1 ) + ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+d2  ∇f (xk+1 ) + ρk∇c(xk+1 )T c(xk+1 ), −NX (xk+1 )
+
++ ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+B2 
+
+> ∇f
+
++ 5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2.
+
+(46) The derivation above follows from Lemma A.13, Lemma A.15 and Lemma A.14, respectively. Furthermore, when k > ˜Km, we examine the coefficient term associated with the stationarity residual: 
+
+ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+< 
+
+> 14
+
+k− 34
+
+γ2k 12
+
+< 14 γ−2 ˜K− 34 
+
+> m
+
+k− 12 < 196 Lm
+
+k− 12 = ηk
+
+48 
+
+By rearranging the terms in Eq. (46), we obtain: 
+
+ηk
+
+48 d2(·) ≤
+
+ ηk
+
+24 − ρk+1 − ρk
+
+γ2ρ2
+
+> k
+
+
+
+d2(·) ≤ Qρk (xk) − Qρk+1 (xk+1 ) + . . . , 
+
+which completes the proof. 
+
+A.3. Proof of Theorem 5.5 
+
+Proof. 
+
+> K
+
+X
+
+> k=1
+
+ηk
+
+48 d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+≤
+
+> ˜Km−1
+
+X
+
+> k=1
+
+ηk
+
+24 d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
++
+
+> K
+
+X
+
+> k= ˜Km
+
+ηk
+
+48 d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+1⃝≤ Q1(x1) − Q ˜Km (x ˜Km ) + 12 (ρ ˜Km − ρ1)B2 
+
+> c,m
+
++
+
+> ˜Km−1
+
+X
+
+> k=1
+
+5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
++ Q ˜Km (x ˜Km ) − QρK+1 (xK+1 ) + 
+
+> K
+
+X
+
+> k= ˜Km
+
+(ρk+1 − ρk)B2
+
+> ∇f
+
+γ2ρ2
+
+> k
+
++
+
+> K
+
+X
+
+> k= ˜Km
+
+5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
+2⃝≤ Q1(x1) + Bf + 12 (ρ ˜Km − ρ1)B2 
+
+> c,m
+
++
+
+> K
+
+X
+
+> k=1
+
+(ρk+1 − ρk)B2
+
+> ∇f
+
+γ2ρ2
+
+> k
+
++
+
+> K
+
+X
+
+> k=1
+
+5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
+The justification of the steps are as follows: 1⃝ is obtained using Eq. (46) (step 2 ⃝) and Lemma A.16. 19 Local Constrained Bayesian Optimization 
+
+2⃝ utilizes the lower bound Qρ(x) ≥ − Bf for any ρ ≥ 0 and the non-negativity of (ρk+1 − ρk)B2 
+
+> ∇f
+
+/(γ2ρ2
+
+> k
+
+).Furthermore, given that ηk ≥ ηK for any k ≤ K, we have: 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+d2 ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+≤ 1
+
+Kη KKX
+
+> k=1
+
+ηkd2 ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 ) (47) 
+
+≤ 48 
+
+Kη K
+
+
+
+Q1(x1) + Bf + 12 (ρ ˜Km − ρ1)B2 
+
+> c,m
+
++
+
+> K
+
+X
+
+> k=1
+
+(ρk+1 − ρk)B2
+
+> ∇f
+
+γ2ρ2
+
+> k
+
++
+
+> K
+
+X
+
+> k=1
+
+5ηk
+
+8 ∥∇ Qρk (xk) − ˆ∇Qρk (xk)∥2
+
+Note that with the choice ρk = k1/4, the term ρ−2 
+
+> k
+
+(ρk+1 − ρk) scales as O(k−5/4). Since the series P∞ 
+
+> k=1
+
+k−5/4 converges, the cumulative sum is bounded by a finite constant Sρ < +∞. Regarding the gradient error term, by substituting the expanded form of Eq. (40), we further derive: 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+d2 ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+≤ 1
+
+√K
+
+
+
+96 Lm
+
+ Q1(x1) + Bf + 12 (ρ ˜Km − ρ1)B2 
+
+> c,m
+
++ SρB2
+
+> ∇f
+
+γ2
+
+ + 90 βk
+
+ B2
+
+> ∇c,m
+
+me k,σ (b(1)  
+
+> k
+
+) + ( m ˜B2 
+
+> k,m
+
++ 2 Lmηk)Ed,k,σ (b(2)  
+
+> k
+
+)
+
+≤ 1
+
+√K (C1,m + C2EK ) (48) Here, C1,m = 96 Lm
+
+ Q1(x1) + Bf + 12 (ρ ˜Km − ρ1)B2 
+
+> c,m
+
++ SρB2 
+
+> ∇f
+
+/γ 2 = O(m 73 ), C 2 = 90 and EK =
+
+PKk=1 βk
+
+ c1,m ek,σ (b(1)  
+
+> k
+
+) + ( c2,m ˜B2 
+
+> k,m
+
++ c3,m ηk)Ed,k,σ (b(2)  
+
+> k
+
+), where c1,m = mB 2 
+
+> ∇c,m
+
+= O(m2), c 2,m = m =
+
+O(m), c 3,m = 2 Lm = O(m).For constraint residual we have: 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+∥c(xk+1 )∥2 1⃝≤ 2
+
+γ2K
+
+> K
+
+X
+
+> k=1
+
+ B2
+
+> ∇f
+
+ρ2
+
+> k
+
++ 1
+
+ρ2
+
+> k
+
+d2  ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 )
+
+2⃝≤ 2
+
+γ2K
+
+ 2B2
+
+> ∇f
+
+√K + C1,m + C2EK
+
+
+
+3⃝
+
+= C3
+
+√K + C4,m + C5EK
+
+K
+
+In the derivation above: 1⃝ follows from Lemma A.14. 2⃝ is derived by by applying the series inequality PKk=1 k−1/2 ≤ 2√K and combine Eq. (47) and Eq. (48), which implies 
+
+> K
+
+X
+
+> k=1
+
+1
+
+√k d2 ∇f (xk+1 ) + ρk∇c(xk+1 )⊤c(xk+1 ), −NX (xk+1 ) ≤ C1,m + C2EK
+
+3⃝ is obtained by setting C3 = 4 B2 
+
+> ∇f
+
+γ−2, C 4,m = 2 C1,m γ−2 = O(m 73 ) and C5 = 2 C2γ−2.Finally, the proof is completed by setting λk+1 = ρkc(xk+1 ).20 Local Constrained Bayesian Optimization 
+
+A.4. Proof of Corollary 5.6 
+
+Proof. The proof of Corollary 5.6 primarily focuses on analyzing the orders of the following two quantities.: 
+
+e =
+
+> K
+
+X
+
+> k=1
+
+c1,m βked,k (b(1)  
+
+> k
+
+)
+
+E =
+
+> K
+
+X
+
+> k=1
+
+c2,m βk ˜B2
+
+> k,m
+
+Ed,k,σ (b(2)  
+
+> k
+
+)
+
+From Lemma A.10 and Lemma A.11, we can bound E and e as: 
+
+e ≲ σ2m2
+
+> K
+
+X
+
+> k=1
+
+b(1) 
+
+> k
+> −1
+
+log k, E ≲ σm 2d 32
+
+> K
+
+X
+
+> k=1
+
+b(2)  
+
+> k
+> −12
+
+log 2 k. 
+
+When b(2)  
+
+> k
+
+= dk 2, the term PKk=1 b(2)  
+
+> k
+> −12
+
+log 2 k has a cumulative growth rate of O(d− 12 log 3 K). Meanwhile, the term PKk=1 b(1) 
+
+> k
+> −1
+
+log k is bounded by O(log 2 K) when b(1)  
+
+> k
+
+is set to k. The total sample size is given by n =(m + 1) PKk=1 (dk 2 + k) = O(mdK 3). And thus K = O(m− 13 d− 13 n 13 ). Finally, combining these results: 
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+d2(∇f (xk+1 ) + ∇c(xk+1 )λk+1 , −NX (xk+1 )) = O(( E + e + C1,m )K− 12 )= O(m 73 K− 12 ) + ˜O(σm 2dK − 12 )= O(m 52 d 16 n− 16 ) + ˜O(σm 13 6 d 76 n− 16 ).
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+∥c(xk+1 )∥2 = O(K− 12 ) + O(( E + e + C1,m )K−1)= O(K− 12 ) + O(m 73 K−1) + ˜O(σm 2dK −1)= O(m 16 d 16 n− 16 ) + O(m 83 d 13 n− 13 ) + ˜O(σm 73 d 43 n− 13 )
+
+## B. Ablation Study on Batch Schedule 
+
+B.1. Motivation and Experimental Setup 
+
+In the theoretical analysis, our high-probability convergence bound is predicated on an increasing batch size schedule (specifically, b(k)1 ∝ k, b (2)  
+
+> k
+
+∝ k2). However, in practical high-dimensional BO with finite evaluation budgets, strictly adhering to such a rapid growth schedule can lead to “budget starvation”, where the algorithm exhausts the evaluation budget within very few iterations. To bridge this theory-practice gap and justify our choice of fixed mini-batches in the main experiments, we conducted a systematic ablation study. This study aims to decouple the effects of per-iteration convergence quality from sample efficiency, demonstrating why fixed mini-batches act as a superior stochastic approximation in budget-constrained settings. We performed ablation experiments on synthetic benchmarks with varying dimensions ( d ∈ { 25 , 50 , 100 }) to observe the impact of dimensionality. All experiments were conducted with a fixed total budget of 5,000 evaluations. We report the median and quartiles of the best feasible objective found so far, computed across 5 distinct random seeds. We compared three distinct batch size schedules: 21 Local Constrained Bayesian Optimization 
+
+• Fixed Mini-batch: A small, constant batch size ( b(1)  
+
+> k
+
+= 2 , b (2)  
+
+> k
+
+= 5 ) designed to facilitate more frequent updates. • Fixed Large-batch: A fixed batch size scaling with dimension ( b(1)  
+
+> k
+
+= 5 , b (2)  
+
+> k
+
+= d). This represents a strategy that prioritizes spatial coverage in each step but sacrifices iteration count. • Growing Batch: While theory suggests b(1)  
+
+> k
+
+∝ k, b (2)  
+
+> k
+
+∝ k2, such a schedule would deplete the 5,000-evaluation budget in fewer than 30 iterations. To provide a fair but challenging baseline, we adopted a relaxed growth schedule (b(1)  
+
+> k
+
+= ⌊log( k + 1) + 1 ⌋, b (2)  
+
+> k
+
+= ⌊0.5k + 5 ⌋). This serves as a “steel-manned” proxy for the theoretical setting: if our method outperforms this linearly growing baseline (which is much more budget-friendly than O(k2)), the conclusion holds a fortiori for the strictly theoretical O(k2) schedule. 
+
+B.2. Results and Analysis 
+
+We present the optimization progress from two complementary perspectives: Best Feasible Objective vs. Iterations 
+
+(Figure 3) and Best Feasible Objective vs. Evaluations (Figure 4). 
+
+Verification of Theoretical Intuition (Best Feasible Objective vs. Iterations): When plotted against the number of iterations (updates), the Fixed Large-batch and Growing Batch strategies often achieve a steeper descent per step compared to the Mini-batch approach. This empirically validates our theoretical analysis: larger or growing batches indeed provide more accurate gradient estimates, leading to more stable and “correct” updates in the optimization landscape. 
+
+Practical Superiority (Best Feasible Objective vs. Evaluations): However, when plotted against the actual number of function evaluations (the true cost in BO), the Fixed Mini-batch strategy demonstrates superior sample efficiency, particularly within the initial 1,000 evaluations. By tolerating higher variance in gradient estimation, the Mini-batch strategy performs orders of magnitude more updates (e.g., ≈ 700 updates vs. < 50 updates for b = d in 100D synthetic task). This allows the algorithm to traverse the search space effectively and reach lower regret values within the fixed budget. 
+
+B.3. Discussion: The SGD Analogy 
+
+Our findings can be interpreted through the lens of Stochastic Gradient Descent (SGD) in deep learning. Just as SGD is often preferred over full-batch Gradient Descent despite its noisy gradient estimates, our Fixed Mini-batch LCBO prefers frequent, noisy updates over rare, precise ones. Beyond sample efficiency, the choice of mini-batches may offer an implicit regularization benefit. The stochasticity introduced by small batch sizes can help the optimization trajectory escape shallow local optima or saddle points, a phenomenon well-documented in non-convex optimization. While our theoretical proof relies on vanishing variance for exact convergence, empirical evidence suggests that maintaining a certain level of “exploration noise” via fixed mini-batches is not only practically necessary but potentially beneficial for global search in complex high-dimensional landscapes. 
+
+## C. Experiment Setup 
+
+C.1. 25-Bar Truss Design (25D) 
+
+The standard 25-bar truss design problem has been a canonical benchmark in structural optimization (Camp & Bichon, 2004). In this problem, the design variables correspond to the cross-sectional areas of the 25 truss members. The search space is constrained within the range [0 .01 , 5.0] in 2, where the lower bound is explicitly imposed to prevent singularity of the stiffness matrix during finite element analysis.The structure is composed of an aluminum alloy with a Young’s modulus of E = 1 .0 × 10 7 psi and a density of ρ = 0 .1 lb/in 3. The primary optimization objective is to minimize the total weight of the truss. Under the standard loading scenario (Case 1), the design must satisfy strict physical constraints. Specifically, the absolute value of the axial stress in each member must not exceed 40 , 000 psi , and the absolute displacement of all free nodes along any coordinate axis must remain within 0.35 in . To efficiently manage these 25 stress constraints and 18 displacement constraints, we employ the LogSumExp function for constraint aggregation and smoothing. By setting the smoothing factor α = 20 .0, we transform the multidimensional constraint criteria into two aggregated functions (i.e., an aggregated stress constraint and an aggregated displacement constraint). This formulation alleviates the need to maintain numerous GPs simultaneously, thereby reducing computational complexity. 22 Local Constrained Bayesian Optimization 0 50 100                                    
+
+> (a) 25D Synthetic Task
+> −4
+> −2
+> 0
+> Best Feasible Objective
+> 025 50 75
+> (b) 50D Synthetic Task
+> −7.5
+> −5.0
+> −2.5
+> 020 40
+> (c) 100D Synthetic Task
+> −10
+> −5
+> 0
+> Number of Iterations
+> Fixed Mini-batch ( b(1)
+> k= 2, b(2)
+> k= 5 )Fixed Large-batch ( b(1)
+> k= 5, b(2)
+> k=d)Growing Batch ( b(1)
+> k∝ log k,b(2)
+> k∝k)
+> Figure 3. Best Feasible Objective vs. Iterations The x-axis represents the number of algorithm iterations, while the y-axis shows the best feasible objective value found so far (lower is better). We truncated the results to the minimum iteration count across the three batch schedules. 02000 4000
+> (a) 25D Synthetic Task
+> −4
+> −2
+> 0
+> Best Feasible Objective
+> 02000 4000
+> (b) 50D Synthetic Task
+> −7.5
+> −5.0
+> −2.5
+> 02000 4000
+> (c) 100D Synthetic Task
+> −10
+> −5
+> 0
+> Number of Evaluations
+> Figure 4. Best Feasible Objective vs. Evaluations The x-axis represents the number of function evaluations, while the y-axis shows the best feasible objective value found so far (lower is better).
+
+C.2. Stepped Cantilever Beam Design (50D) 
+
+The Stepped Cantilever Beam benchmark is a standard problem in engineering design literature (e.g., (Thanedar & Vanderplaats, 1995)). The problem involves determining the optimal cross-sectional dimensions for a cantilever beam of length L = 100 in , which is discretized into N = 25 distinct segments. The design variables consist of the width ( wi)and height ( hi) for each segment, resulting in a total of 50 independent variables bounded within the range [0 .5, 5.0] in to ensure geometric validity and prevent singularity in the stiffness matrix. The beam is modeled using Euler-Bernoulli theory with solid rectangular cross-sections, assuming a Young’s modulus of E = 2 .9 × 10 7 psi and subjected to a static vertical point load of P = 500 lb at the free tip. The primary objective is to minimize the total volume of the structure. The design is subject to two critical physical constraints: the vertical displacement at the beam tip must not exceed 2.5 in ,and the maximum bending stress within any segment must be strictly less than 40 , 000 psi . Since the stress constraint is evaluated locally at each segment, we utilize the LogSumExp function with a smoothing parameter α = 20 .0 to aggregate these local violations into a single global stress constraint. 
+
+C.3. MuJoCo HalfCheetah (102D) 
+
+To evaluate the optimization framework on high-dimensional control tasks, we utilize the HalfCheetah-v4 environment from the Gymnasium MuJoCo suite (Todorov et al., 2012). The problem involves optimizing a linear policy to maximize the locomotion speed of a 2D planar robot. The optimization variables represent the weights of a linear controller mapping the 17-dimensional observation space to the 6-dimensional action space, resulting in a total of 102 decision variables bounded within [−0.2, 0.2] . To ensure numerical stability and consistent policy behavior, we implement a static normalization scheme where input observations are standardized using fixed mean and variance statistics derived from a pre-calculation phase of 2,000 random steps, followed by a hyperbolic tangent ( tanh ) activation function to bound the actions. Uniquely, our objective function diverges from the standard environment reward—which mixes velocity with energy penalties—by 23 Local Constrained Bayesian Optimization 
+
+explicitly decoupling the control cost; we formulate the objective as the minimization of the negative average forward velocity over a fixed horizon of H = 1 , 000 steps. This objective is subject to a cumulative energy constraint, requiring the total control cost (sum of squared actions, P ∥at∥2) to remain below a threshold of 1, 500 . To mitigate the effects of environmental stochasticity, the objective and constraint values are averaged over 5 independent episodes with fixed seeds, and episodes ending prematurely due to instability are penalized via worst-case cost padding for the remainder of the horizon. 
+
+## D. Algorithm Setup 
+
+We performed all simulations on a server with dual Intel Xeon Platinum 8260 CPUs and 376 GB of memory. To ensure numerical stability during GP training, the design variables x are normalized to the unit interval [0 , 1] d using Min-Max scaling, while the response variables y are standardized to zero mean and unit variance via Z-score transformation. The hyperparameters employed in our algorithm are detailed in Table 1. To ensure a fair comparison, we removed the isometric embedding preprocessing step from HDsafeBO. For all benchmarks, GPs with a RBF kernel serve as the surrogate models for both the objective and constraint functions. Regarding the GP hyperparameters, we utilize fixed ground-truth values for the synthetic benchmarks. Conversely, for the real-world benchmarks, we assign empirical priors to the lengthscale and outputscale to mitigate overfitting, specified as Gamma (3 .0, 3.0) and N (2 .0, 1.0) , respectively. Furthermore, these hyperparameters are updated via Maximum Likelihood Estimation (MLE) every five iterations. The likelihood noise is set to a constant value of 0.01.  
+
+> Table 1. Algorithm Hyperparameters
+
+Method Hyperparameters Synthetic Truss Beam Halfcheetah 25 50 100 CEI AF Optimizer Adam(lr=0.01, num starts=10) EPBO AF Optimizer Adam(lr=0.01, num starts=10) 
+
+β(LCB) 2.0 penalty scheduler 10 .0 × log (k + 1) 
+
+SCBO length init 0.8 length min 2−7
+
+length max 1.6 perturbation probability min {1, 20 /d }
+
+b (batch) ⌈d/ 2⌉
+
+success tolrance max(3 , ⌈d/ 10 ⌉)
+
+failure tolrance ⌈d/b ⌉
+
+n candidates 5000 HDsafeBO length init 0.8 length min 2−7
+
+length max 1.6 
+
+b (batch) ⌈d/ 2⌉
+
+success tolrance max(3 , ⌈d/ 10 ⌉)
+
+failure tolrance ⌈d/b ⌉
+
+n candidates 5000 
+
+β(LCB) 2.0 LCBO AF Optimizer Adam(lr=0.01, num starts=10) penalty scheduler 10 .0 × k1/4
+
+δ 0.1 
+
+Nm 2db(1)  
+
+> t
+
+2 2 2 2 1 1
+
+b(2)  
+
+> t
+
+5 5 5 5 1 1step size scheduler 0.25 0.5 0.5 0.25 0.5 0.5 24
