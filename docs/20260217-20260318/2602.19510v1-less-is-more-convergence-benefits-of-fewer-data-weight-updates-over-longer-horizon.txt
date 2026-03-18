@@ -1,0 +1,7327 @@
+Title: Less is More: Convergence Benefits of Fewer Data Weight Updates over Longer Horizon
+
+URL Source: https://arxiv.org/pdf/2602.19510v1
+
+Published Time: Tue, 24 Feb 2026 02:24:07 GMT
+
+Number of Pages: 39
+
+Markdown Content:
+# Less is More: Convergence Benefits of Fewer Data Weight Updates over Longer Horizon 
+
+Rudrajit Das 1, Neel Patel 2, Meisam Razaviyayn 1,3 , and Vahab Mirrokni 11Google Research, 2EPFL, 3University of Southern California 
+
+{dasrudrajit, razaviyayn, mirrokni}@google.com, neel.patel@epfl.ch 
+
+Abstract 
+
+Data mixing—the strategic reweighting of training domains—is a critical component in training robust machine learning models. This problem is naturally formulated as a bilevel optimization task, where the outer loop optimizes domain weights to minimize validation loss, and the inner loop optimizes model parameters to minimize the weighted training loss. Classical bilevel optimization relies on hypergradients, which theoretically require the inner optimization to reach convergence. However, due to computational constraints, state-of-the-art methods use a finite, often small, number of inner update steps before updating the weights. The theoretical implications of this approximation are not well understood. In this work, we rigorously analyze the convergence behavior of data mixing with a finite number of inner steps T . We prove that the “greedy” practical approach of using T = 1 can fail even in a simple quadratic example. Under a fixed parameter update budget N and assuming the per-domain losses are strongly convex, we show that the optimal T scales as Θ( log N ) (resp., 
+
+Θ( √N log N )) for the data mixing problem with access to full (resp., stochastic) gradients. We complement our theoretical results with proof-of-concept experiments. 
+
+# 1 Introduction 
+
+The performance of modern machine learning models depends heavily on the composition of their (pre-)training data Sambasivan et al. (2021); Whang et al. (2023). In particular, as modern foundation models are trained on mixtures of diverse domains (ranging from high-quality code and textbooks to noisy web scrapes) determining the optimal contribution of each domain, known as data mixing , has become a crucial challenge Brown et al. (2020); Touvron et al. (2023); Raffel et al. (2020); Gao et al. (2020). Historically, data mixtures were determined via manual heuristics. For instance, GPT-3 and PaLM utilized manual upsampling of “high-quality” sources Chowdhery et al. (2023); Brown et al. (2020). More recently, this has been formalized into data mixing laws Ye et al. (2024); Liu et al. (2025). The data mixing problem is naturally cast as a bilevel optimization problem Sinha et al. (2017). The outer loop seeks to find a weighting vector w for the training domains that minimizes a validation loss LV (representing the downstream performance measured using a high-quality reference set), while the inner loop minimizes the weighted training loss LT with respect to the model parameters θ Franceschi et al. (2018); Fan et al. (2023). While mathematically elegant, the application of bilevel optimization to data mixing for LLMs faces a severe computational bottleneck: calculating the exact gradient with respect to w—the 
+
+hypergradient —requires differentiating through the entire training trajectory of θ (which evolves as a function of w) until convergence, but this is intractable for large models. To make this feasible, several online mixing methods such as DoGE Fan et al. (2023) and PIKE Li et al. (2025), as well as earlier meta-learning approaches (Ren et al., 2018; Shu et al., 2019), adopt a “greedy" heuristic. They perform a single step or very few steps of model parameter updates before 1
+
+> arXiv:2602.19510v1 [cs.LG] 23 Feb 2026
+
+updating the data weights, prioritizing computational efficiency over hypergradient accuracy. We refer to the number of parameter updates per weight update as the lookahead horizon , and denote it by T .This reliance on greedy approximations ignites a critical theoretical controversy centered on 
+
+short-horizon bias (Wu et al., 2018). Seminal works in meta-learning suggest that truncating the inner optimization loop to a negligible horizon introduces systematic errors, often leading the meta-learner to adopt myopic strategies—such as artificially suppressing learning rates—to minimize immediate volatility rather than maximizing long-term generalization (Shaban et al., 2019). Despite the empirical adoption of greedy mixing methods, the theoretical implications of this bias in the simplex-constrained domain of data mixing remain underexplored. Does the prevalent T = Θ(1) heuristic find the optimal mixture, or does it succumb to truncation bias? In this work, we rigorously analyze the convergence behavior of data mixing as a function of the lookahead horizon T . We challenge the prevailing “greedy” heuristic, demonstrating that the strategy of frequent weight updates with short horizons is systematically biased. We establish a “less is more ” principle: under a fixed total budget of parameter updates, it is provably better to update data weights less frequently but with a longer lookahead horizon .Our main contributions are: “Greedy” Approach Fails: We theoretically show that the greedy approach of using T = 1 in data mixing is not merely noisy but systematically biased. In a simple quadratic example, it can cause data weights to converge to sub-optimal values, failing to identify the correct mixture (Section 5). Optimal Horizon Scaling: We derive the optimal scaling laws for the lookahead horizon T
+
+(i.e., number of parameter updates per weight update) under a fixed parameter update budget 
+
+N = KT , where K is the total number of weight updates. Specifically, in the strongly convex case, we prove that the optimal T scales as Θ( log N ) and Θ( √N log N ) in the deterministic and stochastic settings, respectively, contrasting sharply with the Θ(1) horizon commonly used in practice (Section 6). We corroborate our theoretical findings with proof-of-concept experiments which show that moderate values of T (sublinear in N ) lead to the best performance in practice (Section 7). 
+
+# 2 Related Work 
+
+Static Heuristics and Scaling Laws. Historically, data mixtures were determined via manual heuristics, such as upsampling high-quality domains such as Wikipedia (Chowdhery et al., 2023). Recent work has formalized this into data mixing laws (Ye et al., 2024), which fit power-law regression models on small-scale training runs to predict the loss of larger models. Methods like UniMax (Chung et al., 2024) propose maximizing diversity under epoching constraints. While principled, these methods are static; they freeze the mixture weights prior to training and cannot adapt to the model’s evolving curriculum needs (Bengio et al., 2009). 
+
+Offline Proxy-Based Optimization. To introduce data-driven adaptability without the cost of online updates, several methods utilize proxy models (Ren et al., 2018; Shu et al., 2019). DoReMi (Xie et al., 2023) formulates data mixing as a distributionally robust optimization (DRO) problem (Sagawa et al., 2020; Kuhn et al., 2025), training a small proxy model to minimize worst-case excess loss relative to a reference model. RegMix (Liu et al., 2024) treats mixture selection as a regression problem, fitting high-degree polynomials to map mixture weights to validation loss via extensive random sampling. While effective, these methods incur significant pre-computation overhead and suffer from a gap between proxy and target model dynamics. 2Online Bilevel Optimization. The most adaptive paradigm integrates weight optimiza-tion directly into the training loop. Early “learning to weight” approaches used auxiliary networks to predict sample weights (Jiang et al., 2018; Shu et al., 2019), but these struggle to scale to LLMs. Current state-of-the-art methods focus on efficient domain-level reweighting. DoGE (Fan et al., 2023) estimates domain weights by computing a “generalization gain” via the dot product of validation and training gradients. PIKE (Li et al., 2025) extends this to multi-task learning by minimizing gradient conflicts. TIKMIX (Wang et al., 2025b) and TANDEM (Wang et al., 2025a) represent the newest wave of dynamic mixing. Crucially, to maintain efficiency, these methods rely on the “greedy” approach ( T = 1 ), updating weights based on immediate gradient feedback. 
+
+Theoretical Foundations: Truncation Bias vs. Unrolling. The theoretical validity of truncating the inner optimization loop is a subject of intense scrutiny. Wu et al. (2018) identified that short-horizon unrolling introduces systematic bias, while Shaban et al. (2019) proved that exact convergence requires the horizon to scale logarithmically with precision. Con-versely, single-loop methods (Ji et al., 2021) argue convergence is possible under strict time-scale separation, though this condition is rarely met in standard pre-training. Alternative approaches include Implicit Differentiation (Lorraine et al., 2020; Blondel et al., 2022), which approximates the inverse Hessian via Neumann series (Grazzi et al., 2020). However, recent analysis on the “curse of unrolling” (Scieur et al., 2022) suggests that unrolled differentiation can suffer from numerical instability over long horizons. Our work unifies these perspectives for data mixing, providing a rigorous analysis of the “sweet spot” for T that minimizes both optimization error and truncation bias. 
+
+# 3 Notation and Preliminaries 
+
+We denote vectors and matrices by bold font symbols. For a natural number n ∈ N, we denote the set {1, . . . , n } by [n]. For a vector v, we denote its ith coordinate by v(i) and its 
+
+ℓp norm by ∥v∥p. A vector v = [ v(1) , . . . , v (n)] is said to belong to the n-dimensional simplex 
+
+∆n if Pni=1 v(i) = 1 and v(i) ≥ 0 ∀ i ∈ [n]. For a matrix M , we denote its operator norm by ∥M ∥op . A function f (x) : Rd −→ R is said to be G-Lipschitz if sup x∈Rd ∥∇ f (x)∥2 ≤ G,
+
+L-smooth if ∥∇ f (y) − ∇ f (x)∥2 ≤ L∥y − x∥2 for all x, y ∈ Rd, and μ-strongly-convex if 
+
+f (y) ≥ f (x) + ⟨∇ f (x), y − x⟩ + μ 
+
+> 2
+
+∥y − x∥22 for all x, y ∈ Rd.
+
+# 4 Problem Formulation 
+
+In pre-training large foundation models, we are typically given access to m diverse training domains (e.g., Wikipedia, GitHub, CommonCrawl), each associated with a loss function ℓi
+
+(i ∈ [m]). The goal is not simply to minimize the average loss on these domains, but to minimize the loss on a validation set (or “reference” distribution) LV, which serves as a proxy for downstream capability. To that end, a weighted loss over the training domains can be minimized, where the weights should be chosen so as to minimize the validation loss as much as possible. This creates a hierarchical dependency: we want to find the mixture weights w ∈ ∆m
+
+that produces a model θ∗(w) which performs the best on LV . This is the canonical bilevel optimization formulation (Franceschi et al., 2018; Grazzi et al., 2020): 
+
+min  
+
+> w∈∆m
+
+F (w) := LV(θ∗(w)) 
+
+s.t. θ∗(w) ∈ arg min  
+
+> θ
+
+LT(θ, w) := 
+
+> m
+
+X
+
+> i=1
+
+w(i)ℓi(θ). (1) 3Algorithm 1 Data Mixing 
+
+Input: Initialization for model parameters θ0, initialization for mixture weights w0, parameter update step-size η, weight update step-size α, number of rounds K, number of parameter updates per round / “horizon” T .Set θ0,0 = θ0.
+
+for k ∈ { 0, . . . , K − 1} do for t ∈ { 0, . . . , T − 1} do 
+
+Update θk,t +1 = θk,t − η∇θLT(θk,t , wk).// Inner parameter update 
+
+end for 
+
+For j ∈ [m], update w(j) 
+
+> k+1
+
+= w(j) 
+
+> kexp
+
+ −α¯g(j)
+
+> k,T
+
+  
+
+> Pms=1 w(s)
+> kexp
+
+ −α¯g(s)
+
+> k,T
+
+ , with ¯g(j) 
+
+> k,T
+
+:= ∂LV(θk,T )
+
+> ∂w (j)
+> k
+
+.// Outer weight update 
+
+Set θk+1 ,0 = θk,T .
+
+end for Return θK, 0 and wK .Note that for F (w) to be well-defined, we need to uniquely specify θ∗(w) as one particular optimum of LT(θ, w) if it has multiple optima. For example, this could be the optimum closest to the initialization. 
+
+The hypergradient challenge. To optimize w via first-order methods, we need the hypergra-dient ∇F (w). Using the Implicit Function Theorem (IFT), the jth (j ∈ [m]) coordinate of this is given by: 
+
+∇F (w)(j) = −
+
+D
+
+∇θLV
+
+ θ∗, ∇2
+
+> θ
+
+LT
+
+ θ∗, w−1∇ℓj
+
+ θ∗E
+
+, (2) where for brevity θ∗ denotes θ∗(w).1 Unfortunately, computing the exact quantity in Eq. 2 is intractable for two reasons: (1) for every single update of w, it requires training θ to full convergence ( θ∗), and (2) it requires inverting the massive Hessian matrix at θ∗. So we focus on a more practical unrolled algorithm , where the inner optimization w.r.t θ is approximated by a few steps, say T , of gradient descent, which is then used to approximate the hypergradient. 2 We formally describe this unrolled algorithm in Algorithm 1. It can be viewed as a coupled system where each “round” consists of T inner parameter updates followed by one outer weight update. In Algorithm 1, θk,t denotes the parameter at step t of round k, while wk denotes the weight vector in round k. The inner parameter update rule 
+
+θk,t +1 = θk,t − η∇θLT(θk,t , wk), (3) is standard gradient descent with constant step-size η. After T parameter update steps, we compute the gradient of the validation loss at θk,T with respect to the current weights wk (i.e.,   
+
+> ∂LV(θk,T )
+> ∂wk
+
+) to update them. Specifically, for updating the weights, we perform mirror-descent Bubeck et al. (2015) with the negative entropy function as the Bregman divergence and constant step-size α.Note that if T → ∞ , then we will get the exact hypergradient in Equation (2). Unfortunately, as T increases, keeping track of ∂LV(θk,T ) 
+
+> ∂wk
+
+exactly becomes challenging. To see this, note that the     
+
+> 1See Theorem C.3 for a quick proof of this result.
+> 2Note that T→ ∞ would lead to convergence to θ∗.
+
+4jth coordinate of ∂LV(θk,T ) 
+
+> ∂wk
+
+, i.e., 
+
+∂LV(θk,T )
+
+∂w (j)
+
+> k
+
+=
+
+*
+
+∇θLV(θk,T ), ∂θk,T 
+
+∂w (j)
+
+> k
+
++
+
+, (4) using the chain rule. Now, ∂θk,T 
+
+> ∂w (j)
+> k
+
+is not straightforward to compute. The following proposition describes how this quantity can be computed recursively. 
+
+Proposition 4.1. For t ≥ 0, ∂θk,t 
+
+> ∂w (j)
+> k
+
+evolves as: 
+
+∂θk,t 
+
+∂w (j)
+
+> k
+
+=
+
+
+
+I − η∇2
+
+> θ
+
+LT
+
+ θk,t −1, wk
+
+ ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η∇ℓj
+
+ θk,t −1
+
+, (5) 
+
+with initial condition ∂θk, 0
+
+> ∂w (j)
+> k
+
+=⃗ 0.
+
+The proof of Theorem 4.1 is in Section B. This recursion reveals that the influence of a weight w(j) 
+
+> k
+
+accumulates over the trajectory, decayed by a matrix depending on the Hessian of the weighted training loss over the trajectory. Thus, the exact computation of ∂LV(θk,T )
+
+> ∂w (j)
+> k
+
+becomes infeasible as T increases. As a result, an extreme version of Alg. 1 is used in many practical algorithms. For example, DoGE Fan et al. (2023) and PIKE Li et al. (2025) propose a “greedy” approach by setting 
+
+T = 1 . However, using T = 1 or a small value of T might yield a poor approximation of the hypergradient, which might be detrimental to convergence. Indeed, in Section 5, we show that 
+
+T = 1 leads to suboptimal performance in a simple example involving quadratic losses. 
+
+Our main focus. Motivated by this conundrum, we seek to rigorously analyze the impact of the horizon T on convergence. More importantly, given a fixed parameter update budget 
+
+N = KT , we wish to quantify the optimal value of T as a function of N that results in the best convergence bound. We present this analysis in Section 6 for a more general and practical version of Algorithm 1. 
+
+Our key insight. We show that T = Θ(1) (here, Θ( ·) is with respect to the total parameter update budget N ) is suboptimal and a larger value of T leads to the best convergence bound; see Table 1 for a summary of our results. In other words, we show that making fewer weight updates with a good approximation of the hypergradient (obtained with a large T ) leads to better performance than making more weight updates with a poor approximation of the hypergradient (obtained with T = Θ(1) ), i.e., less is more .Table 1: Optimal horizon T (leading to best convergence bound) as a function of the total parameter update budget N , when the per-domain losses are strongly convex. In the deterministic (resp., stochastic) case, we have access to full (resp., stochastic) gradients. 
+
+Setting Optimal Horizon T
+
+Deterministic (Sec. 6.2) Θ  log N 
+
+Stochastic (Sec. 6.3) Θ √N log N 
+
+It is worth clarifying here that we are not pitching Algorithm 1 as a novel algorithm; rather, our main contribution is theoretically deriving the optimal value of T in it. 55 Motivating Example and Initial Insights 
+
+Here we analyze a 1-dimensional quadratic setting where the “greedy” approach of using T = 1 
+
+fails. 
+
+Quadratic example. Consider a scalar parameter θ and weight w ∈ [0 , 1] controlling two training domains: 
+
+LT(θ, w ) = w
+
+ θ2
+
+2
+
+
+
++ (1 − w)
+
+ (θ − 1) 2
+
+2
+
+
+
+, LV(θ) = θ2
+
+2 .
+
+Here, the validation domain is identical to the first training domain. Thus, the optimal weight is clearly w∗ = 1 , which yields θ∗ = 0 . For this example, the theorem below shows that the greedy approach of setting T = 1 completely fails when starting far away from the optimum θ∗ = 0 ,while a larger value of T does not suffer from this problem. 
+
+Theorem 5.1 (Informal: Failure of Greedy Approach) . Suppose we run Algorithm 1 starting from w0 = 0 .5 and θ0 = −R, with R > 0 being sufficiently large. Let the total parameter update budget be N (= KT ). 
+
+• Case 1 ( T = 1 ): The final weight iterate wK converges to 0, while the optimal weight is 1.
+
+• Case 2 ( T ≫ 1): If T scales as Θ( log R), the final weight iterate wK can be made to converge to a value arbitrarily close to the optimal value 1.
+
+The formal statement of Theorem 5.1 and its proof are relegated to Section A. This result shows that T = 1 is problematic even in a simple quadratic example, and converging to the optimal weight requires making use of a larger horizon T . At a high level, in the T = 1 case, the algorithm updates weights based on immediate but “misleading” validation loss improvement. To see this, notice that at θ0 = −R, the gradient of the second domain’s loss is steeper and locally reduces validation loss faster, incorrectly signaling that w should decrease. In contrast, when using a larger value of T , the algorithm does not suffer from this short-term bias and receives the correct signal that w should increase to align with the validation loss. Note that under a constant budget N = KT , as T increases, the number of weight updates 
+
+K decreases. Given that we showed T ≫ 1 is better than T = 1 , we also showed that making fewer weight updates with a relatively precise hypergradient is better than greedily making more weight updates with an erroneous hypergradient, i.e., less is more !With these insights in mind, we will move on to Section 6 which presents a much more general analysis of this phenomenon. 
+
+# 6 Main Results: Less is More 
+
+To formally understand the role of the horizon T , this section provides convergence bounds for a more general and practical version of Algorithm 1, assuming the per-domain losses are strongly-convex and smooth. 
+
+6.1 Practical Version of Algorithm 1 Using Approximate Hessian 
+
+Let us first describe the computationally-practical version of Algorithm 1 that we analyze. Recall that to update the weights, we need to compute ∂LV(θk,T )
+
+> ∂w (j)
+> k
+
+(j ∈ [m]) which by the chain rule is equal to ∇θLV(θk,T ), ∂θk,T 
+
+> ∂w (j)
+> k
+
+(see Eq. (4) ). As discussed, ∂θk,T 
+
+> ∂w (j)
+> k
+
+can be computed recursively with the following recursive update rule from Theorem 4.1: 
+
+∂θk,t 
+
+∂w (j)
+
+> k
+
+=
+
+
+
+I − ηHk,t −1
+
+ ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η∇ℓj
+
+ θk,t −1
+
+,
+
+6where Hk,t −1 := ∇2
+
+> θ
+
+LT
+
+ θk,t −1, wk
+
+ and initial condition ∂θk, 0
+
+> ∂w (j)
+> k
+
+=⃗ 0. Since the computation of the Hessian Hk,t at every step is costly, we consider using a single approximate Hessian Hk for the entire round k. Specifically, we assume access to a Hessian approximator H that takes as input wk and returns an approximate Hessian Hk = H(wk).3
+
+Under this scheme, let the approximation to 
+
+n ∂θk,t 
+
+> ∂w (j)
+> k
+
+o 
+
+> t
+
+be denoted by  − ηu(j) 
+
+> k,t t
+
+, which has the following simpler recursive update: 
+
+u(j) 
+
+> k,t
+
+=  I − ηHk
+
+u(j) 
+
+> k,t −1
+
++ ∇ℓj
+
+ θk,t −1
+
+, (6) with u(j) 
+
+> k, 0
+
+=⃗ 0. Unfolding the recursion in Eq. (6), we get: 
+
+u(j) 
+
+> k,T
+
+= 
+
+> T−1
+
+X
+
+> i=0
+
+ I − ηHk
+
+T −1−i∇ℓj
+
+ θk,i 
+
+. (7) Let us denote the approximation for ∂LV(θk,T )
+
+> ∂w (j)
+> k
+
+that we will obtain by approximating ∂θk,T 
+
+> ∂w (j)
+> k
+
+with 
+
+−ηu(j) 
+
+> k,T
+
+by g(j) 
+
+> k,T
+
+; so, gk,T =
+
+h
+
+g(1)  
+
+> k,T
+
+, . . . , g (m)
+
+> k,T
+
+i⊤
+
+is our approximate hypergradient. Plugging in Equation (7) into Equation (4) and dropping the subscript θ in ∇θLV(θk,T ) henceforth, we get: 
+
+g(j) 
+
+> k,T
+
+= −η 
+
+> T−1
+
+X
+
+> i=0
+
+D
+
+∇L V(θk,T ),  I − ηHk
+
+T −1−i∇ℓj
+
+ θk,i 
+
+E
+
+. (8) The corresponding update rule for wk is: 
+
+w(j) 
+
+> k+1
+
+= w(j) 
+
+> k
+
+exp   − αg (j)
+
+> k,T
+
+Pms=1 w(s) 
+
+> k
+
+exp   − αg (s)
+
+> k,T
+
+ . (9) We concretely present this practical version in Algorithm 2. 
+
+6.2 Convergence Result for Algorithm 2 
+
+Now we will provide a convergence result for Algorithm 2 under the following assumptions. 
+
+Assumption 6.1 (Domain losses ). Each ℓj (θ) (j ∈ [m]) is G-Lipschitz, L-smooth, and 
+
+μ-strongly-convex. Note that when the ℓj ’s are strongly convex, θ∗(w) is unique and F (w) in Eq. (1) is unambiguously defined. 
+
+Assumption 6.2 (Validation loss ). LV(θ) is GV-Lipschitz and LV-smooth. 
+
+Assumption 6.3 (Hessian approximation ). For w ∈ ∆m, suppose H∗(w) := ∇2
+
+> θ
+
+LT
+
+ θ∗(w), w
+
+is the Hessian at the optimum of the weighted training loss with weight w, and H(w) is the approximate Hessian returned by our Hessian approximator (recall that we denoted this by Hk for round k in Section 6.1). Then, H(w) is PSD with bμI ⪯ H(w) ⪯ bLI and ∥H(w) − H∗(w)∥op ≤ δ
+
+∀ w ∈ ∆m.We are now ready to present our result for Algorithm 2.   
+
+> 3We discuss a practical choice of Hkin Section E.
+
+7Algorithm 2 Data Mixing with Approximate Hessian  
+
+> 1:
+
+Input: Initialization for model parameters θ0, initialization for mixture weights w0, parame-ter update step-size η, weight update step-size α, number of rounds K, number of parameter updates per round / “horizon” T , and Hessian approximator H for weighted training loss.  
+
+> 2:
+
+Set θ0,0 = θ0. 
+
+> 3:
+
+for k ∈ { 0, . . . , K − 1} do  
+
+> 4:
+
+Obtain Hessian approximation Hk = H(wk). 
+
+> 5:
+
+Set u(j) 
+
+> k, 0
+
+=⃗ 0 for j ∈ [m]. 
+
+> 6:
+
+for t ∈ { 0, . . . , T − 1} do  
+
+> 7:
+
+Update θk,t +1 = θk,t − η∇θLT(θk,t , wk).// Inner parameter update  
+
+> 8:
+
+for j ∈ { 1, . . . , m } do  
+
+> 9:
+
+Update u(j) 
+
+> k,t +1
+
+=  I − ηHk
+
+u(j) 
+
+> k,t
+
++ ∇ℓj
+
+ θk,t 
+
+ 
+
+> 10:
+
+end for  
+
+> 11:
+
+end for  
+
+> 12:
+
+For j ∈ [m], update w(j) 
+
+> k+1
+
+= w(j) 
+
+> kexp
+
+ −αg (j)
+
+> k,T
+
+  
+
+> Pms=1 w(s)
+> kexp
+
+ −αg (s)
+
+> k,T
+
+ , where g(j) 
+
+> k,T
+
+:= −η
+
+D
+
+∇L V(θk,T ), u(j)
+
+> k,T
+
+E
+
+.// Outer weight update  
+
+> 13:
+
+Set θk+1 ,0 = θk,T . 
+
+> 14:
+
+end for  
+
+> 15:
+
+Return {θk, 0}Kk=0 and {wk}Kk=0 .
+
+Theorem 6.4. Suppose Assumptions 6.1, 6.2 and 6.3 hold, F (w) = LV
+
+ θ∗(w) is convex (in 
+
+w), and F ∗ := min w∈∆m F (w). Let N = KT denote the total parameter update budget. Suppose our initialization is w0 = 1 
+
+> m
+
+1m. Then, ∃ α such that for any η < min 
+
+ 1 
+
+> bL
+
+, μL2
+
+
+
+and T ≥  log 4 
+
+> ημ
+
+,we have the following guarantee for Algorithm 2: 
+
+F (wK ) − F ∗ ≤ c1
+
+√T
+
+√N
+
+| {z } 
+
+> (I)
+
++
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+(c2ηT + c3)
+
+| {z }
+
+> (II)
+
++ c4δ
+
+|{z} 
+
+> (III)
+
+, (10) 
+
+where wK := 1
+
+> K
+
+PK−1 
+
+> k=0
+
+wk, and {ci}4 
+
+> i=1
+
+are constants independent of T and N .In Equation (10) , term (I) is the optimization error , term (II) is the finite horizon bias ,while term (III) is the irreducible Hessian approximation error .
+
+The detailed version and proof of Theorem 6.4 are presented in Section C. Terms (I) and (II) in Eq. (10) are reducible by increasing N and choosing T appropriately (as a function of 
+
+N ). However, term (III) is independent of N and T , and cannot be reduced. This is the Hessian approximation cost, which depends on the quality of the approximator. 
+
+Reducible error. The reducible error ((I) + (II)) in Equation (10) is associated with a tradeoff with respect to the value of T . Specifically, the optimization error (I) increases with T
+
+(or as as K = N/T decreases), while the horizon bias (II) decays with T asymptotically. As we discuss and show in the detailed version of Theorem 6.4 (Theorem C.1), the reducible error is minimized by choosing 
+
+T = Θ(log N ).4 (11)        
+
+> 4Note that the Θ( ·)used here and subsequently is w.r.t. N. Also, ηis chosen to be a constant independent of
+> Nfor this result.
+
+8Remark 6.5 . The reducible error is minimized by setting T = Θ( log N ). This establishes that T = Θ(1) is suboptimal and making fewer weight updates with the horizon growing 
+
+logarithmically with the total parameter update budget is better, i.e., less is more !
+
+Tightness. Since F (w) is assumed to be convex in Theorem 6.4, we have a lower bound of 
+
+Ω  1√N
+
+ in the worst case Nesterov (2013). Note that by choosing T = Θ( log N ), the reducible error in ((I) + (II)) in Eq. (10) becomes eO  1√N
+
+ (where eO(·) hides poly-log factors). Thus, our upper bound in Theorem 6.4 with T = Θ( log N ) matches the lower bound (ignoring poly-log factors). This establishes that T = Θ(log N ) is indeed the optimal choice in this setting. 
+
+6.3 Extension to the Stochastic Case 
+
+Here, we consider a more practical version of Algorithm 2, where for each domain loss ℓj (·) and the validation loss LV(·), we have access to unbiased stochastic gradients e∇ℓj (·) and e∇L V(·) instead of the actual gradients ∇ℓj (·) and ∇L V(·). In this case, we have three changes in Algorithm 2. First, line 7 (inner parameter update) becomes 
+
+θk,t +1 = θk,t − η e∇θLT(θk,t , wk),
+
+where e∇θLT(θk,t , wk) = Pmj=1 w(j) 
+
+> k
+
+e∇ℓj
+
+ θk,t 
+
+. Second, line 9 changes to 
+
+eu(j) 
+
+> k,t +1
+
+=  I − ηHk
+
+eu(j) 
+
+> k,t
+
++ e∇ℓj
+
+ θk,t 
+
+,
+
+with eu(j) 
+
+> k, 0
+
+=⃗ 0. Finally, line 12 (outer weight update) becomes 
+
+w(j) 
+
+> k+1
+
+= w(j) 
+
+> k
+
+exp   − αeg(j)
+
+> k
+
+Pms=1 w(s) 
+
+> k
+
+exp   − αeg(s)
+
+> k
+
+ ,
+
+with eg(j) 
+
+> k
+
+= −η e∇L V(θk,T ), eu(j) 
+
+> k,T
+
+. Note that egk,T =
+
+heg(1)  
+
+> k,T
+
+, . . . , eg(m)
+
+> k,T
+
+i⊤
+
+is our approximate hypergradient here. For full clarity, we write down the resultant algorithm in the stochastic case in Algorithm 3. We make the following standard assumptions on the stochastic gradients. 
+
+Assumption 6.6 (Stochastic gradients ). Suppose ζ denotes the source of randomness in the stochastic gradients. The stochastic gradients: 1. are unbiased, i.e., Eζ
+
+ e∇ℓj (θ) = ∇ℓj (θ) and Eζ
+
+ e∇L V(θ) = ∇L V(θ), ∀ θ.2. have bounded variance, i.e., Eζ
+
+∥ e∇ℓj (θ)−∇ ℓj (θ)∥22
+
+ ≤ σ2 and Eζ
+
+∥ e∇L V(θ)−∇L V(θ)∥22
+
+ ≤
+
+σ2, ∀ θ.We are now ready to present our convergence result for the algorithm in the stochastic case (Algorithm 3). 
+
+Theorem 6.7 (Stochastic case ). Suppose Assumptions 6.1, 6.2, 6.3 and 6.6 hold, F (w) = 
+
+LV
+
+ θ∗(w) is convex (in w), and F ∗ := min w∈∆m F (w). Let N = KT denote the total parameter update budget. Suppose our initialization is w0 = 1 
+
+> m
+
+1m. Then, ∃ α and η such that for any T ≥ Ω(1) (w.r.t. N ), we have the following guarantee for Algorithm 3: 
+
+EF (wK ) − F ∗ ≤ O 
+
+ √T
+
+√N
+
+| {z }
+
+> (I)
+
++ O
+
+ √log T
+
+√T
+
+| {z }
+
+> (II)
+
++ O(δ)
+
+| {z } 
+
+> (III)
+
+, (12) 9Algorithm 3 Data Mixing with Approximate Hessian and Stochastic Gradients  
+
+> 1:
+
+Input: Initialization for model parameters θ0, initialization for mixture weights w0, parame-ter update step-size η, weight update step-size α, number of rounds K, number of parameter updates per round / “horizon” T , and Hessian approximator H for the weighted training loss.  
+
+> 2:
+
+Set θ0,0 = θ0. 
+
+> 3:
+
+for k ∈ { 0, . . . , K − 1} do  
+
+> 4:
+
+Obtain Hessian approximation Hk = H(wk). 
+
+> 5:
+
+Set eu(j) 
+
+> k, 0
+
+=⃗ 0 for j ∈ [m]. 
+
+> 6:
+
+for t ∈ { 0, . . . , T − 1} do  
+
+> 7:
+
+Update θk,t +1 = θk,t − η
+
+ Pmj=1 w(j) 
+
+> k
+
+e∇ℓj
+
+ θk,t 
+
+
+
+.// Inner parameter update  
+
+> 8:
+
+for j ∈ { 1, . . . , m } do  
+
+> 9:
+
+Update eu(j) 
+
+> k,t +1
+
+=  I − ηHk
+
+eu(j) 
+
+> k,t
+
++ e∇ℓj
+
+ θk,t 
+
+. 
+
+> 10:
+
+end for  
+
+> 11:
+
+end for  
+
+> 12:
+
+For j ∈ [m], update w(j) 
+
+> k+1
+
+= w(j) 
+
+> kexp
+
+ −αeg(j)
+
+> k,T
+
+  
+
+> Pms=1 w(s)
+> kexp
+
+ −αeg(s)
+
+> k,T
+
+ , where eg(j) 
+
+> k,T
+
+:= −η
+
+D e∇L V(θk,T ), eu(j)
+
+> k,T
+
+E
+
+.// Outer weight update  
+
+> 13:
+
+Set θk+1 ,0 = θk,T . 
+
+> 14:
+
+end for  
+
+> 15:
+
+Return {θk, 0}Kk=0 and {wk}Kk=0 .
+
+where wK := 1
+
+> K
+
+PK−1 
+
+> k=0
+
+wk.5
+
+In Equation (12) , term (I) is the optimization error , term (II) is the finite horizon bias ,while term (III) is the irreducible Hessian approximation error .
+
+The detailed version and proof of Theorem 6.7 are presented in Section D. Just like Theo-rem 6.4, there are reducible error terms (I) and (II), and an irreducible error term (III), which is the Hessian approximation cost. 
+
+Reducible error. Similar to Theorem 6.4, the optimization error (I) increases with T (or as as 
+
+K = N/T decreases), while the horizon bias (II) decays with T asymptotically. However, in this case, the decay in the horizon bias is much slower (as a function of T ) than in Theorem 6.4; this is due to the use of stochastic gradients here. As we discuss and show in the detailed version of Theorem 6.7 (Theorem D.1), the reducible error ((I) + (II)) is minimized by choosing 
+
+T = Θ  p N log N . (13) 
+
+Remark 6.8 . In the stochastic case, the reducible error is minimized by setting T = Θ  √N log N 
+
+which is significantly larger than Θ(1) as well as the optimal value of Θ( log N ) in the deterministic case (Theorem 6.5). 
+
+6.4 Proof Sketch: Bounding the Hypergradient Error 
+
+The core of our analysis lies in bounding the deviation of the approximate hypergradi-ent gk,T (or its stochastic counterpart egk,T ) from the true hypergradient ∇F (wk); the rest of 
+
+> 5The expectation in Equation (12) is w.r.t. the randomness of the algorithm due to use of stochastic gradients.
+
+10 the analysis is based on standard results for mirror descent. Recall that the true hypergradient is given by the Implicit Function Theorem as ∇F (w)(j) = − ∇θLV
+
+ θ∗, ∇2
+
+> θ
+
+LT
+
+ θ∗, w−1∇ℓj
+
+ θ∗ ,where θ∗ denotes θ∗(w) (for brevity). Our analysis decomposes this error into two primary sources: the finite-horizon bias from truncating the inner optimization, and the approxima-tion error from replacing the exact inverse Hessian at the optimum with a truncated Neumann series over the optimization trajectory using the approximate Hessian. 
+
+Deterministic setting (Theorem 6.4). Let H∗ 
+
+> k
+
+:= ∇2
+
+> θ
+
+LT
+
+ θ∗
+
+> k
+
+, wk
+
+. Here the analysis boils down to bounding ∥∇ F (wk) − gk,T ∥∞, and this is done by expressing the inverse Hessian (H∗ 
+
+> k
+
+)−1
+
+in ∇F (wk) as an infinite Neumann series η P∞
+
+> i=0
+
+ I − ηH∗
+
+> k
+
+i. Our estimated hypergradient gk,T 
+
+approximates this by using the approximate Hessian Hk instead of H∗ 
+
+> k
+
+, truncating the sum to T
+
+terms, and evaluating gradients along the finite trajectory {θk,t }Tt=0 rather than at the optimum 
+
+θ∗
+
+> k
+
+. We split the error into two parts: 1. Tail error. This is the error from ignoring terms i ≥ T in the Neumann series. Due to strong convexity of the per-domain losses,  I − ηH∗
+
+> k
+
+ is a contractive operator with spectral radius bounded by (1 − ημ ). As a result, this tail error decays exponentially as (1 − ημ )T .2. Trajectory error. This is the error accumulating from evaluating gradients at {θk,t }Tt=0 
+
+instead of θ∗ 
+
+> k
+
+as well as from the use of approximate Hessian instead of exact Hessian. Since gradient descent on strongly-convex functions converges linearly, ∥θk,t − θ∗
+
+> k
+
+∥2 decays as  1 − O (ημ )t. Using this fact together with the Lipschitzness and smoothness of the per-domain and validation losses, it can be shown that this error is bounded by 
+
+O ηT  1 − O (ημ )T  + O(δ), where the last term is due to the Hessian approximation and is irreducible. Combining these two errors, the total hypergradient error is bounded by O ηT  1 − O (ημ )T  +
+
+O(δ), where δ is the irreducible error from the Hessian approximator. This near-exponential decay in the hypergradient error drives the optimal choice of T = Θ(log N ).
+
+Stochastic setting (Theorem 6.7). In the stochastic case, the high-level idea is similar to the deterministic case, but the analysis is more involved and tricky due to the use of stochastic gradients. After taking conditional expectations judiciously, the decompositions are similar to the deterministic case. The key difference here compared to the deterministic case is that the θk,t ’s do not converge to θ∗ 
+
+> k
+
+linearly; specifically, here we have E θk,T − θ∗ 
+
+> k2
+
+ ≤O   1 − O (ημ )T  + O(√ησ ). The noise variance term at the end O(√ησ ) turns out to be the dominant term in the reducible 6 part of the expected hypergradient error; the other terms decay as O ηT  1 − O (ημ )T  just like the deterministic case. By choosing η = O( log TμT ), the reducible part of the expected hypergradient error is minimized and it turns out to be O(  
+
+> √log T√T
+
+). This decay rate is much slower than the deterministic case (where it was near-exponential asymptotically), and this necessitates a much larger optimal horizon T = Θ( √N log N ).
+
+Analysis without assuming convexity. In all of our previous results, we assumed F (w)
+
+to be convex. Even in the case when F (w) is smooth non-convex, the crux of the analysis lies in bounding the deviation of the approximate hypergradient from the true hypergradient, and the same analysis that we have in the convex case (as discussed in Section 6.4) essentially goes through in this case (assuming the ℓj (θ)’s are still strongly convex). There are no additional important technical challenges compared to the convex case; so the exact derivation is left for future work.   
+
+> 6The irreducible O(δ)term in the deterministic case (due to Hessian approximation) stays here as well.
+
+11 10 0 10 1 10 2 10 3 
+
+> T
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> val loss
+> N= 1000
+
+(a) Validation loss vs. T for N = 1000 10 0 10 1 10 2 10 3  
+
+> T
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> w2
+> N= 1000
+
+(b) w2 vs. T for N = 1000 10 0 10 1 10 2 10 3 
+
+> T
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> val loss
+> N= 5000
+
+(c) Validation loss vs. T for N = 5000 10 0 10 1 10 2 10 3  
+
+> T
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> w2
+> N= 5000
+
+(d) w2 vs. T for N = 5000 
+
+Figure 1: Validation loss and the weight of the second domain (most aligned with validation data) w2 as a function of the horizon T , for N = {1000 , 5000 }. Note that the validation loss is lowest and w2 is highest when T is larger than 1 and sublinear in N .
+
+# 7 Empirical Evaluation 
+
+We design a multi-domain training experiment to illustrate how increasing the horizon T (i.e., updating the mixture weights less frequently) leads to better performance. Specifically, we consider the following multi-domain data built out of MNIST. 
+
+Data Domains: We construct three training domains (for a pretraining setting) from standard MNIST data. Domain (i) is the vanilla domain with standard pre-processing, Domain (ii) is the rotated domain with strong randomly chosen rotation augmentation, and Domain (iii) is the noisy domain which is standard MNIST corrupted with label noise. Validation data is a fixed rotated version of the MNIST test set, so the rotated domain (Domain (ii)) is the one that best matches the validation distribution. We train a CNN whose architecture we describe in Appendix F. 
+
+Data Mixing Algorithm: We consider Algorithm 3 with approximate Hessian Hk = γI,for all k (see Section E). More details about the hyperparameters, etc., are deferred to Appendix F. In Figure 1, we show the validation loss and the weight of the second domain (which is the “important” domain, most aligned with validation data), viz., w2, as a function of the horizon T
+
+for N = 1000 and N = 5000 . We discuss the results next. In Figure 2 (Section F), we also plot 12 the validation accuracies. 
+
+Optimal horizon is not small. The performance is poor with a small horizon T (or very frequent weight updates). With small T , the validation loss is high (Figures 1a and 1c), and the corresponding values of w2 are small (Figures 1b and 1d). This suggests that the hypergradients with small T are inaccurate and misled by short-horizon bias, underestimating the eventual benefit of allocating high weight to an important domain that may not reduce the loss immediately. As 
+
+T increases to an intermediate regime , performance improves substantially : validation loss decreases and w2 increases, yielding a “sweet spot” at moderate horizons. In this regime, the hypergradients are much more precise and reflective of the domain’s actual importance, leading to good performance. However, when T becomes too large, performance degrades again because of too few weight updates. Overall, this experiment corroborates our theoretical result that small horizons are suboptimal due to being prone to getting misled by short-term spurious signals, while intermediate (in particular, sublinear in N ) horizons do not suffer from this issue. Thus, less is more !
+
+# 8 Conclusion 
+
+In this work, we showed that the prevalent “greedy” heuristic of frequent weight updates with short horizons ( T = Θ(1) ) is systematically biased, often converging far away from the optimal domain weights. By deriving rigorous scaling laws for the horizon, we established a “less is more” principle, proving that updating weights less frequently with a horizon growing sublinearly in the total parameter update budget significantly improves convergence. We conclude this paper by discussing some limitations and future directions of work. Our results in this paper are under the assumption that the per-domain losses are strongly convex. While this assumption is limiting, a critical challenge in analyzing the general non-convex case is that for F (w) to be well-defined in Eq. (1) , θ∗(w) needs to be uniquely specified as one of the minimizers of LT(θ, w), and the distance of the iterates from this θ∗(w) needs to be bounded in the proofs. It is not clear how this can be done, and so, we leave this analysis for future work. Also, we would like to conduct experiments on larger models and datasets in the future. 
+
+# References 
+
+Agarwal, N., Bullins, B., and Hazan, E. (2017). Second-order stochastic optimization for machine learning in linear time. Journal of Machine Learning Research , 18(116):1–40. Bengio, Y. (2000). Gradient-based optimization of hyperparameters. Neural computation ,12(8):1889–1900. Bengio, Y., Louradour, J., Collobert, R., and Weston, J. (2009). Curriculum learning. In 
+
+Proceedings of the 26th annual international conference on machine learning , pages 41–48. Blondel, M., Berthet, Q., Cuturi, M., Frostig, R., Hoyer, S., Llinares-López, F., Pedregosa, F., and Vert, J.-P. (2022). Efficient and modular implicit differentiation. Advances in neural information processing systems , 35:5230–5242. Bonnans, J. F. and Shapiro, A. (2013). Perturbation analysis of optimization problems . Springer Science & Business Media. Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A., et al. (2020). Language models are few-shot learners. 
+
+Advances in neural information processing systems , 33:1877–1901. 13 Bubeck, S. et al. (2015). Convex optimization: Algorithms and complexity. Foundations and Trends ® in Machine Learning , 8(3-4):231–357. Chowdhery, A., Narang, S., Devlin, J., Bosma, M., Mishra, G., Roberts, A., Barham, P., Chung, H. W., Sutton, C., Gehrmann, S., et al. (2023). Palm: Scaling language modeling with pathways. Journal of Machine Learning Research , 24(240):1–113. Chung, H. W., Garcia, X., Roberts, A., Tay, Y., Firat, O., Narang, S., and Constant, N. (2024). Unimax: Fairer and more effective language sampling for large-scale multilingual pretraining. In The Eleventh International Conference on Learning Representations .Fan, S., Pagliardini, M., and Jaggi, M. (2023). DOGE: Domain reweighting with generalization estimation. In Advances in Neural Information Processing Systems (NeurIPS) .Franceschi, L., Frasconi, P., Salzo, S., Grazzi, R., and Pontil, M. (2018). Bilevel programming for hyperparameter optimization and meta-learning. In International Conference on Machine Learning (ICML) .Gao, L., Biderman, S., Black, S., Golding, L., Hoppe, T., Foster, C., Phang, J., He, H., Thite, A., Nabeshima, N., et al. (2020). The pile: An 800gb dataset of diverse text for language modeling. arXiv preprint arXiv:2101.00027 .Grazzi, R., Franceschi, L., Pontil, M., and Salzo, S. (2020). On the iteration complexity of hypergradient computation. In International Conference on Machine Learning (ICML) .Ji, K., Yang, J., and Liang, Y. (2021). Bilevel optimization: Convergence analysis and enhanced design. In International Conference on Machine Learning (ICML) , pages 4859–4869. Jiang, L., Zhou, Z., Leung, T., Li, L.-J., and Fei-Fei, L. (2018). Mentornet: Learning data-driven curriculum for very deep neural networks on corrupted labels. In International conference on machine learning , pages 2304–2313. PMLR. Kuhn, D., Shafiee, S., and Wiesemann, W. (2025). Distributionally robust optimization. Acta Numerica , 34:579–804. Li, Z., Deng, Y., Zhong, P., Razaviyayn, M., and Mirrokni, V. (2025). PIKE: Adaptive data mixing for multi-task learning under low gradient conflicts. In Advances in Neural Information Processing Systems (NeurIPS) .Liu, Q., Zheng, X., Muennighoff, N., Zeng, G., Dou, L., Pang, T., Jiang, J., and Lin, M. (2024). Regmix: Data mixture as regression for language model pre-training. arXiv preprint arXiv:2407.01492 .Liu, Q., Zheng, X., Muennighoff, N., Zeng, G., Dou, L., Pang, T., Jiang, J., and Lin, M. (2025). RegMix: Data mixture as regression for language model pre-training. In International Conference on Learning Representations (ICLR) .Lorraine, J., Vicol, P., and Duvenaud, D. (2020). Optimizing millions of hyperparameters by implicit differentiation. In International Conference on Artificial Intelligence and Statistics (AISTATS) , pages 1540–1552. Nesterov, Y. (2013). Introductory lectures on convex optimization: A basic course , volume 87. Springer Science & Business Media. Raffel, C., Shazeer, N., Roberts, A., Lee, K., Narang, S., Matena, M., Zhou, Y., Li, W., and Liu, P. J. (2020). Exploring the limits of transfer learning with a unified text-to-text transformer. 
+
+Journal of machine learning research , 21(140):1–67. 14 Ren, M., Zeng, W., Yang, B., and Urtasun, R. (2018). Learning to reweight examples for robust deep learning. In International Conference on Machine Learning (ICML) .Sagawa, S., Koh, P. W., Hashimoto, T. B., and Liang, P. (2020). Distributionally robust neural networks. In International Conference on Learning Representations .Sambasivan, N., Kapania, S., Highfill, H., Akrong, D., Paritosh, P., and Aroyo, L. M. (2021). “everyone wants to do the model work, not the data work”: Data cascades in high-stakes ai. In 
+
+proceedings of the 2021 CHI Conference on Human Factors in Computing Systems , pages 1–15. Scieur, D., Gidel, G., Bertrand, Q., and Pedregosa, F. (2022). The curse of unrolling: Rate of differentiating through optimization. Advances in Neural Information Processing Systems ,35:17133–17145. Shaban, A., Cheng, C.-A., Hatch, N., and Boots, B. (2019). Truncated back-propagation for bilevel optimization. In International Conference on Artificial Intelligence and Statistics (AISTATS) , pages 1723–1732. Shu, J., Xie, Q., Yi, L., Zhao, Q., Zhou, S., Xu, Z., and Meng, D. (2019). Meta-weight-net: Learning an explicit mapping for sample weighting. In Advances in Neural Information Processing Systems (NeurIPS) .Sinha, A., Malo, P., and Deb, K. (2017). A review on bilevel optimization: From classical to evolutionary approaches and applications. IEEE transactions on evolutionary computation ,22(2):276–295. Touvron, H., Lavril, T., Izacard, G., Martinet, X., Lachaux, M.-A., Lacroix, T., Rozière, B., Goyal, N., Hambro, E., Azhar, F., et al. (2023). Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971 .Wang, J., Xiang, D., Xu, J., Yi, M., Gong, G., Zhang, Z., Li, H., Chen, Z., Zhang, K., Fan, J., et al. (2025a). Tandem: Bi-level data mixture optimization with twin networks. In The Thirty-ninth Annual Conference on Neural Information Processing Systems .Wang, Y., Liu, B., Liu, F., Guo, Y., Deng, J., Wu, X., Zhou, W., Zhou, X., and Wang, T. (2025b). Tikmix: Take data influence into dynamic mixture for language model pre-training. 
+
+arXiv preprint arXiv:2508.17677 .Whang, S. E., Roh, Y., Song, H., and Lee, J.-G. (2023). Data collection and quality challenges in deep learning: A data-centric ai perspective. The VLDB Journal , 32(4):791–813. Wu, Y., Ren, M., Liao, R., and Grosse, R. (2018). Understanding short-horizon bias in stochastic meta-optimization. arXiv preprint arXiv:1803.02021 .Xie, S. M., Pham, H., Dong, X., Du, N., Liu, H., Lu, Y., Liang, P., Le, Q. V., Ma, T., and Yu, A. W. (2023). DoReMi: Optimizing data mixtures speeds up language model pretraining. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) .Ye, J., Liu, P., Sun, T., Zhan, J., Zhou, Y., and Qiu, X. (2024). Data mixing laws: Optimizing data mixtures by predicting language modeling performance. arXiv preprint arXiv:2403.16952 .15 Appendix 
+
+# A Quadratic Example in Section 5 
+
+In this case, it can be verified that the mirror descent update for wk from Algorithm 1 is: 
+
+wk+1 = wk
+
+wk + (1 − wk) exp( α¯gk,T ) , where ¯gk,T := ∂LV(θk,T )
+
+∂w k
+
+. (14) It can be verified that the parameter iterates evolve as: 
+
+θk+1 ,0 = θk,T =  1 − ηT θk, 0 + (1 − wk)
+
+
+
+1 −  1 − ηT 
+
+. (15) Now: 
+
+LV(θk,T ) = 12 θ2 
+
+> k,T
+
+= 12
+
+ 1 − ηT θk, 0 + (1 − wk)
+
+
+
+1 −  1 − ηT !2
+
+, (16) and 
+
+¯gk,T = ∂LV(θk,T )
+
+∂w k
+
+= −  1 − ηT θk, 0 + (1 − wk)
+
+
+
+1 −  1 − ηT !| {z }
+
+> =θk+1 ,0
+
+
+
+1 −  1 − ηT 
+
+= −θk+1 ,0
+
+
+
+1 −  1 − ηT 
+
+. (17) Thus, the update for the weight will be: 
+
+wk+1 = wk
+
+wk + (1 − wk) exp( α¯gk,T ) = wk
+
+wk + (1 − wk) exp 
+
+
+
+− αθ k+1 ,0
+
+ 1 −  1 − ηT  . (18) We will now state the formal version of Theorem 5.1 and then prove it. 
+
+Theorem A.1. Let us fix the total parameter update budget in Algorithm 1, i.e., KT , to be N .Define R := ηN 
+
+> (1 −η)
+
+ 1−(1 −η)N
+
+ , where η < 1 is the parameter update step-size. Suppose we begin with w0 = 12 and θ0 = −R, where R > R > 0. In that case: 
+
+• If T = T =
+
+l (c+1) log(2 R+1) log(1 /(1 −η)) 
+
+m
+
+with c > 0, then wK ≥ eβ(α/ 2)  
+
+> 1+ eβ(α/ 2)
+
+, where K = N/T , α is the weight update step-size, and β =
+
+
+
+1 − 1(2 R+1) c
+
+ 
+
+1 − 1(2 R+1) K(c+1) 
+
+
+
+. In particular, for large 
+
+R, β ≈ 1 and wK ≳ eα/ 2 
+
+> 1+ eα/ 2
+
+.7
+
+• If T = 1 (note that K = N in this case), wN < 12 . In particular, as R → ∞ , wN → 0.Proof. Case 1: T = T =
+
+l (c+1) log(2 R+1) log(1 /(1 −η)) 
+
+m
+
+with c > 0. In this case, we have using Equation (15): 
+
+θ1,0 = −(1 − η)T R + 12
+
+
+
+1 − (1 − η)T 
+
+. (19) Since T =
+
+l (c+1) log(2 R+1) log(1 /(1 −η)) 
+
+m
+
+, we get: 
+
+θ1,0 ≥ 12 1 − 1(2 R + 1) c
+
+!
+
+> 0. (20) 
+
+> 7
+
+Here, ≳ denotes nearly greater than. 
+
+16 Since θ1,0 > 0, ¯g0,T < 0 (see Equation (17)) and thus, w1 > w 0 = 12 (this follows from Equation (18)). Next, we have: 
+
+θ2,0 =  1 − ηT θ1,0 + (1 − w1)
+
+
+
+1 −  1 − ηT 
+
+. (21) Since θ1,0 > 0, we will also have θ2,0 > 0 and as a result ¯g1,T < 0 =⇒ w2 > w 1 > 12 . This process will keep repeating and we will have for all k ≥ 2: θk, 0 > 0 and wk > . . . > w 1 > 12 . Let us sharpen these bounds now. Note that θ2,0 ≥  1 − ηT θ1,0. Using Equation (15), we have θk, 0 ≥  1 − ηT θk−1,0 for all 
+
+k > 2 as well (this is because (1 − wk) 1 −  1 − ηT  ≥ 0 always). Unfolding this recursion, 
+
+θk, 0 ≥  1 − η(k−1) T θ1,0, (22) for all k ≥ 2.Let us define ϕk := log wk 
+
+> 1−wk
+
+. As per the mirror descent update for wk (Equation (18)), we have the following update rule for ϕk:
+
+ϕk = ϕk−1 − α¯gk−1,T = ϕk−1 + αθ k, 0
+
+
+
+1 −  1 − ηT 
+
+, (23) where the last step follows from Equation (17). Using Equation (22) in Equation (23), we get: 
+
+ϕk ≥ ϕk−1 + α
+
+
+
+1 −  1 − ηT  1 − η(k−1) T θ1,0. (24) Applying this recursively, we get: 
+
+ϕk ≥ ϕ1 + α
+
+
+
+1 −  1 − ηT  k−1X
+
+> l=1
+
+ 1 − ηlT θ1,0. (25) From Equation (23), we have ϕ1 = ϕ0 + α
+
+
+
+1 −  1 − ηT 
+
+θ1,0. Plugging this above, we get: 
+
+ϕk ≥ ϕ0 + α
+
+
+
+1 −  1 − ηT  k−1X
+
+> l=0
+
+ 1 − ηlT θ1,0. (26) Note that ϕ0 = 0 as w0 = 12 . Using Pk−1
+
+> l=0
+
+ 1 − ηlT = 1−(1 −η)kT  
+
+> 1−(1 −η)T
+
+and ϕ0 = 0 above, we get: 
+
+ϕk ≥ αθ 1,0
+
+
+
+1 − (1 − η)kT 
+
+. (27) Recalling that T =
+
+l (c+1) log(2 R+1) log(1 /(1 −η)) 
+
+m
+
+≥ (c+1) log(2 R+1) log(1 /(1 −η)) , we have (1 − η)T ≤ 1(2 R+1) c+1 . Using this and Equation (20) above, we get for k = K:
+
+ϕK ≥ α
+
+2 1 − 1(2 R + 1) c
+
+!
+
+1 − 1(2 R + 1) K(c+1) 
+
+!
+
+. (28) Let β := 
+
+
+
+1 − 1(2 R+1) c
+
+ 
+
+1 − 1(2 R+1) K(c+1) 
+
+
+
+. This gives us: 
+
+wK ≥ eβ(α/ 2) 
+
+1 + eβ(α/ 2) . (29) 17 Case 2: T = 1 . We perform a total of N parameter and weight updates. In this case, let us denote the parameter iterates simply by {θk}k≥0. Plugging in T = 1 in Equation (15), here we have: 
+
+θk = (1 − η)θk−1 + η(1 − wk−1). (30) Since 1 − wk−1 ≤ 1 (as wk−1 ≥ 0), we have that: 
+
+θk ≤ (1 − η)θk−1 + η ≤ (1 − η)2θk−2 + η
+
+
+
+1 + (1 − η)
+
+
+
+≤ . . . ≤ (1 − η)kθ0 + η
+
+> k−1
+
+X
+
+> l=0
+
+(1 − η)l. (31) Using the fact that Pk−1 
+
+> l=0
+
+(1 − η)l = 1−(1 −η)k 
+
+> η
+
+above and recalling that θ0 = −R, we get: 
+
+θk ≤ 1 − (R + 1)(1 − η)k. (32) As done in Case 1, let us define ϕk := log wk 
+
+> 1−wk
+
+. As per the mirror descent update for wk
+
+(Equation (18)), we have the following update rule for ϕk:
+
+ϕk = ϕk−1 − α¯gk−1,1 = ϕk−1 + ηαθ k, (33) where the last step follows from Equation (17) with T = 1 . Unfolding the recursion in Equa-tion (33), we get: 
+
+ϕk = ϕ0 + ηα 
+
+> k
+
+X
+
+> l=1
+
+θl. (34) Note that ϕ0 = 0 as w0 = 12 . Using this and applying Equation (32) in Equation (34), we get for 
+
+k = N :
+
+ϕN ≤ ηα 
+
+
+
+N − (R + 1) 
+
+> N
+
+X
+
+> l=1
+
+(1 − η)l
+
+= ηα 
+
+
+
+N − (R + 1)(1 − η) 1 − (1 − η)N 
+
+η
+
+
+
+. (35) Note that if R > ηN 
+
+> (1 −η)
+
+ 1−(1 −η)N
+
+ , then ϕN < 0 = ⇒ wN < 12 . Moreover, for R → ∞ , we have 
+
+ϕN → −∞ =⇒ wN → 0.
+
+# B Proof of Proposition 4.1 
+
+For the reader’s convenience, we first restate Theorem 4.1 and then prove it. 
+
+Proposition B.1. For t ≥ 0, we have: 
+
+∂θk,t 
+
+∂w (j)
+
+> k
+
+=
+
+
+
+I − η∇2
+
+> θ
+
+LT
+
+ θk,t −1, wk
+
+ ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η∇ℓj
+
+ θk,t −1
+
+,
+
+with ∂θk, 0
+
+> ∂w (j)
+> k
+
+=⃗ 0.Proof. Note that in any round k, the update rule for gradient descent on the parameters at step 
+
+t ≥ 1 is: 
+
+θk,t = θk,t −1 − η∇θLT
+
+ θk,t −1, wk
+
+ = θk,t −1 − η
+
+> m
+
+X
+
+> i=1
+
+w(i) 
+
+> k
+
+∇ℓi
+
+ θk,t −1
+
+. (36) 18 As per Equation (36), note that: 
+
+∂θk,t 
+
+∂w (j)
+
+> k
+
+= ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η
+
+> m
+
+X
+
+> i=1
+
+∂ w(i) 
+
+> k
+
+∇ℓi(θk,t −1)
+
+∂w (j)
+
+> k
+
+(37) 
+
+= ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η
+
+> m
+
+X
+
+> i=1
+
+w(i)
+
+> k
+
+∂∇ℓi(θk,t −1)
+
+∂w (j)
+
+> k
+
+− η∇ℓj (θk,t −1) (38) 
+
+= ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η
+
+> m
+
+X
+
+> i=1
+
+w(i) 
+
+> k
+
+∇2ℓi(θk,t −1) ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η∇ℓj (θk,t −1). (39) In Equation (39), we have used the chain rule. Recalling that LT(θ, w) := Pmi=1 w(i)ℓi(θ), we can rewrite Equation (39) as: 
+
+∂θk,t 
+
+∂w (j)
+
+> k
+
+=
+
+
+
+I − η∇2
+
+> θ
+
+LT(θk,t −1, wk)
+
+ ∂θk,t −1
+
+∂w (j)
+
+> k
+
+− η∇ℓj (θk,t −1). (40) This finishes the proof. 
+
+# C Detailed Version and Proof of Theorem 6.4 
+
+We will first write the statement for the detailed version of Theorem 6.4 and then prove it. 
+
+Theorem C.1 (Detailed version of Theorem 6.4 ). Suppose Assumptions 6.1, 6.2, and 6.3 hold. Let F (w) := LV
+
+ θ∗(w) be convex (in w ∈ ∆m) and F ∗ = min w∈∆m F (w). Let 
+
+max i,j arg min θ ℓi(θ) − arg min θ ℓj (θ) 2 ≤ D and R := 2 max 
+
+
+
+θ0,0 − θ∗ 
+
+> 02
+
+,
+
+ 2Lμ + 1 
+
+
+
+D
+
+
+
+.Suppose we begin from w0 = 1 
+
+> m
+
+1m and choose α = bμ√log m√KGG V
+
+. Then for any η < min 
+
+ 1 
+
+> bL
+
+, μL2
+
+
+
+and 
+
+T ≥  log 4 
+
+> ημ
+
+, we have the following guarantee for Algorithm 2: 
+
+F 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+wk
+
+!
+
+− F ∗ ≤ 3GG V
+
+√log m
+
+2bμ√K + 2 
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GG V
+
+μ
+
+!| {z } 
+
+> reducible error E
+
++ 2δGG V
+
+min  μ2, bμ2| {z }
+
+> irreducible error
+
+. (41) 
+
+If we fix the total parameter update budget to N , i.e., KT = N , then the reducible error as a function of T is 
+
+E(T ) = 3GG V
+
+√log m√T
+
+2bμ√N + 2 
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GG V
+
+μ
+
+!
+
+, (42) 
+
+and this is minimized by choosing T = Θ( log N ). In particular, if we choose T =  2 log Nημ ⌉, the reducible error is: 
+
+E = O GG V
+
+√log m
+
+√ημ bμ
+
+! √log N
+
+√N
+
+!
+
+. (43) 
+
+The last term in Equation (41) , i.e., 2δGG V 
+
+> min( μ2,bμ2)
+
+, is independent of K and T , and cannot be reduced (by adjusting K or T ). 
+
+19 Proof. Note that gk,T =
+
+h
+
+g(1)  
+
+> k,T
+
+, . . . , g (m)
+
+> k,T
+
+i⊤
+
+is our algorithm’s approximated hypergradient. Let 
+
+w∗ ∈ arg min w∈∆m F (w). Using the convexity of F , we have: 
+
+F (wk) − F (w∗) ≤ ⟨∇ F (wk), wk − w∗⟩ = ⟨gk,T , wk − w∗⟩ + ⟨∇ F (wk) − gk,T , wk − w∗⟩.
+
+Thus: 
+
+1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+
+
+F (wk) − F (w∗)
+
+
+
+≤ 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+gk,T , wk − w∗
+
+| {z }
+
+> (I)
+
++ 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+D
+
+∇F (wk) − gk,T , wk − w∗E| {z }
+
+> (II)
+
+.
+
+(44) We will bound (I) first. To that end, note that our mirror descent (MD) update rule for the weights is obtained by solving: 
+
+wk+1 = arg min w∈∆m ⟨gk,T , w⟩ + 1
+
+α DKL (w|| wk).
+
+Note that for each j ∈ [m]:
+
+g(j) 
+
+> k,T
+
+= η 
+
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+T −1−i∇ℓj
+
+ θk,i 
+
++
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+T −1−i∇ℓj
+
+ θk,i 
+
++
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+I − ηHk T −1−i 
+
+> op
+
+∇L V(θk,T ) 2 ∇ℓj
+
+ θk,i 
+
+
+
+> 2
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+(1 − ηbμ)T −1−iGVG, (45) where we have used Hk is PSD with bμI ⪯ Hk ⪯ bLI and η ≤ 1 
+
+> bL
+
+due to which  I − ηHk
+
+ is PSD with I − ηHk op ≤ (1 − ηbμ), LV is GV-Lipschitz, and ℓj is G-Lipschitz. Simplifying Equation (45), we get: 
+
+∥gk,T ∥∞ ≤ max  
+
+> j∈[m]
+
+g(j) 
+
+> k,T
+
+≤ GG V
+
+bμ . (46) Recall that we start from w0 = 1 
+
+> m
+
+1m. Then using Theorem C.2 and setting Gmax = GG V 
+
+> bμ
+
+from Equation (46), we have: (I) = 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+gk,T , wk − w∗ ≤ log mKα + αG 2
+
+> max
+
+2 = log mKα + αG 2G2
+
+> V
+
+2bμ2 . (47) We will bound (II) now. To that end, note that: 
+
+⟨∇ F (wk) − gk,T , wk − w∗⟩ ≤ ∥∇ F (wk) − gk,T ∥∞∥wk − w∗∥1 ≤ 2∥∇ F (wk) − gk,T ∥∞, (48) where the last step follows because wk and w∗ lie on the simplex. Thus: (II) = 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+D
+
+∇F (wk) − gk,T , wk − w∗E
+
+≤ 2
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+∇F (wk) − gk,T ∞
+
+= 2
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+max  
+
+> j∈[m]
+
+∇F (wk)(j) − g(j) 
+
+> k,T
+
+. (49) 20 Let us denote θ∗(wk) by θ∗ 
+
+> k
+
+for brevity. Using Theorem C.3, we have: 
+
+∇F (wk)(j) = −
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+, ∇2
+
+> θ
+
+LT
+
+ θ∗
+
+> k
+
+, wk
+
+−1∇ℓj
+
+ θ∗
+
+> k
+
++
+
+. (50) Again, for brevity let H∗ 
+
+> k
+
+:= ∇2
+
+> θ
+
+LT
+
+ θ∗
+
+> k
+
+, wk
+
+. We can express the Hessian inverse (H∗ 
+
+> k
+
+)−1 using the Neumann series (see for example, Lorraine et al. (2020); Agarwal et al. (2017)): 
+
+(H∗ 
+
+> k
+
+)−1 = η
+
+> ∞
+
+X
+
+> i=0
+
+ I − ηH∗
+
+> k
+
+i, (51) with η < 1 
+
+> L
+
+(note that this is satisfied because we choose η ≤ μL2 ), where recall that H∗ 
+
+> k
+
+⪯ LI.Plugging this into Equation (50) gives us: 
+
+∇F (wk)(j) = −η
+
+> ∞
+
+X
+
+> i=0
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+. (52) From Equation (8), recall that: 
+
+g(j) 
+
+> k,T
+
+= −η 
+
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
++
+
+. (53) So we have: 
+
+∇F (wk)(j) − g(j) 
+
+> k,T
+
+≤
+
+η 
+
+> T−1
+
+X
+
+> i=0
+
+(* 
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++) | {z }
+
+> (A)
+
++ η
+
+> ∞
+
+X
+
+> i=T
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++| {z }
+
+> (B)
+
+(54) Using the fact that μI ⪯ H∗ 
+
+> k
+
+⪯ LI,  I − ηH∗
+
+> k
+
+ is PSD because η ≤ μL2 ≤ 1 
+
+> L
+
+and so I − ηH∗  
+
+> kop
+
+≤
+
+(1 − ημ ), LV is GV-Lipschitz, and ℓj is G-Lipschitz, we have: (B) ≤ η
+
+> ∞
+
+X
+
+> t=T
+
+I − ηH∗ 
+
+> k
+> i
+> op
+
+∇L V(θ∗
+
+> k
+
+) 2 ∇ℓj
+
+ θ∗
+
+> k
+
+ 
+
+> 2
+
+≤ η
+
+> ∞
+
+X
+
+> t=T
+
+(1 − ημ )iGVG = GVGμ
+
+ 1 − ημ T . (55) Using Theorem C.4 and using the fact that P∞ 
+
+> r=0
+
+rx r−1 = 1(1 −x)2 for any x ∈ (0 , 1) , we have: (A) ≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+(
+
+ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
++
+
+
+
+LG V + LVG
+
+ 
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗ 
+
+> k2
+
+)
+
+≤ η2δG VG
+
+> ∞
+
+X
+
+> i=0
+
+i
+
+
+
+1 − η min  μ, bμi−1
+
+| {z } 
+
+> =1
+> η2 min( μ2,bμ2)
+
++η
+
+
+
+LG V + LVG
+
+
+
+T
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
+(56) 
+
+= δG VG
+
+min  μ2, bμ2 + η
+
+
+
+LG V + LVG
+
+
+
+T
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗ 
+
+> k2
+
+. (57) 21 Note that we can go from Equation (56) to Equation (57) because η < min 
+
+ 1 
+
+> bL
+
+, μL2
+
+
+
+due to which 
+
+η min  μ, bμ < 1.Putting Equation (55) and Equation (57) into Equation (54), we get: 
+
+∇F (wk)(j) − g(j) 
+
+> k,T
+
+≤ δG VG
+
+min  μ2, bμ2 + η
+
+
+
+LG V + LVG
+
+
+
+T
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++ GVGμ
+
+ 1 − ημ T
+
+≤ δG VG
+
+min  μ2, bμ2 +
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVG θk, 0 − θ∗  
+
+> k2
+
++ GVGμ
+
+!
+
+. (58) 
+
+Next, using Theorem C.5, we have θk, 0 − θ∗  
+
+> k2
+
+≤ R = 2 max   θ0,0 − θ∗ 
+
+> 02
+
+, B , for all k ≥ 0,when T ≥  log 4 
+
+> ημ
+
+. Using this in Equation (58), we get: 
+
+∇F (wk)(j) − g(j) 
+
+> k,T
+
+≤ δG VG
+
+min  μ2, bμ2 +
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GVGμ
+
+!
+
+. (59) Note that Equation (59) holds for each and every k and j. Using the above in Equation (49), we get: (II) ≤ 2δG VG
+
+min  μ2, bμ2 + 2 
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GVGμ
+
+!
+
+. (60) Finally, using Equation (47) and Equation (60) in Equation (44), we get: 
+
+1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+
+
+F (wk)−F (w∗)
+
+
+
+≤ log mKα + αG 2G2
+
+> V
+
+2bμ2 +2 
+
+
+
+1− ημ 
+
+2
+
+T −1
+
+ηT  LG V+LVGR+ GG V
+
+μ
+
+!
+
++ 2δGG V
+
+min  μ2, bμ2 .
+
+(61) 
+
+Moreover, letting wK := 1
+
+> K
+
+PK−1 
+
+> k=0
+
+wk, we have using Jensen’s inequality, F (wK ) − F (w∗) ≤
+
+> 1
+> K
+
+PK−1
+
+> k=0
+
+ F (wk) − F (w∗). So from Equation (61), we also get: 
+
+F (wK ) − F ∗ ≤ log mKα + αG 2G2
+
+> V
+
+2bμ2 + 2 
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GG V
+
+μ
+
+!
+
++ 2δGG V
+
+min  μ2, bμ2 ,
+
+with F ∗ = F (w∗). If we choose α = bμ√log m√KGG V
+
+, then we will get the optimal 1√K dependence on K.In particular, we get: 
+
+F (wK ) − F ∗ ≤ 3GG V
+
+√log m
+
+2bμ√K + 2 
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GG V
+
+μ
+
+!| {z } 
+
+> reducible error, E
+
++ 2δGG V
+
+min  μ2, bμ2| {z }
+
+> irreducible error
+
+.
+
+Let us fix the total parameter update budget to N , i.e., KT = N . Under this constraint, we will determine the optimal T that will minimize the RHS. In particular, note that the reducible error is 
+
+E(T ) = 3GG V
+
+√log m√T
+
+2bμ√N + 2 
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+ηT  LG V + LVGR + GG V
+
+μ
+
+!
+
+. (62) Note that E(T ) behaves like: 
+
+h(T ) = a√T
+
+√N + b(T + b2)e−cT , (63) for some appropriate positive constants a, b, b 2, and c. Noting that h′(T ) = a 
+
+> 2√N T
+
++ be −cT  1 −
+
+c(T + b2), it can be verified that the optimal value of T , say T ∗, that minimizes h(·) satisfies: 
+
+T ∗ = 1
+
+c log 2ba
+
+√N T ∗ c(T ∗ + b2) − 1!
+
+. (64) 22 Since T ∗ ≤ N and T ∗ ≥ Ω(1) , we must have T ∗ = Θ( log N ). Thus, E(T ) is also minimized by choosing T = Θ(log N ). This finishes the proof. 
+
+Lemma C.2. Suppose the conditions of Theorem C.1 hold and ∥gk,T ∥∞ ≤ Gmax for all k. Then: 
+
+> K−1
+
+X
+
+> k=0
+
+gk,T , wk − w∗ ≤ log mα + KαG 2
+
+> max
+
+2 .
+
+Proof. This proof is almost identical to the proof of Theorem 4.2 in Bubeck et al. (2015). Let Φ( ·) denote the negative entropy function and let zk+1 be such that: 
+
+∇Φ( zk+1 ) = ∇Φ( wk) − αgk,T .
+
+Note that 
+
+wk+1 = Π ∆m (zk+1 ),
+
+where Π∆m is the projection operator onto the m-dimensional simplex. Also, note that the Bregman divergence associated with the negative entropy function is the KL divergence. Following the proof of Theorem 4.2 in Bubeck et al. (2015), we have: 
+
+gk,T , wk − w∗ = 1
+
+α ∇Φ( wk) − ∇ Φ( zk+1 ), wk − w∗
+
+= 1
+
+α
+
+
+
+DKL 
+
+ w∗|| wk
+
+ + DKL 
+
+ wk|| zk+1 
+
+ − DKL 
+
+ w∗|| zk+1 
+
+
+
+≤ 1
+
+α
+
+
+
+DKL 
+
+ w∗|| wk
+
+ + DKL 
+
+ wk|| zk+1 
+
+ − DKL 
+
+ w∗|| wk+1 
+
+ − DKL 
+
+ wk+1 || zk+1 
+
+
+
+.
+
+(65) Summing up, we get: 
+
+> K−1
+
+X
+
+> k=0
+
+gk,T , wk − w∗ ≤ 1
+
+α DKL 
+
+ w∗|| w0
+
+ + 1
+
+α
+
+> K−1
+
+X
+
+> k=0
+
+
+
+DKL 
+
+ wk|| zk+1 
+
+ − DKL 
+
+ wk+1 || zk+1 
+
+
+
+. (66) Next, using the same steps as in the proof of Theorem 4.2 of Bubeck et al. (2015), the fact that 
+
+Φ( ·) is 1-strongly convex w.r.t. the ℓ1 norm on ∆m, and ∥gk,T ∥∞ ≤ Gmax , we have: 
+
+DKL 
+
+ wk|| zk+1 
+
+ − DKL 
+
+ wk+1 || zk+1 
+
+ ≤ α2G2
+
+> max
+
+2 . (67) Plugging this into Equation (66), we get: 
+
+> K−1
+
+X
+
+> k=0
+
+gk,T , wk − w∗ ≤ 1
+
+α DKL 
+
+ w∗|| w0
+
+ + KαG 2
+
+> max
+
+2 . (68) It can be verified that if w0 = 1 
+
+> m
+
+1m, then DKL 
+
+ w∗|| w0
+
+ ≤ log m. Using this in Equation (68) finishes the proof. 
+
+Lemma C.3. We have: 
+
+∇F (w)(j) = −
+
+*
+
+∇θLV
+
+ θ∗(w), ∇2
+
+> θ
+
+LT
+
+ θ∗(w), w−1∇ℓj
+
+ θ∗(w)+
+
+.
+
+23 Proof. ∇F (w) is the hyper-gradient that can be computed using the Implicit Function Theorem (IFT) (see for example, Bengio (2000)). It can be derived as follows. 
+
+∇F (w)(j) = ∂LV(θ∗(w)) 
+
+∂w (j) =
+
+*
+
+∇θLV
+
+ θ∗(w), ∂θ∗(w)
+
+∂w (j)
+
++
+
+. (69) For convenience, let us denote θ∗(w) by just θ∗. Since θ∗ is the minimizer of LT(·, w), we have: 
+
+> m
+
+X
+
+> p=1
+
+w(p)∇ℓp
+
+ θ∗ =⃗ 0. (70) Differentiating the above w.r.t. w(j), we get: 
+
+∇ℓj
+
+ θ∗ +
+
+> m
+
+X
+
+> p=1
+
+w(p)∇2ℓp
+
+ θ∗!| {z } 
+
+> =∇2
+> θLT(θ∗,w)
+
+∂θ∗
+
+∂w (j) =⃗ 0 =⇒ ∂θ∗
+
+∂w (j) = −∇ 2
+
+> θ
+
+LT(θ∗, w)−1∇ℓj
+
+ θ∗. (71) Plugging this into Equation (69) gives us the desired result. 
+
+Lemma C.4. Suppose the conditions of Theorem C.1 hold. Then: 
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+≤ ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
++
+
+
+
+LG V + LVG
+
+ 
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗ 
+
+> k2
+
+.
+
+Proof. Note that: 
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+(72) 
+
+=
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θk,T 
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+(73) 
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+ − ∇L V
+
+ θk,T 
+
+
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+≤
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+(74) 
+
++
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+ − ∇L V
+
+ θk,T 
+
+
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+≤
+
+*
+
+∇L V(θk,T ),
+
+ I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i
+
+∇ℓj
+
+ θk,T −1−i
+
++| {z }
+
+> (1)
+
+(75) 
+
++
+
+*
+
+∇L V(θk,T ),  I − ηH∗
+
+> k
+
+i
+
+∇ℓj
+
+ θ∗
+
+> k
+
+ − ∇ ℓj
+
+ θk,T −1−i
+
++| {z }
+
+> (2)
+
++
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+ − ∇L V
+
+ θk,T 
+
+
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++| {z }
+
+> (3)
+
+.
+
+24 Using the fact that LV is GV-Lipschitz, I − ηH∗  
+
+> kop
+
+≤ (1 − ημ ) (see the explanation after Equation (54)), ℓj is L-smooth, we have: (2) ≤ GV(1 − ημ )iL θk,T −1−i − θ∗ 
+
+> k2
+
+. (76) Using standard guarantees of gradient descent on strongly convex and smooth functions (recall 
+
+LT(θ, ·) is μ-strongly-convex and L-smooth), it can be shown that: 
+
+θk,T −1−i − θ∗ 
+
+> k
+> 22
+
+≤
+
+
+
+1 − ημ 
+
+2
+
+2( T −1−i)
+
+θk, 0 − θ∗
+
+> k
+> 22
+
+, (77) when η ≤ μL2 . Using this in Equation (76) gives us: (2) ≤ LG V(1 − ημ )i
+
+1 − ημ 
+
+2
+
+T −1−i
+
+θk, 0 − θ∗  
+
+> k2
+
+≤ LG V
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗ 
+
+> k2
+
+. (78) Similarly, using the fact that LV is LV-smooth, I − ηH∗  
+
+> kop
+
+≤ (1 − ημ ), ℓj is G-Lipschitz, we have: (3) ≤ LV θk,T − θ∗ 
+
+> k2
+
+(1 − ημ )iG. (79) Also, just like Equation (77), we have: 
+
+θk,T − θ∗ 
+
+> k
+> 22
+
+≤
+
+
+
+1 − ημ 
+
+2
+
+2T
+
+θk, 0 − θ∗
+
+> k
+> 22
+
+, (80) when η ≤ μL2 . Using this in Equation (79) gives us: (3) ≤ LVG
+
+
+
+1 − ημ 
+
+2
+
+T
+
+(1 − ημ )i θk, 0 − θ∗  
+
+> k2
+
+≤ LVG
+
+
+
+1 − ημ 
+
+2
+
+T +i
+
+θk, 0 − θ∗ 
+
+> k2
+
+. (81) As for (1), using the fact that LV is GV-Lipschitz and ℓj is G-Lipschitz, we have: (1) ≤ GVG  I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i
+
+> op
+
+. (82) Note that for any two matrices square matrices P and Q, we have: 
+
+P i − Qi =
+
+> i−1
+
+X
+
+> l=0
+
+P i−1−l(P − Q)Ql =⇒ ∥ P i − Qi∥op ≤
+
+> i−1
+
+X
+
+> l=0
+
+∥P ∥i−1−l 
+
+> op
+
+∥P − Q∥op ∥Q∥l
+
+> op
+
+. (83) We will use this result for P = I−ηHk and Q = I−ηH∗ 
+
+> k
+
+. In this case, note that ∥P −Q∥op ≤ ηδ 
+
+since ∥Hk − H∗ 
+
+> k
+
+∥op ≤ δ, ∥P ∥op ≤ 1 − ηbμ (see the explanation after Equation (45)), and 
+
+∥Q∥op ≤ 1 − ημ (see the explanation after Equation (54)). This gives us: 
+
+ I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i 
+
+> op
+
+≤ ηδ 
+
+> i−1
+
+X
+
+> l=0
+
+(1 − ηbμ)i−1−l(1 − ημ )l ≤ ηδi 
+
+
+
+1 − η min  μ, bμi−1
+
+. (84) Note that η < min 
+
+ 1 
+
+> bL
+
+, μL2
+
+
+
+and so, η min  μ, bμ < 1. Plugging Equation (84) into Equation (82), we get: (1) ≤ ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
+. (85) Using equations (85), (78), and (81) in Equation (75): 
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+≤ ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
++ LG V
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
++ LVG
+
+
+
+1 − ημ 
+
+2
+
+T +i
+
+!
+
+θk, 0 − θ∗ 
+
+> k2
+
+≤ ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
++
+
+
+
+LG V + LVG
+
+ 
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗ 
+
+> k2
+
+.
+
+This finishes the proof. 25 Lemma C.5. Suppose the conditions of Theorem C.1 hold (in particular, T ≥  log 4 
+
+> ημ
+
+) and let 
+
+R = 2 max 
+
+
+
+θ0,0 − θ∗ 
+
+> 02
+
+,
+
+ 2Lμ + 1 
+
+
+
+D
+
+
+
+be as defined in Theorem C.1. Then for all k ≥ 0, we have: 
+
+θk, 0 − θ∗  
+
+> k2
+
+≤ R. 
+
+Proof. We will prove this by induction. For this proof, we need the following important result from Theorem C.6. 
+
+sup 
+
+> w,w′
+
+arg min θLT(θ, w) − arg min θLT(θ, w′) 2 ≤ B := 2Lμ + 1 
+
+!
+
+D, (86) where max i,j arg min θℓi(θ) − arg min θℓj (θ) 2 ≤ D. With this notation, note that 
+
+R := 2 max   θ0,0 − θ∗ 
+
+> 02
+
+, B .
+
+Let us first consider the base case of k = 1 . Note that θ0,0 − θ∗  
+
+> 02
+
+≤ R 
+
+> 2
+
+(as per the definition of 
+
+R). Now: 
+
+θ1,0 − θ∗  
+
+> 12
+
+= θ1,0 − θ∗ 
+
+> 0
+
++ θ∗ 
+
+> 0
+
+− θ∗ 
+
+> 12
+
+≤ θ1,0 − θ∗  
+
+> 02
+
++ θ∗ 
+
+> 0
+
+− θ∗ 
+
+> 12
+
+| {z }
+
+> ≤B
+
+(note that θ∗ 
+
+> 0
+
+− θ∗  
+
+> 12
+
+≤ B using Equation (86)) 
+
+= θ0,T − θ∗  
+
+> 02
+
++ B (recall that θk+1 ,0 = θk,T for all k ≥ 0)
+
+≤ θ0,0 − θ∗ 
+
+> 02
+
+
+
+1 − ημ 
+
+2
+
+T
+
++ B, (87) where the last step follows from Equation (80). Recalling that θ0,0 − θ∗  
+
+> 02
+
+≤ R 
+
+> 2
+
+and B ≤ R
+
+> 2
+
+above, we get: 
+
+θ1,0 − θ∗  
+
+> 12
+
+≤ R
+
+2
+
+ 
+
+1 − ημ 
+
+2
+
+T
+
++ 1 
+
+
+
+≤ R. (88) So the base case is true. Now assume our claim is true up to some k > 1, i.e., θk, 0 − θ∗  
+
+> k2
+
+≤ R.We will show that the claim is also true for k + 1 . Following similar steps as the ones done to get to Equation (87), we obtain: 
+
+θk+1 ,0 − θ∗  
+
+> k+1 2
+
+≤ θk+1 ,0 − θ∗  
+
+> k2
+
++ θ∗ 
+
+> k
+
+− θ∗ 
+
+> k+1 2
+
+| {z } 
+
+> ≤B≤R
+> 2
+
+≤ θk,T − θ∗  
+
+> k2
+
++ R
+
+2
+
+≤ θk, 0 − θ∗ 
+
+> k2
+
+| {z }
+
+> ≤R
+
+
+
+1 − ημ 
+
+2
+
+T
+
++ R
+
+2
+
+≤ R e− ημT  
+
+> 2
+
++ 12
+
+!
+
+, (89) where in the last step we have used the fact that 1 − x ≤ e−x for all x ≥ 0. Note that for 
+
+T ≥  log 4 
+
+> ημ
+
+, we have e− ημT  
+
+> 2
+
+≤ 12 and thus, θk+1 ,0 − θ∗  
+
+> k+1 2
+
+≤ R. This completes the induction step and finishes the proof. 
+
+Lemma C.6. Suppose the conditions of Theorem C.1 hold and recall that max i,j arg min θℓi(θ)−
+
+arg min θℓj (θ) 2 ≤ D. Let θ∗(w) := arg min θLT(θ, w). Then: 
+
+sup 
+
+> w,w′
+
+θ∗(w) − θ∗(w′) 2 ≤ 2Lμ + 1 
+
+!
+
+D. 
+
+26 Proof. A similar result has been shown in Bonnans and Shapiro (2013). For the sake of com-pleteness and clarity, we derive the result we need for our setting of interest. For brevity, let θ∗ denote θ∗(w) := arg min θLT(θ, w). By the first-order optimality condition (and recalling LT(θ, w) = Pmj=1 wj ℓj (θ)), we have: 
+
+> m
+
+X
+
+> j=1
+
+wj ∇ℓj (θ∗) = ⃗ 0. (90) Suppose θ∗ 
+
+> (i)
+
+:= arg min θℓi(θ) and max i,j θ∗ 
+
+> (i)
+
+− θ∗  
+
+> (j)2
+
+≤ D.From Equation (90), we have for any i ∈ [m]:
+
+> m
+
+X
+
+> j=1
+
+wj ∇ℓj (θ∗), θ∗ − θ∗ 
+
+> (i)
+
+= 0 = ⇒
+
+> m
+
+X
+
+> j=1
+
+wj ∇ℓj (θ∗), θ∗ − θ∗ 
+
+> (j)
+
++ θ∗ 
+
+> (j)
+
+− θ∗ 
+
+> (i)
+
+= 0 . (91) Rearranging terms above, we get: 
+
+> m
+
+X
+
+> j=1
+
+wj ∇ℓj (θ∗), θ∗ − θ∗
+
+> (j)
+
+| {z }
+
+> (1)
+
+=
+
+> m
+
+X
+
+> j=1
+
+wj ∇ℓj (θ∗), θ∗ 
+
+> (i)
+
+− θ∗
+
+> (j)
+
+| {z }
+
+> (2)
+
+. (92) Recalling the fact that ℓj ’s are μ-strongly-convex and using standard properties of strongly-convex functions, we have that: 
+
+∇ℓj (θ∗), θ∗ − θ∗ 
+
+> (j)
+
+≥ μ θ∗ − θ∗
+
+> (j)
+> 22
+
+, ∀j ∈ [m].
+
+Using this, we have that: (1) ≥ μ
+
+> m
+
+X
+
+> j=1
+
+wj θ∗ − θ∗
+
+> (j)
+> 22
+
+. (93) Next, using the fact that ∇ℓj (θ∗
+
+> (j)
+
+) = ⃗ 0, the ℓj ’s are L-smooth, and max i,j θ∗ 
+
+> (i)
+
+− θ∗  
+
+> (j)2
+
+≤ D,we have using the Cauchy-Schwarz inequality: 
+
+∇ℓj (θ∗), θ∗ 
+
+> (i)
+
+− θ∗ 
+
+> (j)
+
+≤ ∇ℓj (θ∗) − ∇ ℓj (θ∗
+
+> (j)
+
+) 2 θ∗ 
+
+> (i)
+
+− θ∗  
+
+> (j)2
+
+≤ L θ∗ − θ∗ 
+
+> (j)2
+
+D, ∀j ∈ [m].
+
+Using this, we have: (2) ≤ LD 
+
+> m
+
+X
+
+> j=1
+
+wj θ∗ − θ∗ 
+
+> (j)2
+
+. (94) Further, using the Cauchy-Schwarz inequality: 
+
+> m
+
+X
+
+> j=1
+
+wj θ∗−θ∗  
+
+> (j)2
+
+=
+
+> m
+
+X
+
+> j=1
+
+w1/2 
+
+> j
+
+w1/2 
+
+> j
+
+θ∗−θ∗  
+
+> (j)2
+
+≤
+
+vuuuut mX
+
+> j=1
+
+wj
+
+| {z }
+
+> =1
+
+ mX
+
+> j=1
+
+wj θ∗ − θ∗
+
+> (j)
+> 22
+
+
+
+=
+
+vuut
+
+> m
+
+X
+
+> j=1
+
+wj θ∗ − θ∗
+
+> (j)
+> 22
+
+Using this in Equation (94), we get: (2) ≤ LD 
+
+vuut
+
+> m
+
+X
+
+> j=1
+
+wj θ∗ − θ∗
+
+> (j)
+> 22
+
+. (95) Now from Equations (93) and (95) and recalling (1) = (2), we get after a bit of simplification: 
+
+> m
+
+X
+
+> j=1
+
+wj θ∗ − θ∗ 
+
+> (j)
+> 22
+
+≤
+
+ L2
+
+μ2
+
+
+
+D2. (96) 27 Now since each wj ∈ [0 , 1] , there must exist at least one j ∈ [m] such that θ∗ −θ∗ 
+
+> (j)
+> 22
+
+≤   L2
+
+> μ2
+
+D2,otherwise Equation (96) will be violated. Define S(w) := 
+
+n
+
+j ∈ [m] θ∗ − θ∗  
+
+> (j)2
+
+≤   Lμ
+
+D
+
+o
+
+. As per the previous discussion, |S (w)| ≥ 1 for all w ∈ ∆m.Now let us consider two w and w′ ∈ ∆m. Let j ∈ S (w) and j′ ∈ S (w′). Then: 
+
+θ∗(w) − θ∗(w′) 2 = θ∗(w) − θ∗ 
+
+> (j)
+
++ θ∗ 
+
+> (j)
+
+− θ∗(w′) 2
+
+≤ θ∗(w) − θ∗ 
+
+> (j)2
+
+| {z }
+
+> ≤LD/μ
+
++ θ∗ 
+
+> (j)
+
+− θ∗(w′) 2
+
+≤ Lμ
+
+!
+
+D + θ∗ 
+
+> (j)
+
+− θ∗ 
+
+> (j′)
+
++ θ∗ 
+
+> (j′)
+
+− θ∗(w′) 2
+
+≤ Lμ
+
+!
+
+D + θ∗ 
+
+> (j)
+
+− θ∗ 
+
+> (j′)2
+
+| {z }
+
+> ≤D
+
++ θ∗ 
+
+> (j′)
+
+− θ∗(w′) 2
+
+| {z }
+
+> ≤LD/μ
+
+≤ 2Lμ + 1 
+
+!
+
+D. (97) This finishes the proof. 
+
+# D Detailed Version and Proof of Theorem 6.7 
+
+We will now write the statement for the detailed version of Theorem 6.7 and then prove it. 
+
+Theorem D.1 (Detailed version of Theorem 6.7 ). Suppose Assumptions 6.1, 6.2, 6.3, and 6.6 hold. Let F (w) := LV
+
+ θ∗(w) be convex (in w ∈ ∆m) and F ∗ = min w∈∆m F (w). Let 
+
+eG := √G2 + σ2, eGV := 
+
+q
+
+G2 
+
+> V
+
++ σ2, max i,j arg min θ ℓi(θ) − arg min θ ℓj (θ) 2 ≤ D, and R := 3 max 
+
+
+
+θ0,0 − θ∗ 
+
+> 02
+
+,
+
+ 2Lμ + 1 
+
+
+
+D
+
+
+
+. Suppose we begin from w0 = 1 
+
+> m
+
+1m, and choose α = bμ√log m√K eG eGV
+
+and η = 4 log TμT . Then for any T ≥ max 
+
+
+
+2,
+
+l
+
+O
+
+
+
+max 
+
+ bLμ log bLμ , L2 
+
+> μ2
+
+log L2 
+
+> μ2
+
+, σ2
+
+> μ2(R)2
+
+m 
+
+, we have the following guarantee for Algorithm 3: 
+
+E
+
+"
+
+F 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+wk
+
+!# 
+
+− F ∗ ≤ O eG eGV
+
+√log m
+
+bμ√K + σ LG V
+
+μ2 + LV eGμbμ
+
+! √log T
+
+√T
+
+| {z } 
+
+> reducible error, E
+
++ δG VG
+
+min( μ2, bμ2)
+
+| {z }
+
+> irreducible error
+
+!
+
+.
+
+(98) 
+
+If we fix the total parameter update budget to N , i.e., KT = N , then the reducible error as a function of T is 
+
+E(T ) = O eG eGV
+
+√log m
+
+bμ√N
+
+!√T + σ LG V
+
+μ2 + LV eGμbμ
+
+! √log T
+
+√T
+
+!
+
+. (99) 
+
+This error is minimized by choosing T = Θ  √N log N . In particular, if we choose T =√N log N , the reducible error is: 
+
+E = O eG eGV
+
+√log m
+
+bμ + σLG V
+
+μ2 + σL V eGμbμ
+
+!
+
+(log N )1/4
+
+N 1/4
+
+!
+
+. (100) 28 Proof. We begin this proof by imposing the condition η ≤ min 
+
+ 1 
+
+> bL
+
+, μL2
+
+
+
+. Also, note that 
+
+egk,T =
+
+heg(1)  
+
+> k,T
+
+, . . . , eg(m)
+
+> k,T
+
+i⊤
+
+is our algorithm’s approximated hypergradient. Let w∗ ∈ arg min w∈∆m F (w). Similar to Equation (44), we have: 
+
+1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+
+
+E
+
+h
+
+F (wk)
+
+i
+
+− F (w∗)
+
+
+
+≤ 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+E
+
+hD egk,T , wk − w∗Ei | {z }
+
+> (I)
+
++ 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+E
+
+hD 
+
+∇F (wk) − egk,T , wk − w∗Ei | {z }
+
+> (II)
+
+. (101) Note that for each j ∈ [m]:
+
+E
+
+heg(j)
+
+> k,T
+
+i
+
+= ηE
+
+" T −1X
+
+> i=0
+
+*e∇L V(θk,T ),  I − ηHk
+
+T −1−i e∇ℓj
+
+ θk,i 
+
++ # 
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+E
+
+" * e∇L V(θk,T ),  I − ηHk
+
+T −1−i e∇ℓj
+
+ θk,i 
+
++ # 
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+ I − ηHk
+
+ T −1−i 
+
+> op
+
+E
+
+"e∇L V(θk,T ) 2
+
+e∇ℓj
+
+ θk,i 
+
+
+
+> 2
+
+#
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+ I − ηHk
+
+ T −1−i
+
+> op
+
+vuutE
+
+"e∇L V(θk,T ) 22
+
+#
+
+E
+
+"e∇ℓj
+
+ θk,i 
+
+ 22
+
+#
+
+, (102) 
+
+≤ η 
+
+> T−1
+
+X
+
+> i=0
+
+(1 − ηbμ)T −1−i eGV eG, (103) where Equation (102) follows from Hölder’s inequality, while Equation (103) follows by using the fact that bμI ⪯ Hk ⪯ bLI and  I − ηHk
+
+ is PSD as η ≤ 1 
+
+> bL
+
+with I − ηHk op ≤ (1 − ηbμ), and 
+
+e∇L V(·) and e∇ℓj (·) have second moments bounded by eGV and eG, respectively (Theorem D.2). 8
+
+Simplifying Equation (103), we get: 
+
+E
+
+h
+
+∥egk,T ∥∞
+
+i
+
+≤ E
+
+h
+
+max  
+
+> j∈[m]
+
+eg(j)
+
+> k,T
+
+i
+
+≤ η
+
+> ∞
+
+X
+
+> i=0
+
+(1 − ηbμ)i eGV eG = eG eGV
+
+bμ . (104) It is easy to extend Theorem C.2 (by first taking expectation w.r.t. the randomness in the current round and then taking expectation w.r.t. the previous rounds) to get the following result when 
+
+E
+
+h
+
+∥egk,T ∥∞
+
+i
+
+≤ eGmax :
+
+> K−1
+
+X
+
+> k=0
+
+E
+
+hegk,T , wk − w∗ i
+
+≤ log mα + Kα eG2
+
+> max
+
+2 .
+
+Plugging in eGmax = eG eGV 
+
+> bμ
+
+from Equation (104) above, we get (similar to Equation (47)): (I) ≤ log mKα + α eG2 eG2
+
+> V
+
+2bμ2 . (105) 
+
+> 8
+
+Note that in Equation (103) we have taken expectation w.r.t. the randomness in the stochastic gradients first, while conditioning on the randomness in θk,i and θk,T . This is what allows us to use the fact that the stochastic gradients have bounded second moments. 
+
+29 As for (II), letting vk = wk − w∗, we have: 
+
+E
+
+hD 
+
+∇F (wk) − egk,T , vk
+
+Ei 
+
+= E{0,1,...,k −1}
+
+"
+
+Ek
+
+" mX
+
+> j=1
+
+
+
+∇F (wk)(j) − eg(j)
+
+> k,T
+
+
+
+v(j)
+
+> k
+
+## 
+
+, (106) where El[·] denotes the expectation w.r.t. the randomness in the stochastic gradients of the lth 
+
+round while conditioning on the randomness in the previous rounds (so note that vl will be fixed in the conditional expectation). Recall that from Equation (52), we have: 
+
+∇F (wk)(j) = −η
+
+> ∞
+
+X
+
+> i=0
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+. (107) Note that θ∗ 
+
+> k
+
+only depends on wk and is therefore fixed while taking the conditional expectation 
+
+Ek[·].Also, similar to Equation (53), we have: 
+
+eg(j) 
+
+> k,T
+
+= −η 
+
+> T−1
+
+X
+
+> i=0
+
+*e∇L V(θk,T ),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++
+
+. (108) Plugging these two equations into Equation (106), we get: 
+
+Ek
+
+hD 
+
+∇F (wk) − egk,T , vk
+
+Ei 
+
+= ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*e∇L V(θk,T ),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++! 
+
+v(j)
+
+> k
+
+#
+
+− ηEk
+
+" mX
+
+> j=1
+> ∞
+
+X
+
+> i=T
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+v(j)
+
+> k
+
+#
+
+. (109) 
+
+Next, taking expectation w.r.t. the randomness in the stochastic gradient e∇L V(θk,T ), which is independent of the randomness in {θk,i }Ti=0 and the stochastic gradients { e∇ℓj
+
+ θk,i 
+
+}T −1 
+
+> i=0
+
+, we get: 
+
+Ek
+
+hD 
+
+∇F (wk) − egk,T , vk
+
+Ei 
+
+= ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++! 
+
+v(j)
+
+> k
+
+#
+
+−ηEk
+
+" mX
+
+> j=1
+> ∞
+
+X
+
+> i=T
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+v(j)
+
+> k
+
+#
+
+= ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θk,T ),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++! 
+
+v(j)
+
+> k
+
+#| {z }
+
+> (A)
+
++ ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++
+
+−
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++! 
+
+v(j)
+
+> k
+
+#| {z }
+
+> (B)
+
+−ηEk
+
+" mX
+
+> j=1
+> ∞
+
+X
+
+> i=T
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+v(j)
+
+> k
+
+#| {z }
+
+> (C)
+
+. (110) 
+
+30 Again, taking expectation w.r.t. the randomness in the stochastic gradient e∇L V(θk,T −1−i), which is conditionally independent of the randomness in θk,T −1−i, we get: (B) = ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+v(j)
+
+> k
+
+#
+
+. (111) Plugging this into Equation (110), we get: 
+
+Ek
+
+hD 
+
+∇F (wk) − egk,T , vk
+
+Ei 
+
+= ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++
+
+v(j)
+
+> k
+
+#| {z }
+
+> (A)
+
++ ηEk
+
+" mX 
+
+> j=1
+> T−1
+
+X
+
+> i=0
+
+*
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+v(j)
+
+> k
+
+#| {z }
+
+> (B)
+
+−ηEk
+
+" mX
+
+> j=1
+> ∞
+
+X
+
+> i=T
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++
+
+v(j)
+
+> k
+
+#| {z }
+
+> (C)
+
+. (112) Let us first bound (C). Note that: (C) ≤ η
+
+> ∞
+
+X
+
+> i=T
+
+Ek
+
+"
+
+max 
+
+> j∈[m]
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++ X
+
+> j∈[m]
+
+|v(j) 
+
+> k
+
+|
+
+| {z } 
+
+> =∥vk∥1
+
+#
+
+(113) Recalling that vk = wk − w∗ and wk & w∗ lie on the simplex, note that ∥vk∥1 ≤ 2. Using this above, we get: (C) ≤ 2η
+
+> ∞
+
+X
+
+> i=T
+
+Ek
+
+"
+
+max 
+
+> j∈[m]
+
+*
+
+∇L V
+
+ θ∗
+
+> k
+
+,  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++ # 
+
+. (114) Next, following the steps of Equation (55) to bound the RHS of the above equation, we get: (C) ≤ 2GVGμ
+
+ 1 − ημ T . (115) Similarly, using the fact that ∥vk∥1 ≤ 2, we have: (A) ≤ 2η 
+
+> T−1
+
+X
+
+> i=0
+
+max  
+
+> j∈[m]
+
+Ek
+
+" * 
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++ # 
+
+, (116) and (B) ≤ 2η 
+
+> T−1
+
+X
+
+> i=0
+
+max  
+
+> j∈[m]
+
+Ek
+
+" * 
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++ # 
+
+. (117) 31 Using the second bound of Theorem D.3, we have: (A) ≤ 2η LV eG
+
+
+
+1 − ημ 
+
+2
+
+T
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησL V eG
+
+√μ
+
+!T −1X
+
+> i=0
+
+ 1 − ηbμi
+
+≤ 2η LV eG
+
+
+
+1 − ημ 
+
+2
+
+T
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησL V eG
+
+√μ
+
+! ∞X
+
+> i=0
+
+ 1 − ηbμi
+
+| {z }  
+
+> =1
+> ηbμ
+
+≤ 2LV eG
+
+bμ
+
+
+
+1 − ημ 
+
+2
+
+T
+
+θk, 0 − θ∗  
+
+> k2
+
++ 2√ησL V eG
+
+√μbμ . (118) Next, using the first bound of Theorem D.3, we have: 
+
+(B) ≤ 2η2δG VG 
+
+> T−1
+
+X
+
+> i=0
+
+i
+
+
+
+1 − η min  μ, bμi−1
+
++ 2 ηLG VT
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++ 2pη3σLG V
+
+√μ 
+
+> T−1
+
+X
+
+> i=0
+
+ 1 − ημ i
+
+≤ 2η2δG VG
+
+> ∞
+
+X
+
+> i=0
+
+i
+
+
+
+1 − η min  μ, bμi−1
+
+| {z }  
+
+> =1
+> η2 min( μ2,bμ2)
+
++2 ηLG VT
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++ 2pη3σLG V
+
+√μ
+
+> ∞
+
+X
+
+> i=0
+
+ 1 − ημ i
+
+| {z } 
+
+> =1
+> ημ
+
+= 2δG VG
+
+min( μ2, bμ2) + 2 ηLG VT
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++ 2√ησLG V
+
+pμ3 . (119) 
+
+Note that to get to the last equation we have used the fact that η min  μ, bμ < 1 (as explained after Equation (57)) and P∞ 
+
+> r=0
+
+rx r−1 = 1(1 −x)2 for any x ∈ (0 , 1) .Now plugging in equations (118), (119) and (115) into Equation (112) while recalling vk = wk −w∗,we get: 
+
+Ek
+
+"D
+
+∇F (wk) − egk,T , wk − w∗E#
+
+≤
+
+2 LG VηT + LV eG
+
+bμ
+
+!
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++ 2GVGμ
+
+ 1 − ημ T + 2 √ησ LG V
+
+pμ3 + LV eG
+
+√μbμ
+
+!
+
++ 2δG VG
+
+min( μ2, bμ2) .
+
+(120) 
+
+Thus: 
+
+E
+
+"D
+
+∇F (wk) − egk,T , wk − w∗E#
+
+= E{0,...,k −1}
+
+"
+
+Ek
+
+"D
+
+∇F (wk) − egk,T , wk − w∗E## 
+
+≤
+
+(
+
+2 LG VηT + LV eG
+
+bμ
+
+!
+
+1 − ημ 
+
+2
+
+T −1
+
+E{0,...,k −1}
+
+h
+
+θk, 0 − θ∗ 
+
+> k2
+
+i
+
++ 2GVGμ
+
+ 1 − ημ T
+
++ 2 √ησ LG V
+
+pμ3 + LV eG
+
+√μbμ
+
+!
+
++ 2δG VG
+
+min( μ2, bμ2)
+
+)
+
+. (121) Using Theorem D.4, we have E{0,...,k −1}
+
+h
+
+θk, 0 − θ∗ 
+
+> k2
+
+i
+
+≤ R = 3 max   θ0,0 − θ∗ 
+
+> 02
+
+, B  for all k ≥ 0, when log 9  
+
+> μT
+
+≤ η ≤ μ(R)2 
+
+> 9σ2
+
+.
+
+
+
+Note that now our overall condition on η becomes 32 log 9  
+
+> μT
+
+≤ η ≤ min 
+
+ 1 
+
+> bL
+
+, μL2 , μ(R)2
+
+> 9σ2
+
+
+
+.
+
+
+
+Using this in the above equation, we get: 
+
+E
+
+"D
+
+∇F (wk) − egk,T , wk − w∗E#
+
+≤
+
+2R LG VηT + LV eG
+
+bμ
+
+!
+
+1 − ημ 
+
+2
+
+T −1
+
++ 2GVGμ
+
+ 1 − ημ T + 2 √ησ LG V
+
+pμ3 + LV eG
+
+√μbμ
+
+!
+
++ 2δG VG
+
+min( μ2, bμ2) .
+
+(122) Thus: (II) = 1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+E
+
+hD 
+
+∇F (wk) − egk,T , wk − w∗Ei 
+
+≤
+
+2R LG VηT + LV eG
+
+bμ
+
+!
+
+1 − ημ 
+
+2
+
+T −1
+
++ 2GVGμ
+
+ 1 − ημ T + 2 √ησ LG V
+
+pμ3 + LV eG
+
+√μbμ
+
+!
+
++ 2δG VG
+
+min( μ2, bμ2) .
+
+(123) Using Equation (123) and Equation (105) in Equation (101) while using the fact that 1 − x ≤ e−x
+
+for all x ≥ 0:
+
+1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+
+
+E
+
+h
+
+F (wk)
+
+i
+
+− F (w∗)
+
+
+
+≤O log mKα + α eG2 eG2
+
+> V
+
+bμ2 +R LG VηT + LV eG
+
+bμ
+
+!
+
+e− ηT μ  
+
+> 2
+
++ GVGμ e−ηT μ +√ησ LG V
+
+pμ3 + LV eG
+
+√μbμ
+
+!
+
++ δG VG
+
+min( μ2, bμ2)
+
+!
+
+.
+
+(124) 
+
+It can be verified that the RHS of Equation (124) is minimized (order-wise w.r.t. T and K)by setting α = bμ√log m√K eG eGV
+
+and η = 4 log TμT . Here we restrict T such that it satisfies the constraint   
+
+> 4 log TμT
+
+≤ min 
+
+ 1 
+
+> bL
+
+, μL2 , μ(R)2
+
+> 9σ2
+
+
+
+; this is satisfied for T ≥
+
+l
+
+O
+
+
+
+max 
+
+ bLμ log bLμ , L2 
+
+> μ2
+
+log L2 
+
+> μ2
+
+, σ2
+
+> μ2(R)2
+
+m 
+
+.The other constraint of 4 log TμT ≥ log 9  
+
+> μT
+
+due to Theorem D.4 is satisfied with T ≥ 2. With these choices, we get: 
+
+1
+
+K
+
+> K−1
+
+X
+
+> k=0
+
+
+
+E
+
+h
+
+F (wk)
+
+i
+
+− F (w∗)
+
+
+
+≤ O eG eGV
+
+√log m
+
+bμ√K + σ LG V
+
+μ2 + LV eGμbμ
+
+! √log T
+
+√T + δG VG
+
+min( μ2, bμ2)
+
+!
+
+.
+
+(125) Letting wK := 1
+
+> K
+
+PK−1 
+
+> k=0
+
+wk, we have using Jensen’s inequality, F (wK )−F (w∗) ≤ 1
+
+> K
+
+PK−1
+
+> k=0
+
+ F (wk)−
+
+F (w∗). Using this in Equation (125) and letting F ∗ = F (w∗), we get: 
+
+E
+
+h
+
+F (wK )
+
+i
+
+− F ∗ ≤ O eG eGV
+
+√log m
+
+bμ√K + σ LG V
+
+μ2 + LV eGμbμ
+
+! √log T
+
+√T
+
+| {z } 
+
+> reducible error, E
+
++ δG VG
+
+min( μ2, bμ2)
+
+| {z }
+
+> irreducible error
+
+!
+
+. (126) Let us fix the total parameter update budget to N , i.e., KT = N . Under this constraint, we will determine the optimal T that will minimize the RHS. In particular, note that the reducible error is: 
+
+E(T ) = O eG eGV
+
+√log m
+
+bμ√N
+
+!√T + σ LG V
+
+μ2 + LV eGμbμ
+
+! √log T
+
+√T
+
+!
+
+. (127) It can be verified that E(T ) is minimized by choosing T = Θ( √N log N ). In particular, choosing 
+
+T = √N log N , the reducible error is: 
+
+E = O eG eGV
+
+√log m
+
+bμ + σLG V
+
+μ2 + σL V eGμbμ
+
+!
+
+(log N )1/4
+
+N 1/4
+
+!
+
+. (128) 33 Fact D.2 (Bounded second moment ). Suppose Theorem 6.1, Theorem 6.2, and Theorem 6.6 hold. Then the second moments of e∇ℓj (·) and e∇L V(·) are bounded by eG = √G2 + σ2 and 
+
+eGV =
+
+q
+
+G2 
+
+> V
+
++ σ2, respectively. Proof. Note that under Theorem 6.6 and Theorem 6.1, we have: 
+
+Eζ
+
+∥ e∇ℓj (θ)∥22
+
+ = Eζ
+
+∥ e∇ℓj (θ) − ∇ ℓj (θ)∥22
+
+ + ∥∇ ℓj (θ)∥22 ≤ σ2 + G2 = eG2.
+
+Similarly, under Theorem 6.6 and Theorem 6.2, we have: 
+
+Eζ
+
+∥ e∇L V(θ)∥22
+
+ = Eζ
+
+∥ e∇L V(θ) − ∇L V(θ)∥22
+
+ + ∥∇L V(θ)∥22 ≤ σ2 + G2 
+
+> V
+
+= eG2
+
+> V
+
+.
+
+Thus, the second moments of e∇ℓj (·) and e∇L V(·) are bounded by eG and eGV, respectively. 
+
+Lemma D.3. Suppose the conditions of Theorem D.1 hold and η ≤ min 
+
+ 1 
+
+> bL
+
+, μL2
+
+
+
+. Then for each 
+
+j ∈ [m], we have: 
+
+Ek
+
+" * 
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++ # 
+
+≤ ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
++ LG V
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησLG V
+
+√μ
+
+ 1 − ημ i,
+
+and 
+
+Ek
+
+" * 
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++ # 
+
+≤ LV eG 1 − ηbμi
+
+1 − ημ 
+
+2
+
+T
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησL V eG
+
+√μ
+
+ 1 − ηbμi.
+
+Proof. Using the fact that LV is GV-Lipschitz, ℓj is G-Lipschitz and L-smooth, (I − ηH∗ 
+
+> k
+
+) is PSD and I − ηH∗  
+
+> kop
+
+≤ 1 − ημ (see the explanation after Equation (54)), we have: 
+
+Ek
+
+" * 
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++ # 
+
+≤ GVEk
+
+"  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
+
+
+> 2
+
+#
+
+≤ GVEk
+
+"  I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i
+
+∇ℓj
+
+ θk,T −1−i
+
+
+
+> 2
+
++  I − ηH∗
+
+> k
+
+i
+
+∇ℓj
+
+ θk,T −1−i
+
+ − ∇ ℓj
+
+ θ∗
+
+> k
+
+
+
+> 2
+
+#
+
+≤ GV G
+
+ I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i
+
+> op
+
++ L  I − ηH∗
+
+> k
+
+i
+
+> op
+
+Ek
+
+h
+
+θk,T −1−i − θ∗ 
+
+> k2
+
+i!
+
+= GV G
+
+ I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i
+
+> op
+
++ L I − ηH∗
+
+> k
+> i
+> op
+
+Ek
+
+h
+
+θk,T −1−i − θ∗ 
+
+> k2
+
+i!
+
+≤ GV G
+
+ I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i
+
+> op
+
++ L 1 − ημ iEk
+
+h
+
+θk,T −1−i − θ∗ 
+
+> k2
+
+i!
+
+. (129) 
+
+Using standard guarantees of stochastic gradient descent on strongly-convex and smooth functions, we have: 
+
+Ek
+
+h
+
+θk,T −1−i − θ∗
+
+> k
+> 22
+
+i
+
+≤
+
+
+
+1 − ημ 
+
+2
+
+2( T −1−i)
+
+θk, 0 − θ∗ 
+
+> k
+> 22
+
++ ησ 2
+
+μ , (130) 34 when η ≤ μL2 . Therefore, 
+
+Ek
+
+h
+
+θk,T −1−i − θ∗ 
+
+> k2
+
+i
+
+≤
+
+r
+
+Ek
+
+h
+
+θk,T −1−i − θ∗
+
+> k
+> 22
+
+i
+
+≤
+
+
+
+1 − ημ 
+
+2
+
+T −1−i
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησ 
+
+√μ . (131) Also, in Equation (84) in the proof of Theorem C.4, we obtained: 
+
+ I − ηHk
+
+i −  I − ηH∗
+
+> k
+
+i 
+
+> op
+
+≤ ηδi 
+
+
+
+1 − η min  μ, bμi−1
+
+.
+
+Using this and Equation (131) in Equation (129), we get: 
+
+Ek
+
+" * 
+
+∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i∇ℓj
+
+ θk,T −1−i
+
+ −  I − ηH∗
+
+> k
+
+i∇ℓj
+
+ θ∗
+
+> k
+
++ # 
+
+≤ GV Gηδi 
+
+
+
+1 − η min  μ, bμi−1
+
++ L 1 − ημ i
+
+1 − ημ 
+
+2
+
+T −1−i
+
+θk, 0 − θ∗  
+
+> k2
+
++ L 1 − ημ i √ησ 
+
+√μ
+
+!
+
+≤ ηδG VGi 
+
+
+
+1 − η min  μ, bμi−1
+
++ LG V
+
+
+
+1 − ημ 
+
+2
+
+T −1
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησLG V
+
+√μ
+
+ 1 − ημ i. (132) 
+
+This finishes the proof of the first bound. For the second bound, we begin by using Hölder’s inequality to get: 
+
+Ek
+
+" * 
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++ # 
+
+≤ Ek
+
+"
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+) 2
+
+ I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
+
+
+> 2
+
+#
+
+≤
+
+vuutEk
+
+"
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+) 22
+
+#vuutEk
+
+"  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
+ 22
+
+#
+
+(133) Next, using the fact that LV is LV-smooth, (I − ηHk) is PSD and I − ηHk op ≤ 1 − ηbμ
+
+(see the explanation after Equation (45)), and the second moment of e∇ℓj (·) is bounded by eG
+
+(Theorem D.2) in Equation (133), we get: 
+
+Ek
+
+" * 
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++ # 
+
+≤ LV
+
+r
+
+Ek
+
+h
+
+θk,T − θ∗
+
+> k
+> 22
+
+ir  I − ηHk
+
+2i
+
+> op
+
+Ek
+
+h e∇ℓj
+
+ θk,T −1−i
+
+ 22
+
+i
+
+≤ LV eG 1 − ηbμi
+
+r
+
+Ek
+
+h
+
+θk,T − θ∗
+
+> k
+> 22
+
+i
+
+. (134) Just like Equation (130), we have: 
+
+Ek
+
+h
+
+θk,T − θ∗
+
+> k
+> 22
+
+i
+
+≤
+
+
+
+1 − ημ 
+
+2
+
+2T
+
+θk, 0 − θ∗ 
+
+> k
+> 22
+
++ ησ 2
+
+μ . (135) Using this in Equation (134) and simplifying a bit, we get: 
+
+Ek
+
+" * 
+
+∇L V(θk,T ) − ∇L V(θ∗
+
+> k
+
+),  I − ηHk
+
+i e∇ℓj
+
+ θk,T −1−i
+
++ # 
+
+≤ LV eG 1 − ηbμi
+
+1 − ημ 
+
+2
+
+T
+
+θk, 0 − θ∗  
+
+> k2
+
++
+
+√ησL V eG
+
+√μ
+
+ 1 − ηbμi. (136) This finishes the proof of the second bound. 35 Lemma D.4. Suppose the conditions of Theorem D.1 hold and let R = 3 max 
+
+
+
+θ0,0 −θ∗ 
+
+> 02
+
+,
+
+ 2Lμ +1
+
+
+
+D
+
+
+
+be as defined in Theorem D.1. In addition, let η be chosen so that log 9  
+
+> μT
+
+≤ η ≤ μ(R)2 
+
+> 9σ2
+
+. Then for all k ≥ 0, we have: 
+
+E{0,...,k −1}
+
+h
+
+θk, 0 − θ∗ 
+
+> k2
+
+i
+
+≤ R. 
+
+Proof. The proof idea is similar to Theorem C.5 and we will prove this result by induction. Before starting the proof, recall the following important result from Theorem C.6. 
+
+sup 
+
+> w,w′
+
+arg min θLT(θ, w) − arg min θLT(θ, w′) 2 ≤ B := 2Lμ + 1 
+
+!
+
+D, (137) where max i,j arg min θℓi(θ) − arg min θℓj (θ) 2 ≤ D. With this notation, note that 
+
+R := 3 max   θ0,0 − θ∗ 
+
+> 02
+
+, B .
+
+Let us first consider the base case of k = 1 . Note that θ0,0 − θ∗  
+
+> 02
+
+≤ R 
+
+> 3
+
+(as per the definition of 
+
+R). Now: 
+
+E0
+
+h
+
+θ1,0 − θ∗ 
+
+> 12
+
+i
+
+= E0
+
+h
+
+θ1,0 − θ∗ 
+
+> 0
+
++ θ∗ 
+
+> 0
+
+− θ∗ 
+
+> 12
+
+i
+
+≤ E0
+
+h
+
+θ1,0 − θ∗ 
+
+> 02
+
+i
+
++ E0
+
+h
+
+θ∗ 
+
+> 0
+
+− θ∗ 
+
+> 12
+
+| {z }
+
+> ≤B
+
+i
+
+(note that θ∗ 
+
+> 0
+
+− θ∗  
+
+> 12
+
+≤ B using eq. (137)) 
+
+= E0
+
+h
+
+θ0,T − θ∗ 
+
+> 02
+
+i
+
++ B (recall that θk+1 ,0 = θk,T for all k ≥ 0)
+
+≤
+
+r
+
+E0
+
+h
+
+θ0,T − θ∗
+
+> 0
+> 22
+
+i
+
++ B
+
+≤
+
+s
+
+θ0,0 − θ∗
+
+> 0
+> 22
+
+
+
+1 − ημ 
+
+2
+
+2T
+
++ ησ 2
+
+μ + B, (138) where the last step follows from Equation (135). Thus: 
+
+E0
+
+h
+
+θ1,0 − θ∗ 
+
+> 12
+
+i
+
+≤ θ0,0 − θ∗ 
+
+> 02
+
+
+
+1 − ημ 
+
+2
+
+T
+
++
+
+√ησ 
+
+√μ + B. (139) Note that θ0,0 − θ∗  
+
+> 02
+
+≤ R 
+
+> 3
+
+and B ≤ R 
+
+> 3
+
+. Also when η ≤ μ(R)2 
+
+> 9σ2
+
+, we have  
+
+> √ησ
+> √μ
+
+≤ R 
+
+> 3
+
+. Using all of this above, we get: 
+
+E0
+
+h
+
+θ1,0 − θ∗ 
+
+> 12
+
+i
+
+≤ R. (140) So the base case is true. Now assume our claim is true up to some k > 1, i.e., E{0,...,k −1}
+
+h
+
+θk, 0 −
+
+θ∗ 
+
+> k2
+
+i
+
+≤ R. We will show that the claim is also true for k + 1 . Following similar steps as the 36 ones to get to Equation (138), we obtain: 
+
+E{0,...,k }
+
+h
+
+θk+1 ,0 − θ∗ 
+
+> k+1 2
+
+i
+
+≤ E{0,...,k }
+
+h
+
+θk+1 ,0 − θ∗ 
+
+> k2
+
+i
+
++ E{0,...,k }
+
+h
+
+θ∗ 
+
+> k
+
+− θ∗ 
+
+> k+1 2
+
+| {z } 
+
+> ≤B≤R
+> 3
+
+i
+
+≤ E{0,...,k }
+
+h
+
+θk,T − θ∗ 
+
+> k2
+
+i
+
++ R
+
+3
+
+≤ E{0,...,k }
+
+"
+
+θk, 0 − θ∗ 
+
+> k2
+
+
+
+1 − ημ 
+
+2
+
+T
+
++
+
+√ησ 
+
+√μ
+
+#
+
++ R
+
+3 (similar to eq. (139)) 
+
+≤ E{0,...,k }
+
+h
+
+θk, 0 − θ∗ 
+
+> k2
+
+i 
+
+1 − ημ 
+
+2
+
+T
+
++
+
+√ησ 
+
+√μ
+
+| {z }  
+
+> ≤R
+> 3
+
++ R
+
+3= E{0,...,k −1}
+
+h
+
+θk, 0 − θ∗ 
+
+> k2
+
+i| {z }
+
+> ≤R
+
+
+
+1 − ημ 
+
+2
+
+T
+
++ 2R
+
+3 ,
+
+where the last step follows because θk, 0 − θ∗  
+
+> k2
+
+does not depend on the randomness in the kth 
+
+round. Next, using the fact that  1 − ημ 
+
+> 2
+
+T ≤ e− ημT  
+
+> 2
+
+above, we get: 
+
+E{0,...,k }
+
+h
+
+θk+1 ,0 − θ∗ 
+
+> k+1 2
+
+i
+
+≤ R e− ημT  
+
+> 2
+
++ 23
+
+!
+
+. (141) Note that for η ≥ log 9  
+
+> μT
+
+, we have e− ημT  
+
+> 2
+
+≤ 13 and thus, E{0,...,k }
+
+h
+
+θk+1 ,0 − θ∗ 
+
+> k+1 2
+
+i
+
+≤ R. This completes the induction step and finishes the proof. 37 E A Practically-Usable Hessian Approximation 
+
+Here we discuss an approximate Hessian Hk that can be used in practice in Algorithms 2 and 3 (as well as related algorithms). We propose to use the isotropic approximation Hk = γkI, where 
+
+γk > 0 is appropriately chosen. Note that with this choice, the update rule of u(j) 
+
+> k,t
+
+becomes: 
+
+u(j) 
+
+> k,t +1
+
+=  1 − ηγ k
+
+u(j) 
+
+> k,t
+
++ ∇ℓj
+
+ θk,t 
+
+. (142) Observe that this is essentially a momentum-like update for each domain. Notably, this gives us an approximation for the hypergradient using a simple running average that can be efficiently computed without any matrix-vector products. The simplest version of the above scheme is using a constant γk, i.e., setting γk = γ, for all k.
+
+# F Remaining Details About Experiments in Section 7 
+
+Model Architecture. We train a lightweight convolutional network (CNN) which consists of two 3 × 3 convolution layers with ReLU activations and max pooling (channel width c followed by 2c), followed by a two-layer MLP head ( 128 hidden units) and a 10 -way linear classifier. We list the tuned hyperparameters for Algorithm 2 in Table 2. Table 2: Hyperparameters for Algorithm 2. 
+
+Category Value 
+
+Inner optimizer SGD step size η = 0 .05 
+
+Outer (weights) update Mirror descent step size α = 0 .5
+
+Hessian approximation parameter γ = 0 .01 (recall Hk = γI)Batch size batch_size = 256 
+
+Train subset size train_subset = 12000 examples per domain Validation subset size val_subset = 3000 examples Channel width channel_width = 32 (small CNN backbone) 
+
+We plot a magnified version of the plots in Figure 1 as well as the corresponding validation accuracies in Figure 2. 38 1 10 100 
+
+T
+
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> val loss
+
+N = 1000 (a) Validation loss vs. T1 10 100 1000 
+
+T
+
+> 0.150
+> 0.175
+> 0.200
+> 0.225
+> 0.250
+> 0.275
+> 0.300
+> val loss
+
+N = 5000 (b) Validation loss vs. T1 10 100 
+
+T
+
+> 0.80
+> 0.82
+> 0.84
+> 0.86
+> 0.88
+> 0.90
+> 0.92
+> val accuracy
+
+N = 1000 
+
+(c) Validation accuracy vs. T1 10 100 1000 
+
+T
+
+> 0.90
+> 0.91
+> 0.92
+> 0.93
+> 0.94
+> 0.95
+> 0.96
+> 0.97
+> val accuracy
+
+N = 5000 (d) Validation accuracy vs. T1 10 100 
+
+T
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> w2
+
+N = 1000 
+
+(e) w2 vs. T1 10 100 1000 
+
+T
+
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> w2
+
+N = 5000 (f) w2 vs. T
+
+Figure 2: Validation loss, validation accuracy, and the weight of the second domain (most aligned with validation data) as a function of the horizon T , for N = 1000 and 5000 .39

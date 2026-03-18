@@ -1,0 +1,858 @@
+Title: Feed m Birds with One Scone: Accelerating Multi-task Gradient Balancing via Bi-level Optimization
+
+URL Source: https://arxiv.org/pdf/2603.07389v1
+
+Published Time: Tue, 10 Mar 2026 01:00:41 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Feed m Birds with One Scone: Accelerating Multi-task Gradient Balancing via Bi-level Optimization ∗
+
+## Xuxing Chen †
+
+## , Yun He, Jiayi Xu, Minhui Huang, Xiaoyi Liu, Boyang Liu, Fei Tian, Xiaohan Wei, Rong Jin, Sem Park, Bo Long, and Xue Feng Meta 
+
+Abstract 
+
+In machine learning, the goal of multi-task learning (MTL) is to optimize multiple objectives together. Recent works, for example, Multiple Gradient Descent Algorithm ( MGDA ) and its variants, show promising results with dynamically adjusted weights for different tasks to mitigate conflicts that may potentially degrade the performance on certain tasks. Despite the empirical success of MGDA -type methods, one major limitation of such methods is their computational inefficiency, as they require access to all task gradients. In this paper we introduce MARIGOLD , a unified algorithmic framework for efficiently solving MTL problems. Our method reveals that multi-task gradient balancing methods have a hierarchical structure, in which the model training and the gradient balancing are coupled during the whole optimization process and can be viewed as a bi-level optimization problem. Moreover, we showcase that the bi-level problem can be solved efficiently by leveraging zeroth-order method. Extensive experiments on both public datasets and industrial-scale datasets demonstrate the efficiency and superiority of our method. 
+
+# 1 Introduction 
+
+The study of multi-task learning (MTL) can be traced back to [ 10 ]. Instead of conducting training based on one single task, MTL aims at optimizing different loss functions simultaneously in one training algorithm, and it has been widely used in many areas like natural language processing [ 52 ], computer vision [ 47 ], recommendation systems [ 64 ], reinforcement learning [ 71 ], etc. Through the lens of multi-objective optimization (MOO) [ 53 , 59 ], one may aim at solving the following problem. 
+
+min 
+
+> θ∈Rd
+
+F (θ) := ( f1(θ), ..., f m(θ)) ⊤ (1) where we denote by fi the loss function for task i, m the number of tasks, and θ the trainable model parameters. It is often impossible to find one θ that minimizes all fi, thus a practical way is to linearly combine all loss functions via a weight vector λ, which gives the following problem. 
+
+min 
+
+> θ∈Rd
+> m
+
+X
+
+> i=1
+
+λifi(θ). (2) It is believed that multiple similar tasks may share a common learnable representation parameterized by deep neural networks, and thus optimizing the aggregation of multiple tasks can potentially enable better representation learning, which has also been theoretically investigated in certain scenarios [25, 75, 19]. In the deep learning era, MTL is gaining more and more popularity thanks to its capability of efficiently handling multiple tasks simultaneously with superior generalization performance. While we witness the great success of MTL, one major challenge in designing MTL algorithms lies at the conflicts of gradients between  
+
+> ∗Work done when the first author was doing an internship at Meta in 2024 spring.
+> †Corresponding author. Email: xxchen3636@gmail.com
+
+1
+
+> arXiv:2603.07389v1 [cs.LG] 8 Mar 2026
+
+(a) MTL architecture Shared Module       
+
+> Task-Specific Module
+> Task-Specific Module
+> Task-Specific Module
+> ∇𝑓 1(𝞱 )∇𝑓 2(𝞱 )∇𝑓 3(𝞱 )
+> Computing m gradients O(md) Manipulating m gradients O(md)
+> Replacing ∇𝑓 i(𝞱 ) with d( 𝞱 ) for training
+> Using information of ∇𝑓 i(𝞱 ) for balancing
+> ∇𝑓 1(𝞱 )
+> ∇𝑓 2(𝞱 )
+> ∇𝑓 3(𝞱 )
+> d( 𝞱 )
+
+(b) MGDA -type algorithms 
+
+Figure 1: In Figure 1(a) we have a sketch of a model architecture for multi-task learning. In the forward pass, a batch of data is fed into the bottom layers shared by all tasks to provide a representation for task-specific modules (also known as “heads”). Then task-specific losses are constructed based on the prediction output of heads. Finally a linear combination of all losses gives the main objective function to optimize. In the backward pass, model parameters receive gradients and are updated via certain optimization algorithms as the model training step, and the task weights are balanced based on pre-specified criterion as the tasks balancing step. In Figure 1(b) we showcase how MGDA -type algorithms [ 59 ] work – the gradient balancing step tries to find a convex combination of gradients with minimum norm, and updates the model parameters accordingly. different tasks, i.e., ⟨∇ fi(θ), ∇fj (θ)⟩ < 0 for some i, j . This type of conflicts can potentially lead to negative transfer [ 39 ]. For example, updating the model parameters via gradient descent merely along −∇ fi or −∇ fj
+
+may increase the other loss. It is thus critical to carefully design the task weights that can well reflect the intricate trade-offs between different tasks. Based on different information utilized during the training process, multi-task balancing can be roughly divided into two categories – loss balancing and gradient balancing. Loss balancing methods keep track of all function values fi and derives the task weights based on different criteria, such as uncertainty [ 37 ], rate of change [ 47 ], etc. In comparison, gradient balancing methods further require the information of different task gradients so that one can design the weights, or manipulate the gradients based on different criteria, such as gradient manipulation [15, 71, 16, 67, 34], conflict-averse direction [44], game theory [55], etc. It has been shown that loss balancing methods are often more efficient than gradient balancing ones in terms of time and space complexity, as the former only requires the loss function values for balancing while the latter further requires computing and storing gradients of all tasks, which lead to O(md ) time and space complexity. Despite the inefficiency, gradient balancing methods have better performance both empirically [ 44 , 55 ] and theoretically [ 59 , 78 , 27 , 11 , 69 ]. In this paper, we focus on improving the time and space complexity of gradient balancing in MTL, while maintaining its superiority over loss balancing. In particular, our contributions can be summarized as follows. 
+
+• We propose MARIGOLD , a unified multi-task gradient balancing framework via bi-level optimization, which greatly reduces the per-iteration time and space complexity from O(md ) in most gradient balancing techniques to O(d). Our algorithm is also model-agnostic, in the sense that it is compatible with any MTL models trained with any optimizers. 
+
+• We conduct extensive experiments on both public and industrial-scale datasets, which empirically validate the superiority of our algorithms in terms of performance and efficiency. 
+
+# 2 Preliminaries 
+
+Before we present the main building blocks of our algorithms, we first provide some preliminaries on MTL, MOO and bi-level optimization. 
+
+Notation. In this paper, we denote by ∆m := {λ ∈ Rm : Pmi=1 λi = 1 , λ i ≥ 0} the probability simplex in Rm. We use ∥·∥ to denote ℓ2-norm for vectors. For a matrix A ∈ Rp×q we write range (A) = {Ax : x ∈ Rq }
+
+2Shared Module       
+
+> Task-Specific Module
+> Task-Specific Module
+> Task-Specific Module
+> 𝚽 (𝜆 ,𝞺 ), 𝘨 (𝜆 ,𝞱 )
+> min 𝝀 max 𝞺 𝚽 (𝜆 ,𝞺 ) (UL)
+> 𝞱 *(𝜆 ) = argmin 𝞱 𝘨 (𝜆 ,𝞱 ) (LL)
+
+Figure 2: MTL as a bi-level optimization problem. The Upper-Level (UL) function Φ( λ, ρ ) and Lower-Level (LL) function g(λ, ρ ) are defined in (7) and (8). as the range of the linear mapping induced by matrix A. For a loss function fi(θ) and a batch of data B, we use fi(θ; B) and ∇fi(θ; B) to represent the function value and gradient evaluated on B.
+
+## 2.1 Multi-task learning and multi-objective optimization 
+
+Consider the multi-objective optimization problem in (1) , we have the following notion of optimality and stationarity, which are standard in MOO literature [24, 59, 78, 27]. 
+
+Definition 2.1. For m given objective functions fi(θ) in (1) , we say a point θ ∈ Rd is Pareto optimal ,when there is no θ′ ∈ Rd such that fi(θ′) ≤ fi(θ) for any 1 ≤ i ≤ m and F (θ)̸ = F (θ′). A point θ ∈ Rd is called Pareto stationary , when range (∇F (θ)⊤) T(− Rm
+
+> ++
+
+) is an empty set. In other words, there does not exist a vector v ∈ Rd, such that every coordinate of ∇F (θ)⊤v is negative. Typically, an MTL algorithm aims at finding the Pareto stationary point of Problem (1) via solving (2) , in which the task weights λ = ( λ1, ..., λ m)⊤ are chosen via a carefully-designed subroutine. The model architecture is usually designed to first learn a common pattern across different tasks via a shared module, whose output is then fed into task-specific modules that produce different losses defined in (1) . Finally a linear combination of all losses in (2) is constructed as the main objective function to optimize. A sketch of the whole MTL paradigm is depicted in Figure 1. There has been a flurry of work presenting promising results of various task weights balancing techniques like loss balancing [ 47 , 37 , 45 ] and gradient balancing [ 24 , 71 , 16 , 44 , 45 , 78 , 27 , 11 , 55 , 43 , 69 ]. Theoretically, deep neural networks usually lead to highly non-convex optimization problems, which makes it impossible to find Pareto optimal points. Thus we may only aim at finding Pareto stationary points in deep learning applications. Under certain assumptions, it can be shown that MGDA -type algorithms can provably find Pareto stationary points [ 48 , 78 , 27 , 11 , 69 ]. In addition to the theoretical results, existing works have witnessed the empirical success of gradient balancing methods [ 59 , 55 , 43 , 69 ] over others. However, one major concern that slows down the training of MTL problems is that, gradient balancing typically requires intricate manipulations over all task gradients, which incurs O(md ) time and space complexity, which motivates some followup works [59, 43] to mitigate this issue. We defer a detailed discussion on this to Section B. 
+
+## 2.2 Bi-level optimization 
+
+Problems like meta learning, hyperparameter optimization and reinforcement learning sometimes cannot be formulated as a single-level optimization problem, as it fails to capture the intricacy of the interacting parameters coming from different sources. Taking gradient-based hyperparameter optimization [ 5] as an example, we may see that hyperparameters should be tuned on validation loss while model parameters are optimized over the training loss. 3Motivated by the limitation of single-level optimization, both optimization and machine learning community have proven that bi-level optimization successfully handles the nested structure in these problems [ 57 , 49 , 35 ]. Typically, bi-level optimization problems can be written as follows. 
+
+min  
+
+> x
+
+ϕ(x) := fupper (x, y ∗(x)) , s.t. y∗(x) := arg min 
+
+> y
+
+flower (x, y ),
+
+in which we denote by fupper , f lower the upper-level and lower-level objective function respectively. Assuming 
+
+flower is strongly-convex in y, one may design algorithms that can provably find stationary points of the above problem in finite time [28, 35, 12, 21, 14, 32]. 
+
+# 3 Methodology 
+
+In this section we introduce the basic ideas of our proposed framework MARIGOLD . We first review basic criteria for gradient balancing in Section 3.1, and then reveal the intrinsic bi-level structure on top of it in Section 3.2. The main algorithms are then presented in Sections 3.3 and 3.4. We finally describe a generalized version of our framework that can handle different variants of MTL problems. 
+
+## 3.1 Rethinking gradient balancing criterion 
+
+We first make an observation that most of the ideas of gradient balancing methods in MTL, such as MGDA -type methods [ 59 , 78 , 27 , 69 ] and gradient manipulation based methods [ 71 , 16 , 44 , 45 , 55 ], start with manipulating gradients across different tasks. We take CAGrad [ 44 ] as an illustrative example, which seeks to minimize the worst-case decrement among all losses. Suppose we have an underlying training algorithm A, which takes the model parameter θ and task weights λ as input and outputs the updated model parameter. For example, we may choose A to be one-step gradient descent for solving (2), i.e., 
+
+A(λ, θ ) = θ − α
+
+> m
+
+X
+
+> i=1
+
+λi∇fi(θ). (3) We further define the worst-case decrement, which can be seen as a generalization of that in CAGrad [44]: 
+
+R(λ, θ ) := max 
+
+> 1≤i≤m
+
+(fi(A(λ, θ )) − fi(θ)) = max 
+
+> ρ∈∆m
+> m
+
+X
+
+> i=1
+
+ρi(fi(A(λ, θ )) − fi(θ)) , (4) where the second equality holds since ρ ∈ ∆m. Following [ 44 ], we aim at solving for λ such that the decrement 
+
+R(λ, θ ) is minimized. 
+
+min  
+
+> λ∈∆m
+
+R(λ, θ ) = min  
+
+> λ∈∆m
+
+max 
+
+> ρ∈∆m
+> m
+
+X
+
+> i=1
+
+ρi(fi(A(λ, θ )) − fi(θ)) . (5) In most existing works [ 44 , 78 , 69 ], by assuming A(λ, θ ) = θ − αd (λ, θ ), where d(λ, θ ) denotes the update direction for θ, one extra linearization step can be performed on fi(A(λ, θ )) − fi(θ) as 
+
+fi (θ − αd (λ, θ )) − fi(θ) ≈ − α ⟨∇ fi(θ), d (λ, θ )⟩ . (6) It has been shown that under this approximation, to achieve Pareto stationarity, A(λ, θ ) should be chosen as the one-step gradient descent in (3) given certain constraint [ 44 ]. Note that in this case A(λ, θ ) is linear in λ,and the linearity simplifies the problem and makes (5) more tractable. Besides, it has been proven [ 69 ] that 
+
+CAGrad is closely related to MGDA -type methods, and thus is capable of finding Pareto stationary points under standard assumptions in optimization theory. However, there are several restrictions of this type of method. First, α should be chosen extremely small to control the error incurred by the approximation in (6) , while in certain cases large stepsizes can lead to better generalization performance [ 18 ]. Second, the optimizer A(λ, θ ) for model training should be chosen as 4gradient descent according to the theory (see, e.g., Algorithm 1 in [ 44 ] and Algorithm 1 in [ 69 ]), which is inconsistent with the actual implementation that uses Adam [38]. Here we do not adopt the linearization strategy in (6) . Instead we note that objective function in (5) is non-convex in λ and concave in ρ. Thus we could apply non-convex-concave min-max optimization algorithms. One possible scheme widely used in optimization literature is alternatingly updating λ and ρ [ 42 ]. We highlight here that, min-max optimization typically only requires the gradients of (5) with respect to λ and 
+
+ρ, and computing the gradient with respect to λ in either (5) only requires computing one gradient in each iteration, thanks to the composite structure which combines the interactions between different gradients into a single hypergradient. This greatly improves the per-iteration complexity of most existing gradient balancing methods [ 59 , 15 , 47 , 71 , 16 , 48 , 67 , 44 , 55 , 27 , 69 , 11 ], which typically require m forward-backward passes in each iteration to update λ.Besides, A(λ, θ ) can be chosen as any optimizer to update the model parameters θ, which provides more flexibility to incorporate it into industrial-scale systems, in which optimizers like Adam [38 ] and AdaGrad [26 ]are widely used. 
+
+## 3.2 Multi-task gradient balancing as bi-level optimization 
+
+Now that we have shown the gradient balancing step can be viewed as a min-max optimization problem without requiring any linear approximation steps, we can further combine the model training step with balancing via the following bi-level optimization problem, which is depicted in Figure 2. 
+
+min  
+
+> λ∈∆m
+
+max  
+
+> ρ∈∆m
+
+Φ( λ, ρ ) := 
+
+> m
+
+X
+
+> i=1
+
+ρi(fi(A(λ, θ ∗(λ))) − fi(θ∗(λ))) Upper Level (UL) , (7) s.t. θ∗(λ) = arg min 
+
+> θ∈Rd
+
+g(λ, θ ) := 
+
+> m
+
+X
+
+> i=1
+
+λifi(θ) Lower Level (LL) . (8) Intuitively, the upper-level problem aims at searching the task weights λ that optimizes the worst-case decrement, provided that the model parameters are the optimal point of the linearly-combined loss in the lower-level problem. Note that the computation of ∇λΦ( λ, ρ ) involves the optimal solution of the lower-level optimization problem defined in (8) , which typically requires estimating the Hessian inverse of the lower-level objective 
+
+g(λ, θ ). This can be done via Neumann series method [ 28 ] or SGD based method [ 21 ] when g(λ, θ ) is strongly-convex in θ. However, fi(θ) is highly non-convex in MTL, making both (7) and (8) non-convex and cannot be solved in the worst-case scenario. We hence consider solving a surrogate problem. Suppose we have obtained 
+
+λk, ρ k, θ k at iteration k. For (7) we replace θ∗(λ) with θk, which results in the following problem. 
+
+min  
+
+> λ∈∆m
+
+max  
+
+> ρ∈∆m
+
+Φk(λ, ρ ) := 
+
+> m
+
+X
+
+> i=1
+
+ρi(fi(A(λ, θ k)) − fi(θk)) , (9) whose gradients are given by 
+
+∇λΦk(λ, ρ ) = 
+
+> m
+
+X
+
+> i=1
+
+ρi∇λfi(A(λ, θ k)) , (10) 
+
+∇ρΦk(λ, ρ ) =  f1(A(λ, θ k)) − f1(θk), ..., f m(A(λ, θ k)) − fm(θk)⊤ . (11) We can thus adopt the state-of-the-art bi-level optimization algorithms [ 12 , 21 , 14 , 32 ] to perform the updates for λk, ρ k, θ k alternatingly: 
+
+(λk+1 , ρ k+1 ) = Optim (λk, ρ k, g k), θ k+1 = A(λk+1 , θ k),
+
+where gk denotes the stochastic gradients (with respect to λ and ρ) of Φk in (9) . Optim denotes the optimizer that performs one-step update for (λk, ρ k) to solve the min-max problem in (9) , and A(λk+1 , θ k) denotes the optimizer for model training. For example, Optim and A can be stochastic gradient descent ascent ( SGDA ) [ 42 ]and Adam [38] respectively. 53.3 Hypergradient estimation via zeroth-order method 
+
+Before we present the algorithms that combine the strategies in Section 3.1 and 3.2, we further provide more details on the estimation of hypergradient ∇λΦk(λ, ρ ).We first observe that computing the hypergradient does not require computing m gradients. Instead, with the help of auto differentiation, one may first construct the computational graph for the weighted loss Pmi=1 ρi(fi(A(λ, θ )) − fi(θ)) , and then computes its gradient with respect to λ. We note that this computation involves computing gradients through the optimizer A(λ, θ ), which can be efficiently calculated, for example, in PyTorch [ 56 ] or JAX [ 8] framework, by using strategies such as implicit differentiation and zeroth-order differentiation that are well supported in numerous differentiable optimization libraries [ 31 , 22 , 23 , 2 , 6, 30 ,17 , 58 ]. To further reduce the computational cost, we adopt the zeroth-order method based on the following lemma, whose proof is standard in zeroth-order optimization (see, e.g., Lemma A.1 in [13]). 
+
+Lemma 3.1. Suppose f (θ) : Rd → R is differentiable and ℓ-smooth, i.e., ∥∇ f (θ1) − ∇ f (θ2)∥ ≤ ℓ ∥θ1 − θ2∥
+
+for any θ1, θ 2 ∈ Rd. Define the closed unit ball Bd := {u ∈ Rd : ∥u∥ ≤ 1} and the unit sphere Sd−1 := 
+
+{u ∈ Rd : ∥u∥ = 1 }. Denote by Unif the uniform distribution, and for r > 0 and v ∈ Rd we define 
+
+fr (θ) = Eu∼Unif (Bd) [f (θ + ru )] , G f (θ; r, v ) := dr f (θ + rv )v. Then we have 
+
+Ev∼Unif (Sd−1) [Gf (θ; r, v )] = ∇fr (θ), |fr (θ) − f (θ)| ≤ ℓr 2
+
+2 , ∥∇ fr (θ) − ∇ f (θ)∥ ≤ ℓr. (12) 
+
+Remark. Note that we define the perturbed function value fr (θ) and its associated zeroth-order gradient 
+
+Gf (θ; r, v ). Moreover, we can see from (12) that for u ∼ Unif (Bd), v ∼ Unif (Sd−1), f (θ + ru ) and Gf (θ; r, v )
+
+are biased estimate of f (θ) and ∇f (θ) respectively, in which the biases can be well controlled by the perturbation scale r and the smoothness constant ℓ. We will thus utilize zeroth-order method to approximate the hypergradient ∇λΦk(λ, ρ ), whose details are summarized in Algorithm 1. We note that zeroth-order optimization techniques have been studied extensively in optimization literature [ 65 , 3, 66 , 9, 4, 1], and were recently introduced to other domains of machine learning [51, 76, 74, 62, 70] for memory-efficient training. 
+
+## 3.4 Algorithms 
+
+We are now ready to present our algorithms. In Algorithm 2, we first estimate the hypergradient via Algorithm 1, in which we adopt the single-point zeroth-order optimization method for efficient computation. We directly use the perturbed function value fi(A(λ + ru, θ ); B) in estimating ∇ρΦk(λ, ρ ) in (11) to save compute. On top of gk, we perform the model tuning step for task weights λk and ρk via optimizer Optim_UL . Finally we update model parameters θk by using any user-specific optimizer Optim_LL .
+
+Algorithm 1 Hypergrad  
+
+> 1:
+
+Input: Model parameters θ, task weights λ, ρ , perturbation scale r. 
+
+> 2:
+
+Sample a batch of data B and u ∼ Unif (Sd−1). Compute 
+
+^∇λΦk(λ, ρ ; B) = mr
+
+> m
+
+X
+
+> i=1
+
+ρifi(A(λ + ru, θ ); B)
+
+!
+
+u, 
+
+^∇ρΦk(λ, ρ ; B) = ( f1(A(λ + ru, θ ); B) − f1(θ; B), ..., f m(A(λ + ru, θ ); B) − fm(θ; B)) ⊤ . 
+
+> 3:
+
+Output: gk = ( ^∇λΦk(λ, ρ ; B), ^∇ρΦk(λ, ρ ; B)) .Our algorithm is model-agnostic, in the sense that the algorithm A(λ, θ ) (i.e., Optim_LL in Algorithm 2) for model training is not restricted to SGD , and does not affect the choice of optimizers of the task weights (i.e., Optim_UL ). We note that the practical implementation of MTL experiments usually chooses A(λ, θ ) to be the Adam 
+
+optimizer [ 44 , 55 , 69 , 43 ], leading to an inconsistency with what their theory suggests. We point out that the reason of this mismatch can be rooted back to the linearization step in (6) , which limits the set of available optimizer candidates for A.6Algorithm 2 MARIGOLD : Multi-task gradient balancing via zeroth-order bi-level differentiation  
+
+> 1:
+
+Input: Initial model parameters θ0, task weights λ0, ρ 0, perturbation scale r. 
+
+> 2:
+
+for k = 0 , . . . , K − 1 do  
+
+> 3:
+
+Estimate the hypergradient 
+
+gk = Hypergrad (θk, λ k, ρ k, r ). 
+
+> 4:
+
+Task weights tuning 
+
+λk+1 , ρ k+1 = Optim_UL (λk, ρ k, g k). 
+
+> 5:
+
+Model training 
+
+θk+1 = Optim_LL (λk+1 , θ k). 
+
+> 6:
+
+end for  
+
+> 7:
+
+Output: θK .
+
+## 3.5 Beyond worst-case decrement – a general framework 
+
+Now that we have seen from previous Sections the gradient balancing techniques like CAGrad can be reformulated as a bi-level optimization problem, we can further generalize our framework to handle other problems with different objectives. In this section we aim at tuning task weights based on a user-specified function R(λ, θ ), which leads to the following problem. 
+
+min  
+
+> λ∈∆m
+
+R(λ, θ ∗(λ)) , s.t. θ∗(λ) = arg min 
+
+> θ∈Rd
+
+g(λ, θ ).
+
+Similar to (9), we may consider the surrogate of the above problem as follows. 
+
+min  
+
+> λ∈∆m
+
+R(λ, θ k)
+
+where θk+1 = A(λk, θ k). Setting R(λ, θ ) as the worst-case decrement in (4) recovers Algorithm 2 for MTL problems. We may also define R(λ, θ ) as the loss function of certain main tasks, and we can recover auxiliary learning problems [ 36 , 29 , 46 , 54 ]. We will test the performance of our algorithmic framework on these two types of problems in Section 4. 
+
+# 4 Experiments 
+
+To empirically demonstrate the performance of our Algorithm 2, we conduct experiments on both public datasets widely used in MTL literature and industrial-scale datasets. The experimental details are deferred to Section C in the Appendix. 
+
+## 4.1 Public data 
+
+Algorithms. We investigate the performance of different algorithms on public datasets. Following the multi-task learning problems in computer vision [ 47 , 44 , 43 , 69 ], we adopt SegNet, an encoder-decoder network for semantic segmentation and depth estimation developed in [ 47 ], to test the performance of our Algorithms on the NYU-v2 dataset [ 60 ] and the CityScapes dataset [ 20 ]. In addition to the Single-Task Learning ( STL ), which trains each individual task separately, we also include existing state-of-the-art MTL algorithms with gradient balancing techniques for a thorough comparison: Multiple-Gradient Descent Algorithm ( MGDA ) [ 59 ], Projecting Conflicting Gradients ( PCGrad ) [ 71 ], Gradient Sign Dropout ( GradDrop ) [ 16 ], Conflict-Averse Gradient descent ( CAGrad ) [ 44 ], Impartial Multi-Task Learning-Grad ( IMTL-G ) [ 45 ], Multi-objective gradient with Correction ( MoCo ) [ 27 ], Multi-objective gradient with Double sampling ( MoDo ) [ 11 ], Nash bargaining Multi-Task Learning ( Nash-MTL ) [ 55 ], Fast Adaptive Multitask Optimization ( FAMO ) [ 43 ], Stochastic Direction-oriented Multi-objective Gradient descent ( SDMGrad ) [ 69 ]. We implement Algorithm 2 ( MARIGOLD ) based one the codebase released by [44] and contributed by, e.g., [55], [43], and [69]. In addition to the gradient balancing methods, we include the following loss balancing methods in Section C: Linear Scalarization ( LS ), which optimizes the sum of all task losses; Scale-Invariant ( SI ), which minimizes 7Table 1: Comparison between gradient balancing methods and Algorithm 2 on NYU-v2 dataset. Method Segmentation Depth Surface Normal MR ↓ ∆k% ↓ Cost mIoU ↑ Pix Acc ↑ Abs Err ↓ Rel Err ↓ Angle Distance ↓ Within t◦ ↑                                                                                                                                                                        
+
+> Mean Median 11.25 22.5 30
+> STL 38.30 63.76 0.6754 0.2780 25.01 19.21 30.14 57.20 69.15
+> MGDA [24] 30.47 59.90 0.6070 0.2555 24.88 19.45 29.18 56.88 69.36 6.22 1.38 O(md )
+> PCGrad [71] 38.06 64.64 0.5550 0.2325 27.41 22.80 23.86 49.83 63.14 10.33 3.97 O(md )
+> GradDrop [16] 39.39 65.12 0.5455 0.2279 27.48 22.96 23.38 49.44 62.87 9.78 3.58 O(md )
+> CAGrad [44] 39.79 65.49 0.5486 0.2250 26.31 21.58 25.61 52.36 65.58 7.89 0.20 O(md )
+> IMTL-G [45] 39.35 65.60 0.5426 0.2256 26.02 21.19 26.20 53.13 66.24 7.11 -0.76 O(md )
+> MoCo [27] 40.30 66.07 0.5575 0.2135 26.67 21.83 25.61 51.78 64.85 7.44 0.16 O(md )
+> MoDo [11] 35.28 62.62 0.5821 0.2405 25.65 20.33 28.04 54.86 67.37 8.44 0.49 O(md )
+> Nash-MTL [55] 40.13 65.93 0.5261 0.2171 25.26 20.08 28.40 55.47 68.15 4.33 -4.04 O(md )
+> SDMGrad [69] 40.47 65.90 0.5225 0.2084 25.07 19.99 28.54 55.74 68.53 3.00 -4.84 O(md )
+> FAMO [43] 38.88 64.90 0.5474 0.2194 25.06 19.57 29.21 56.61 68.98 4.44 -4.10 O(d)
+> FAMO (rerun) [43] 38.60 63.29 0.5201 0.2185 24.50 19.36 27.48 53.75 65.91 5.44 -3.27 O(d)
+> MARIGOLD 41.01 66.27 0.5270 0.2137 25.29 20.06 28.55 55.51 68.11 3.56 -4.54 O(d)
+
+the sum of the log of task losses; Random Loss Weighting ( RLW ) [ 40 ], Dynamic Weight Average ( DWA ) [ 47 ], Uncertainty Weighting ( UW ) [37]. 
+
+Metrics. There are in total three tasks including image segmentation, depth prediction, and surface normal prediction. On Cityscapes dataset we aim at solving the first two tasks and for NYU-v2 we solve all three tasks. In the table we adopt the metrics used in previous works [ 47 , 44 , 43 , 69 ], and present them in Tables 1 and 2. Note that for the last three columns of the tables, Mean Rank (MR) refers to the average of the rank of the algorithm on all tasks, ∆k% = 1
+
+> m
+
+Pmi=1 (−1) δi (Mk,i − Mb,i )/M b,i × 100 where Mb,i and Mk,i 
+
+are the STL and algorithm k’s value for metric Mi. δi = 1 (or 0) if the Mi is higher (or lower) the better, and “Cost” represents the per-iteration computational cost of the corresponding algorithm. These three metrics all evaluate the performance and efficiency of MTL algorithms. All metrics are computed by averaging the results in the last ten epochs and further averaged over three random seeds. In Table 3, we further compare the wall-clock time per training epoch of our Algorithm 2 with the most efficient gradient balancing method FAMO , which is reported [ 43 ] to be much more efficient than MGDA , PCGrad ,
+
+CAGrad , IMTL-G , and NashMTL . We also include the time of MGDA as a representative of these less-efficient ones. We do not include SDMGrad [ 69 ] as it shares similarity with MGDA -type methods, and in the official implementation [ 69 ] one epoch of training typically takes around 30 minutes, which is much longer than MGDA .Moreover, we showcase how ∆k% of FAMO and MARIGOLD , two most efficient and competitive algorithms in Tables 1 and 2, evolve over time in Figure 3, in which the shaded region represents the standard deviation. Note that to plot Figure 3, we rerun [ 43 ] on our device for three trials, and include results in Tables 1, 2, 3 and Figure 3 named “ FAMO (rerun)". 
+
+Observations. We can observe from Tables 1, 2, and 3 and Figure 3 that gradient balancing methods can be divided into two groups, one with O(md ) per-iteration cost and the other one with O(d) cost only, and our Algorithm MARIGOLD is among the most efficient ones. In particular, we notice that: (i) Under same number of epochs , we note from Tables 1 and 2 that the performance of our algorithm is better than or comparable with existing ones; (ii) Under same amount of time , the results in Figure 3 validate the overall performance gains of MARIGOLD over FAMO .
+
+## 4.2 Industrial-scale data 
+
+To further demonstrate the superior performance of our methods on industrial-scale models and datasets, we conduct experiments on a Meta’s large foundation model, which is built on top of the advanced architectures, such as [ 73 ] and [ 72 ], for solving large-scale ads ranking problems. In particular, we consider the auxiliary learning problem, a special case of the framework in Section 3.5. 
+
+min  
+
+> ω∈R
+
+fclick (θ∗(ω)) , (13) s.t. θ∗(ω) = arg min 
+
+> θ∈Rd
+
+f (ω, θ ) := fclick (θ) + fconv|click (θ) + fconv (θ) + ωf distill (θ), (14) 8Table 2: Comparison between gradient balancing methods and Algorithm 2 on Cityscapes dataset. Method Segmentation Depth MR ↓ ∆k% ↓ Cost mIoU ↑ Pix Acc ↑ Abs Err ↓ Rel Err ↓                                                                                                   
+
+> STL 74.01 93.16 0.0125 27.77
+> MGDA [24] 68.84 91.54 0.0309 33.50 9.50 44.14 O(md )
+> PCGrad [71] 75.13 93.48 0.0154 42.07 8.50 18.29 O(md )
+> GradDrop [16] 75.27 93.53 0.0157 47.54 7.50 23.73 O(md )
+> CAGrad [44] 75.16 93.48 0.0141 37.60 7.00 11.64 O(md )
+> IMTL-G [45] 75.33 93.49 0.0135 38.41 5.00 11.10 O(md )
+> MoCo [27] 75.42 93.55 0.0149 34.19 3.75 9.90 O(md )
+> MoDo [11] 74.55 93.32 0.0159 41.51 9.75 18.89 O(md )
+> Nash-MTL [55] 75.41 93.66 0.0129 35.02 2.50 6.82 O(md )
+> SDMGrad [69] 74.53 93.52 0.0137 34.01 5.25 7.79 O(md )
+> FAMO [43] 74.54 93.29 0.0145 32.59 7.00 8.13 O(d)
+> FAMO (rerun) [43] 74.76 93.25 0.0140 35.78 7.75 9.92 O(d)
+> MARIGOLD 75.30 93.51 0.0139 34.79 4.50 8.62 O(d)
+
+Table 3: Wall-clock time (s) per epoch comparison between FAMO and Algorithm 2. Method NYU-v2 Cityscapes 
+
+MGDA 375 163 
+
+FAMO (rerun) 182 126 
+
+MARIGOLD 152 100 where we have four different tasks. The main tasks include post-view click (CTR), post-click conversion (Conv|click) and conversion (CVR), which are standard in ads ranking problems [ 50 , 68 ]. Their loss functions are represented by fclick , f conv|click , f conv respectively. We further introduce one auxiliary task fdistill , which is acquired by leveraging the knowledge distilled from a larger teacher model, to enhance the training of main tasks. We set the upper-level objective function to be fclick as we aim at improving the model performance on predicting the post-view click rate. Similar to 8, θ∗(ω) is often intractable as f (ω, θ ) is in general non-convex. Based the idea in Section 3.2, we consider the following problem as a surrogate. 
+
+min  
+
+> ω
+
+fclick (A(ω, θ k)) 
+
+where A(ω, θ k) denotes the training algorithm for optimizing f (ω, θ ). To update ωk at k-th iteration, we will compute ∇ω fclick (A(wk, θ k)) and run algorithms like gradient descent or adaptive methods. We update the model parameters θk using the default optimizer Adam .
+
+Metrics. We use the Normalized Entropy (NE) metric [ 33 ], which is common in ads ranking problems. The lower NE is, the better. We evaluate NE for both LS and MARIGOLD , and the NE gains of MARIGOLD over 
+
+LS on all tasks are summarized in Table 4. Table 4: NE gains of our algorithm 2 over LS (see Section 4.1) on all tasks. Task Click Conv|click Conv Distillation NE gain 0.08% 0.03% 0.07% 0.14% 
+
+Observations. From Table 4 we can find that clearly our Algorithm 2 is much better than the baseline setting which assigns equal weights to all tasks and does not conduct any tuning. This further demonstrates the potential of our methods in industrial-scale multi-task learning problems. 90 2500 5000 7500 10000 12500 15000 17500 20000 
+
+> Time (s)
+> 0
+> 25
+> 50
+> 75
+> 100
+> 125
+> 150
+> 175
+> 200
+> k %
+> FAMO (rerun)
+> MARIGOLD
+
+(a) Cityscapes 0 5000 10000 15000 20000 25000 30000  
+
+> Time (s)
+> 10
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> k %
+> FAMO (rerun)
+> MARIGOLD
+
+(b) NYU-v2 
+
+Figure 3: Comparison between FAMO and Algorithm 2 in terms of ∆k% over time. 
+
+# 5 Conclusion 
+
+We propose a novel algorithm for efficiently solving multi-task gradient balancing problems in MTL. Different from most existing algorithms that require expensive compute and memory to handle task gradients, our method only requires zeroth-order information to estimate the hypergradient of the bi-level optimization problem, which further captures the critical interactions needed for balancing. Moreover, we empirically verify the effectiveness of our approach on both public dataset and industrial dataset. There are several interesting questions unanswered. For example, what is the convergence rate of our algorithm for finding a Pareto stationary point, would the techniques in our paper be useful to accelerate the training of other types of bi-level optimization problems like meta learning and reinforcement learning. We leave them as the future work. 10 A Related Work 
+
+Multi-task learning and multi-objective optimization. In machine learning community, multi-task learning (MTL) [ 10 ] often refers to the training technique that combines and solves different tasks in a unified model. Specifically, the model usually contains two parts – parameters that are shared across different tasks (shared parameters), and parameters that are designed for specific tasks (task-specific parameters). Multi-objective optimization (MOO) originates from optimization community [ 53 ]. Different from single-objective optimization, one major challenge in MOO is to efficiently find the Pareto optimal/stationary points of multiple objective functions through multiple gradient descent algorithm ( MGDA ). In recent years, the boundary between MTL and MOO becomes blurred and a huge amount of efforts have been dedicated to understand MTL through the lens of MOO [ 59 , 44 , 48 , 78 , 27 , 11 , 69 ], which provides solid theoretical convergence guarantees. In addition to MOO, another line of work propose different strategies to perform other types of gradient manipulation to achieve better performance, such as GradNorm [15 ], PCGrad [ 71 ], GradDrop [16 ], GradVac [67 ], etc. It is worth noting that, gradient balancing that requires the knowledge of different task gradients is notoriously time-consuming, as it often requires computing and storing m different task gradients. Motivated by this, some works apply several approximation strategies are dedicated to mitigate this issue. For example, [59] considers gradient balancing applied to representation level gradients, [43] uses loss balancing to approximate the gradient balancing. However, it remains unclear if the original MGDA -type methods can be efficiently implemented without any approximation. Another closely related problem is auxiliary learning, in which we have two different classes of tasks – auxiliary tasks and main tasks. We do not care about the performance of auxiliary tasks as they are introduced to only benefit the training of main ones [36, 29, 46, 54]. 
+
+Bi-level optimization. The study of bi-level optimization can be dated back to [ 61 , 7]. Recently, bi-level optimization is gaining popularity in both machine learning and optimization community, due to its capabilities of handling problems with a nested structure, such as hyperparameter optimization [ 49 ], reinforcement learning [ 35 ], meta learning [ 57 ], model pruning [ 77 ], min-max optimization [ 12 ], etc. Another line of work is dedicated to settle the convergence rate as well as the sample complexity of bi-level optimization algorithms from a theoretical perspective [ 28 , 35 , 12 , 21 , 14 , 32 ]. It has been observed that MTL is closely related to meta learning and thus the intersection of MTL and bi-level optimization has been explored in different aspects [ 54 , 63 ]. As we shall see in Section 3, many MTL algorithms have an intrinsic bi-level structure, which can be efficiently solved via state-of-the-art ideas in bi-level optimization. 
+
+# B Complexity of gradient balancing algorithms in Tables 1 and 2 
+
+In this section we give a brief introduction of gradient balancing methods in Tables 1 and 2 and discuss their per-iteration computational cost. Recall that we use m to denote the number of tasks and d to represent the dimension of model parameters θ.
+
+MGDA-type methods. The Multiple-Gradient Descent Algorithm ( MGDA ) [ 59 ] and its variants, includ-ing Conflict-Averse Gradient descent ( CAGrad ) [ 44 ]∗, Multi-objective gradient with Correction ( MoCo ) [ 27 ], Multi-objective gradient with Double sampling ( MoDo ) [ 11 ] and Stochastic Direction-oriented Multi-objective Gradient descent ( SDMGrad ) [ 69 ], first compute all task gradients, and then find the convex combination of all gradients with the minimum norm. These methods require computing and storing all task gradients, which has O(md ) per-iteration computational cost. 
+
+PCGrad. Projecting Conflicting Gradients ( PCGrad ) [ 71 ], also known as Gradient Surgery, performs some projection operations whenever a gradient conflict happens. To check if there is a conflict between pairwise gradients, it requires access to all task gradients, which has O(md ) per-iteration computational cost. 
+
+GradDrop. Gradient Sign Dropout ( GradDrop ) [ 16 ] constructs a sign purity measure at every gradient location for each task, leading to O(md ) per-iteration computational cost. 
+
+IMTL-G. Impartial Multi-Task Learning-Grad ( IMTL-G ) [ 45 ] calculates the task weights by using task gradient differences and unit-norm gradient differences using all task gradients, which thus has O(md )      
+
+> ∗It has been shown in [ 69 ] that CAGrad and SDMGrad are closely related to MGDA , and thus we include them in this category for simplicity.
+
+11 per-iteration computational cost. 
+
+Nash-MTL. Nash bargaining Multi-Task Learning ( Nash-MTL ) [ 55 ] tackles the MTL problem from a game theory perspective, and solves the task weights λ via a linear system Aλ = 1 /λ , where A =(⟨∇ fi(θ; B), ∇fj (θ; B)⟩) encodes the pairwise gradient similarity, whose computation has O(md ) per-iteration computational cost. 
+
+FAMO. Fast Adaptive Multitask Optimization ( FAMO ) [ 43 ] estimates a matrix-vector product used in most gradient balancing methods via differences between losses (see Equation (9) in [ 43 ]), and thus can be thought of as an approximate gradient balancing method, which only has O(d) (one backward pass of the weighted loss) per-iteration computational cost. However, the official implementation [ 43 ] of FAMO applies 
+
+Adam optimizer, while the theory suggests SGD , making it less explainable than our framework, which works for any optimizer. 
+
+MARIGOLD. Multi-tAsk gRadIent balancinG via zerOth-order bi-leveL Differentiation (Algorithm 2, 
+
+MARIGOLD ) treats the gradient balancing and the model training as a bi-level optimization problem. The only additional cost, as compared to vanilla model training, is the estimation of the hypergradient, which can be computed efficiently via single-point zeroth-order method in Algorithm 1. Thus it only has O(d) (one backward pass of the weighted loss) per-iteration computational cost. 
+
+# C Experimental details 
+
+Table 5: Comparison between loss balancing methods and Algorithm 2 on NYU-v2 dataset. Method Segmentation Depth Surface Normal MR ↓ ∆k% ↓                                                                                              
+
+> mIoU ↑Pix Acc ↑Abs Err ↓Rel Err ↓Angle Distance ↓Within t◦↑
+> Mean Median 11.25 22.5 30
+> STL 38.30 63.76 0.6754 0.2780 25.01 19.21 30.14 57.20 69.15
+> LS 39.29 65.33 0.5493 0.2263 28.15 23.96 22.09 47.50 61.08 4.22 5.59
+> SI 38.45 64.27 0.5354 0.2201 27.60 23.37 22.53 48.57 62.32 3.44 4.39
+> RLW [41] 37.17 63.77 0.5759 0.2410 28.27 24.18 22.26 47.05 60.62 5.67 7.78
+> DWA [47] 39.11 65.31 0.5510 0.2285 27.61 23.18 24.17 50.18 62.39 3.33 3.57
+> UW [37] 36.87 63.17 0.5446 0.2260 27.04 22.61 23.54 49.05 63.65 3.33 4.05
+> MARIGOLD 41.01 66.27 0.5270 0.2137 25.29 20.06 28.55 55.51 68.11 1.00 -4.54
+
+Table 6: Comparison between loss balancing methods and Algorithm 2 on Cityscapes dataset. Method Segmentation Depth MR ↓ ∆k% ↓
+
+mIoU ↑ Pix Acc ↑ Abs Err ↓ Rel Err ↓
+
+STL 74.01 93.16 0.0125 27.77 
+
+LS 75.18 93.49 0.0155 46.77 3.50 22.60 
+
+SI 70.95 91.73 0.0161 33.83 5.00 14.11 
+
+RLW [41] 74.57 93.41 0.0158 47.79 4.50 24.38 
+
+DWA [47] 75.24 93.52 0.0160 44.37 3.00 21.45 
+
+UW [37] 72.02 92.85 0.0140 30.13 3.25 5.89 
+
+MARIGOLD 75.30 93.51 0.0139 34.79 1.75 8.62 In this section we provide more details of the implementation of our algorithms in the experiments. All experiments in Section 4.1 were conducted on a Tesla V100 GPU, and all experiments in Section 4.2 were conducted in a distributed manner using 128 A100 GPUs. For the lower-level problem model training part we follow the basic setup in [ 43 , 69 ] and set Optim_LL 
+
+to be Adam optimizer with learning rate equal to 10 −4. The perturbation scale r in Algorithm 1 is chosen 12 Table 7: Multi-task supervised learning on NYU-v2 dataset. Method Segmentation Depth Surface Normal MR ↓ ∆k% ↓
+
+mIoU ↑ Pix Acc ↑ Abs Err ↓ Rel Err ↓ Angle Distance ↓ Within t◦ ↑
+
+Mean Median 11.25 22.5 30 
+
+STL 38.30 63.76 0.6754 0.2780 25.01 19.21 30.14 57.20 69.15 
+
+LS 39.29 65.33 0.5493 0.2263 28.15 23.96 22.09 47.50 61.08 13.11 5.59 
+
+SI 38.45 64.27 0.5354 0.2201 27.60 23.37 22.53 48.57 62.32 12.22 4.39 
+
+RLW [41] 37.17 63.77 0.5759 0.2410 28.27 24.18 22.26 47.05 60.62 15.78 7.78 
+
+DWA [47] 39.11 65.31 0.5510 0.2285 27.61 23.18 24.17 50.18 62.39 11.89 3.57 
+
+UW [37] 36.87 63.17 0.5446 0.2260 27.04 22.61 23.54 49.05 63.65 11.89 4.05 
+
+MGDA [24] 30.47 59.90 0.6070 0.2555 24.88 19.45 29.18 56.88 69.36 8.44 1.38 
+
+PCGrad [71] 38.06 64.64 0.5550 0.2325 27.41 22.80 23.86 49.83 63.14 12.33 3.97 
+
+GradDrop [16] 39.39 65.12 0.5455 0.2279 27.48 22.96 23.38 49.44 62.87 11.22 3.58 
+
+CAGrad [44] 39.79 65.49 0.5486 0.2250 26.31 21.58 25.61 52.36 65.58 8.33 0.20 
+
+IMTL-G [45] 39.35 65.60 0.5426 0.2256 26.02 21.19 26.20 53.13 66.24 7.33 -0.76 
+
+MoCo [27] 40.30 66.07 0.5575 0.2135 26.67 21.83 25.61 51.78 64.85 7.78 0.16 
+
+MoDo [11] 35.28 62.62 0.5821 0.2405 25.65 20.33 28.04 54.86 67.37 10.56 0.49 
+
+Nash-MTL [55] 40.13 65.93 0.5261 0.2171 25.26 20.08 28.40 55.47 68.15 4.33 -4.04 
+
+SDMGrad [69] 40.47 65.90 0.5225 0.2084 25.07 19.99 28.54 55.74 68.53 3.00 -4.84 
+
+FAMO [43] 38.88 64.90 0.5474 0.2194 25.06 19.57 29.21 56.61 68.98 5.11 -4.10 
+
+FAMO (rerun) [43] 38.60 63.29 0.5201 0.2185 24.50 19.36 27.48 53.75 65.91 6.11 -3.27 
+
+MARIGOLD 41.01 66.27 0.5270 0.2137 25.29 20.06 28.55 55.51 68.11 3.56 -4.54 Table 8: Multi-task supervised learning on Cityscapes dataset. Method Segmentation Depth MR ↓ ∆k% ↓
+
+mIoU ↑ Pix Acc ↑ Abs Err ↓ Rel Err ↓
+
+STL 74.01 93.16 0.0125 27.77 
+
+LS 75.18 93.49 0.0155 46.77 10.25 22.60 
+
+SI 70.95 91.73 0.0161 33.83 13.00 14.11 
+
+RLW [41] 74.57 93.41 0.0158 47.79 13.00 24.38 
+
+DWA [47] 75.24 93.52 0.0160 44.37 10.00 21.45 
+
+UW [37] 72.02 92.85 0.0140 30.13 9.00 5.89 
+
+MGDA [24] 68.84 91.54 0.0309 33.50 13.50 44.14 
+
+PCGrad [71] 75.13 93.48 0.0154 42.07 10.25 18.29 
+
+GradDrop [16] 75.27 93.53 0.0157 47.54 9.00 23.73 
+
+CAGrad [44] 75.16 93.48 0.0141 37.60 8.75 11.64 
+
+IMTL-G [45] 75.33 93.49 0.0135 38.41 5.75 11.10 
+
+MoCo [27] 75.42 93.55 0.0149 34.19 4.50 9.90 
+
+MoDo [11] 74.55 93.32 0.0159 41.51 12.50 18.89 
+
+Nash-MTL [55] 75.41 93.66 0.0129 35.02 3.00 6.82 
+
+SDMGrad [69] 74.53 93.52 0.0137 34.01 6.50 7.79 
+
+FAMO [43] 74.54 93.29 0.0145 32.59 9.00 8.13 
+
+FAMO (rerun) [43] 74.76 93.25 0.0140 35.78 9.75 9.92 
+
+MARIGOLD 75.30 93.51 0.0139 34.79 5.25 8.62 as 10 −3. To tackle the upper-level problem, we parameterize the weights vectors λ and ρ using softmax functions. To better illustrate the parameterization, we consider for simplicity the following optimization problem with log loss that achieves scale-invariant training. 
+
+min 
+
+> θm
+
+X
+
+> i=1
+
+wi log fi(θ)
+
+13 whose gradient can be written as 
+
+∇θ
+
+> m
+
+X
+
+> i=1
+
+wi log fi(θ)
+
+!
+
+=
+
+> m
+
+X
+
+> i=1
+
+wi
+
+fi(θ) ∇fi(θ),
+
+which motivates the parameterization λ = softmax (βu/f ), ρ = softmax (βv/f ) to guarantee the task weights are included in the probability simplex ∆m. In other words, in Algorithm 2 we have 
+
+λi = eβu i/f i
+
+Pmj=1 eβu j /f j
+
+, ρ i = eβv i/f i
+
+Pmj=1 eβv j /f j
+
+,
+
+where u and v are trainable parameters and we use Adam optimizer with learning rates both equal to 10 −4. β
+
+is the hyperparameter that are tuned on the set {0.01 , 0.03 , 0.1, 0.3, 1.0, 3.0}, and is chosen as 0.03 and 1.0
+
+respectively for Cityscapes dataset and NYU-v2 dataset respectively. We also evaluate the loss balancing algorithms, whose numerical results can be found in Tables 5 and 6. Furthermore, in Tables 7 and 8, we combine both loss balancing and gradient balancing methods for a comprehensive comparison. As also observed in existing MTL works, loss balancing methods are usually faster than gradient balancing methods, as the former performs balancing based on loss function values with certain heuristics. In terms of the performance, the results in Tables 7 and 8 indicate that gradient balancing methods like Nash-MTL are usually better than loss balancing ones. 
+
+# References 
+
+[1] Alireza Aghasi and Saeed Ghadimi. Fully zeroth-order bilevel programming via gaussian smoothing. 
+
+arXiv preprint arXiv:2404.00158 , 2024. (Cited on page 6.) 
+
+[2] Sébastien MR Arnold, Praateek Mahajan, Debajyoti Datta, Ian Bunner, and Konstantinos Saitas Zarkias. learn2learn: A library for meta-learning research. arXiv preprint arXiv:2008.12284 , 2020. (Cited on page 6.) 
+
+[3] Krishnakumar Balasubramanian and Saeed Ghadimi. Zeroth-order (non)-convex stochastic optimization via conditional gradient and gradient updates. Advances in Neural Information Processing Systems , 31, 2018. (Cited on page 6.) 
+
+[4] Krishnakumar Balasubramanian and Saeed Ghadimi. Zeroth-order nonconvex stochastic optimization: Handling constraints, high dimensionality, and saddle points. Foundations of Computational Mathematics ,22(1):35–76, 2022. (Cited on page 6.) 
+
+[5] Yoshua Bengio. Gradient-based optimization of hyperparameters. Neural computation , 12(8):1889–1900, 2000. (Cited on page 3.) 
+
+[6] Mathieu Blondel, Quentin Berthet, Marco Cuturi, Roy Frostig, Stephan Hoyer, Felipe Llinares-López, Fabian Pedregosa, and Jean-Philippe Vert. Efficient and modular implicit differentiation. Advances in neural information processing systems , 35:5230–5242, 2022. (Cited on page 6.) 
+
+[7] Jerome Bracken and James T McGill. Mathematical programs with optimization problems in the constraints. Operations Research , 21(1):37–44, 1973. (Cited on page 11.) 
+
+[8] James Bradbury, Roy Frostig, Peter Hawkins, Matthew James Johnson, Chris Leary, Dougal Maclaurin, George Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, and Qiao Zhang. JAX: composable transformations of Python+NumPy programs, 2018. (Cited on page 6.) 
+
+[9] HanQin Cai, Daniel Mckenzie, Wotao Yin, and Zhenliang Zhang. Zeroth-order regularized optimization (zoro): Approximately sparse gradients and adaptive sampling. SIAM Journal on Optimization , 32(2):687– 714, 2022. (Cited on page 6.) 
+
+[10] Rich Caruana. Multitask learning. Machine learning , 28:41–75, 1997. (Cited on pages 1 and 11.) 
+
+14 [11] Lisha Chen, Heshan Fernando, Yiming Ying, and Tianyi Chen. Three-way trade-off in multi-objective learning: Optimization, generalization and conflict-avoidance. arXiv preprint arXiv:2305.20057 , 2023. 
+
+> (Cited on pages 2, 3, 5, 7, 8, 9, 11, and 13.)
+
+[12] Tianyi Chen, Yuejiao Sun, and Wotao Yin. Closing the gap: Tighter analysis of alternating stochastic gradient methods for bilevel problems. Advances in Neural Information Processing Systems , 34:25294– 25307, 2021. (Cited on pages 4, 5, and 11.) 
+
+[13] Xin Chen, Yujie Tang, and Na Li. Improve single-point zeroth-order optimization using high-pass and low-pass filters. In International Conference on Machine Learning , pages 3603–3620. PMLR, 2022. (Cited on page 6.) 
+
+[14] Xuxing Chen, Tesi Xiao, and Krishnakumar Balasubramanian. Optimal algorithms for stochastic bilevel optimization under relaxed smoothness conditions. arXiv preprint arXiv:2306.12067 , 2023. (Cited on pages 4, 5, and 11.) 
+
+[15] Zhao Chen, Vijay Badrinarayanan, Chen-Yu Lee, and Andrew Rabinovich. Gradnorm: Gradient normalization for adaptive loss balancing in deep multitask networks. In International conference on machine learning , pages 794–803. PMLR, 2018. (Cited on pages 2, 5, and 11.) 
+
+[16] Zhao Chen, Jiquan Ngiam, Yanping Huang, Thang Luong, Henrik Kretzschmar, Yuning Chai, and Dragomir Anguelov. Just pick a sign: Optimizing deep multitask models with gradient sign dropout. 
+
+Advances in Neural Information Processing Systems , 33:2039–2050, 2020. (Cited on pages 2, 3, 4, 5, 7, 8, 9, 11, and 13.) 
+
+[17] Sang Keun Choe, Willie Neiswanger, Pengtao Xie, and Eric Xing. Betty: An automatic differentiation library for multilevel optimization. arXiv preprint arXiv:2207.02849 , 2022. (Cited on page 6.) 
+
+[18] Jeremy Cohen, Simran Kaur, Yuanzhi Li, J Zico Kolter, and Ameet Talwalkar. Gradient descent on neural networks typically occurs at the edge of stability. In International Conference on Learning Representations , 2020. (Cited on page 4.) 
+
+[19] Liam Collins, Hamed Hassani, Mahdi Soltanolkotabi, Aryan Mokhtari, and Sanjay Shakkottai. Provable multi-task representation learning by two-layer relu neural networks. arXiv preprint arXiv:2307.06887 ,2023. (Cited on page 1.) 
+
+[20] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo Rehfeld, Markus Enzweiler, Rodrigo Benen-son, Uwe Franke, Stefan Roth, and Bernt Schiele. The cityscapes dataset for semantic urban scene understanding. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 3213–3223, 2016. (Cited on page 7.) 
+
+[21] Mathieu Dagréou, Pierre Ablin, Samuel Vaiter, and Thomas Moreau. A framework for bilevel optimization that enables stochastic and global variance reduction algorithms. In Alice H. Oh, Alekh Agarwal, Danielle Belgrave, and Kyunghyun Cho, editors, Advances in Neural Information Processing Systems , 2022. (Cited on pages 4, 5, and 11.) 
+
+[22] DeepMind, Igor Babuschkin, Kate Baumli, Alison Bell, Surya Bhupatiraju, Jake Bruce, Peter Buchlovsky, David Budden, Trevor Cai, Aidan Clark, Ivo Danihelka, Antoine Dedieu, Claudio Fantacci, Jonathan Godwin, Chris Jones, Ross Hemsley, Tom Hennigan, Matteo Hessel, Shaobo Hou, Steven Kapturowski, Thomas Keck, Iurii Kemaev, Michael King, Markus Kunesch, Lena Martens, Hamza Merzic, Vladimir Mikulik, Tamara Norman, George Papamakarios, John Quan, Roman Ring, Francisco Ruiz, Alvaro Sanchez, Laurent Sartran, Rosalia Schneider, Eren Sezener, Stephen Spencer, Srivatsan Srinivasan, Miloš Stanojević, Wojciech Stokowiec, Luyu Wang, Guangyao Zhou, and Fabio Viola. The DeepMind JAX Ecosystem, 2020. (Cited on page 6.) 
+
+[23] Tristan Deleu, Tobias Würfl, Mandana Samiei, Joseph Paul Cohen, and Yoshua Bengio. Torchmeta: A meta-learning library for pytorch. arXiv preprint arXiv:1909.06576 , 2019. (Cited on page 6.) 
+
+15 [24] Jean-Antoine Désidéri. Multiple-gradient descent algorithm (mgda) for multiobjective optimization. 
+
+Comptes Rendus Mathematique , 350(5-6):313–318, 2012. (Cited on pages 3, 8, 9, and 13.) 
+
+[25] Simon Shaolei Du, Wei Hu, Sham M Kakade, Jason D Lee, and Qi Lei. Few-shot learning via learning the representation, provably. In International Conference on Learning Representations , 2020. (Cited on page 1.) 
+
+[26] John Duchi, Elad Hazan, and Yoram Singer. Adaptive subgradient methods for online learning and stochastic optimization. Journal of machine learning research , 12(7), 2011. (Cited on page 5.) 
+
+[27] Heshan Devaka Fernando, Han Shen, Miao Liu, Subhajit Chaudhury, Keerthiram Murugesan, and Tianyi Chen. Mitigating gradient bias in multi-objective learning: A provably convergent approach. In The Eleventh International Conference on Learning Representations , 2022. (Cited on pages 2, 3, 4, 5, 7, 8, 9, 11, and 13.) 
+
+[28] Saeed Ghadimi and Mengdi Wang. Approximation methods for bilevel programming. arXiv preprint arXiv:1802.02246 , 2018. (Cited on pages 4, 5, and 11.) 
+
+[29] Priya Goyal, Dhruv Mahajan, Abhinav Gupta, and Ishan Misra. Scaling and benchmarking self-supervised visual representation learning. In Proceedings of the ieee/cvf International Conference on computer vision , pages 6391–6400, 2019. (Cited on pages 7 and 11.) 
+
+[30] Riccardo Grazzi, Luca Franceschi, Massimiliano Pontil, and Saverio Salzo. On the iteration complexity of hypergradient computation. In International Conference on Machine Learning , pages 3748–3758. PMLR, 2020. (Cited on page 6.) 
+
+[31] Edward Grefenstette, Brandon Amos, Denis Yarats, Phu Mon Htut, Artem Molchanov, Franziska Meier, Douwe Kiela, Kyunghyun Cho, and Soumith Chintala. Generalized inner loop meta-learning. arXiv preprint arXiv:1910.01727 , 2019. (Cited on page 6.) 
+
+[32] Jie Hao, Xiaochuan Gong, and Mingrui Liu. Bilevel optimization under unbounded smoothness: A new algorithm and convergence analysis. In The Twelfth International Conference on Learning Representations ,2023. (Cited on pages 4, 5, and 11.) 
+
+[33] Xinran He, Junfeng Pan, Ou Jin, Tianbing Xu, Bo Liu, Tao Xu, Yanxin Shi, Antoine Atallah, Ralf Herbrich, Stuart Bowers, et al. Practical lessons from predicting clicks on ads at facebook. In Proceedings of the eighth international workshop on data mining for online advertising , pages 1–9, 2014. (Cited on page 9.) 
+
+[34] Yun He, Xue Feng, Cheng Cheng, Geng Ji, Yunsong Guo, and James Caverlee. Metabalance: improving multi-task recommendations via adapting gradient magnitudes of auxiliary tasks. In Proceedings of the ACM Web Conference 2022 , pages 2205–2215, 2022. (Cited on page 2.) 
+
+[35] Mingyi Hong, Hoi-To Wai, Zhaoran Wang, and Zhuoran Yang. A two-timescale stochastic algorithm framework for bilevel optimization: Complexity analysis and application to actor-critic. SIAM Journal on Optimization , 33(1):147–180, 2023. (Cited on pages 4 and 11.) 
+
+[36] Max Jaderberg, Volodymyr Mnih, Wojciech Marian Czarnecki, Tom Schaul, Joel Z Leibo, David Silver, and Koray Kavukcuoglu. Reinforcement learning with unsupervised auxiliary tasks. In International Conference on Learning Representations , 2016. (Cited on pages 7 and 11.) 
+
+[37] Alex Kendall, Yarin Gal, and Roberto Cipolla. Multi-task learning using uncertainty to weigh losses for scene geometry and semantics. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 7482–7491, 2018. (Cited on pages 2, 3, 8, 12, and 13.) 
+
+[38] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 , 2014. (Cited on page 5.) 
+
+[39] Dongyue Li, Huy Nguyen, and Hongyang Ryan Zhang. Identification of negative transfers in multitask learning using surrogate models. Transactions on Machine Learning Research , 2023. (Cited on page 2.) 
+
+16 [40] Baijiong Lin, YE Feiyang, and Yu Zhang. A closer look at loss weighting in multi-task learning. 2021. 
+
+> (Cited on page 8.)
+
+[41] Baijiong Lin, Feiyang Ye, Yu Zhang, and Ivor W Tsang. Reasonable effectiveness of random weighting: A litmus test for multi-task learning. arXiv preprint arXiv:2111.10603 , 2021. (Cited on pages 12 and 13.) 
+
+[42] Tianyi Lin, Chi Jin, and Michael Jordan. On gradient descent ascent for nonconvex-concave minimax problems. In International Conference on Machine Learning , pages 6083–6093. PMLR, 2020. (Cited on page 5.) 
+
+[43] Bo Liu, Yihao Feng, Peter Stone, and Qiang Liu. Famo: Fast adaptive multitask optimization. Advances in Neural Information Processing Systems , 36, 2024. (Cited on pages 3, 6, 7, 8, 9, 11, 12, and 13.) 
+
+[44] Bo Liu, Xingchao Liu, Xiaojie Jin, Peter Stone, and Qiang Liu. Conflict-averse gradient descent for multi-task learning. Advances in Neural Information Processing Systems , 34:18878–18890, 2021. (Cited on pages 2, 3, 4, 5, 6, 7, 8, 9, 11, and 13.) 
+
+[45] Liyang Liu, Yi Li, Zhanghui Kuang, Jing-Hao Xue, Yimin Chen, Wenming Yang, Qingmin Liao, and Wayne Zhang. Towards impartial multi-task learning. In International Conference on Learning Representations , 2021. (Cited on pages 3, 4, 7, 8, 9, 11, and 13.) 
+
+[46] Shikun Liu, Andrew Davison, and Edward Johns. Self-supervised generalisation with meta auxiliary learning. Advances in Neural Information Processing Systems , 32, 2019. (Cited on pages 7 and 11.) 
+
+[47] Shikun Liu, Edward Johns, and Andrew J Davison. End-to-end multi-task learning with attention. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 1871–1880, 2019. (Cited on pages 1, 2, 3, 5, 7, 8, 12, and 13.) 
+
+[48] Suyun Liu and Luis Nunes Vicente. The stochastic multi-gradient algorithm for multi-objective opti-mization and its application to supervised machine learning. Annals of Operations Research , pages 1–30, 2021. (Cited on pages 3, 5, and 11.) 
+
+[49] Jonathan Lorraine, Paul Vicol, and David Duvenaud. Optimizing millions of hyperparameters by implicit differentiation. In International conference on artificial intelligence and statistics , pages 1540–1552. PMLR, 2020. (Cited on pages 4 and 11.) 
+
+[50] Xiao Ma, Liqin Zhao, Guan Huang, Zhi Wang, Zelin Hu, Xiaoqiang Zhu, and Kun Gai. Entire space multi-task model: An effective approach for estimating post-click conversion rate. In The 41st International ACM SIGIR Conference on Research & Development in Information Retrieval , pages 1137–1140, 2018. 
+
+> (Cited on page 9.)
+
+[51] Sadhika Malladi, Tianyu Gao, Eshaan Nichani, Alex Damian, Jason D Lee, Danqi Chen, and Sanjeev Arora. Fine-tuning language models with just forward passes. Advances in Neural Information Processing Systems , 36, 2024. (Cited on page 6.) 
+
+[52] Bryan McCann, Nitish Shirish Keskar, Caiming Xiong, and Richard Socher. The natural language decathlon: Multitask learning as question answering. arXiv preprint arXiv:1806.08730 , 2018. (Cited on page 1.) 
+
+[53] Kaisa Miettinen. Nonlinear multiobjective optimization , volume 12. Springer Science & Business Media, 1999. (Cited on pages 1 and 11.) 
+
+[54] Aviv Navon, Idan Achituve, Haggai Maron, Gal Chechik, and Ethan Fetaya. Auxiliary learning by implicit differentiation. In International Conference on Learning Representations , 2020. (Cited on pages 7 and 11.) 
+
+[55] Aviv Navon, Aviv Shamsian, Idan Achituve, Haggai Maron, Kenji Kawaguchi, Gal Chechik, and Ethan Fetaya. Multi-task learning as a bargaining game. In International Conference on Machine Learning ,pages 16428–16446. PMLR, 2022. (Cited on pages 2, 3, 4, 5, 6, 7, 8, 9, 12, and 13.) 
+
+17 [56] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, et al. Pytorch: An imperative style, high-performance deep learning library. Advances in neural information processing systems , 32, 2019. (Cited on page 6.) 
+
+[57] Aravind Rajeswaran, Chelsea Finn, Sham M Kakade, and Sergey Levine. Meta-learning with implicit gradients. Advances in neural information processing systems , 32, 2019. (Cited on pages 4 and 11.) 
+
+[58] Jie Ren, Xidong Feng, Bo Liu, Xuehai Pan, Yao Fu, Luo Mai, and Yaodong Yang. Torchopt: An efficient library for differentiable optimization. Journal of Machine Learning Research , 24(367):1–14, 2023. (Cited on page 6.) 
+
+[59] Ozan Sener and Vladlen Koltun. Multi-task learning as multi-objective optimization. Advances in neural information processing systems , 31, 2018. (Cited on pages 1, 2, 3, 4, 5, 7, and 11.) 
+
+[60] Nathan Silberman, Derek Hoiem, Pushmeet Kohli, and Rob Fergus. Indoor segmentation and support inference from rgbd images. In Computer Vision–ECCV 2012: 12th European Conference on Computer Vision, Florence, Italy, October 7-13, 2012, Proceedings, Part V 12 , pages 746–760. Springer, 2012. (Cited on page 7.) 
+
+[61] Heinrich von Stackelberg. Theory of the market economy. 1952. (Cited on page 11.) 
+
+[62] Xinyu Tang, Ashwinee Panda, Milad Nasr, Saeed Mahloujifar, and Prateek Mittal. Private fine-tuning of large language models with zeroth-order optimization. arXiv preprint arXiv:2401.04343 , 2024. (Cited on page 6.) 
+
+[63] Haoxiang Wang, Han Zhao, and Bo Li. Bridging multi-task learning and meta-learning: Towards efficient training and effective adaptation. In International conference on machine learning , pages 10991–11002. PMLR, 2021. (Cited on page 11.) 
+
+[64] Nan Wang, Hongning Wang, Yiling Jia, and Yue Yin. Explainable recommendation via multi-task learning in opinionated text data. In The 41st International ACM SIGIR Conference on Research & Development in Information Retrieval , pages 165–174, 2018. (Cited on page 1.) 
+
+[65] Yining Wang, Simon Du, Sivaraman Balakrishnan, and Aarti Singh. Stochastic zeroth-order optimization in high dimensions. In International conference on artificial intelligence and statistics , pages 1356–1365. PMLR, 2018. (Cited on page 6.) 
+
+[66] Zhongruo Wang, Krishnakumar Balasubramanian, Shiqian Ma, and Meisam Razaviyayn. Zeroth-order algorithms for nonconvex minimax problems with improved complexities. arXiv preprint arXiv:2001.07819 ,2020. (Cited on page 6.) 
+
+[67] Zirui Wang and Yulia Tsvetkov. Gradient vaccine: Investigating and improving multi-task optimization in massively multilingual models. In Proceedings of the International Conference on Learning Representations (ICLR) , 2021. (Cited on pages 2, 5, and 11.) 
+
+[68] Hong Wen, Jing Zhang, Yuan Wang, Fuyu Lv, Wentian Bao, Quan Lin, and Keping Yang. Entire space multi-task modeling via post-click behavior decomposition for conversion rate prediction. In Proceedings of the 43rd International ACM SIGIR conference on research and development in Information Retrieval ,pages 2377–2386, 2020. (Cited on page 9.) 
+
+[69] Peiyao Xiao, Hao Ban, and Kaiyi Ji. Direction-oriented multi-objective learning: Simple and provable stochastic algorithms. arXiv preprint arXiv:2305.18409 , 2023. (Cited on pages 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, and 13.) 
+
+[70] Da Yu, Peter Kairouz, Sewoong Oh, and Zheng Xu. Privacy-preserving instructions for aligning large language models. arXiv preprint arXiv:2402.13659 , 2024. (Cited on page 6.) 
+
+18 [71] Tianhe Yu, Saurabh Kumar, Abhishek Gupta, Sergey Levine, Karol Hausman, and Chelsea Finn. Gradient surgery for multi-task learning. Advances in Neural Information Processing Systems , 33:5824–5836, 2020. 
+
+> (Cited on pages 1, 2, 3, 4, 5, 7, 8, 9, 11, and 13.)
+
+[72] Buyun Zhang, Liang Luo, Yuxin Chen, Jade Nie, Xi Liu, Daifeng Guo, Yanli Zhao, Shen Li, Yuchen Hao, Yantao Yao, et al. Wukong: Towards a scaling law for large-scale recommendation. arXiv preprint arXiv:2403.02545 , 2024. (Cited on page 8.) 
+
+[73] Buyun Zhang, Liang Luo, Xi Liu, Jay Li, Zeliang Chen, Weilin Zhang, Xiaohan Wei, Yuchen Hao, Michael Tsang, Wenjun Wang, et al. Dhen: A deep and hierarchical ensemble network for large-scale click-through rate prediction. arXiv preprint arXiv:2203.11014 , 2022. (Cited on page 8.) 
+
+[74] Liang Zhang, Kiran Koshy Thekumparampil, Sewoong Oh, and Niao He. Dpzero: Dimension-independent and differentially private zeroth-order optimization. arXiv preprint arXiv:2310.09639 , 2023. (Cited on page 6.) 
+
+[75] Thomas TCK Zhang, Leonardo Felipe Toso, James Anderson, and Nikolai Matni. Sample-efficient linear representation learning from non-iid non-isotropic data. In The Twelfth International Conference on Learning Representations , 2023. (Cited on page 1.) 
+
+[76] Yihua Zhang, Pingzhi Li, Junyuan Hong, Jiaxiang Li, Yimeng Zhang, Wenqing Zheng, Pin-Yu Chen, Jason D Lee, Wotao Yin, Mingyi Hong, et al. Revisiting zeroth-order optimization for memory-efficient llm fine-tuning: A benchmark. arXiv preprint arXiv:2402.11592 , 2024. (Cited on page 6.) 
+
+[77] Yihua Zhang, Yuguang Yao, Parikshit Ram, Pu Zhao, Tianlong Chen, Mingyi Hong, Yanzhi Wang, and Sijia Liu. Advancing model pruning via bi-level optimization. Advances in Neural Information Processing Systems , 35:18309–18326, 2022. (Cited on page 11.) 
+
+[78] Shiji Zhou, Wenpeng Zhang, Jiyan Jiang, Wenliang Zhong, Jinjie Gu, and Wenwu Zhu. On the convergence of stochastic multi-objective gradient manipulation and beyond. Advances in Neural Information Processing Systems , 35:38103–38115, 2022. (Cited on pages 2, 3, 4, and 11.) 
+
+19

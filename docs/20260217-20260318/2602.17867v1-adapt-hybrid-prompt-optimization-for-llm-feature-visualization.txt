@@ -1,0 +1,791 @@
+Title: ADAPT: Hybrid Prompt Optimization for LLM Feature Visualization
+
+URL Source: https://arxiv.org/pdf/2602.17867v1
+
+Published Time: Mon, 23 Feb 2026 01:10:34 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# ADAPT: Hybrid Prompt Optimization for LLM Feature Visualization 
+
+Jo˜ ao Cardoso * 1 2 Arlindo L. Oliveira 1 2 Bruno Martins 1 2 
+
+## Abstract 
+
+Understanding what features are encoded by learned directions in LLM activation space re-quires identifying inputs that strongly activate them. Feature visualization, which optimizes inputs to maximally activate a target direction, offers an alternative to costly dataset search ap-proaches, but remains underexplored for LLMs due to the discrete nature of text. Furthermore, ex-isting prompt optimization techniques are poorly suited to this domain, which is highly prone to local minima. To overcome these limitations, we introduce ADAPT, a hybrid method combining beam search initialization with adaptive gradient-guided mutation, designed around these failure modes. We evaluate on Sparse Autoencoder latents from Gemma 2 2B, proposing metrics grounded in dataset activation statistics to enable rigorous comparison, and show that ADAPT con-sistently outperforms prior methods across layers and latent types. Our results establish that feature visualization for LLMs is tractable, but requires design assumptions tailored to the domain. 
+
+## 1. Introduction 
+
+Neural networks construct rich representations of their in-puts, often assigned to linear directions in their latent ac-tivation space. Understanding the relevant input features encoded by these directions is essential for interpretabil-ity efforts, but identifying the range of input patterns that activate a given latent direction (henceforth, latent ) is a chal-lenging task. The standard approach is to perform a dataset search (Paulo et al., 2024; Bills et al., 2023): running the model on a large corpus and registering what input exam-ples maximally activate the directions of interest, which is an effective approach for large-scale surveys where the large computational costs of running a model on a large 
+
+> 1
+
+Instituto Superior T ´ecnico 2INESC-ID. Correspondence to: Jo˜ ao N. Cardoso <joao.n.m.cardoso@tecnico.ulisboa.pt >.
+
+Proceedings of the 42 nd International Conference on Machine Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025 by the author(s). 
+
+corpus can be amortized over thousands of latents in par-allel. Dataset search is often performed for latent direc-tions learned by sparse autoencoders (SAEs) (Sharkey et al., 2022; Bricken et al., 2023), which are designed to yield large dictionaries of interpretable and monosemantic latents. However, with alternate techniques for obtaining latents of interest or more complex sub-components such as model circuits or collections of latents, this approach becomes computationally prohibitive. An alternate approach is feature visualization (Olah et al., 2017), which consists of creating an input that is “tailor-made” for a given latent, via prompt optimization techniques which seek to maximally activate the target latent. This brings several advantages over dataset search: • Overcoming dataset limitations: searched datasets are typically smaller than the model’s training dataset, limiting the number of illustrative examples for any given latent. • Disentangling correlated features: if two features happen to be correlated in the searched dataset (e.g. a semantic concept and the language of the text), it is hard to tease apart the latent’s corresponding feature. (Olah et al., 2017) • Versatility: any feature optimization can be modified to incorporate complex objectives and penalties. • Causal grounding: Correlational methods can pro-duce plausible-looking explanations even for randomly initialized networks (M ´eloux et al., 2025). Feature visualization constructs inputs that cause activation, sidestepping spurious associations in any fixed corpus. These advantages are visible in previous vision interpretabil-ity work, which has made extensive use of feature visualiza-tion. However, the application of these techniques to LLMs has been limited, mostly due to the discrete nature of tex-tual inputs (Thompson et al., 2024), which precludes direct gradient-based updates. In this work, we take inspiration from existing adversarial prompt optimization techniques, where the objective is to induce the model to generate out-puts that bypass its safety training, and from previous LLM feature visualization work. Our contributions are as follows: 1
+
+> arXiv:2602.17867v1 [cs.LG] 19 Feb 2026
+
+• We introduce ADAPT, a new algorithm that outper-forms existing baselines by combining beam-search initialization with gradient-guided mutation. • We evaluate ADAPT and previous methods on SAE latents from Gemma 2 2B (Gemma Team, 2024), in-troducing metrics grounded in dataset activation statis-tics to enable systematic comparison of different tech-niques. • We analyze the reliability of gradient-based optimiza-tion methods for this application domain, and investi-gate the role of fluency penalties in prompt optimiza-tion for feature visualization. The remainder of this paper is organized as follows. Sec-tion 2 covers background on SAEs and existing prompt optimization methods. Section 3 introduces ADAPT. Sec-tion 4 presents our experimental evaluation, followed by an analysis of the common failure modes of several exist-ing methods. In section 5 we extend ADAPT to a dual latent objective, to illustrate its versatility. We conclude in Section 6. 
+
+## 2. Background 
+
+We review sparse autoencoders, which provide our evalu-ation testbed, and existing prompt optimization methods, whose limitations motivate ADAPT. 
+
+2.1. Sparse autoencoders 
+
+The representation vectors constructed by LLMs are thought to contain far more features than they have dimensions, by encoding them as non-orthogonal directions in activation space that do not align with the neuronal basis (Elhage et al., 2022). Sparse autoencoders (SAEs) learn to reconstruct a target representation vector through a high-dimension mid-dle layer (Bricken et al., 2023; Templeton et al., 2024). A sparsity penalty encourages most latent dimensions to remain inactive after the activation function, yielding a small set of active directions that capture the input vec-tor’s variability. These directions have been shown to be more monosemantic, in the sense of being correlated with single input features, than individual neurons. While the proposed ADAPT method can accommodate arbi-trary directions or complex objectives, we focus on SAE la-tents due to the availability of open source tools that support the development of our technique, by mitigating the need to retrieve target latents ourselves, and by enabling comparison with existing latent interpretation techniques, namely dataset search, without incurring in high computational costs. In particular, the Gemma Scope project (Lieberum et al., 2024) has made publicly available a suite of SAEs, with addi-tional latent statistics and dataset examples provided via the Neuronpedia API 1.For feature visualization of SAE latents, our objective is as follows. Given an input activation vector x ∈ Rn, an SAE produces a reconstruction via: 
+
+ˆx = Wdec · f (Wenc x + benc ) + bdec , (1) where f (x) ∈ RM is the sparse activation vector. For a target latent i, the optimization objective is: 
+
+x∗ = arg max  
+
+> x
+
+fi(x), (2) where fi(x) denotes the activation magnitude of the i-th latent direction. 
+
+2.2. Prompt Optimization 
+
+Despite the abundance of prompt optimization methods (Ramnath et al., 2025), most are not applicable to feature visualization, due to fundamental domain differences. For one, it would be infeasible to use exceedingly expensive techniques, such as those which involve LLM API calls (Yang et al., 2024), comprehensive tree searches (Wang et al., 2024), or model fine-tuning (Cheng et al., 2024). A successful jailbreak prompt justifies hours of compute because it transfers across contexts, whereas feature visual-ization must be quick to run for individual latents since each requires individual optimization. For another, approaches that leverage prior knowledge to constrain the search space 
+
+a priori are inapplicable, given the variety of roles played by different latents. Lastly, since latents are specific to each model, surrogate models (Paulus et al., 2025) or simulation techniques (Zhang et al., 2024) cannot be used. We thus fo-cus on prompt methods which are self-contained, relatively inexpensive, and devoid of prior assumptions. 2.2.1. G REEDY COORDINATE GRADIENT 
+
+Greedy Coordinate Gradient (GCG), introduced by Zou et al. (2023) optimizes directly in the discrete input space, by starting with a randomly initialized prompt and iteratively swapping out tokens. A gradient-based estimate technique, first introduced by Ebrahimi et al. (2018), is used to con-strain the token search space. The estimate is computed by determining the gradient with respect to a one-hot repre-sentation of the input prompt. This is possible due to the equivalence between the regular embedding procedure, in which an embedding matrix WE is indexed at the ith posi-tion, where i is the token index, and a matrix multiplication 
+
+eiWE , between the one-hot vector ei and the embedding matrix. Whereas indexing is non-differentiable, the multipli-cation procedure allows the gradient of the one-hot vector to be computed. 
+
+> 1https://neuronpedia.org/api-doc
+
+2Starting from an initial prompt, GCG computes an esti-mate by converting the prompt into a prompt length ×
+
+vocab dim matrix of one-hot vectors and running a back-ward pass to compute the one-hot gradients as described above. Afterwards, a random position is selected for mu-tation, and replacements are randomly sampled from the set of k lowest gradient prompts to generate B candidate prompts. The operative assumption is that the gradient value at a given index is predictive of the loss impact of discretely swapping in the associated token. Lastly, a forward pass is computed to determine the loss for each candidate, and the best performing one is retained. This procedure is repeated until a specified number iterations is reached. 2.2.2. B EAM SEARCH 
+
+An alternative way to get around the problems posed by input discreteness is to conduct a gradient-free tree-search over prompt space. However, given the size of typical vocab-ularies, the search space is prohibitively large. (Sadasivan et al., 2024) propose Beam Search-Based Adversarial Attack (BEAST), which explores prompt space via beam-search, where new candidates are generated by right-appending to-kens sampled from the model’s own predicted sequence probabilities. BEAST assumes a complex input structure and optimization objective which are not relevant for our purposes, but at its core it amounts to a simple beam-search procedure. At each step, k1 prompt sequences are main-tained in a beam. For each sequence, k2 candidates are generated by sampling and appending one token via top-k sampling. The k1 lowest loss candidates are then selected for the next beam. BEAST’s main advantage is its speed, requiring only for-ward passes. It thus avoids the overhead of gradient cal-culation. Additionally, a single forward pass serves dual purposes: evaluating candidate scores and computing logits for the next generation step. 2.2.3. E VOLUTIONARY PROMPT OPTIMIZATION 
+
+Evolutionary Prompt Optimization (EPO) is an algorithm in-troduced by Thompson et al. (2024) specifically for feature visualization in LLMs, which extends GCG by incorpo-rating an evolutionary framework to balance fluency and feature activation. Rather than optimizing for a single ob-jective, EPO maintains a population of prompts distributed along a Pareto frontier: a trade-off curve between fluency (i.e. the mean self-cross-entropy of each candidate) and feature activation strength. Each member of the population optimizes for a different weighting between these objectives, allowing EPO to discover diverse prompts ranging from flu-ent low-activation prompts to disfluent strongly-activating prompts. The combined activation and fluency objective can be ex-pressed as follows: 
+
+Lλ(t) := f (t) − λn
+
+> n−1
+
+X
+
+> i=0
+
+H(LLM (t≤i), t i+1 ), (1) 
+
+t∗ 
+
+> λ
+
+= arg max  
+
+> t
+
+Lλ(t), (2) where f (t) is the target SAE feature activation for prompt t;LLM (t≤i) denotes the language model’s predicted probabil-ity distribution over next tokens given prefix t≤i; H(·, ·) is the cross-entropy operator; λ ≥ 0 is a weighting parameter controlling the trade-off between latent maximization and fluency; n is the number of tokens in prompt t; t≤i repre-sents the prefix of sequence t up to (and including) the i-th token and ti+1 is the (i + 1) -th token in t.The second term computes the average self-cross-entropy of the sequence, which is equivalent to the negative log-likelihood under the language model. Lower cross-entropy corresponds to more ‘fluent’ (i.e. higher likelihood) text. A few expansions of EPO have been proposed. Thompson & Sklar (2024) extend EPO with 3 additional operations: insertions, logit-swaps, deletions; where the former two sam-ple new tokens from the model’s own predicted sequence probabilities. While these extensions were made for an ad-versarial context, they are easily transferable to the feature visualization domain. Shabalin et al. (2024) apply EPO to SAE features obtained from the Gemma 2 2B model, and show that it carries over well, producing moderately interpretable prompts that acti-vate the target latents. Graham et al. (2025) present ContextBench, a benchmark for fluent context modification targeting latent activation and behavior elicitation, and introduce two extensions to EPO. EPO-Assist periodically queries a large language model to generate novel variations of current outputs, which are then incorporated back into the optimization population. EPO-Inpainting identifies tokens with maximum per-token activation, freezes them, and uses a bidirectional diffusion model (LLaDA) to regenerate surrounding tokens, preserv-ing optimization progress while enhancing fluency. The authors curate 102 features from Gemma 2 2B across three taxonomic axes: activation density (how frequently the feature fires), vocabulary diversity (semantic breadth of activating concepts), and locality (whether activation is con-centrated on single tokens or distributed across sequences), and use it to benchmark and validate the developed methods. 3init_seqs initial sequences 
+
+> ...
+> initial group creation
+> Sample k2 tokens
+> per beam sequence
+> Evaluation
+> maintain k1/n_groups best candidates per group
+> Beam Search loop
+> Free slots  Guaranteed
+> slots
+
+Beam-Search  Initialization 
+
+> Gradient Estimate
+> Evaluation
+> N+1 Op is logit_swap?
+> => fill excess slots
+
+Main Loop 
+
+> Generate k1*k2 candidates
+> Selection + Padding
+> 1.
+> 2.
+> 3.
+> 4.
+> 5.
+> 6.
+> 7.
+> 1.
+> 1.
+> 1.
+> 2.
+> 2.
+> 2.
+> 3.
+> 3.
+> 3.
+> 4.
+> 4.
+> 4.
+> 5.
+> 5.
+> 5.
+> 6.
+> 6.
+> 6.
+> 7.
+> 7.
+> 7.
+> repeat for n_iterations
+
+Figure 1. Diagram for ADAPT. 
+
+## 3. ADAPT: Adaptive DynAmic Prompt Tuning 
+
+We describe ADAPT’s three main components: beam-search initialization (3.2), candidate generation via hybrid mutation (3.3), and diversity-preserving evaluation and se-lection (3.4). 
+
+3.1. Overview 
+
+Our proposed method is an extension of GCG which in-corporates several elements that overcome limitations we observed when applied to feature visualization. In this sec-tion, we present the method’s core architecture, leaving validation of key design decisions to section 4.3. An illus-trative diagram for ADAPT is shown in Figure 1, and code is included in the supplementary materials. 
+
+3.2. Initialization 
+
+During experiments with GCG, we found that the choice of initialization strongly affected whether a highly activating prompt was successfully found for a given latent. We also noticed that the optimization trajectory resulting from a given initialization was crucial, with prompts optimized in parallel often achieving drastically different final losses (see subsection 4.3). As such, ADAPT initializes via a beam-search procedure, where several beams are maintained and optimized in par-allel, foregoing the need to initialize with an arbitrary user-defined or randomly generated input sequence. Starting from a number of single-token sequences, candidates are generated by right-appending likely next tokens, after which point the lowest loss candidates are included in the next iter-ation’s beam. The number of beams n groups , the number of initial sequences, the beam-size k1, and the expansion factor k2 are specified by the user. We observed that the structure of SAE-latent maximiza-tion does not lend itself well to sole use of right-append operations, since we take the latent activation magnitude at the last position, which is continuously relocated to that of the right-appended token. As a hypothetical example, for a latent that exclusively fires for the token foo , a right-append-only beam search would converge on the prompt “· · · foo foo foo ”, whereas a better prompt might be obtained by refining the left-hand context instead. As such, the initialization procedure also performs middle-inserts, by randomly selecting a sequence position and sampling from the model’s own predicted distribution at that position. Each beam is independent, which means that our initializa-tion is equivalent to a parallel run of more than one beam search procedure, each with its own initial starting set. The aim is to enable better exploration of the search space, de-creasing the likelihood of stagnating in suboptimal local minima. The initialization returns the best prompts across all beams and iterations, without losing track of beam prove-nance, so that no cross-contamination takes place. Since each iteration increases the sequence length, but the initial-ization returns the best prompts achieved across all itera-tions, we may start the main optimization loop with prompts of differing lengths, requiring appropriate masking. 
+
+3.3. Candidate Generation 
+
+ADAPT optimizes over an adaptively sized population of prompts, initialized to the best sequences returned by the beam-search initialization. At each iteration and for each prompt, a fixed, user-specified number of candidates is gen-erated via one of two mutation mechanisms: GCG-style swaps, using the aforementioned gradient-based estimate, and logit-swaps, as in EPO. We multinomially sample the next iteration’s operation based on a user-specified probabil-ity value, and retain an excess number of candidates in the surviving population if the next operation is a logit-swap, in order to take advantage of the lower computational require-ments of the gradient-free logit-swap mutation. Mutation positions are selected either randomly or by sampling from a distribution over sequence positions that biases towards the selection of later positions. Since the initialization may return underlength prompts, we instead perform middle-4inserts for logit-swap iterations. 
+
+3.4. Evaluation and Culling 
+
+ADAPT maintains a complex slot management system. First, each prompt has a group ID, carried over from the initialization procedure. No cross-group selection takes place, to avoid rapid convergence on minor variations of the same prompt, thereby aiding in exploration. Not only does this serve to minimize the likelihood of getting prema-turely stuck in local minima, but it also provides diverse, independent examples for a single latent. Notwithstanding, the user may define a mergepoint after which the selec-tion mechanism defaults to a greedy global selection that disregards group provenance. Second, two types of slots exist. The first are group-specific “guaranteed” slots, which always contain the group’s best scoring prompt across all iterations. The second set comprises “free” slots, which are allocated via global selection of the highest-improvement candidates, where the improvement is measured as the dif-ference between the achieved loss and the previous group best. This dual structure maintains diversity through the guaranteed slots, while allowing high-performing mutations from any group to claim additional representation through the free slots. With that said, we cap each group at twice its proportional share of free slots. Before the candidate selection phase can occur, each one must be evaluated. Our evaluator begins by running a for-ward pass on the candidates, storing both the latent activa-tions and the logits. Afterwards, we apply a fluency penalty mechanism. We employ a global sigmoid fluency penalty schedule, which gradually ramps up depending on several parameters. The penalty weight at any given time λt is a function of the maximum penalty weight λmax that was applied, the iteration of steepest increase tmid , and the pa-rameter s, which controls the steepness of the increase: 
+
+λt = λmax 
+
+1 + exp( −s · (t − tmid )) .
+
+The user may also choose a fluency threshold. Prompts with a mean cross-entropy score below this threshold do not incur any fluency penalty, while prompts above this threshold get penalized in proportion to how much their mean self-cross-entropy exceeds it. We allow the user to fully customize the fluency penalty strategy by setting the cross-entropy thresh-old to 0 (disabling penalty thresholding), or the steepness s
+
+to 0 (disabling the fluency schedule entirely). We analyze the importance of fluency in Section 4.3.3. 
+
+## 4. Experiments 
+
+Feature visualization for SAE evinces the strengths and weaknesses of existing techniques, which informed our de-sign decisions in ADAPT. With the experiments presented in this section our objectives were twofold: 1. Comparatively evaluating 4 different methods— ADAPT, GCG, BEAST, and EPO—in order to estab-lish the superiority of our method as a whole. 2. Validating our design decisions through tailored indi-vidual experiments. The results illustrate the failure modes of different techniques, putting into question assumptions held in previous work. 
+
+4.1. Setup 
+
+We first describe implementation details and hyperparame-ter settings for all evaluated methods (4.1.1), then our model and feature selection procedure (4.1.2), and finally the eval-uation metrics used for comparison (4.1.3). 4.1.1. I MPLEMENTATION DETAILS 
+
+Hyperparameters were set to sensible defaults according to the authors’ own implementations. Individual optimization runs ran in approximately 80s in optimal GPU conditions, for a single NVIDIA A40 48GB GPU setup. Our implementation of GCG optimizes 6 prompts in parallel, with 32 candidates generated at each iteration. The highest achieved activation is reported, unless stated otherwise. BEAST was run with a beam size of 128 and expansion fac-tor of 32. The beam size is far higher that GCG’s candidate count due to the lower iteration count (10, corresponding to the prompt length), and the absence of backward passes. We took Thompson et al.’s own implementation as the foun-dation of our implementation of EPO. Identical hyperpa-rameters were set to match GCG’s as far as possible, with a few key differences. The fluency penalty was set to range from 0.1 to 15 across the 6 slots. The prompt lengths were bounded between 8 and 15, because of the algorithm’s use of length-altering mutations. Operation probabilities were set as follows: GCG-swap (0.5), logit-swap (0.2), insert (0.15), and delete (0.15). ADAPT was configured with 10 prompts maintained across 3 diversity groups, with 32 candidates generated per itera-tion. For the beam-based initialization phase a beam size of 30 and an expansion factor of 32 were used. During optimization, GCG-swap and logit-swap operations were applied with equal probability (0.5 each). Each group re-tained two guaranteed slots; the remaining 4 or 14 slots (depending on iteration type) were allocated competitively. Cross-entropy regularization was applied with a maximum penalty of 3.0. The GCG estimator sampled from the top 512 tokens ranked by gradient magnitude. Target prompt length was fixed at 10 tokens, and optimization ran for 25 iterations. 5We sought to maintain comparable prompt lengths across all methods, despite EPO’s variable length implementation. Further details are available in Appendix A.1. 4.1.2. M ODEL AND FEATURE SELECTION 
+
+Our experiments were performed on Gemma 2 2B (Gemma Team, 2024), in keeping with previous work (Shabalin et al., 2024). We used the 16k-wide residual stream SAE suite from Gemma Scope (Lieberum et al., 2024). The residual stream represents the cumulative computation accessible to all downstream layers, making it the natural target for understanding what information the model maintains and routes through its depth. A cursory glance at any set of dataset examples for different latents will reveal that they vary widely in their activation patterns and roles. While some activate for specific tokens, others respond to a wide range of tokens that share some functional or semantic role. Some latents are active for longer subsequences, or activate more frequently than others. Accordingly, we designed our latent selection to capture variance along these axes. We curated three latent sets of differing sizes. The larger latent set contains 486 latents sampled from 6 evenly spaced layers (layers 3, 7, 11, 17, 21, and 25) across the model’s 26-layer depth. We began by classifying the first 1000 latents for each layer according to the the items in the taxonomy described by Graham et al.—locality (the narrowness of the range of tokens the latent is active for in the context), diversity (how many different tokens achieve maximal acti-vation across several examples), and density (how frequently the latent activates in the whole dataset). We implemented computational proxies for these items by leveraging infor-mation available via the Neuronpedia API; our procedure is detailed in Appendix A.2. Subsequently, we performed strat-ified sampling, considering the first 1000 latent directions for each SAE, by applying a 3 × 3 × 3 percentile grid based on the density, locality, and diversity scores. We sampled 4 features from each bin, yielding a total of 81 per layer. 4.1.3. E VALUATION 
+
+Despite EPO’s and ADAPT’s use of fluency penalties, we consider the raw activation values in our metrics, relegating our discussion of fluency to section 4.3. Since activation magnitudes differ from latent to latent, and also tend to vary across layers—typically, later layers contain latents with much higher Maximally Activating Examples (MAEs), as seen in Figure 2—our metrics compare the optimized prompt’s activation with the corresponding MAEs in two ways. The first metric is the activation ratio : the ratio be-tween the optimized prompt and the top MAE. The second metric is the activation rank , which corresponds to the posi-tion the optimized prompt would occupy if ranked among the top 15 de-duplicated MAEs. A prompt with a rank of 1 outperforms all MAEs and, consequently, its activation ratio is greater than 1, while a prompt with rank 16 is worse than all 15 MAEs. 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 
+
+> Layer
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> 350
+> Max Activation
+
+Figure 2. Distribution of top dataset activations for latents 0–49 (by Neuronpedia index) across all layers of Gemma 2 2B. 
+
+4.2. Overall Performance 5 10 15 20 25 
+
+> Layer
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> Mean Activation Ratio
+> GCG
+> BEAST
+> EPO
+> ADAPT
+
+Figure 3. Mean activation ratio (the optimized prompt’s activation divided by the maximally activating dataset example) per layer, for all 4 methods under study. 
+
+GCG BEAST EPO ADAPT GCG – 56.4% 63.2% 29.6% BEAST 43.6% – 50.2% 12.8% EPO 36.8% 49.8% – 21.4% ADAPT 70.4% 84.0% 78.6% –
+
+Table 1. Row beats column comparison for all 4 methods, consid-ering all 486 latents. 
+
+Fig. 3 shows the mean activation ratio per considered layer and for all methods, showing that ADAPT outperforms or is on par with every other method on all layers. Among the previous methods, GCG is dominant for the first layers, while BEAST edges it out on the last layers, indicating a degrading performance profile for GCG toward later layers. Furthermore, the failure modes of GCG and BEAST appear to be complementary, which is corroborated by the fact that ADAPT, which incorporates both a beam-search procedure 61 5 10 16                                                                            
+
+> GCG Rank
+> 1
+> 5
+> 10
+> 16
+> BEAST Rank
+> 116 12 75732353522116
+> 17 321212
+> 10 41211
+> 515111
+> 11 19111
+> 11 711111
+> 11 2311
+> 611 1
+> 81111 1
+> 9115 1
+> 918
+> 221
+> 115
+> 3116
+> 1211151
+> 32 111125
+
+GCG vs BEAST 1 5 10 16                                                               
+
+> GCG Rank
+> 1
+> 5
+> 10
+> 16
+> ADAPT Rank
+> 225 20 75933611 12 8332221
+> 9212122241221
+> 5311111
+> 215111
+> 3721
+> 152
+> 1212
+> 117
+> 1611
+> 115
+> 1131
+> 11
+> 3
+> 15
+> 15
+> 2113
+
+GCG vs ADAPT 
+
+Figure 4. Comparative ranking matrices for GCG-ADAPT and GCG-BEAST comparisons. 3 7 11 17 21 25 
+
+> Layer
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Share (%)
+
+GCG vs BEAST 3 7 11 17 21 25  
+
+> Layer
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Share (%)
+
+GCG vs ADAPT 
+
+Figure 5. Quadrant success per layer for GCG-BEAST and GCG-ADAPT comparisons. 
+
+and gradient-based mutations, achieves a more constant performance profile throughout the layers. The comparison in Table 1 shows that ADAPT achieves higher activation than GCG on 70.4% of features (Wilcoxon signed-rank p < 10 −28 ), further corroborating the improved performance profile. EPO underperforms throughout, despite the complexity of its design. This is to be expected to a certain extent, since EPO employs a global selection mechanism which rapidly converges on minor variations of the same prompt spanning the pareto frontier between activation and fluency, whereas our implementation of GCG devotes the computational bud-get to optimizing 6 prompts independently. In other words, EPO can be seen as an analogue to a single-slot GCG op-timization procedure which devotes additional resources to exploring fluent variations which may not vary signif-icantly among themselves, which we are then comparing to the maximum GCG activation across 6 independently-optimized prompts. While this does not undermine the overall approach, it is underpinned by an assumption about the importance of fluency, which we separately revisit in a later section. Since it is the only design element EPO exclusively contains, we forego further analysis of EPO in this section. Figure 4 shows two activation rank confusion matrices for the GCG-BEAST and GCG-ADAPT comparisons. Arbitrar-ily considering that a rank greater than 5 corresponds to a successful optimization, the green and red quadrants indi-cate joint success and failure, respectively, while the other quadrants indicate asymmetric success. The stacked bar charts in Figure 5 indicate the per-layer share of successful vs. unsuccessful features. The GCG-BEAST comparison further indicates that their failure modes are complemen-tary, with a significant share of GCG-only successes to-ward earlier layers. The GCG-ADAPT comparison shows that the share of GCG-only successes is marginal, while ADAPT-only successes are substantial, further establishing the superiority of the method. 
+
+4.3. Validation Experiments 
+
+The overall performance results indicate that the domain is challenging for existing methods. While the target loss func-tion is continuous, a successful optimization run should ide-ally find the pattern encoded by the latent, which, given the SAE reconstruction objective, is expected to be discrete and monosemantic. For particularly local and low-density fea-tures, this pattern might consist of a single vocabulary token, lending a ”needle-in-a-haystack” quality to the task. Addi-tionally, latents are, by definition, non-orthogonal, which means that there can be interference between them, espe-cially for prompts eliciting lower activation magnitudes. In this section, we analyze the effectiveness of existing tech-niques at finding the key feature patterns, as well as the relationship between our metrics and human interpretabil-ity. In order to do so, we curate two smaller latent sets, each with 50 latents sampled from the larger dataset, so as to fa-cilitate targeted experiments. The first is a “balanced” latent set, where we sample features from every layer, seeking to maintain a representative difficulty profile. The second is a “hardness-weighted” latent set, for which we sample 50 features from the last 3 layers, which contain harder latents to optimize (for GCG, specifically), and skew our selection towards more difficult latents. In order to assess hardness, we determine the inverse of the average activation ratio obtained by GCG for every iteration, averaged across all 6 prompts. The average activation ratio is equivalent to the ratio between the area under the trajec-tory curve and the area below y = amax , amax being the maximal dataset activation. Intuitively, an easy latent is one for which GCG rapidly converges on a solution that is equal to or greater than amax across all 6 slots, in which case the AUC ratio will be 1 or lower. If all trajectories plateau below the dataset reference maximum, then the hardness will be far greater than 1. The hardness Hl for a latent l is given by: 
+
+Hl = 1
+
+S · amax · T
+
+> S
+
+X
+
+> s=1
+> T
+
+X
+
+> t=1
+
+max( L(t) 
+
+> s
+
+, 0) 
+
+!−1
+
+,
+
+7where S is the number of prompt slots, T is the number of iterations, and L(t) 
+
+> s
+
+is the loss (negative activation) for slot 
+
+s at iteration t.We divided latents into 5 hardness quintiles based on per-centile boundaries, and sampled features from each quintile according to two strategies. The uniform sample drew 10 features from each quintile (50 total), while the hardness-weighted sample emphasized harder features with counts of (5, 8, 10, 12, 15) from the easiest to the hardest quintiles, respectively (50 total). 4.3.1. T HE GCG ESTIMATE ’S SIGNAL -TO -NOISE RATIO 
+
+The gradient-based estimate used in GCG (henceforth, the ‘GCG estimate’) is predicated on the assumption that the loss impact of discretely including each token is well-approximated by its corresponding gradient computed for the one-hot encoding. If the GCG estimate were a perfect approximation, we would expect low-ranked tokens—the tokens with the most negative gradient—to lead to the great-est loss decreases. Conversely, we would also expect the tokens resulting in the largest loss decreases to have the lowest gradients. In order to assess these two claims, we perform the follow-ing experiment on the balanced latent set. For each latent, we begin by determining the two slots which achieved the highest and lowest final activation, respectively. For each slot, we obtain the cached prompt trajectory from the main run. Afterwards, we generate 128 new candidate mutations in two ways. The first 64 are generated via the same GCG estimate procedure as in the original GCG, with a top-k of 1024 (doubling the candidate count and top-k). The last 64 are generated by instead performing top-p sampling from the model’s own probabilities, with p = 0 .95 . We keep track of all the generated candidates which constitute im-provements over the cached prompt’s activation. We also fix the trajectory to ensure comparable results between the two candidate generation methods. 0 250 500 750 1000 
+
+> Top-K Rank
+> 0
+> 200
+> 400
+> 600
+> 800
+> 1000
+> Improvement Count
+> Uniform
+
+Figure 6. Number of improve-ments per estimate rank bin. 0 250 500 750 1000 
+
+> Top-K Rank
+> 0
+> 250
+> 500
+> 750
+> 1000
+> 1250
+> Improvement Mass
+
+Figure 7. Improvement mass per estimate rank bin. 
+
+Figure 6 shows that the gradient rank distribution for im-provements obtained via GCG is quite close to uniform, indicating that lower gradient values do not yield remark-ably more improvements. Figure 7, on the other hand, shows that the distribution of the sum of improvements is more uneven, with the lower gradient bins containing a dispropor-tionate share of the absolute improvements. This suggests that, while the GCG estimate is noisy, and a large share of the sampled candidates are only marginally better than would otherwise be expected, it is able to occasionally yield disproportionately good candidates among its highest ranks. 0 100k 200k 
+
+> Gradient Rank
+> 0
+> 500
+> 1000
+> 1500
+> 2000
+> 2500
+> Improvement Count
+
+Figure 8. GCG estimate rank distribution for improvement candidates obtained via the logit-swap procedure. 0 100k 200k 
+
+> Gradient Rank
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> Improvement Count
+
+Figure 9. GCG-Estimate rank distribution for improvement candidates obtained via the ran-dom sampling procedure. 
+
+Figure 8 shows the gradient rank distribution for candidates selected via gradient-free logit sampling. While the low-est gradient bins capture a disproportionate share of the improvements, the distribution is close to uniform for the middle bins, indicating that there are many improvements which the GCG estimate fails to attribute an appropriate gradient to. Figure 9 further illustrates this, showing the dis-tribution of the gradient ranks of tokens sampled uniformly from the entire vocabulary, with lower-gradient ranges con-taining more improvements. The bimodal distribution for the logit-swap candidates nonetheless suggests an interest-ing relationship between predicted probabilities and the biases of the GCG estimate. Specifically, the GCG estimate appears to be biased towards certain commonly occurring tokens more than would be expected by chance, while sys-tematically undervaluing certain tokens, even when they bring about loss decreases. Inspecting the sampled tokens from the last bins, we found that they mostly correspond to punctuation and formatting tokens. 4.3.2. C ONSISTENCY OF GCG While the experiments in Subsection 4.3.1 establish the poor signal-to-noise ratio of GCG, with many good candidates being underestimated, and many highly estimated candi-dates underperforming, questions remain as to how reliably GCG can converge on high activation regions of prompt space. For this reason, we now analyze how sensitive GCG is to initialization and trajectory. For the benchmark in Section 4.2, GCG was configured to optimize six prompts in parallel. We observed a good deal of inter-slot variability in final activation. In this subsection, we consider the impact of initialization on the performance of GCG, by answering two questions: 8• Do some specific initial prompts reliably predict higher final activations? • Does GCG consistently attain similar activations across different runs initialized with the same prompt? To answer these questions, we conduct a simple experiment. We begin by determining which of the 6 initial prompts in the main benchmark achieved the both the highest and low-est average final activations. Since the highest-performing prompt was obtained through autoregressive generation, and the lowest-performing prompt consists of randomly sampled tokens from the vocabulary, we call them the “autoregres-sive” and “random” prompts, respectively. Afterwards, we conduct a benchmark on the hardness-weighted latent set, where 3 of the 6 initial slots are initialized with the autore-gressive prompt, and the remaining 3 are initialized with the random prompt. 0.0 0.2 0.4 0.6 0.8 1.0  
+
+> Normalized Range (max min)/max_act
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> Count
+> Median: 0.20
+
+Figure 10. Distribution of acti-vation variability across runs from identical initializations, normalized by the MAE. 0.00 0.25 0.50 0.75 1.00 1.25 
+
+> Random Init (max act / max_act)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> Autoregressive Init (max act / max_act)
+> Auto wins: 62%
+
+Figure 11. Comparison of best activations achieved from au-toregressive versus random ini-tializations. Points above diag-onal indicate autoregressive ad-vantage. 
+
+Figure 10 shows the intra-prompt distribution of final activa-tion ranges, normalized by the maximal dataset activation. It is clear that for both prompts there is significant variability, meaning that the same initialization can yield very differ-ent results depending on the trajectory, which is selected stochastically. This indicates that GCG is prone to falling in local minima depending on the specific trajectory through prompt space. Figure 11 shows the comparison between the performance for both slots across all slots, with the mean and max nor-malized activations, respectively, in each plot. It illustrates the inter-prompt variability by establishing that the autore-gressive prompt slots consistently obtain higher activations than the random prompt. Taken together, these results establish that GCG’s perfor-mance is heavily dependent on location in prompt space. In other words, for some starting locations, GCG is signif-icantly more likely to converge on high-activating token patterns, although the greedy candidate selection often pro-duces trajectories that evolve towards local minima, high-lighting the importance of open-ended exploration. Figure 10 shows the distribution of activation ranges across runs from identical initializations, normalized by maximal dataset activation. The median variability of 0.20 indicates that runs from the same starting point can diverge substan-tially, suggesting GCG is prone to converging on different local minima depending on the stochastically-selected tra-jectory through prompt space. Figure 11 compares best activations achieved from autore-gressive versus random initializations. Autoregressive ini-tialization outperforms random initialization in 62% of configurations, demonstrating that the starting location in prompt space meaningfully influences optimization out-comes, but does not fully predict them. Taken together, these results establish that GCG’s perfor-mance depends heavily on both initialization and trajectory. While autoregressive initialization provides a consistent ad-vantage, the substantial intra-prompt variability highlights the importance of maintaining diverse exploration to avoid local minima. 4.3.3. T HE ROLE OF FLUENCY 
+
+GCG usually produces ‘gibberish’ prompts, which contain incoherent token sequences mixing languages, scripts, punc-tuation, and subword fragments. This is due to the lack of any constraint on possible token sequences. In the adversar-ial domain, fluency is usually enforced to bypass perplexity-based filters and to obtain in-distribution prompts. However, it is not immediately apparent that the same desiderata ap-ply to feature visualization. For one, perplexity filters have no analogue in this domain; for another, adversarial behav-ioral objectives admit multiple sufficient mechanisms (e.g. simultaneously suppressing refusal directions and hijack-ing attention (Arditi et al., 2024)), whereas targeted latent activation objectives specify the intervention site directly, achieving mechanistic specificity by construction rather than requiring auxiliary constraints. Given the attributes of the feature visualization domain, two putative roles for fluency are relevant: • Regularization: preventing optimization from getting stuck in local minima, resulting in the return of low activation prompts. • Interpretability: preventing high activation solutions that are uninterpretable or unrelated to the feature pat-tern (Thompson et al., 2024). The first hypothesis suggests that a fluency penalty may re-shape the loss landscape, smoothing over narrow valleys and 90   
+
+> (baseline)
+> 0.3 1.0 3.0 9.0
+> Cross-Entropy Penalty
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> Max Activation / Dataset Max
+
+Figure 12. Activation ratio distribution for GCG runs with varying fluency penalty weights. 
+
+sharp local minima that trap optimization in gibberish re-gions. To test this, we rerun GCG on the hardness-weighted latent set with an added self-cross-entropy penalty: 
+
+L(t) = −f (t) + λn
+
+n−1X
+
+i=0 
+
+H(LLM (t≤i), t i+1 ),
+
+where f (t) is the target latent activation, H(·, ·) is the cross-entropy, and λ ∈ { 0.3, 1.0, 3.0, 9.0} controls the fluency-activation tradeoff. Figure 12 shows that higher values of λ hinder optimization across the whole latent set, thereby undermining the hypoth-esis. Notwithstanding, we highlight that this experiment does not directly bear on the fluency configuration used in the ADAPT benchmark, since higher penalties are only applied in later iterations, leaving the initialization and early optimization periods relatively unhindered by fluency. To assess whether fluency penalties improve interpretability and to validate ADAPT’s design, we conducted a manual evaluation comparing three conditions: GCG, GCG with a fluency penalty ( λ = 1 .0), and ADAPT. Three raters (in-cluding one author) evaluated prompts on 60 latents: the 50-latent hardness-weighted set plus 10 additional latents with activation ratio greater than 1.0, included to better probe whether high-activation prompts recover interpretable patterns. For each latent, raters viewed the latent’s expla-nation, maximally activating dataset examples, and three prompts (one per condition, order randomized). Since the patterns captured by certain latents can be hard to infer, con-sisting of upweighted predictions which are not necessarily borne out in the dataset examples, structural properties of the text, or otherwise unintuitive patterns, the explanations were generated by the authors, although a set of maximally activating examples was provided 2. Prompts were rated on a 1–5 scale: (1) no discernible pattern, (2) semantic ball-park but not discernible, (3) pattern understandable but not 
+
+> 2
+
+We have included the annotation file in the supplementary materials. 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4                 
+
+> Activation Ratio
+> 1
+> 2
+> 3
+> 4
+> 5
+> Interpretability Rating
+> 10
+> 1
+> 1
+> 11
+> 6
+> 3
+> 4
+> 4
+> 4
+> 1
+> 7
+> 5
+> 1
+> 1
+> 3
+> 13
+> 2
+> 3
+> 22
+> 2
+> 3
+> 3
+> 6
+> 40
+> 1
+> 1
+> 22
+> GCG (Default)
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4
+> Activation Ratio
+> 9
+> 6
+> 2
+> 1
+> 11
+> 3
+> 2
+> 2
+> 6
+> 2
+> 3
+> 3
+> 3
+> 7
+> 4
+> 1
+> 1
+> 9
+> 2
+> 3
+> 4
+> 6
+> 21
+> 1
+> 1
+> 3
+> 5
+> 35
+> 1
+> 1
+> 2
+> 20
+> GCG (Fluency)
+> 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00
+> Activation Ratio
+> 2
+> 1
+> 1
+> 1
+> 1
+> 2
+> 1
+> 3
+> 5
+> 12
+> 3
+> 1
+> 4
+> 5
+> 18
+> 2
+> 2
+> 3
+> 3
+> 71
+> 1
+> 14
+> 1
+> 1
+> 10 63
+> ADAPT
+
+Figure 13. Rank/rating co-occurrence matrix for GCG, GCG with a λ = 1 .0 fluency penalty, and ADAPT, respectively. 1 2 3 4 5        
+
+> Rating
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 120
+> 140
+> Count
+> GCG (Default)
+> 12345
+> Rating
+> GCG (Fluency)
+> 12345
+> Rating
+> ADAPT
+
+Figure 14. Rating distribution for GCG, GCG with a λ = 1 .0
+
+fluency penalty, and ADAPT, respectively. 
+
+evident from prompt alone, (4) pattern present but differs from examples (e.g., different language), (5) pattern obvious and matches examples. We computed Krippendorff’s α for inter-rater agreement, obtaining α = 0 .650 .Figure 13 shows that, for GCG, higher activation reliably correlates (Pearson r = 0 .645 , p < 10 −5) with more in-terpretable prompts, despite the lack of fluency constraints. Indeed, high activation (ratio > 1.0) prompts seem over-whelmingly interpretable, whereas the correlation is less clear for lower activation regimes. The λ = 1 .0 run shows similar patterns, with no remarkable improvement in inter-pretability. Indeed, as Figure 14 shows, the interpretability distribution is remarkably similar between the two methods, with the penalty appearing to slightly compress the rating distribution rather than shift it toward higher interpretability. Our analysis also establishes that ADAPT is significantly better at generating interpretable prompts. Figure 15 shows the mean rating for each of the methods, establishing the superiority of ADAPT (Wilcoxon Statistic of 4459 .5, p < GCG (Default) GCG (Fluency) ADAPT  
+
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Mean Rating  3.86 3.78
+> 4.44
+
+Figure 15. Quality rating for each method averaged over all latents and annotators. 
+
+10 10 −8), while showing that GCG with λ = 1 .0 does not produce significant changes in human-rated interpretability. Lastly, we note that because the activation ratio is a mere proxy for human interpretability, these results provide the most compelling evidence in support of our design decisions in ADAPT. 
+
+## 5. Extensions 
+
+ADAPT naturally extends to objectives involving multiple latents by summing their activations. We conducted a brief experiment with dual latent optimization to illustrate this extension potential. Following Shabalin et al. (2024), we optimize dual-latent objectives using an L0.1 norm, which encourages balanced activation of both latents rather than maximizing one at the expense of the other: 
+
+L(t) = 
+
+fi(t)
+
+fj (t)
+
+
+
+> 0.1
+
+,
+
+where fi(t) and fj (t) are the activation magnitudes of the two target latents for prompt t.We found not all pairs of latents are amenable to optimiza-tion, since their associated patterns can be mutually ex-clusive. For instance, if both are high in locality (firing for narrow subsequences), it might not be possible to ob-tain high simultaneous activations on the same position. Notwithstanding, we achieved success in jointly optimizing pairs where one latent was local and the other fired for wide contexts. Table 2 shows combinations of 3 different layer 25 residual stream latents, and their respective optimized prompts. Latent 823 is a low locality latent which fires for contexts related to the Marvel Cinematic Universe. La-tent 2738 is highly local and activates for terms like “bit” and “little”. Latent 1264 is local and fires for the token “syn” and spelling variants. Lastly, latent 154 is low locality and is active for text describing magnets and their proper-ties. ADAPT is able to find interesting combinations of the patterns encoded by each latent which are interpretable, most notably the last example where the subsequence “Stark magnet” concisely fits the MCU (Tony Stark) and magnet patterns. The results presented here suggest that extending ADAPT to visualization of circuits or other complex objectives would prove fruitful, though we leave this to future work. 
+
+## 6. Conclusions 
+
+We presented ADAPT, a hybrid prompt optimization method for LLM feature visualization. Through evaluation on SAE latents from Gemma 2 2B, we identified key failure modes of existing methods: GCG’s gradient-based esti-mates exhibit poor signal-to-noise ratios and high sensitivity to initialization, while gradient-free beam search provides                    
+
+> Latent A Latent B Optimized Prompt 823 (MCU) 2738 (bit) nearby Avenger/avenulla Rd Avengers is bits
+> 1264 (syn) 154 (magnets) ul magnetism currently (determinediuminium, syn
+> 823 (MCU) 154 (magnets) times aanki Stark magnet first unveiled as the
+> Table 2. Optimized prompts for dual-latent objectives. All latents from layer 25. Prompts successfully activate both target latents, with local features (2738, 1264) appearing as specific tokens and low-locality features (823, 154) reflected in semantic context.
+
+complementary exploration capabilities but lacks the fine-grained refinement needed for convergence. ADAPT addresses these limitations through three princi-pal design choices: (1) beam-search initialization to start optimization in favorable regions of prompt space, (2) adap-tive mixing of gradient-guided and logit-based mutations to balance exploitation with exploration, and (3) a diversity-preserving slot management system that maintains indepen-dent optimization trajectories to avoid premature conver-gence to local minima. Our experiments demonstrate that ADAPT outperforms GCG on 70.4% of features ( p < 10 −28 ) and achieves con-sistently strong performance across all model layers, unlike prior methods whose effectiveness varies with depth. Im-portantly, our manual evaluation reveals that high activa-tion correlates strongly with human-rated interpretability (r = 0 .645 ), and that ADAPT produces significantly more interpretable prompts than baselines, providing direct ev-idence that optimizing for activation recovers meaningful feature patterns rather than exploiting artifacts. These results establish that feature visualization for LLMs is tractable, but requires design assumptions tailored to the domain’s unique challenges: discrete optimization over a vast token space, interference between non-orthogonal la-tent directions, and a loss landscape prone to local minima. We hope ADAPT provides a useful tool for interpretability research, and welcome extensions for visualization of steer-ing vectors, circuit components, and other latent directions where exhaustive dataset search is prohibitive. 
+
+Limitations and Future Work. Our evaluation focused on residual stream SAEs from a single model family. Ex-tending ADAPT to larger models and more diverse latent extraction methods remains as possible future work. Ad-ditionally, while our metrics provide rigorous comparison, integration with automated interpretability pipelines that correlate with human judgment (Paulo & Belrose, 2025) 11 would enable larger-scale evaluation. 
+
+## References 
+
+Arditi, A., Balcells Obeso, O., Syed, A., Paleka, D., Rimsky, N., Gurnee, W., and Nanda, N. Refusal in language models is mediated by a single direction. In Proceedings of the 38th Conference on Neural Information Processing Systems , 2024. Bills, S., Cammarata, N., Mossing, D., Tillman, H., Gao, L., Goh, G., Sutskever, I., Leike, J., Wu, J., and Saunders, W. Language models can explain neurons in language models. https: //openaipublic.blob.core.windows.net/ neuron-explainer/paper/index.html ,2023. Bricken, T., Templeton, A., Batson, J., Chen, B., Jermyn, A., Conerly, T., Turner, N., Anil, C., Denison, C., Askell, A., Lasenby, R., Wu, Y., Kravec, S., Schiefer, N., Maxwell, T., Joseph, N., Hatfield-Dodds, Z., Tamkin, A., Nguyen, K., McLean, B., Burke, J. E., Hume, T., Carter, S., Henighan, T., and Olah, C. Towards monosemanticity: Decomposing language models with dictionary learning. 
+
+Transformer Circuits Thread , 2023. URL https: //transformer-circuits.pub/2023/ monosemantic-features/index.html .Cheng, J., Liu, X., Zheng, K., Ke, P., Wang, H., Dong, Y., Tang, J., and Huang, M. Black-box prompt optimization: Aligning large language models without model training. In Proceedings of the 62nd Annual Meeting of the Asso-ciation for Computational Linguistics , pp. 3201–3219. Association for Computational Linguistics, 2024. Ebrahimi, J., Rao, A., Lowd, D., and Dou, D. HotFlip: White-box adversarial examples for text classification. In 
+
+Proceedings of the 56th Annual Meeting of the Associ-ation for Computational Linguistics (Volume 2: Short Papers) , pp. 31–36. Association for Computational Lin-guistics, 2018. Elhage, N., Hume, T., Olsson, C., Schiefer, N., Henighan, T., Kravec, S., Hatfield-Dodds, Z., Lasenby, R., Drain, D., Chen, C., Grosse, R., McCandlish, S., Kaplan, J., Amodei, D., Wattenberg, M., and Olah, C. Toy models of superposition. Transformer Circuits Thread ,2022. URL https://transformer-circuits. pub/2022/toy_model/index.html .Gemma Team. Gemma 2: Improving open language models at a practical size. arXiv preprint arXiv:2408.00118 ,2024. Graham, R., Stevinson, E., Richter, L., Chia, A., Miller, J., and Bloom, J. I. ContextBench: Modifying con-texts for targeted latent activation. arXiv preprint arXiv:2506.15735 , 2025. Lieberum, T., Rajamanoharan, S., Conmy, A., Smith, L., Sonnerat, N., Varma, V., Kramar, J., Dragan, A., Shah, R., and Nanda, N. Gemma scope: Open sparse autoencoders everywhere all at once on Gemma 2. In Proceedings of the 7th BlackboxNLP Workshop: Analyzing and Interpreting Neural Networks for NLP , pp. 278–300. Association for Computational Linguistics, 2024. M ´eloux, M., Dirupo, G., Portet, F., and Peyrard, M. The dead salmons of AI interpretability: The need for a statistical inference perspective. arXiv preprint arXiv:2502.08741 , 2025. Olah, C., Mordvintsev, A., and Schubert, L. Feature visual-ization. Distill , 2(11), 2017. doi: 10.23915/distill.00007. Paulo, G. and Belrose, N. Evaluating SAE interpretability without explanations. arXiv preprint arXiv:2507.08473 ,2025. Paulo, G., Mallen, A., Juang, C., and Belrose, N. Automati-cally interpreting millions of features in large language models. arXiv preprint arXiv:2410.13928 , 2024. Paulus, A., Zharmagambetov, A., Guo, C., Amos, B., and Tian, Y. AdvPrompter: Fast adaptive adversarial prompt-ing for LLMs. In Proceedings of the 42nd International Conference on Machine Learning , 2025. Ramnath, K., Zhou, K., Guan, S., Mishra, S. S., Qi, X., Shen, Z., Wang, S., Woo, S., Jeoung, S., Wang, Y., Wang, H., Ding, H., Lu, Y., Xu, Z., Zhou, Y., Srinivasan, B., Yan, Q., Chen, Y., Ding, H., Xu, P., and Cheong, L. L. A systematic survey of automatic prompt optimization techniques. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pp. 33078–33110. Association for Computational Linguistics, 2025. Sadasivan, V. S., Saha, S., Sriramanan, G., Kattakinda, P., Chegini, A., and Feizi, S. Fast adversarial attacks on language models in one GPU minute. arXiv preprint arXiv:2402.15570 , 2024. Shabalin, S., Tan, D., Kharlapenko, D., Nanda, N., and Conmy, A. Evolutionary prompt optimization for SAE feature visualization. AI Alignment Fo-rum , 2024. URL https://www.alignmentforum. org/posts/hMBTaFvAzdMNnj29c .Sharkey, L., Braun, D., and Millidge, B. Taking features out of superposition with sparse autoencoders. AI Alignment Forum , 2022. 12 Templeton, A., Conerly, T., Marcus, J., Lindsey, J., Bricken, T., Chen, B., Pearce, A., Citro, C., Ameisen, E., Jones, A., Cunningham, H., Turner, N. L., McDougall, C., MacDiarmid, M., Freeman, C. D., Sumers, T. R., Rees, E., Batson, J., Jermyn, A., Carter, S., Olah, C., and Henighan, T. Scaling monosemanticity: Ex-tracting interpretable features from Claude 3 sonnet. 
+
+Transformer Circuits Thread , 2024. URL https: //transformer-circuits.pub/2024/ scaling-monosemanticity/index.html .Thompson, T. B. and Sklar, M. FLRT: Fluent student-teacher redteaming. arXiv preprint arXiv:2407.17447 ,2024. Thompson, T. B., Straznickas, Z., and Sklar, M. Flu-ent dreaming for language models. arXiv preprint arXiv:2402.01702 , 2024. Wang, X., Li, C., Wang, Z., Bai, F., Luo, H., Zhang, J., Jojic, N., Xing, E. P., and Hu, Z. PromptAgent: Strategic plan-ning with language models enables expert-level prompt optimization. In Proceedings of the 12th International Conference on Learning Representations , 2024. Yang, C., Wang, X., Lu, Y., Liu, H., Le, Q. V., Zhou, D., and Chen, X. Large language models as optimizers. In Pro-ceedings of the 12th International Conference on Learn-ing Representations , 2024. Zhang, H., He, J., Righter, R., and Zheng, Z. Lan-guage model prompt selection via simulation optimiza-tion. arXiv preprint arXiv:2404.08164 , 2024. Zou, A., Wang, Z., Carlini, N., Nasr, M., Kolter, J. Z., and Fredrikson, M. Universal and transferable adversar-ial attacks on aligned language models. arXiv preprint arXiv:2307.15043 , 2023. 
+
+## A. Appendix 
+
+A.1. Implementation Details 
+
+Table 3 provides detailed hyperparameter settings for all methods evaluated in this work.                                                                       
+
+> Parameter GCG BEAST EPO ADAPT
+> General
+> Iterations 50 10 50 25 Prompt length 10 10 8–15 10 Parallel prompts 6–610
+> Candidate Generation
+> Candidates/iter 32 –32 32 Top-k(gradient) 512 –512 512 Beam size –128 –30 Expansion factor –32 –32
+> Operation Probabilities
+> GCG-swap 1.0 –0.50 0.50 Logit-swap ––0.20 0.50 Insert ––0.15 –Delete ––0.15 –
+> Fluency
+> λmin ––0.1 0.0
+> λmax ––15.0 3.0
+> ADAPT-specific
+> Diversity groups –––3Guaranteed slots/group –––2Init sequences –––5000
+> Table 3. Hyperparameter settings for all evaluated methods.
+
+Algorithm 1 presents pseudocode for ADAPT. 
+
+A.2. Latent Selection Procedure 
+
+We computed proxies for the three taxonomic axes described by Graham et al. using data available via the Neuronpedia API. 
+
+Density. A latent’s density corresponds to the frequency with which it activates. We take the fraction of tokens for which the latent is active, which is directly provided by the Neuronpedia API as frac nonzero .
+
+Locality. Locality describes how concentrated a latent’s activation is within a sequence. A highly local latent exhibits high activation for a single token with negligible activation for surrounding tokens, whereas a low-locality latent may activate across entire phrases. Given a set of N maximally activating examples for a latent, let a(j) = ( a(j)1 , . . . , a (j) 
+
+> Lj
+
+)
+
+denote the activation values across all Lj tokens in example 
+
+j. We define locality as: Locality = 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+max i a(j)
+
+> i
+
+P 
+
+> i
+
+a(j)
+
+> i
+
+13 Algorithm 1 ADAPT optimization procedure 
+
+Require: Target latent f , model M , SAE S, iterations T ,prompts K, groups G
+
+Ensure: Optimized prompt t∗ 
+
+> 1:
+
+P ← BEAM SEARCH INIT (f, M, S, G ) {K prompts across G groups } 
+
+> 2:
+
+for i = 1 to T do  
+
+> 3:
+
+Sample operation op ∼ Bernoulli (pgcg ) 
+
+> 4:
+
+if op = GCG-S WAP then  
+
+> 5:
+
+Compute gradient estimate ∇ via one-hot embed-ding  
+
+> 6:
+
+C ← GRADIENT MUTATE (P, ∇) {Low-gradient tokens } 
+
+> 7:
+
+else  
+
+> 8:
+
+C ← LOGIT MUTATE (P) {Model’s predictions } 
+
+> 9:
+
+end if  
+
+> 10:
+
+for each candidate c ∈ C do  
+
+> 11:
+
+ac ← f (c); λi ← λmax /(1 + e−s(i−tmid )) 
+
+> 12:
+
+score c ← ac − λi · max(0 , CE (c) − τ ) 
+
+> 13:
+
+end for  
+
+> 14:
+
+for g = 1 to G do  
+
+> 15:
+
+Keep top candidates from group g in guaranteed slots  
+
+> 16:
+
+end for  
+
+> 17:
+
+Fill remaining slots globally by score (with per-group cap)  
+
+> 18:
+
+P ← selected candidates  
+
+> 19:
+
+end for  
+
+> 20:
+
+return arg max t∈P f (t)
+
+For a highly local latent, this ratio approaches 1, as the maximally activating token captures most of the activation mass. 
+
+Diversity. Diversity indicates the variety of tokens a latent responds to. A low-diversity latent fires for a specific token, while a high-diversity latent activates for many different tokens sharing a semantic or functional role. Given the top 
+
+N maximally activating examples, let T = {t1, . . . , t N }
+
+be the set of tokens achieving maximal activation in each example. We define diversity as: Diversity = |lowercase (T )|
+
+N
+
+where lowercase (T ) applies lowercasing to all tokens before computing the unique set size. This normalization accounts for capitalization variants of the same underlying token. 
+
+A.3. Human Evaluation Protocol 
+
+Annotators were presented with the following information for each latent: (1) an explanation of what the latent detects, (2) maximally activating dataset examples with highlighted tokens showing activation strength, and (3) three generated prompts from different methods in randomized order, with the 3 most likely token completions in square brackets to aid in rating ‘Say X’ features. Annotators could also access interactive exploration via Neuronpedia. Figure 16 shows a single latent’s annotation interface. Prompts were rated on the following 1–5 scale: 1. No discernible pattern : The prompt appears random or unrelated to the latent’s function. 2. Semantic ballpark : The prompt is in the general se-mantic area of the reference examples but is otherwise uninterpretable. 3. Pattern understandable : The pattern the prompt is targeting is understandable given context, but not dis-cernible from the optimized prompt alone. 4. Pattern present but different : The pattern is clearly present but differs in some way from reference exam-ples (e.g., different language, domain, or format). 5. Pattern obvious and matches : The pattern is imme-diately obvious and closely matches the maximally activating dataset examples. 14 Figure 16. Annotation task example for the ‘magnet’ latent. 
+
+15
