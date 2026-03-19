@@ -6,58 +6,54 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-10 ~ 2026-03-19
-- 运行时间：2026-03-19 11:56:59 UTC
+- 最新运行日期：2026-03-19
+- 运行时间：2026-03-19 19:44:05 UTC
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-深度复盘双层线性规划重构的验证难题，并横扫音频大模型推理及指令层级优化等 12 篇前沿成果。
-核心结论揭示了双层规划事后验证的计算硬核挑战，同时 HIPO 框架展示了利用约束强化学习构建指令层级的有效性。
-建议理论研究者关注复杂优化问题的验证边界，应用开发者可尝试将提示工程引入编程教育的自动化评测。
-- 详情：[/20260310-20260319/README](/20260310-20260319/README)
+今日速览 11 篇前沿论文，重点攻克多模态追踪效率、Graph-RAG 推理瓶颈及
+- 详情：[/202603/19/README](/202603/19/README)
 
 ### 精读区论文标签
-1. [On Big-M Reformulations of Bilevel Linear Programs: Hardness of A Posteriori Verification](/20260310-20260319/2603.17107v1-on-big-m-reformulations-of-bilevel-linear-programs-hardness-of-a-posteriori-verification)  
-   标签：评分：9.0/10、query:bopl
-   evidence：双层线性规划的重构
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Nudging Hidden States: Training-Free Model Steering for Chain-of-Thought Reasoning in Large Audio-Language Models](/20260310-20260319/2603.14636v1-nudging-hidden-states-training-free-model-steering-for-chain-of-thought-reasoning-in-large-audio-language-models)  
+1. [Sparse-Dense Mixture of Experts Adapter for Multi-Modal Tracking](/202603/19/2603.13719v1-sparse-dense-mixture-of-experts-adapter-for-multi-modal-tracking)  
    标签：评分：7.0/10、query:bopl
-   evidence：推理阶段的思维链提示模型引导
-2. [Generation of Programming Exam Question and Answer Using ChatGPT Based on Prompt Engineering](/20260310-20260319/2603.15096v1-generation-of-programming-exam-question-and-answer-using-chatgpt-based-on-prompt-engineering)  
+   evidence：使用提示词和适配器的参数高效微调
+2. [The Reasoning Bottleneck in Graph-RAG: Structured Prompting and Context Compression for Multi-Hop QA](/202603/19/2603.14045v1-the-reasoning-bottleneck-in-graph-rag-structured-prompting-and-context-compression-for-multi-hop-qa)  
    标签：评分：7.0/10、query:bopl
-   evidence：利用提示工程技术优化性能
-3. [HIPO: Instruction Hierarchy via Constrained Reinforcement Learning](/20260310-20260319/2603.16152v1-hipo-instruction-hierarchy-via-constrained-reinforcement-learning)  
+   evidence：大语言模型的结构化提示和思维链技术
+3. [Prompt Programming for Cultural Bias and Alignment of Large Language Models](/202603/19/2603.16827v1-prompt-programming-for-cultural-bias-and-alignment-of-large-language-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用优先级排序的指令对大模型进行提示
-4. [FlowComposer: Composable Flows for Compositional Zero-Shot Learning](/20260310-20260319/2603.16641v1-flowcomposer-composable-flows-for-compositional-zero-shot-learning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：参数高效微调与标记级提示操作
-5. [DiffVP: Differential Visual Semantic Prompting for LLM-Based CT Report Generation](/20260310-20260319/2603.17718v1-diffvp-differential-visual-semantic-prompting-for-llm-based-ct-report-generation)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于LLM调节的可学习视觉前缀标记
-6. [Large Language Models as Annotators for Machine Translation Quality Estimation](/20260310-20260319/2603.10775v1-large-language-models-as-annotators-for-machine-translation-quality-estimation)  
+   evidence：用于文化对齐的自动提示工程
+4. [SPEGC: Continual Test-Time Adaptation via Semantic-Prompt-Enhanced Graph Clustering for Medical Image Segmentation](/202603/19/2603.11492v1-spegc-continual-test-time-adaptation-via-semantic-prompt-enhanced-graph-clustering-for-medical-image-segmentation)  
    标签：评分：6.0/10、query:bopl
-   evidence：系统性开发基于 GPT-4o 的标注提示词
-7. [Expert Pyramid Tuning: Efficient Parameter Fine-Tuning for Expertise-Driven Task Allocation](/20260310-20260319/2603.12577v1-expert-pyramid-tuning-efficient-parameter-fine-tuning-for-expertise-driven-task-allocation)  
+   evidence：预训练模型的语义提示增强适配
+5. [AutoScout: Structured Optimization for Automating ML System Configuration](/202603/19/2603.11603v1-autoscout-structured-optimization-for-automating-ml-system-configuration)  
    标签：评分：6.0/10、query:bopl
-   evidence：多任务场景下的参数高效微调 (PEFT)
-8. [What You Prompt is What You Get: Increasing Transparency of Prompting Using Prompt Cards](/20260310-20260319/2603.12741v1-what-you-prompt-is-what-you-get-increasing-transparency-of-prompting-using-prompt-cards)  
+   evidence：机器学习系统配置的结构化优化
+6. [The Reasoning Bottleneck in Graph-RAG: Structured Prompting and Context Compression for Multi-Hop QA](/202603/19/2603.14045v2-the-reasoning-bottleneck-in-graph-rag-structured-prompting-and-context-compression-for-multi-hop-qa)  
    标签：评分：6.0/10、query:bopl
-   evidence：标准化的提示词文档记录与评估实践
-9. [FedBPrompt: Federated Domain Generalization Person Re-Identification via Body Distribution Aware Visual Prompts](/20260310-20260319/2603.12912v1-fedbprompt-federated-domain-generalization-person-re-identification-via-body-distribution-aware-visual-prompts)  
+   evidence：结构化提示与思维链提示
+7. [Exposing Long-Tail Safety Failures in Large Language Models through Efficient Diverse Response Sampling](/202603/19/2603.14355v1-exposing-long-tail-safety-failures-in-large-language-models-through-efficient-diverse-response-sampling)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于Transformer注意力的可学习视觉提示
-10. [Diabetic Retinopathy Grading with CLIP-based Ranking-Aware Adaptation:A Comparative Study on Fundus Image](/20260310-20260319/2603.13403v1-diabetic-retinopathy-grading-with-clip-based-ranking-aware-adaptationa-comparative-study-on-fundus-image)  
+   evidence：对抗性提示搜索与输出空间探索
+8. [VisionCoach: Reinforcing Grounded Video Reasoning via Visual-Perception Prompting](/202603/19/2603.14659v1-visioncoach-reinforcing-grounded-video-reasoning-via-visual-perception-prompting)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于图像分级的排序感知提示
-11. [Modality-free Graph In-context Alignment](/20260310-20260319/2603.13434v1-modality-free-graph-in-context-alignment)  
+   evidence：带有视觉提示的输入自适应强化学习框架
+9. [Molecular Identifier Visual Prompt and Verifiable Reinforcement Learning for Chemical Reaction Diagram Parsing](/202603/19/2603.15011v1-molecular-identifier-visual-prompt-and-verifiable-reinforcement-learning-for-chemical-reaction-diagram-parsing)  
    标签：评分：6.0/10、query:bopl
-   evidence：使预训练图编码器具备可提示性以进行少样本预测
+   evidence：视觉语言模型的视觉提示表示与学习范式
+10. [Arabic Morphosyntactic Tagging and Dependency Parsing with Large Language Models](/202603/19/2603.16718v1-arabic-morphosyntactic-tagging-and-dependency-parsing-with-large-language-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：比较零样本提示与基于检索的上下文学习
+11. [VirPro: Visual-referred Probabilistic Prompt Learning for Weakly-Supervised Monocular 3D Detection](/202603/19/2603.17470v1-virpro-visual-referred-probabilistic-prompt-learning-for-weakly-supervised-monocular-3d-detection)  
+   标签：评分：6.0/10、query:bopl
+   evidence：多模态预训练中的概率提示学习
 
 
 <div class="dpr-home-promo-card">
