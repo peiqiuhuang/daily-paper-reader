@@ -6,44 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-21
-- 运行时间：2026-03-21 19:09:50 UTC
+- 最新运行日期：2026-03-22
+- 运行时间：2026-03-22 19:14:23 UTC
 - 运行状态：成功
-- 本次总论文数：7
+- 本次总论文数：5
 - 精读区：0
-- 速读区：7
+- 速读区：5
 
 ### 今日简报（AI）
-今日速读 7 篇论文，深入探讨大模型在公平性推荐、高效查询扩展及稀有概念生成中的实战表现。
-研究揭示了提示词工程在消除高风险推荐偏差上的潜力，并提出通过检索反馈蒸馏实现更精准的搜索对齐。
-建议关注如何利用 ADAPT 等调度策略优化长尾内容的生成质量。
-- 详情：[/202603/21/README](/202603/21/README)
+今日聚焦大模型安全防御、超参数缩放法则及多智能体架构中的语言偏见分析。
+重点关注利用LLM
+- 详情：[/202603/22/README](/202603/22/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Can Fairness Be Prompted? Prompt-Based Debiasing Strategies in High-Stakes Recommendations](/202603/21/2603.12935v1-can-fairness-be-prompted-prompt-based-debiasing-strategies-in-high-stakes-recommendations)  
+1. [BadLLM-TG: A Backdoor Defender powered by LLM Trigger Generator](/202603/22/2603.15692v1-badllm-tg-a-backdoor-defender-powered-by-llm-trigger-generator)  
    标签：评分：7.0/10、query:bopl
-   evidence：大语言模型去偏的提示策略
-2. [Retrieval-Feedback-Driven Distillation and Preference Alignment for Efficient LLM-based Query Expansion](/202603/21/2603.13776v1-retrieval-feedback-driven-distillation-and-preference-alignment-for-efficient-llm-based-query-expansion)  
+   evidence：通过提示驱动的强化学习进行优化
+2. [Deriving Hyperparameter Scaling Laws via Modern Optimization Theory](/202603/22/2603.15958v1-deriving-hyperparameter-scaling-laws-via-modern-optimization-theory)  
    标签：评分：7.0/10、query:bopl
-   evidence：蒸馏教师模型生成的零样本和少样本提示行为
-3. [ADAPT: Attention Driven Adaptive Prompt Scheduling and InTerpolating Orthogonal Complements for Rare Concepts Generation](/202603/21/2603.19157v1-adapt-attention-driven-adaptive-prompt-scheduling-and-interpolating-orthogonal-complements-for-rare-concepts-generation)  
+   evidence：通过优化理论推导超参数缩放法则
+3. [Analysis Of Linguistic Stereotypes in Single and Multi-Agent Generative AI Architectures](/202603/22/2603.18729v1-analysis-of-linguistic-stereotypes-in-single-and-multi-agent-generative-ai-architectures)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用大语言模型进行自适应提示调度
-4. [Finite Difference Flow Optimization for RL Post-Training of Text-to-Image Models](/202603/21/2603.12893v1-finite-difference-flow-optimization-for-rl-post-training-of-text-to-image-models)  
+   evidence：研究用于缓解偏见的提示工程和模板
+4. [Scalable Classification of Course Information Sheets Using Large Language Models: A Reusable Institutional Method for Academic Quality Assurance](/202603/22/2603.13562v1-scalable-classification-of-course-information-sheets-using-large-language-models-a-reusable-institutional-method-for-academic-quality-assurance)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于文生图模型提示词对齐的强化学习
-5. [Thinking in Latents: Adaptive Anchor Refinement for Implicit Reasoning in LLMs](/202603/21/2603.15051v1-thinking-in-latents-adaptive-anchor-refinement-for-implicit-reasoning-in-llms)  
+   evidence：多模型对比的迭代提示工程
+5. [Writer-R1: Enhancing Generative Writing in LLMs via Memory-augmented Replay Policy Optimization](/202603/22/2603.15061v1-writer-r1-enhancing-generative-writing-in-llms-via-memory-augmented-replay-policy-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型隐式推理的自适应锚点细化
-6. [Retrieval-Augmented LLM Agents: Learning to Learn from Experience](/202603/21/2603.18272v1-retrieval-augmented-llm-agents-learning-to-learn-from-experience)  
-   标签：评分：6.0/10、query:bopl
-   evidence：在LLM智能体中利用检索到的轨迹进行上下文学习
-7. [Memento-Skills: Let Agents Design Agents](/202603/21/2603.18743v1-memento-skills-let-agents-design-agents)  
-   标签：评分：6.0/10、query:bopl
-   evidence：具有有状态提示和反思性学习的智能体系统
+   evidence：用于生成式写作优化的动态标准和自我反思
 
 
 <div class="dpr-home-promo-card">
