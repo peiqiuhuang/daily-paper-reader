@@ -6,37 +6,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-22
-- 运行时间：2026-03-22 19:14:23 UTC
+- 最新运行日期：2026-03-23
+- 运行时间：2026-03-23 19:40:26 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：0
-- 速读区：5
+- 本次总论文数：10
+- 精读区：3
+- 速读区：7
 
 ### 今日简报（AI）
-今日聚焦大模型安全防御、超参数缩放法则及多智能体架构中的语言偏见分析。
-重点关注利用LLM
-- 详情：[/202603/22/README](/202603/22/README)
+今日聚焦 LLM 随机生成优化与多智能体协同进化，深度解析 10 篇涵盖提示工程与强化学习的前沿论文。
+重点关注 POLCA 提出的随机生成优化框架，以及 Helix 系统通过双螺旋机制实现的提示词与问题重构突破。
+建议关注 LLM 自动化调优与自我进化技术，这将是提升大模型复杂任务处理能力的核心趋势。
+- 详情：[/202603/23/README](/202603/23/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [POLCA: Stochastic Generative Optimization with LLM](/202603/23/2603.14769v1-polca-stochastic-generative-optimization-with-llm)  
+   标签：评分：9.0/10、query:bopl
+   evidence：大语言模型提示的随机生成优化
+2. [Helix: A Dual-Helix Co-Evolutionary Multi-Agent System for Prompt Optimization and Question Reformulation](/202603/23/2603.19732v1-helix-a-dual-helix-co-evolutionary-multi-agent-system-for-prompt-optimization-and-question-reformulation)  
+   标签：评分：9.0/10、query:bopl
+   evidence：自动提示词优化与问题重构
+3. [Demonstrations, CoT, and Prompting: A Theoretical Analysis of ICL](/202603/23/2603.19611v1-demonstrations-cot-and-prompting-a-theoretical-analysis-of-icl)  
+   标签：评分：8.0/10、query:bopl
+   evidence：提示词与上下文学习的理论分析
 
 ### 速读区论文标签
-1. [BadLLM-TG: A Backdoor Defender powered by LLM Trigger Generator](/202603/22/2603.15692v1-badllm-tg-a-backdoor-defender-powered-by-llm-trigger-generator)  
+1. [Meta-TTRL: A Metacognitive Framework for Self-Improving Test-Time Reinforcement Learning in Unified Multimodal Models](/202603/23/2603.15724v1-meta-ttrl-a-metacognitive-framework-for-self-improving-test-time-reinforcement-learning-in-unified-multimodal-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过提示驱动的强化学习进行优化
-2. [Deriving Hyperparameter Scaling Laws via Modern Optimization Theory](/202603/22/2603.15958v1-deriving-hyperparameter-scaling-laws-via-modern-optimization-theory)  
+   evidence：多模态模型的元认知测试时参数优化
+2. [Prompt Engineering for Scale Development in Generative Psychometrics](/202603/23/2603.15909v1-prompt-engineering-for-scale-development-in-generative-psychometrics)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过优化理论推导超参数缩放法则
-3. [Analysis Of Linguistic Stereotypes in Single and Multi-Agent Generative AI Architectures](/202603/22/2603.18729v1-analysis-of-linguistic-stereotypes-in-single-and-multi-agent-generative-ai-architectures)  
+   evidence：包括自适应提示在内的 LLM 生成提示工程策略
+3. [VirPro: Visual-referred Probabilistic Prompt Learning for Weakly-Supervised Monocular 3D Detection](/202603/23/2603.17470v2-virpro-visual-referred-probabilistic-prompt-learning-for-weakly-supervised-monocular-3d-detection)  
    标签：评分：7.0/10、query:bopl
-   evidence：研究用于缓解偏见的提示工程和模板
-4. [Scalable Classification of Course Information Sheets Using Large Language Models: A Reusable Institutional Method for Academic Quality Assurance](/202603/22/2603.13562v1-scalable-classification-of-course-information-sheets-using-large-language-models-a-reusable-institutional-method-for-academic-quality-assurance)  
+   evidence：多模态任务的概率提示学习
+4. [Cooperation and Exploitation in LLM Policy Synthesis for Sequential Social Dilemmas](/202603/23/2603.19453v1-cooperation-and-exploitation-in-llm-policy-synthesis-for-sequential-social-dilemmas)  
+   标签：评分：7.0/10、query:bopl
+   evidence：利用性能反馈迭代优化程序化策略
+5. [Not All Directions Matter: Toward Structured and Task-Aware Low-Rank Adaptation](/202603/23/2603.14228v1-not-all-directions-matter-toward-structured-and-task-aware-low-rank-adaptation)  
    标签：评分：6.0/10、query:bopl
-   evidence：多模型对比的迭代提示工程
-5. [Writer-R1: Enhancing Generative Writing in LLMs via Memory-augmented Replay Policy Optimization](/202603/22/2603.15061v1-writer-r1-enhancing-generative-writing-in-llms-via-memory-augmented-replay-policy-optimization)  
+   evidence：用于参数高效微调的结构化低秩自适应
+6. [Parallel In-context Learning for Large Vision Language Models](/202603/23/2603.16092v1-parallel-in-context-learning-for-large-vision-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于生成式写作优化的动态标准和自我反思
+   evidence：视觉语言模型的上下文学习
+7. [FedPDPO: Federated Personalized Direct Preference Optimization for Large Language Model Alignment](/202603/23/2603.19741v1-fedpdpo-federated-personalized-direct-preference-optimization-for-large-language-model-alignment)  
+   标签：评分：6.0/10、query:bopl
+   evidence：大语言模型对齐的参数高效微调
 
 
 <div class="dpr-home-promo-card">
