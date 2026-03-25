@@ -6,52 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-23
-- 运行时间：2026-03-23 19:40:26 UTC
+- 最新运行日期：2026-03-25
+- 运行时间：2026-03-25 19:51:49 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：3
-- 速读区：7
+- 本次总论文数：17
+- 精读区：6
+- 速读区：11
 
 ### 今日简报（AI）
-今日聚焦 LLM 随机生成优化与多智能体协同进化，深度解析 10 篇涵盖提示工程与强化学习的前沿论文。
-重点关注 POLCA 提出的随机生成优化框架，以及 Helix 系统通过双螺旋机制实现的提示词与问题重构突破。
-建议关注 LLM 自动化调优与自我进化技术，这将是提升大模型复杂任务处理能力的核心趋势。
-- 详情：[/202603/23/README](/202603/23/README)
+今日深度研读 17 篇顶尖论文，聚焦提示词自动优化与双层优化算法的跨越式进展。
+满分佳作揭示了“自我进化记忆”在提示词工程中的巨大潜力，而双层优化则在无导数求解与元研究自动化方向展现出极高应用价值。
+建议优先探索提示词自动优化工具，并关注双层优化在设施选址及音视频定位等实际场景中的落地。
+- 详情：[/202603/25/README](/202603/25/README)
 
 ### 精读区论文标签
-1. [POLCA: Stochastic Generative Optimization with LLM](/202603/23/2603.14769v1-polca-stochastic-generative-optimization-with-llm)  
+1. [Generalizable Self-Evolving Memory for Automatic Prompt Optimization](/202603/25/2603.21520v1-generalizable-self-evolving-memory-for-automatic-prompt-optimization)  
+   标签：评分：10.0/10、query:bopl
+   evidence：用于自动提示优化的记忆驱动框架
+2. [Derivative-Free Bilevel Optimization with Inexact Lower-Level Solutions](/202603/25/2603.20759v1-derivative-free-bilevel-optimization-with-inexact-lower-level-solutions)  
    标签：评分：9.0/10、query:bopl
-   evidence：大语言模型提示的随机生成优化
-2. [Helix: A Dual-Helix Co-Evolutionary Multi-Agent System for Prompt Optimization and Question Reformulation](/202603/23/2603.19732v1-helix-a-dual-helix-co-evolutionary-multi-agent-system-for-prompt-optimization-and-question-reformulation)  
+   evidence：双层优化的无导数框架
+3. [Parameter-efficient Prompt Tuning and Hierarchical Textual Guidance for Few-shot Whole Slide Image Classification](/202603/25/2603.21504v1-parameter-efficient-prompt-tuning-and-hierarchical-textual-guidance-for-few-shot-whole-slide-image-classification)  
    标签：评分：9.0/10、query:bopl
-   evidence：自动提示词优化与问题重构
-3. [Demonstrations, CoT, and Prompting: A Theoretical Analysis of ICL](/202603/23/2603.19611v1-demonstrations-cot-and-prompting-a-theoretical-analysis-of-icl)  
-   标签：评分：8.0/10、query:bopl
-   evidence：提示词与上下文学习的理论分析
+   evidence：专注于视觉语言模型的参数高效提示微调
+4. [P^2O: Joint Policy and Prompt Optimization](/202603/25/2603.21877v1-p2o-joint-policy-and-prompt-optimization)  
+   标签：评分：9.0/10、query:bopl
+   evidence：联合提示优化与策略优化
+5. [Parameter-Efficient Fine-Tuning for Medical Text Summarization: A Comparative Study of Lora, Prompt Tuning, and Full Fine-Tuning](/202603/25/2603.21970v1-parameter-efficient-fine-tuning-for-medical-text-summarization-a-comparative-study-of-lora-prompt-tuning-and-full-fine-tuning)  
+   标签：评分：9.0/10、query:bopl
+   evidence：提示微调与LoRA在参数高效微调中的对比研究
+6. [MemDLM: Memory-Enhanced DLM Training](/202603/25/2603.22241v1-memdlm-memory-enhanced-dlm-training)  
+   标签：评分：9.0/10、query:bopl
+   evidence：使用带有内外循环的双层优化进行模型训练
 
 ### 速读区论文标签
-1. [Meta-TTRL: A Metacognitive Framework for Self-Improving Test-Time Reinforcement Learning in Unified Multimodal Models](/202603/23/2603.15724v1-meta-ttrl-a-metacognitive-framework-for-self-improving-test-time-reinforcement-learning-in-unified-multimodal-models)  
+1. [Two-stage robust bilevel optimization model for facility location considering operational service level under disruption risk](/202603/25/2603.21225v1-two-stage-robust-bilevel-optimization-model-for-facility-location-considering-operational-service-level-under-disruption-risk)  
+   标签：评分：8.0/10、query:bopl
+   evidence：两阶段鲁棒双层优化模型
+2. [SOUPLE: Enhancing Audio-Visual Localization and Segmentation with Learnable Prompt Contexts](/202603/25/2603.22732v1-souple-enhancing-audio-visual-localization-and-segmentation-with-learnable-prompt-contexts)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于声音感知提示词学习的可学习上下文标记
+3. [Bilevel Autoresearch: Meta-Autoresearching Itself](/202603/25/2603.23420v1-bilevel-autoresearch-meta-autoresearching-itself)  
+   标签：评分：8.0/10、query:bopl
+   evidence：元优化研究循环的双层框架
+4. [Scalable Prompt Routing via Fine-Grained Latent Task Discovery](/202603/25/2603.19415v1-scalable-prompt-routing-via-fine-grained-latent-task-discovery)  
    标签：评分：7.0/10、query:bopl
-   evidence：多模态模型的元认知测试时参数优化
-2. [Prompt Engineering for Scale Development in Generative Psychometrics](/202603/23/2603.15909v1-prompt-engineering-for-scale-development-in-generative-psychometrics)  
+   evidence：自动化提示路由与任务发现
+5. [Scalable Prompt Routing via Fine-Grained Latent Task Discovery](/202603/25/2603.19415v2-scalable-prompt-routing-via-fine-grained-latent-task-discovery)  
    标签：评分：7.0/10、query:bopl
-   evidence：包括自适应提示在内的 LLM 生成提示工程策略
-3. [VirPro: Visual-referred Probabilistic Prompt Learning for Weakly-Supervised Monocular 3D Detection](/202603/23/2603.17470v2-virpro-visual-referred-probabilistic-prompt-learning-for-weakly-supervised-monocular-3d-detection)  
+   evidence：用于提示词路由的自动化细粒度任务发现
+6. [Premier: Personalized Preference Modulation with Learnable User Embedding in Text-to-Image Generation](/202603/25/2603.20725v1-premier-personalized-preference-modulation-with-learnable-user-embedding-in-text-to-image-generation)  
    标签：评分：7.0/10、query:bopl
-   evidence：多模态任务的概率提示学习
-4. [Cooperation and Exploitation in LLM Policy Synthesis for Sequential Social Dilemmas](/202603/23/2603.19453v1-cooperation-and-exploitation-in-llm-policy-synthesis-for-sequential-social-dilemmas)  
+   evidence：可学习的偏好嵌入与文本提示融合
+7. [Prompt replay: speeding up grpo with on-policy reuse of high-signal prompts](/202603/25/2603.21177v1-prompt-replay-speeding-up-grpo-with-on-policy-reuse-of-high-signal-prompts)  
    标签：评分：7.0/10、query:bopl
-   evidence：利用性能反馈迭代优化程序化策略
-5. [Not All Directions Matter: Toward Structured and Task-Aware Low-Rank Adaptation](/202603/23/2603.14228v1-not-all-directions-matter-toward-structured-and-task-aware-low-rank-adaptation)  
+   evidence：用于优化的在线数据选择和提示重用
+8. [ALADIN:Attribute-Language Distillation Network for Person Re-Identification](/202603/25/2603.21482v1-aladinattribute-language-distillation-network-for-person-re-identification)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于自适应对齐的图像特定软提示
+9. [FAAR: Efficient Frequency-Aware Multi-Task Fine-Tuning via Automatic Rank Selection](/202603/25/2603.20403v1-faar-efficient-frequency-aware-multi-task-fine-tuning-via-automatic-rank-selection)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于参数高效微调的结构化低秩自适应
-6. [Parallel In-context Learning for Large Vision Language Models](/202603/23/2603.16092v1-parallel-in-context-learning-for-large-vision-language-models)  
+   evidence：使用低秩适配的参数高效微调 (PEFT)
+10. [Mitigating Shortcut Reasoning in Language Models: A Gradient-Aware Training Approach](/202603/25/2603.20899v1-mitigating-shortcut-reasoning-in-language-models-a-gradient-aware-training-approach)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉语言模型的上下文学习
-7. [FedPDPO: Federated Personalized Direct Preference Optimization for Large Language Model Alignment](/202603/23/2603.19741v1-fedpdpo-federated-personalized-direct-preference-optimization-for-large-language-model-alignment)  
+   evidence：用于验证目标对齐的梯度感知框架
+11. [Frequency Switching Mechanism for Parameter-E!cient Multi-Task Learning](/202603/25/2603.21111v1-frequency-switching-mechanism-for-parameter-ecient-multi-task-learning)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型对齐的参数高效微调
+   evidence：参数高效的多任务学习框架
 
 
 <div class="dpr-home-promo-card">
