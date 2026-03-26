@@ -6,73 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-25
-- 运行时间：2026-03-25 19:51:49 UTC
+- 最新运行日期：2026-03-26
+- 运行时间：2026-03-26 20:05:50 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：13
+- 精读区：2
 - 速读区：11
 
 ### 今日简报（AI）
-今日深度研读 17 篇顶尖论文，聚焦提示词自动优化与双层优化算法的跨越式进展。
-满分佳作揭示了“自我进化记忆”在提示词工程中的巨大潜力，而双层优化则在无导数求解与元研究自动化方向展现出极高应用价值。
-建议优先探索提示词自动优化工具，并关注双层优化在设施选址及音视频定位等实际场景中的落地。
-- 详情：[/202603/25/README](/202603/25/README)
+今日聚焦 LLM 迭代优化瓶颈与鲁棒优化新范式，深度解析 13 篇 AI 前沿论文。
+重点关注大模型在生成式优化中的挑战，以及利用对抗学习提升自适应鲁棒优化的泛化能力。
+建议关注 LLM Agent 从助手向“AI 科学家”进阶的趋势，探索其在自主算法发现中的应用潜力。
+- 详情：[/202603/26/README](/202603/26/README)
 
 ### 精读区论文标签
-1. [Generalizable Self-Evolving Memory for Automatic Prompt Optimization](/202603/25/2603.21520v1-generalizable-self-evolving-memory-for-automatic-prompt-optimization)  
-   标签：评分：10.0/10、query:bopl
-   evidence：用于自动提示优化的记忆驱动框架
-2. [Derivative-Free Bilevel Optimization with Inexact Lower-Level Solutions](/202603/25/2603.20759v1-derivative-free-bilevel-optimization-with-inexact-lower-level-solutions)  
+1. [Understanding the Challenges in Iterative Generative Optimization with LLMs](/202603/26/2603.23994v1-understanding-the-challenges-in-iterative-generative-optimization-with-llms)  
    标签：评分：9.0/10、query:bopl
-   evidence：双层优化的无导数框架
-3. [Parameter-efficient Prompt Tuning and Hierarchical Textual Guidance for Few-shot Whole Slide Image Classification](/202603/25/2603.21504v1-parameter-efficient-prompt-tuning-and-hierarchical-textual-guidance-for-few-shot-whole-slide-image-classification)  
-   标签：评分：9.0/10、query:bopl
-   evidence：专注于视觉语言模型的参数高效提示微调
-4. [P^2O: Joint Policy and Prompt Optimization](/202603/25/2603.21877v1-p2o-joint-policy-and-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：联合提示优化与策略优化
-5. [Parameter-Efficient Fine-Tuning for Medical Text Summarization: A Comparative Study of Lora, Prompt Tuning, and Full Fine-Tuning](/202603/25/2603.21970v1-parameter-efficient-fine-tuning-for-medical-text-summarization-a-comparative-study-of-lora-prompt-tuning-and-full-fine-tuning)  
-   标签：评分：9.0/10、query:bopl
-   evidence：提示微调与LoRA在参数高效微调中的对比研究
-6. [MemDLM: Memory-Enhanced DLM Training](/202603/25/2603.22241v1-memdlm-memory-enhanced-dlm-training)  
-   标签：评分：9.0/10、query:bopl
-   evidence：使用带有内外循环的双层优化进行模型训练
+   evidence：使用大语言模型对提示词进行迭代生成式优化
+2. [L2O-CCG: Adversarial Learning with Set Generalization for Adaptive Robust Optimization](/202603/26/2603.22548v1-l2o-ccg-adversarial-learning-with-set-generalization-for-adaptive-robust-optimization)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于自适应鲁棒优化的双层优化框架
 
 ### 速读区论文标签
-1. [Two-stage robust bilevel optimization model for facility location considering operational service level under disruption risk](/202603/25/2603.21225v1-two-stage-robust-bilevel-optimization-model-for-facility-location-considering-operational-service-level-under-disruption-risk)  
-   标签：评分：8.0/10、query:bopl
-   evidence：两阶段鲁棒双层优化模型
-2. [SOUPLE: Enhancing Audio-Visual Localization and Segmentation with Learnable Prompt Contexts](/202603/25/2603.22732v1-souple-enhancing-audio-visual-localization-and-segmentation-with-learnable-prompt-contexts)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于声音感知提示词学习的可学习上下文标记
-3. [Bilevel Autoresearch: Meta-Autoresearching Itself](/202603/25/2603.23420v1-bilevel-autoresearch-meta-autoresearching-itself)  
-   标签：评分：8.0/10、query:bopl
-   evidence：元优化研究循环的双层框架
-4. [Scalable Prompt Routing via Fine-Grained Latent Task Discovery](/202603/25/2603.19415v1-scalable-prompt-routing-via-fine-grained-latent-task-discovery)  
+1. [Caption Generation for Dongba Paintings via Prompt Learning and Semantic Fusion](/202603/26/2603.22946v1-caption-generation-for-dongba-paintings-via-prompt-learning-and-semantic-fusion)  
    标签：评分：7.0/10、query:bopl
-   evidence：自动化提示路由与任务发现
-5. [Scalable Prompt Routing via Fine-Grained Latent Task Discovery](/202603/25/2603.19415v2-scalable-prompt-routing-via-fine-grained-latent-task-discovery)  
+   evidence：集成内容提示模块用于特定领域的图像描述
+2. [DetPO: In-Context Learning with Multi-Modal LLMs for Few-Shot Object Detection](/202603/26/2603.23455v1-detpo-in-context-learning-with-multi-modal-llms-for-few-shot-object-detection)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于提示词路由的自动化细粒度任务发现
-6. [Premier: Personalized Preference Modulation with Learnable User Embedding in Text-to-Image Generation](/202603/25/2603.20725v1-premier-personalized-preference-modulation-with-learnable-user-embedding-in-text-to-image-generation)  
+   evidence：多模态大模型的上下文提示策略
+3. [From AI Assistant to AI Scientist: Autonomous Discovery of LLM-RL Algorithms with LLM Agents](/202603/26/2603.23951v1-from-ai-assistant-to-ai-scientist-autonomous-discovery-of-llm-rl-algorithms-with-llm-agents)  
    标签：评分：7.0/10、query:bopl
-   evidence：可学习的偏好嵌入与文本提示融合
-7. [Prompt replay: speeding up grpo with on-policy reuse of high-signal prompts](/202603/25/2603.21177v1-prompt-replay-speeding-up-grpo-with-on-policy-reuse-of-high-signal-prompts)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于优化的在线数据选择和提示重用
-8. [ALADIN:Attribute-Language Distillation Network for Person Re-Identification](/202603/25/2603.21482v1-aladinattribute-language-distillation-network-for-person-re-identification)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于自适应对齐的图像特定软提示
-9. [FAAR: Efficient Frequency-Aware Multi-Task Fine-Tuning via Automatic Rank Selection](/202603/25/2603.20403v1-faar-efficient-frequency-aware-multi-task-fine-tuning-via-automatic-rank-selection)  
+   evidence：策略优化算法的自动发现
+4. [VC-Soup: Value-Consistency Guided Multi-Value Alignment for Large Language Models](/202603/26/2603.18113v1-vc-soup-value-consistency-guided-multi-value-alignment-for-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：使用低秩适配的参数高效微调 (PEFT)
-10. [Mitigating Shortcut Reasoning in Language Models: A Gradient-Aware Training Approach](/202603/25/2603.20899v1-mitigating-shortcut-reasoning-in-language-models-a-gradient-aware-training-approach)  
+   evidence：用于多价值对齐的基于提示的有监督微调
+5. [Adaptive Decoding via Test-Time Policy Learning for Self-Improving Generation](/202603/26/2603.18428v1-adaptive-decoding-via-test-time-policy-learning-for-self-improving-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于验证目标对齐的梯度感知框架
-11. [Frequency Switching Mechanism for Parameter-E!cient Multi-Task Learning](/202603/25/2603.21111v1-frequency-switching-mechanism-for-parameter-ecient-multi-task-learning)  
+   evidence：大语言模型生成的测试时策略学习
+6. [Minimax Generalized Cross-Entropy](/202603/26/2603.19874v1-minimax-generalized-cross-entropy)  
    标签：评分：6.0/10、query:bopl
-   evidence：参数高效的多任务学习框架
+   evidence：导致双层优化的极大极小公式化
+7. [Minimax Generalized Cross-Entropy](/202603/26/2603.19874v2-minimax-generalized-cross-entropy)  
+   标签：评分：6.0/10、query:bopl
+   evidence：极小极大优化公式
+8. [AE-LLM: Adaptive Efficiency Optimization for Large Language Models](/202603/26/2603.20492v1-ae-llm-adaptive-efficiency-optimization-for-large-language-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：自动选择和组合包括PEFT在內的高效技术
+9. [PROMPT2BOX: Uncovering Entailment Structure among LLM Prompts](/202603/26/2603.21438v1-prompt2box-uncovering-entailment-structure-among-llm-prompts)  
+   标签：评分：6.0/10、query:bopl
+   evidence：嵌入提示词以捕捉特异性关系
+10. [DSPA: Dynamic SAE Steering for Data-Efficient Preference Alignment](/202603/26/2603.21461v1-dspa-dynamic-sae-steering-for-data-efficient-preference-alignment)  
+   标签：评分：6.0/10、query:bopl
+   evidence：偏好对齐的提示词条件引导
+11. [CurvZO: Adaptive Curvature-Guided Sparse Zeroth-Order Optimization for Efficient LLM Fine-Tuning](/202603/26/2603.21725v1-curvzo-adaptive-curvature-guided-sparse-zeroth-order-optimization-for-efficient-llm-fine-tuning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于内存高效大模型微调的零阶优化
 
 
 <div class="dpr-home-promo-card">
