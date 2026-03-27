@@ -6,61 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-26
-- 运行时间：2026-03-26 20:05:50 UTC
+- 最新运行日期：2026-03-27
+- 运行时间：2026-03-27 19:46:55 UTC
 - 运行状态：成功
-- 本次总论文数：13
+- 本次总论文数：9
 - 精读区：2
-- 速读区：11
+- 速读区：7
 
 ### 今日简报（AI）
-今日聚焦 LLM 迭代优化瓶颈与鲁棒优化新范式，深度解析 13 篇 AI 前沿论文。
-重点关注大模型在生成式优化中的挑战，以及利用对抗学习提升自适应鲁棒优化的泛化能力。
-建议关注 LLM Agent 从助手向“AI 科学家”进阶的趋势，探索其在自主算法发现中的应用潜力。
-- 详情：[/202603/26/README](/202603/26/README)
+今日聚焦 Prompt 工程的深度进化，重点解析策略与提示词联合优化及自动化编写的最新突破。
+核心结论指出 P^2O 框架能通过协同演化压榨模型潜力，同时自动化提示词正逐步在效率与效果上超越人工经验。
+建议开发者关注自动化提示词工具与策略微调的结合，以低成本实现
+- 详情：[/202603/27/README](/202603/27/README)
 
 ### 精读区论文标签
-1. [Understanding the Challenges in Iterative Generative Optimization with LLMs](/202603/26/2603.23994v1-understanding-the-challenges-in-iterative-generative-optimization-with-llms)  
+1. [P^2O: Joint Policy and Prompt Optimization](/202603/27/2603.21877v2-p2o-joint-policy-and-prompt-optimization)  
    标签：评分：9.0/10、query:bopl
-   evidence：使用大语言模型对提示词进行迭代生成式优化
-2. [L2O-CCG: Adversarial Learning with Set Generalization for Adaptive Robust Optimization](/202603/26/2603.22548v1-l2o-ccg-adversarial-learning-with-set-generalization-for-adaptive-robust-optimization)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于自适应鲁棒优化的双层优化框架
+   evidence：联合提示词与策略优化
+2. [To Write or to Automate Linguistic Prompts, That Is the Question](/202603/27/2603.25169v1-to-write-or-to-automate-linguistic-prompts-that-is-the-question)  
+   标签：评分：9.0/10、query:bopl
+   evidence：手动与自动提示词优化的比较
 
 ### 速读区论文标签
-1. [Caption Generation for Dongba Paintings via Prompt Learning and Semantic Fusion](/202603/26/2603.22946v1-caption-generation-for-dongba-paintings-via-prompt-learning-and-semantic-fusion)  
+1. [Train at Moving Edge: Online-Verified Prompt Selection for Efficient RL Training of Large Reasoning Model](/202603/27/2603.25184v1-train-at-moving-edge-online-verified-prompt-selection-for-efficient-rl-training-of-large-reasoning-model)  
    标签：评分：7.0/10、query:bopl
-   evidence：集成内容提示模块用于特定领域的图像描述
-2. [DetPO: In-Context Learning with Multi-Modal LLMs for Few-Shot Object Detection](/202603/26/2603.23455v1-detpo-in-context-learning-with-multi-modal-llms-for-few-shot-object-detection)  
-   标签：评分：7.0/10、query:bopl
-   evidence：多模态大模型的上下文提示策略
-3. [From AI Assistant to AI Scientist: Autonomous Discovery of LLM-RL Algorithms with LLM Agents](/202603/26/2603.23951v1-from-ai-assistant-to-ai-scientist-autonomous-discovery-of-llm-rl-algorithms-with-llm-agents)  
-   标签：评分：7.0/10、query:bopl
-   evidence：策略优化算法的自动发现
-4. [VC-Soup: Value-Consistency Guided Multi-Value Alignment for Large Language Models](/202603/26/2603.18113v1-vc-soup-value-consistency-guided-multi-value-alignment-for-large-language-models)  
+   evidence：用于高效强化学习训练的在线验证提示选择
+2. [SPA: A Simple but Tough-to-Beat Baseline for Knowledge Injection](/202603/27/2603.22213v1-spa-a-simple-but-tough-to-beat-baseline-for-knowledge-injection)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于多价值对齐的基于提示的有监督微调
-5. [Adaptive Decoding via Test-Time Policy Learning for Self-Improving Generation](/202603/26/2603.18428v1-adaptive-decoding-via-test-time-policy-learning-for-self-improving-generation)  
+   evidence：用于合成数据生成的提示工程增强
+3. [Decompose and Transfer: CoT-Prompting Enhanced Alignment for Open-Vocabulary Temporal Action Detection](/202603/27/2603.24030v1-decompose-and-transfer-cot-prompting-enhanced-alignment-for-open-vocabulary-temporal-action-detection)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型生成的测试时策略学习
-6. [Minimax Generalized Cross-Entropy](/202603/26/2603.19874v1-minimax-generalized-cross-entropy)  
+   evidence：用于动作分解的思维链提示
+4. [Enhanced Mycelium of Thought (EMoT): A Bio-Inspired Hierarchical Reasoning Architecture with Strategic Dormancy and Mnemonic Encoding](/202603/27/2603.24065v1-enhanced-mycelium-of-thought-emot-a-bio-inspired-hierarchical-reasoning-architecture-with-strategic-dormancy-and-mnemonic-encoding)  
    标签：评分：6.0/10、query:bopl
-   evidence：导致双层优化的极大极小公式化
-7. [Minimax Generalized Cross-Entropy](/202603/26/2603.19874v2-minimax-generalized-cross-entropy)  
+   evidence：分层推理提示架构
+5. [Can LLMs Beat Classical Hyperparameter Optimization Algorithms? A Study on autoresearch](/202603/27/2603.24647v1-can-llms-beat-classical-hyperparameter-optimization-algorithms-a-study-on-autoresearch)  
    标签：评分：6.0/10、query:bopl
-   evidence：极小极大优化公式
-8. [AE-LLM: Adaptive Efficiency Optimization for Large Language Models](/202603/26/2603.20492v1-ae-llm-adaptive-efficiency-optimization-for-large-language-models)  
+   evidence：基于大语言模型的超参数优化与经典算法对比
+6. [Self-Corrected Image Generation with Explainable Latent Rewards](/202603/27/2603.24965v1-self-corrected-image-generation-with-explainable-latent-rewards)  
    标签：评分：6.0/10、query:bopl
-   evidence：自动选择和组合包括PEFT在內的高效技术
-9. [PROMPT2BOX: Uncovering Entailment Structure among LLM Prompts](/202603/26/2603.21438v1-prompt2box-uncovering-entailment-structure-among-llm-prompts)  
+   evidence：从潜空间编辑到引导生成的微分映射
+7. [Does Structured Intent Representation Generalize? A Cross-Language, Cross-Model Empirical Study of 5W3H Prompting](/202603/27/2603.25379v1-does-structured-intent-representation-generalize-a-cross-language-cross-model-empirical-study-of-5w3h-prompting)  
    标签：评分：6.0/10、query:bopl
-   evidence：嵌入提示词以捕捉特异性关系
-10. [DSPA: Dynamic SAE Steering for Data-Efficient Preference Alignment](/202603/26/2603.21461v1-dspa-dynamic-sae-steering-for-data-efficient-preference-alignment)  
-   标签：评分：6.0/10、query:bopl
-   evidence：偏好对齐的提示词条件引导
-11. [CurvZO: Adaptive Curvature-Guided Sparse Zeroth-Order Optimization for Efficient LLM Fine-Tuning](/202603/26/2603.21725v1-curvzo-adaptive-curvature-guided-sparse-zeroth-order-optimization-for-efficient-llm-fine-tuning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于内存高效大模型微调的零阶优化
+   evidence：将提示自动扩展为结构化意图表示
 
 
 <div class="dpr-home-promo-card">
