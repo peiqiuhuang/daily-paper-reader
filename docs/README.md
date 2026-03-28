@@ -6,49 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-27
-- 运行时间：2026-03-27 19:46:55 UTC
+- 最新运行日期：2026-03-28
+- 运行时间：2026-03-28 19:46:24 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：2
+- 本次总论文数：7
+- 精读区：0
 - 速读区：7
 
 ### 今日简报（AI）
-今日聚焦 Prompt 工程的深度进化，重点解析策略与提示词联合优化及自动化编写的最新突破。
-核心结论指出 P^2O 框架能通过协同演化压榨模型潜力，同时自动化提示词正逐步在效率与效果上超越人工经验。
-建议开发者关注自动化提示词工具与策略微调的结合，以低成本实现
-- 详情：[/202603/27/README](/202603/27/README)
+今日速览 7 篇前沿论文，涵盖医疗影像分割、多模态少样本学习及智能体自我进化。
+重点关注
+- 详情：[/202603/28/README](/202603/28/README)
 
 ### 精读区论文标签
-1. [P^2O: Joint Policy and Prompt Optimization](/202603/27/2603.21877v2-p2o-joint-policy-and-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：联合提示词与策略优化
-2. [To Write or to Automate Linguistic Prompts, That Is the Question](/202603/27/2603.25169v1-to-write-or-to-automate-linguistic-prompts-that-is-the-question)  
-   标签：评分：9.0/10、query:bopl
-   evidence：手动与自动提示词优化的比较
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Train at Moving Edge: Online-Verified Prompt Selection for Efficient RL Training of Large Reasoning Model](/202603/27/2603.25184v1-train-at-moving-edge-online-verified-prompt-selection-for-efficient-rl-training-of-large-reasoning-model)  
+1. [Hierarchical Text-Guided Brain Tumor Segmentation via Sub-Region-Aware Prompts](/202603/28/2603.21083v1-hierarchical-text-guided-brain-tumor-segmentation-via-sub-region-aware-prompts)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于高效强化学习训练的在线验证提示选择
-2. [SPA: A Simple but Tough-to-Beat Baseline for Knowledge Injection](/202603/27/2603.22213v1-spa-a-simple-but-tough-to-beat-baseline-for-knowledge-injection)  
+   evidence：用于多模态分割的子区域感知提示
+2. [Unlocking Few-Shot Capabilities in LVLMs via Prompt Conditioning and Head Selection](/202603/28/2603.24181v1-unlocking-few-shot-capabilities-in-lvlms-via-prompt-conditioning-and-head-selection)  
+   标签：评分：7.0/10、query:bopl
+   evidence：利用提示词调节提高性能
+3. [Experiential Reflective Learning for Self-Improving LLM Agents](/202603/28/2603.24639v1-experiential-reflective-learning-for-self-improving-llm-agents)  
+   标签：评分：7.0/10、query:bopl
+   evidence：通过经验学习实现自我改进的LLM智能体
+4. [Understanding Contextual Recall in Transformers: How Finetuning Enables In-Context Reasoning over Pretraining Knowledge](/202603/28/2603.20969v1-understanding-contextual-recall-in-transformers-how-finetuning-enables-in-context-reasoning-over-pretraining-knowledge)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于合成数据生成的提示工程增强
-3. [Decompose and Transfer: CoT-Prompting Enhanced Alignment for Open-Vocabulary Temporal Action Detection](/202603/27/2603.24030v1-decompose-and-transfer-cot-prompting-enhanced-alignment-for-open-vocabulary-temporal-action-detection)  
+   evidence：对新提示格式下语境推理的分析
+5. [VP-VLA: Visual Prompting as an Interface for Vision-Language-Action Models](/202603/28/2603.22003v1-vp-vla-visual-prompting-as-an-interface-for-vision-language-action-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于动作分解的思维链提示
-4. [Enhanced Mycelium of Thought (EMoT): A Bio-Inspired Hierarchical Reasoning Architecture with Strategic Dormancy and Mnemonic Encoding](/202603/27/2603.24065v1-enhanced-mycelium-of-thought-emot-a-bio-inspired-hierarchical-reasoning-architecture-with-strategic-dormancy-and-mnemonic-encoding)  
+   evidence：视觉语言动作模型的结构化视觉提示接口
+6. [From Brittle to Robust: Improving LLM Annotations for SE Optimization](/202603/28/2603.22474v1-from-brittle-to-robust-improving-llm-annotations-for-se-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：分层推理提示架构
-5. [Can LLMs Beat Classical Hyperparameter Optimization Algorithms? A Study on autoresearch](/202603/27/2603.24647v1-can-llms-beat-classical-hyperparameter-optimization-algorithms-a-study-on-autoresearch)  
+   evidence：用于优化的新型LLM提示策略
+7. [TuneShift-KD: Knowledge Distillation and Transfer for Fine-tuned Models](/202603/28/2603.24518v1-tuneshift-kd-knowledge-distillation-and-transfer-for-fine-tuned-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于大语言模型的超参数优化与经典算法对比
-6. [Self-Corrected Image Generation with Explainable Latent Rewards](/202603/27/2603.24965v1-self-corrected-image-generation-with-explainable-latent-rewards)  
-   标签：评分：6.0/10、query:bopl
-   evidence：从潜空间编辑到引导生成的微分映射
-7. [Does Structured Intent Representation Generalize? A Cross-Language, Cross-Model Empirical Study of 5W3H Prompting](/202603/27/2603.25379v1-does-structured-intent-representation-generalize-a-cross-language-cross-model-empirical-study-of-5w3h-prompting)  
-   标签：评分：6.0/10、query:bopl
-   evidence：将提示自动扩展为结构化意图表示
+   evidence：参数高效微调与知识蒸馏
 
 
 <div class="dpr-home-promo-card">
