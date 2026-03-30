@@ -6,44 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-29
-- 运行时间：2026-03-29 19:27:45 UTC
+- 最新运行日期：2026-03-30
+- 运行时间：2026-03-30 20:26:00 UTC
 - 运行状态：成功
-- 本次总论文数：7
+- 本次总论文数：6
 - 精读区：0
-- 速读区：7
+- 速读区：6
 
 ### 今日简报（AI）
-今日速览 7 篇前沿论文，聚焦多模态异常检测、时间序列大模型及视频时序理解的最新突破。
-重点关注支持指令调控的时间序列通用模型，以及通过视觉提示显著增强视频时序理解的 ViKey 方案。
-建议深入探索大模型在垂直领域（如工业检测与时序预测）的指令化与提示工程应用。
-- 详情：[/202603/29/README](/202603/29/README)
+今日速读 6 篇前沿论文，重点聚焦二阶优化训练框架与多任务微调中的过拟合难题。
+推荐关注可组合的曲率感知训练栈以提升模型收敛，以及通过 mSFT 策略解决多任务混合数据中的异质过拟合现象。
+建议开发者尝试将二阶优化引入现有工作流，并优化 SFT 阶段的混合数据配比以提升模型泛化力。
+- 详情：[/202603/30/README](/202603/30/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Exploring Multimodal Prompts For Unsupervised Continuous Anomaly Detection](/202603/29/2603.21562v1-exploring-multimodal-prompts-for-unsupervised-continuous-anomaly-detection)  
+1. [Second-Order, First-Class: A Composable Stack for Curvature-Aware Training](/202603/30/2603.25976v1-second-order-first-class-a-composable-stack-for-curvature-aware-training)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用多模态提示词的无监督异常检测
-2. [A Foundation Model for Instruction-Conditioned In-Context Time Series Tasks](/202603/29/2603.22586v1-a-foundation-model-for-instruction-conditioned-in-context-time-series-tasks)  
-   标签：评分：7.0/10、query:bopl
-   evidence：时间序列任务的指令调节上下文学习
-3. [ViKey: Enhancing Temporal Understanding in Videos via Visual Prompting](/202603/29/2603.23186v1-vikey-enhancing-temporal-understanding-in-videos-via-visual-prompting)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于增强视频大模型时间理解能力的视觉提示
-4. [Cognitive Training for Language Models: Towards General Capabilities via Cross-Entropy Games](/202603/29/2603.22479v2-cognitive-training-for-language-models-towards-general-capabilities-via-cross-entropy-games)  
+   evidence：提供了一个用于曲率感知训练和二阶优化的技术栈
+2. [mSFT: Addressing Dataset Mixtures Overfitting Heterogeneously in Multi-task SFT](/202603/30/2603.21606v2-msft-addressing-dataset-mixtures-overfitting-heterogeneously-in-multi-task-sft)  
    标签：评分：6.0/10、query:bopl
-   evidence：自动课程构建的元目标和贪婪优化
-5. [Boost Like a (Var)Pro: Trust-Region Gradient Boosting via Variable Projection](/202603/29/2603.23658v1-boost-like-a-varpro-trust-region-gradient-boosting-via-variable-projection)  
+   evidence：多任务数据混合的迭代搜索算法
+3. [mSFT: Addressing Dataset Mixtures Overfitting Heterogeneously in Multi-task SFT](/202603/30/2603.21606v4-msft-addressing-dataset-mixtures-overfitting-heterogeneously-in-multi-task-sft)  
    标签：评分：6.0/10、query:bopl
-   evidence：可分离模型的变量投影训练范式
-6. [LLM-Driven Reasoning for Constraint-Aware Feature Selection in Industrial Systems](/202603/29/2603.24979v1-llm-driven-reasoning-for-constraint-aware-feature-selection-in-industrial-systems)  
+   evidence：多任务数据混合的迭代搜索算法
+4. [mSFT: Addressing Dataset Mixtures Overfitting Heterogeneously in Multi-task SFT](/202603/30/2603.21606v5-msft-addressing-dataset-mixtures-overfitting-heterogeneously-in-multi-task-sft)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于基于推理的特征选择的结构化提示
-7. [Prompt Attack Detection with LLM-as-a-Judge and Mixture-of-Models](/202603/29/2603.25176v1-prompt-attack-detection-with-llm-as-a-judge-and-mixture-of-models)  
+   evidence：多任务数据混合的迭代搜索算法
+5. [Bridging the Know-Act Gap via Task-Level Autoregressive Reasoning](/202603/30/2603.22619v1-bridging-the-know-act-gap-via-task-level-autoregressive-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于大模型安全评判的提示设计
+   evidence：分析了大语言模型中判别式提示与生成行为的差异
+6. [DAK-UCB: Diversity-Aware Prompt Routing for LLMs and Generative Models](/202603/30/2603.23140v2-dak-ucb-diversity-aware-prompt-routing-for-llms-and-generative-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于LLM选择的提示词路由
 
 
 <div class="dpr-home-promo-card">
