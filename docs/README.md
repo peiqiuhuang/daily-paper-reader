@@ -6,49 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-01
-- 运行时间：2026-04-01 21:01:41 UTC
+- 最新运行日期：2026-04-02
+- 运行时间：2026-04-02 19:44:00 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：3
+- 本次总论文数：12
+- 精读区：6
 - 速读区：6
 
 ### 今日简报（AI）
-今日聚焦 9 篇前沿成果，深度解析双层优化效率提升与多模态视觉叙事的定制化突破。
-重点关注 KFAC 算法对超梯度计算的显著加速，以及统一多模态大模型在个性化故事创作中的卓越表现。
-建议开发者关注底层优化算法与多模态生成的跨界融合，以实现更高效、更具表现力的 AI 创意产出。
-- 详情：[/202604/01/README](/202604/01/README)
+今日深度解析 12 篇前沿成果，重点攻克混合整数双层优化难题并探索语言智能体的测试时进化。
+核心突破在于参数化区域搜索启发式算法的高效应用，以及赋予智能体在任务执行中自主优化适配策略的能力。
+建议关注测试时学习（TTT）与跨图提示学习在复杂动态环境下的落地潜力。
+- 详情：[/202604/02/README](/202604/02/README)
 
 ### 精读区论文标签
-1. [Efficient Bilevel Optimization with KFAC-Based Hypergradients](/202604/01/2603.29108v1-efficient-bilevel-optimization-with-kfac-based-hypergradients)  
+1. [Parametric Region Search: A Mixed-Integer Bilevel Optimization Problem Primal Heuristic](/202604/02/2604.00214v1-parametric-region-search-a-mixed-integer-bilevel-optimization-problem-primal-heuristic)  
    标签：评分：9.0/10、query:bopl
-   evidence：使用基于KFAC的超梯度进行高效双层优化
-2. [Customized Visual Storytelling with Unified Multimodal LLMs](/202604/01/2603.27690v1-customized-visual-storytelling-with-unified-multimodal-llms)  
+   evidence：混合整数双层优化问题的原始启发式算法
+2. [Learning to Learn-at-Test-Time: Language Agents with Learnable Adaptation Policies](/202604/02/2604.00830v1-learning-to-learn-at-test-time-language-agents-with-learnable-adaptation-policies)  
+   标签：评分：9.0/10、query:bopl
+   evidence：将自适应策略的发现建模为双层优化问题
+3. [Emergent Neural Automaton Policies: Learning Symbolic Structure from Visuomotor Trajectories](/202604/02/2603.25903v1-emergent-neural-automaton-policies-learning-symbolic-structure-from-visuomotor-trajectories)  
    标签：评分：8.0/10、query:bopl
-   evidence：用于镜头类型控制的参数高效提示微调
-3. [HSFM: Hard-Set-Guided Feature-Space Meta-Learning for Robust Classification under Spurious Correlations](/202604/01/2603.29313v1-hsfm-hard-set-guided-feature-space-meta-learning-for-robust-classification-under-spurious-correlations)  
+   evidence：用于机器人学习的双层神经符号策略
+4. [Bilevel MPC for Linear Systems: A Tractable Reduction and Continuous Connection to Hierarchical MPC](/202604/02/2603.29265v1-bilevel-mpc-for-linear-systems-a-tractable-reduction-and-continuous-connection-to-hierarchical-mpc)  
    标签：评分：8.0/10、query:bopl
-   evidence：用于鲁棒分类的双层元学习方法
+   evidence：包含上下层的双层模型预测控制架构
+5. [Optimsyn: Influence-Guided Rubrics Optimization for Synthetic Data Generation](/202604/02/2604.00536v1-optimsyn-influence-guided-rubrics-optimization-for-synthetic-data-generation)  
+   标签：评分：8.0/10、query:bopl
+   evidence：影响引导的提示词准则优化
+6. [ProTPS: Prototype-Guided Text Prompt Selection for Continual Learning](/202604/02/2604.01116v1-protps-prototype-guided-text-prompt-selection-for-continual-learning)  
+   标签：评分：8.0/10、query:bopl
+   evidence：基于文本提示的方法和用于持续学习的可学习提示
 
 ### 速读区论文标签
-1. [CLIP-AUTT: Test-Time Personalization with Action Unit Prompting for Fine-Grained Video Emotion Recognition](/202604/01/2603.27999v2-clip-autt-test-time-personalization-with-action-unit-prompting-for-fine-grained-video-emotion-recognition)  
+1. [SkeletonContext: Skeleton-side Context Prompt Learning for Zero-Shot Skeleton-based Action Recognition](/202604/02/2603.29692v1-skeletoncontext-skeleton-side-context-prompt-learning-for-zero-shot-skeleton-based-action-recognition)  
    标签：评分：7.0/10、query:bopl
-   evidence：视觉语言模型的结构化文本提示
-2. [Rethinking Language Model Scaling under Transferable Hypersphere Optimization](/202604/01/2603.28743v1-rethinking-language-model-scaling-under-transferable-hypersphere-optimization)  
+   evidence：丰富骨骼运动表示的提示学习框架
+2. [A Cross-graph Tuning-free GNN Prompting Framework](/202604/02/2604.00399v1-a-cross-graph-tuning-free-gnn-prompting-framework)  
    标签：评分：7.0/10、query:bopl
-   evidence：利用超球优化在不同模型规模间迁移最优学习率
-3. [Route-Induced Density and Stability (RIDE): Controlled Intervention and Mechanism Analysis of Routing-Style Meta Prompts on LLM Internal States](/202604/01/2603.29206v1-route-induced-density-and-stability-ride-controlled-intervention-and-mechanism-analysis-of-routing-style-meta-prompts-on-llm-internal-states)  
+   evidence：免微调的图神经网络提示框架
+3. [Learning from Many and Adapting to the Unknown in Open-set Test Streams](/202604/02/2604.00533v1-learning-from-many-and-adapting-to-the-unknown-in-open-set-test-streams)  
    标签：评分：7.0/10、query:bopl
-   evidence：分析了路由式元提示对大语言模型内部状态和稳定性的影响
-4. [Subspace Optimization for Backpropagation-Free Continual Test-Time Adaptation](/202604/01/2603.28678v1-subspace-optimization-for-backpropagation-free-continual-test-time-adaptation)  
+   evidence：使用低秩适配器的参数高效LLM自适应方法
+4. [Chameleons do not Forget: Prompt-Based Online Continual Learning for Next Activity Prediction](/202604/02/2604.00653v1-chameleons-do-not-forget-prompt-based-online-continual-learning-for-next-activity-prediction)  
+   标签：评分：7.0/10、query:bopl
+   evidence：基于提示的在线持续学习用于下一活动预测
+5. [Brainstacks: Cross-Domain Cognitive Capabilities via Frozen MoE-LoRA Stacks for Continual LLM Learning](/202604/02/2604.01152v1-brainstacks-cross-domain-cognitive-capabilities-via-frozen-moe-lora-stacks-for-continual-llm-learning)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于参数高效适配器的内外循环训练
+6. [UniICL: Systematizing Unified Multimodal In-context Learning through a Capability-Oriented Taxonomy](/202604/02/2603.24690v1-uniicl-systematizing-unified-multimodal-in-context-learning-through-a-capability-oriented-taxonomy)  
    标签：评分：6.0/10、query:bopl
-   evidence：在低维子空间内优化参数
-5. [OptiMer: Optimal Distribution Vector Merging Is Better than Data Mixing for Continual Pre-Training](/202604/01/2603.28858v1-optimer-optimal-distribution-vector-merging-is-better-than-data-mixing-for-continual-pre-training)  
-   标签：评分：6.0/10、query:bopl
-   evidence：数据混合比例的超参数优化
-6. [Projection-Free Algorithms for Minimax Problems](/202604/01/2603.29870v1-projection-free-algorithms-for-minimax-problems)  
-   标签：评分：6.0/10、query:bopl
-   evidence：极大极小优化是机器学习中许多双层优化公式的核心组成部分
+   evidence：语境学习对示例选择和格式的敏感性
 
 
 <div class="dpr-home-promo-card">
