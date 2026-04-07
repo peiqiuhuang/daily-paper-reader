@@ -6,62 +6,56 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-03
-- 运行时间：2026-04-03 19:36:54 UTC
+- 最新运行日期：2026-03-29 ~ 2026-04-07
+- 运行时间：2026-04-07 01:52:39 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
-- 速读区：11
+- 本次总论文数：12
+- 精读区：3
+- 速读区：9
 
 ### 今日简报（AI）
-- 今日共生成 13 篇推荐（精读 2 篇，速读 11 篇）
-- 精读：《Learning to Learn-at-Test-Time: Language Agents with Learnable Adaptation Policies》（10.0/10）, 《Bilevel Programming Approach for Image Restoration Problems with Automatically Hyperparameter Selection》（9.0/10）
-- 速读：《Low-Rank Adaptation Reduces Catastrophic Forgetting in Sequential Transformer Encoder Fine-Tuning: Controlled Empirical Evidence and Frozen-Backbone Representation Probes》（7.0/10）, 《Structured Intent as a Protocol-Like Communication Layer: Cross-Model Robustness, Framework Comparison, and the Weak-Model Compensation Effect》（7.0/10）, 《Chameleons do not Forget: Prompt-Based Online Continual Learning for Next Activity Prediction》（7.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/03/README](/202604/03/README)
+本期聚焦博弈论优化与大模型效能，重点攻克了 Stackelberg 预测博弈的全局最优求解
+- 详情：[/20260329-20260407/README](/20260329-20260407/README)
 
 ### 精读区论文标签
-1. [Learning to Learn-at-Test-Time: Language Agents with Learnable Adaptation Policies](/202604/03/2604.00830v2-learning-to-learn-at-test-time-language-agents-with-learnable-adaptation-policies)  
-   标签：评分：10.0/10、query:bopl
-   evidence：将语言智能体的自适应策略建模为双层优化问题
-2. [Bilevel Programming Approach for Image Restoration Problems with Automatically Hyperparameter Selection](/202604/03/2604.01866v1-bilevel-programming-approach-for-image-restoration-problems-with-automatically-hyperparameter-selection)  
+1. [Low-Complexity Algorithm for Stackelberg Prediction Games with Global Optimality](/20260329-20260407/2604.02676v1-low-complexity-algorithm-for-stackelberg-prediction-games-with-global-optimality)  
    标签：评分：9.0/10、query:bopl
-   evidence：用于自动超参数选择的双层规划方法
+   evidence：Stackelberg预测博弈中的双层优化问题
+2. [Accelerating Black-Box Bilevel Optimization with Rank-Based Upper-Level Value Function Approximation](/20260329-20260407/2604.02888v1-accelerating-black-box-bilevel-optimization-with-rank-based-upper-level-value-function-approximation)  
+   标签：评分：9.0/10、query:bopl
+   evidence：黑盒双层优化的有效框架
+3. [Beyond the Parameters: A Technical Survey of Contextual Enrichment in Large Language Models: From In-Context Prompting to Causal Retrieval-Augmented Generation](/20260329-20260407/2604.03174v1-beyond-the-parameters-a-technical-survey-of-contextual-enrichment-in-large-language-models-from-in-context-prompting-to-causal-retrieval-augmented-generation)  
+   标签：评分：8.0/10、query:bopl
+   evidence：上下文提示与提示工程的技术综述
 
 ### 速读区论文标签
-1. [Low-Rank Adaptation Reduces Catastrophic Forgetting in Sequential Transformer Encoder Fine-Tuning: Controlled Empirical Evidence and Frozen-Backbone Representation Probes](/202604/03/2603.27707v1-low-rank-adaptation-reduces-catastrophic-forgetting-in-sequential-transformer-encoder-fine-tuning-controlled-empirical-evidence-and-frozen-backbone-representation-probes)  
+1. [Reliability of Large Language Models for Design Synthesis: An Empirical Study of Variance, Prompt Sensitivity, and Method Scaffolding](/20260329-20260407/2604.00851v1-reliability-of-large-language-models-for-design-synthesis-an-empirical-study-of-variance-prompt-sensitivity-and-method-scaffolding)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用低秩自适应（LoRA）的参数高效更新
-2. [Structured Intent as a Protocol-Like Communication Layer: Cross-Model Robustness, Framework Comparison, and the Weak-Model Compensation Effect](/202604/03/2603.29953v1-structured-intent-as-a-protocol-like-communication-layer-cross-model-robustness-framework-comparison-and-the-weak-model-compensation-effect)  
+   evidence：用于大模型设计综合的少样本提示方法
+2. [Token-Efficient Multimodal Reasoning via Image Prompt Packaging](/20260329-20260407/2604.02492v1-token-efficient-multimodal-reasoning-via-image-prompt-packaging)  
    标签：评分：7.0/10、query:bopl
-   evidence：结构化意图提示框架
-3. [Chameleons do not Forget: Prompt-Based Online Continual Learning for Next Activity Prediction](/202604/03/2604.00653v2-chameleons-do-not-forget-prompt-based-online-continual-learning-for-next-activity-prediction)  
+   evidence：视觉提示策略与多模态推理的Token效率优化
+3. [Sustainability Analysis of Prompt Strategies for SLM-based Automated Test Generation](/20260329-20260407/2604.02761v1-sustainability-analysis-of-prompt-strategies-for-slm-based-automated-test-generation)  
    标签：评分：7.0/10、query:bopl
-   evidence：基于提示的在线持续学习
-4. [PDA: Text-Augmented Defense Framework for Robust Vision-Language Models against Adversarial Image Attacks](/202604/03/2604.01010v1-pda-text-augmented-defense-framework-for-robust-vision-language-models-against-adversarial-image-attacks)  
+   evidence：提示工程策略的系统性评估
+4. [Prompt Compression in the Wild: Measuring Latency, Rate Adherence, and Quality for Faster LLM Inference](/20260329-20260407/2604.02985v1-prompt-compression-in-the-wild-measuring-latency-rate-adherence-and-quality-for-faster-llm-inference)  
    标签：评分：7.0/10、query:bopl
-   evidence：针对视觉语言模型的提示词改写与文本增强
-5. [Training In-Context and In-Weights Mixtures Via Contrastive Context Sampling](/202604/03/2604.01601v1-training-in-context-and-in-weights-mixtures-via-contrastive-context-sampling)  
+   evidence：自动提示词压缩与优化
+5. [Reflective Context Learning: Studying the Optimization Primitives of Context Space](/20260329-20260407/2604.03189v1-reflective-context-learning-studying-the-optimization-primitives-of-context-space)  
    标签：评分：7.0/10、query:bopl
-   evidence：语境学习的训练策略
-6. [Adam's Law: Textual Frequency Law on Large Language Models](/202604/03/2604.02176v1-adams-law-textual-frequency-law-on-large-language-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于大语言模型提示和微调的文本频率规律
-7. [Magic Words or Methodical Work? Challenging Conventional Wisdom in LLM-Based Political Text Annotation](/202604/03/2603.26898v1-magic-words-or-methodical-work-challenging-conventional-wisdom-in-llm-based-political-text-annotation)  
+   evidence：上下文空间的迭代更新与优化
+6. [ReFormeR: Learning and Applying Explicit Query Reformulation Patterns](/20260329-20260407/2604.01417v1-reformer-learning-and-applying-explicit-query-reformulation-patterns)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型中提示风格与学习方法的交互作用
-8. [Magic Words or Methodical Work? Challenging Conventional Wisdom in LLM-Based Political Text Annotation](/202604/03/2603.26898v2-magic-words-or-methodical-work-challenging-conventional-wisdom-in-llm-based-political-text-annotation)  
+   evidence：基于模式引导的查询重构与提示引导方法
+7. [MiCA Learns More Knowledge Than LoRA and Full Fine-Tuning](/20260329-20260407/2604.01694v1-mica-learns-more-knowledge-than-lora-and-full-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示风格和学习方法的评估
-9. [MemRerank: Preference Memory for Personalized Product Reranking](/202604/03/2603.29247v2-memrerank-preference-memory-for-personalized-product-reranking)  
+   evidence：大语言模型的参数高效微调方法
+8. [Unlocking Positive Transfer in Incrementally Learning Surgical Instruments: A Self-reflection Hierarchical Prompt Framework](/20260329-20260407/2604.02877v1-unlocking-positive-transfer-in-incrementally-learning-surgical-instruments-a-self-reflection-hierarchical-prompt-framework)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过强化学习将历史信息提取到提示中
-10. [Adversarial Prompt Injection Attack on Multimodal Large Language Models](/202604/03/2603.29418v1-adversarial-prompt-injection-attack-on-multimodal-large-language-models)  
+   evidence：用于模型适应性的分层提示框架
+9. [Importance Sampling Optimization with Laplace Principle](/20260329-20260407/2604.02882v1-importance-sampling-optimization-with-laplace-principle)  
    标签：评分：6.0/10、query:bopl
-   evidence：迭代优化的对抗性提示词
-11. [Projection-Free Algorithms for Minimax Problems](/202604/03/2603.29870v2-projection-free-algorithms-for-minimax-problems)  
-   标签：评分：6.0/10、query:bopl
-   evidence：极小极大和鞍点问题的优化算法
+   evidence：针对随机搜索的超参数调优改进方法
 
 
 <div class="dpr-home-promo-card">
