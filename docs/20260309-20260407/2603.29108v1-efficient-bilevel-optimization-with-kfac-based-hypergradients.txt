@@ -1,0 +1,1471 @@
+Title: Efficient Bilevel Optimization with KFAC-Based Hypergradients
+
+URL Source: https://arxiv.org/pdf/2603.29108v1
+
+Published Time: Wed, 01 Apr 2026 00:20:36 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# Efficient Bilevel Optimization with KFAC-Based Hypergradients 
+
+Disen Liao Felix Dangel Yaoliang Yu 
+
+University of Waterloo Vector Institute Vector Institute University of Waterloo Vector Institute 
+
+## Abstract 
+
+Bilevel optimization (BO) is widely applica-ble to many machine learning problems. Scal-ing BO, however, requires repeatedly comput-ing hypergradients, which involves solving in-verse Hessian-vector products (IHVPs). In prac-tice, these operations are often approximated using crude surrogates such as one-step gradi-ent unrolling or identity/short Neumann expan-sions, which discard curvature information. We build on implicit function theorem-based algo-rithms and propose to incorporate Kronecker-factored approximate curvature (KFAC), yield-ing curvature-aware hypergradients with a better performance efficiency trade-off than Conjugate Gradient (CG) or Neumann methods and consis-tently outperforming unrolling. We evaluate this approach across diverse tasks, including meta-learning and AI safety problems. On models up to BERT, we show that curvature information is valuable at scale, and KFAC can provide it with only modest memory and runtime overhead. Our implementation is available at https://gith ub.com/liaodisen/NeuralBo .
+
+## 1 Introduction 
+
+Bilevel optimization (BO), originally studied in economics (von Stackelberg, 1934), models interactions between two decision-makers: a leader who acts first and a follower who optimizes in response. This leader-follower structure cap-tures scenarios where one optimization problem depends on another. In machine learning, BO provides a unify-ing framework for diverse tasks: in meta-learning to ac-quire transferable inductive biases (Bertinetto et al., 2019; Rajeswaran et al., 2019), in hyper-parameter and data op-timization to adapt learning pipelines (Franceschi et al.,    
+
+> Proceedings of the 29 th International Conference on Artificial In-telligence and Statistics (AISTATS) 2026, Tangier, Morocco. PMLR: Volume 300. Copyright 2026 by the author(s).
+
+2018; Shu et al., 2019; Feng et al., 2024; Hu et al., 2023; Lorraine et al., 2020), and in neural architecture search to guide model design (Liu et al., 2019). BO also plays a cen-tral role in AI safety, covering adversarial problems such as data poisoning (Lu et al., 2022; Radiya-Dixit et al., 2022; Huang et al., 2020) and unlearnable examples (Huang et al., 2021; Liu et al., 2024). BO’s appeal lies in its breadth: a single framework to reason about dependencies across learning, optimization, and safety. Broadly speaking, algorithms for BO fall into three fam-ilies: gradient unrolling (GU), implicit function theorem 
+
+(IFT), and value-function (VF). GU methods directly dif-ferentiate through a sequence of lower-level optimization steps (Franceschi et al., 2017; Shaban et al., 2019; Shen et al., 2024). While conceptually simple, they demand substantial memory and computation, and short unrolling horizons introduce truncation bias. IFT methods avoid ex-plicit unrolling by leveraging the implicit function theo-rem to characterize the sensitivity of the lower-level so-lution (Lorraine et al., 2020; Grazzi et al., 2020; Ji et al., 2021; Choe et al., 2023a). These approaches circumvent the need to store the intermediate iterates and are therefore more memory-efficient than unrolling, but hinge on com-puting inverse Hessian-vector products (IHVPs), which be-comes a major computational bottleneck in high dimen-sions. VF methods instead sidestep second-order compu-tations by reformulating BO as a constrained single-level problem (Liu et al., 2021; Kwon et al., 2023; Giovannelli et al., 2025). Despite avoiding explicit second-order opera-tions, their practical scalability remains less clear: solving the resulting single-level formulation often introduces addi-tional optimization variables and constraints, which can in-crease complexity and make them less competitive in large-scale stochastic learning settings (Zhang et al., 2024). Among the three, IFT-based approaches have recently gained popularity due to their ability to capture accurate hy-pergradients (Ghadimi & Wang, 2018; Ji et al., 2021). Sev-eral efforts have pushed them toward larger-scale applica-tions (Lorraine et al., 2020; Choe et al., 2023b,a). Since ex-act inversion of the Hessian is infeasible for modern mod-els, practitioners often resort to crude approximations. A common strategy truncates the Neumann series after a few 
+
+> arXiv:2603.29108v1 [cs.LG] 31 Mar 2026
+
+terms (Lorraine et al., 2020; Choe et al., 2023b). However, full convergence is usually computationally out of reach at this problem size, and the neural net’s inner problem is fre-quently ill-conditioned (Sagun et al., 2016), making short truncations inaccurate. Others go further by replacing the Hessian with the identity matrix (Choe et al., 2023a; Hong et al., 2023; Liu et al., 2019), effectively collapsing IFT into a one-step unrolling method and discarding curvature information altogether. As a result, existing methods either degrade under poor conditioning or rely on overly simplis-tic surrogates that produce inaccurate hypergradients. Our work builds squarely within the IFT territory, but seeks to address its central bottleneck: scalable IHVPs. To this end, we explore Kronecker-Factored Approximate Curva-ture (KFAC, Martens & Grosse, 2015), which provides an efficient block-diagonal curvature approximation using the (uncentered) covariance of layer inputs and gradients. Al-though rarely used in BO, recent large-scale results on in-fluence functions in language models (Grosse et al., 2023) suggests that KFAC offers a practical middle ground be-tween crude approximations and iterative curvature-aware methods. In contrast to influence functions, each outer step of IFT-based BO needs an IHVP, each of which is often ob-tained by iterative solvers via many HVPs. KFAC replaces these repeated HVPs with a structured curvature estimate, enabling efficient approximate inversion. We propose a KFAC-based hypergradient method for BO that directly plugs into existing algorithms. It provides rich curvature information at low computational cost— illustrated in Figure 1 where KFAC reaches lower test loss with less per-iteration time than iterative IHVP approxima-tions, with only modest memory overhead over HVP-based methods—and is effective on large-scale models across di-verse applications. Our main contributions are: • We propose using inverse KFAC-vector products (IKVPs) for hypergradient computation in IFT-based BO and use them to replace IHVPs in existing meth-ods, yielding a scalable curvature-aware approxima-tion that improves wall-clock efficiency, convergence, and stability under small batch sizes. • We scale data hypercleaning to BERT and show that incorporating curvature improves large-scale perfor-mance with only modest time and memory overhead. • We demonstrate broad applicability by applying KFAC (including an empirical variant) to two meta-learning tasks and two ML safety problems, consis-tently improving performance across domains. 
+
+## 2 Background 
+
+Problem Setup. We formulate BO as a nested problem with an outer variable λ ∈ Rm (e.g., hyperparameters) and 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6       
+
+> Time per Iteration [s]
+> 1.3
+> 1.4
+> 1.5
+> 1.6
+> 1.7
+> Minimum Test Loss
+> T=1
+> T=3 T=5 T=10
+> T=1
+> T=3
+> T=5
+> T=10 KFAC
+> K=3
+> K=5
+> K=10
+> K=20
+> K=3 K=5
+> K=10 K=20
+> Data Hypercleaning on CIFAR-10 with ResNet-18
+> Hessian-CG
+> GGN-CG
+> KFAC
+> Hessian-Neumann
+> GGN-Neumann 357
+> Number of Fine-tuned Layers
+> 0.0K
+> 5.0K
+> 10.0K
+> 15.0K
+> 20.0K
+> 25.0K
+> GPU Memory Usage (MB)
+> Data Hypercleaning GPU Memory Usage on BERT
+> SAMA
+> KFAC
+> Neumann
+> CG
+
+Figure 1: Top : KFAC balances accuracy and efficiency bet-ter than Hessian/GGN-based IHVP approximations. T is the number of CG iterations and K the number of trun-cated Neumann terms. Bottom : On BERT, KFAC incurs only a small memory overhead compared to the curvature-free SAMA, while using less memory than CG/Neumann. an inner variable θ ∈ Rd (e.g., model parameters). The goal is to minimize an outer objective Jout that depends on the optimal solution of the inner problem Jin :
+
+min  
+
+> λ∈Rm
+
+Φ( λ) := Jout 
+
+ λ, θ⋆(λ)
+
+s.t. θ⋆(λ) = arg min 
+
+> θ∈Rd
+
+Jin (λ, θ).
+
+Here, the outer objective Jout depends on the inner prob-lem’s optimal solution θ∗. In machine learning, the in-ner problem typically corresponds to training a neural net-work f (x; θ) parameterized by θ, which processes an in-put x into a prediction f (x, θ) ∈ RC . The prediction is compared to the ground truth y with a criterion function 
+
+c : f , y 7 → c(f , y) ∈ R. Finally, we form the empirical risk by evaluating, then averaging, the risk over a dataset D:
+
+LD (θ) = 1/N
+
+P 
+
+> n
+
+c(f (xn, θ), yn) := 1/N
+
+P 
+
+> n
+
+ℓn(θ) with the per-sample loss ℓn = cn ◦ fn with cn = c|y=yn , fn =
+
+f |x=xn . One simple example is Jin (λ, θ) = LD (θ) = 
+
+> 1
+
+/N
+
+P 
+
+> n
+
+ℓn(θ), where we may identify λ = {(xn, yn)}.
+
+Hypergradient. To optimize the outer problem, we re-quire the gradient of Φ( λ) with respect to λ. By the im-plicit function theorem (Steven G. Krantz, 2002), the hy-pergradient is: 
+
+∇Φ( λ) = ∇1Jout (λ, θ⋆(λ)) − ∇ 212 Jin (λ, θ⋆(λ)) v⋆. (1) Here ∇1 denotes the gradient w.r.t the outer variable λ,and ∇2 denotes the gradient w.r.t the inner variable θ. The subscript 12 indicates mixed second derivatives, while 22 
+
+denotes the Hessian w.r.t θ and v⋆ is the solution of the linear system 
+
+∇222 Jin (λ, θ⋆(λ)) v = ∇2Jout (λ, θ⋆(λ)) . (2) In practice, v⋆ corresponds to an IHVP, which is the main bottleneck in IFT-based bilevel optimization methods. The IFT expression above, Equation (2), holds under standard smoothness and non-degeneracy assumptions: the inner objective must be twice continuously differentiable, and its Hessian at the optimum θ⋆(λ) must be non-singular, which implies local strong convexity (Steven G. Krantz, 2002). In neural networks, however, the inner optimization is rarely carried to exact optimality because of the cost, so IFT-based hypergradients are usually computed approximately at the current iterate rather than at the true inner solution. 
+
+IHVP approximations. Let H := ∇222 Jin (λ, θ⋆(λ)) 
+
+denote the inner problem’s Hessian at θ⋆, and let b := 
+
+∇2Jout (λ, θ⋆(λ)) . Computing the hypergradient via Equa-tion (1) requires solving the linear system Hv = b, whose exact solution corresponds to the IHVP v = H−1b. Since explicitly forming or inverting H is infeasible in high di-mensions, iterative methods are commonly used. They it-eratively solve the linear system and require one Hessian-vector product (HVP) per iteration, but their convergence is guaranteed only when H is positive semi-definite. An alternative view is to solve the quadratic problem 
+
+v∗ = arg min 
+
+> v
+
+12 v⊤Hv − b⊤v ,
+
+on which iterative solvers such as conjugate gradient (CG) or gradient descent can be applied; this formulation un-derlies algorithms such as AmIGO (Arbel & Mairal, 2022; Dagr´ eou et al., 2022). Other works use the Neumann series 
+
+H−1 =
+
+> ∞
+
+X
+
+> k=0
+
+(I − H)k ,
+
+and truncate it after K terms to obtain an approximate IHVP with K HVPs (Chen et al., 2021; Ji et al., 2021), though accuracy deteriorates under ill-conditioning. Fi-nally, one-step unrolling methods such as DARTS (Liu et al., 2019) and SAMA (Choe et al., 2023a) approximate 
+
+H by the identity (or equivalently K = 0 ), yielding v ≈ b,ignoring curvature in exchange for efficiency. 
+
+Hessian, GGN, and Fisher. Consider the inner loss 
+
+Jin (λ, θ) = LD (θ). To calculate the Hessian, applying the chain rule to ℓn, the empirical risk’s Hessian decom-poses into the generalized Gauss-Newton (GGN) matrix 
+
+G(θ) (Schraudolph, 2002) and a residual term R(θ):
+
+∇2 
+
+> θ
+
+LD (θ)
+
+| {z }
+
+> := H(θ)
+
+= 1
+
+N
+
+X
+
+> n
+
+[Jθ fn]⊤(∇2 
+
+> f
+
+cn)[ Jθ fn]
+
+| {z }
+
+> := G(θ)
+
++ 1
+
+N
+
+X
+
+> nC
+
+X
+
+> i=1
+
+[∇f cn]i∇2 
+
+> θ
+
+[fn(θ)] i
+
+| {z }
+
+> := R(θ)
+
+.
+
+Here, Jθ fn ∈ RC×d is the Jacobian containing the partial derivatives of fn w.r.t. θ. The GGN is often used instead of the Hessian as it is positive semi-definite. Moreover, for common losses such as mean-squared error and softmax cross-entropy, the GGN coincides with the Fisher informa-tion matrix (FIM, Martens, 2020) 
+
+F (θ) = Ex∼pdata ,y∼pθ (·| x)
+
+∇θ log pθ (y|x) ∇θ log pθ (y|x)⊤
+
+where pdata (x) is the input distribution and pθ (y|x) is the model’s predictive distribution. The Fisher view under-lies natural gradient descent (Amari, 1998) and motivates KFAC as a preconditioner for neural network optimization (Martens & Grosse, 2015). While both the Hessian and GGN are prohibitively expensive to store, automatic differ-entiation allows cheap evaluation of matrix-vector products at the same complexity as computing the gradient (Pearl-mutter, 1994; Schraudolph, 2002; Dagr´ eou et al., 2024). However, this computation is still expensive for BO as it requires applying an inverse at every outer iteration. 
+
+## 3 Method 
+
+Hypergradient computation in BO requires IHVPs, which are expensive or unstable with iterative solvers. We replace them with IKVPs, enabled by a layer-wise Kronecker-factored approximation of the GGN/Fisher. Section 3.1 re-calls KFAC, Section 3.2 shows how to integrate IKVPs into BO, and Section 3.3 provides a diagnostic study that moti-vates and illustrates its robustness under ill-conditioning. 
+
+3.1 KFAC: a Layer-wise Curvature Approximation 
+
+The Hessian H or GGN G is d × d, which is prohibitively large for modern architectures. KFAC reduces this cost by adopting a layer-wise approximation, treating each layer independently and ignoring cross-layer interactions. This yields a block-diagonal structure, where each block is fur-ther approximated with a Kronecker product. This struc-ture is particularly attractive for BO, since hypergradients require repeated curvature inverses: KFAC replaces expen-sive iterative solvers with direct structured inverses, en-abling curvature information at low cost. KFAC for a single fully-connected layer. Here we con-sider the case for a fully-connected layer inside a neu-ral net. The layer’s weights are W ∈ Rd1×d2 (we omit biases for simplicity) and it processes an input an ∈
+
+Rd2 into an output zn = W a n ∈ Rd1 . Further, let 
+
+vec( W ) ∈ Rd1d2 denote the flattened weights from stack-ing the rows into a vector. We can then write down the GGN matrix G(vec W ) w.r.t. to the layer’s parameters an-alytically. To do so, we use the chain rule ( Jvec W fn =(Jzn fn)( Jvec W zn)) with analytical output-parameter Ja-cobian Jvec W zn = Id1 ⊗a⊤ 
+
+> n
+
+(Dangel et al., 2020a), yield-ing that each datum contributes a single Kronecker product: 
+
+G(vec W ) = 1
+
+N
+
+X
+
+> n
+
+(Jzn fn)⊤(∇2 
+
+> f
+
+cn)( Jzn fn) ⊗ ana⊤
+
+> n
+
+= ˆE(Jz f )⊤(∇2 
+
+> f
+
+c)( Jz f ) ⊗ aa ⊤
+
+where we use the notation ˆE[•] = 1/N
+
+P 
+
+> n
+
+•n to indicate the expectation over the dataset. To obtain a single Kro-necker product, KFAC makes the expectation approxima-tion ˆE[• ⊗ ⋆] ≈ ˆE[•] ⊗ ˆE[⋆]. In summary, this yields the following approximation of the GGN: 
+
+G(vec W ) ≈ BKFAC ⊗ AKFAC 
+
+where 
+
+BKFAC = 1
+
+N
+
+X
+
+> n
+
+(Jzn fn)⊤(∇2 
+
+> f
+
+cn)( Jzn fn),
+
+AKFAC = 1
+
+N
+
+X
+
+> n
+
+ana⊤ 
+
+> n
+
+.
+
+This structural approximation reduces the storage cost of 
+
+G(vec W ) ∈ Rd1d2×d1d2 to the much smaller Kronecker factors AKFAC ∈ Rd2×d2 and BKFAC ∈ Rd1×d1 for each layer. Inverting KFAC resorts to inverting the two Kro-necker factors, since (B ⊗A)−1 = B−1 ⊗A−1. For a net-work with multiple layers, KFAC applies this construction layerwise and combines the resulting factors into a block-diagonal approximation of the full network’s curvature. 
+
+Computational details. The (uncentered) covariance of the layer inputs, AKFAC , is easy to compute in a for-ward pass. For the first factor BKFAC , there exist mul-tiple variants that differ in computational cost (see Dan-gel et al. 2025b for a detailed introduction). The most expensive one (Botev et al., 2017) employs a symmet-ric factorization of the criterion’s Hessian into ∇2 
+
+> f
+
+cn =
+
+> 1
+
+/C
+
+PCi=1 sn,i s⊤
+
+> n,i
+
+, then computes the covariance of the pseudo-gradients ˜gn,i := ( Jzn fn)⊤sn,i , i.e. BKFAC =
+
+> 1
+
+/N C 
+
+P
+
+> n
+
+P 
+
+> i
+
+˜gn,i ˜g⊤
+
+> n,i
+
+. This incurs C backpropagations per datum. We will follow the original approach of Martens & Grosse (2015), which introduces a randomization via 
+
+p(sn) such that ∇2 
+
+> f
+
+cn = Esn,i ∼p(sn)[sn,i s⊤
+
+> n,i
+
+], then ap-proximates the expectation with a Monte-Carlo estimate involving M samples, i.e. ∇2 
+
+> f
+
+cn ≈ 1/M
+
+P 
+
+> i
+
+sn,i s⊤ 
+
+> n,i
+
+where 
+
+sn,i 
+
+> i.i.d.
+
+∼ p(sn). This reduces the number of backpropaga-tions from C to M , and we will use M = 1 as is common practice. The distribution p(sn) is determined by the prob-abilistic interpretation of the loss function (e.g., Gaussian for MSE; the explicit forms are given in Appendix A). We also adopt the empirical variant of KFAC (KFAC EMP), which constructs BKFAC from empirical, rather than sampled, gradients. Its main computational advantage is that it reuses the standard backward pass already needed for gradient computation, while Monte-Carlo GGN variants typically require an additional backward pass with sampled curvature probes. The empirical BKFAC is estimated as 
+
+BKFAC = 1
+
+> N
+
+X 
+
+> n
+
+gng⊤ 
+
+> n
+
+, gn = ∇zn ℓn(θ),
+
+with gn denoting the per-example gradient of the loss with respect to the layer pre-activations. The remaining compo-nents of KFAC, namely the Kronecker factorization, damp-ing, and matrix inversion, are unchanged. Empirical Fisher approximations of this form are widely used in practical second-order optimization (George et al., 2018; Lin et al., 2024; Zhang et al., 2022). We compare KFAC EMP with standard KFAC in Section 5, and use KFAC EMP in all experiments in Section 6 due to the size of problems. 
+
+KFAC approximation accuracy. For linear networks with square loss, the Hessian, GGN, and KFAC are iden-tical (Petersen et al., 2023), yielding exact natural-gradient updates and IHVPs. This exactness further extends to deep linear networks: despite nonlinearity in parameters, KFAC recovers the exact natural gradient up to a constant fac-tor, and is equivalent to the block-diagonal GGN in this setting (Bernacchia et al., 2018). Beyond these regimes, KFAC provides a structured approximation to the GGN for deep nonlinear networks, preserving curvature infor-mation at layerwise granularity while remaining computat-tionally tractable. Moreover, in the infinite-width in the NTK regime (Jacot et al., 2018), approximate natural gra-dient descent via KFAC achieves the same convergence rate as exact gradient methods (Karakida & Osawa, 2020). Our work focuses on practical large-scale regimes where exact solvers are infeasible, and evaluates how effectively this ap-proximation supports hypergradient computation in BO. 
+
+3.2 Replacing IHVP with IKVP 
+
+We focus on BO problems where hypergradients can be ex-pressed, under the implicit function theorem, as in equa-tion 1. Instead of approximating IHVP H−1b, we follow the common practice of approximating H with the GGN matrix G, and approximating G−1b instead. To scale this computation, we further approximate G with a Kronecker-factored block-diagonal estimate ˆG obtained via KFAC. Suppose we would like to apply ˆG−1v for some parameter vector v. Since ˆG is block diagonal, for sim-plicity, we can just consider a single layer case: for W ∈
+
+Rd1×d2 , let AKFAC ∈ Rd2×d2 denote the uncentered covari-ance matrix of the activation and BKFAC ∈ Rd1×d1 denote the gradient covariances. By construction, the KFAC block takes the form ˆG = BKFAC ⊗AKFAC . Given a reshaped vec-tor v = vec( V ), where V matches the shape of the layer’s weights, the IKVP follows from Kronecker identities as 
+
+ˆG−1v = ( B−1 
+
+> KFAC
+
+⊗ A−1
+
+> KFAC
+
+)v = vec  B−1
+
+> KFAC
+
+V A −1
+
+> KFAC
+
+.
+
+Thus, instead of applying the inverse of a full d1d2 × d1d2
+
+matrix, IKVP reduces to two smaller inversions and a se-quence of matrix multiplications. 
+
+Computational Cost of IKVP. For each layer, inverting 
+
+AKFAC and BKFAC requires O(d31+d32) operations. Once in-verted, applying an IKVP to a vector costs O(d21d2 +d1d22),corresponding to two matrix-matrix multiplications. Per-forming forward and backward passes is O(Bd 1d2), where 
+
+B is the batch size, so this operation has similar complexity to backpropagation when d1 and d2 are similar to B.
+
+Damping. Curvature approximations are known to be singular for neural nets (Sagun et al., 2016). To stabilize inversion, we use the factored Tikhonov damping, which adds scaled identity to each Kronecker factor, rather than to the full block, which preserves efficiency while improv-ing conditioning. In our implementation, we adopt the 
+
+heuristic damping strategy from Martens & Grosse (2015), where the relative scaling between the activation covari-ance AKFAC and the gradient covariance BKFAC is con-trolled by a parameter π derived from their traces. Con-cretely, the damping applied to AKFAC and BKFAC is 
+
+AKFAC → AKFAC + π√λI, BKFAC → BKFAC + 1
+
+> π
+
+√λI,
+
+with π = pd2Tr (AKFAC )/d1Tr (BKFAC ) balancing the two fac-tors. Heuristic damping has been shown to perform more robustly than naive Tikhonov damping (Martens & Grosse, 2015), while adding negligible computational overhead. there exist many public source implementations of KFAC (Dangel et al., 2020b; Osawa et al., 2023; Grosse et al., 2023; Botev & Martens, 2022). We use the curvlinops 
+
+package (Dangel et al., 2025a), which provides easy access to VPs products with KFAC and its damped inverse. 
+
+3.3 Diagnostic Study of IHVP Approximations 
+
+A key practical advantage of KFAC arises from its robust-ness to ill-conditioning in the inner-level curvature. To iso-late this effect, we consider a controlled setting where the exact inverse Hessian is available and compare different IHVP approximations under increasing dimensionality. We study linear regression with square loss, where both de-sign matrix X ∈ Rd×N and targets y ∈ RN are generated with i.i.d. standard Gaussian entries. We fit w ∈ Rd using the square loss. The Hessian is known in closed form and Table 1: Relative error for different IHVP approximations as the parameter dimension d increases. Neu-K denotes a truncated Neumann series with K terms. CG-T denotes conjugate gradient with T iterations. Identity corresponds to the identity approximation used in one-step unrolling.                                                                                 
+
+> Method d= 10 d= 100 d= 500
+> KFAC 7.6×10 −37.6×10 −37.6×10 −3
+> Neu-3 1.1×10 −12.5×10 −18.0×10 −1
+> Neu-20 2.2×10 −24.5×10 −22.4×10 −1
+> Neu-50 1.0×10 −45.6×10 −31.4×10 −1
+> CG-3 1.1×10 −37.5×10 −23.0×10 −1
+> CG-5 6.3×10 −47.7×10 −32.0×10 −1
+> CG-10 6.3×10 −48.7×10 −47.8×10 −2
+> Identity ( H=I)1.7×10 −13.9×10 −14.9×10 −1
+
+only depends on the data matrix: 
+
+H = 1
+
+N XX ⊤.
+
+We vary the parameter dimension d while keeping the dataset size N to 100. In this setting, KFAC is an exact approximation of the Hessian (Petersen et al., 2023). As d
+
+grows relative to N , the Hessian becomes increasingly ill-conditioned and eventually rank-deficient, a regime com-monly encountered in over-parameterized models. We compare Monte-Carlo KFAC against truncated Neu-mann series and CG under fixed computational budgets. Accuracy is measured by the relative operator-norm error 
+
+min  
+
+> α
+
+∥α(cH + λI)−1 − (H + λI)−1∥2/∥(H + λI)−1∥2,
+
+where α is searched to account for the step-size in training and λ = 10 −5 is the damping factor. Table 1 highlights two consistent trends. First, while CG and Neumann solvers can achieve high accuracy at small 
+
+d given sufficient iterations, their error degrades rapidly as 
+
+d increases under fixed iteration budgets. This behavior is expected, as the convergence rate of iterative solvers de-pends on the Hessian’s condition number (Bakushinsky & Kokurin, 2004). Second, KFAC maintains stable accuracy as d increases, achieving orders-of-magnitude lower error than budget-limited CG and Neumann solvers. 
+
+## 4 Enhancing BO Algorithms with KFAC 
+
+Here, we demonstrate that our KFAC-based IKVP solver can serve as a direct, drop-in replacement for the expensive IHVP solver used in existing IFT-based BO algorithms. Our method yields faster convergence (in wall-clock time) and improved performance, especially at larger scales. 10 0 10 1 10 2 10 3       
+
+> Time [sec]
+> 1.5
+> 2.0
+> 2.5
+> Test Loss
+> KFAC vs Original (Time)
+> AID-KFAC (ours)
+> MRBO-KFAC (ours)
+> Amigo-KFAC (ours)
+> AID-CG
+> MRBO
+> Amigo-CG
+> 10 010 110 210 3
+> Iteration
+> KFAC vs Original (Iteration)
+> 10 010 110 2
+> Time [sec]
+> AID-KFAC vs Others (Time)
+> AID-KFAC (ours)
+> Amigo-GD
+> BSG-1
+> BOME
+> stocBiO
+> 10 010 110 2
+> Iteration
+> AID-KFAC vs Others (Iteration)
+
+Figure 2: Results on data hypercleaning. Left two panels: existing BO algorithms improve when their IHVP solvers are replaced with IKVPs. Right two panels: KFAC-based methods compared against other non-IFT baselines, showing faster convergence in both time and iterations. Curves are truncated at the lowest test loss reached. Solid black line is trained on the validation dataset, while dashed blackline is trained on the validation dataset and the noisy dataset together. 
+
+4.1 Data Hypercleaning with ResNet-18 
+
+We first test our method on data hypercleaning, a standard and widely used benchmark for evaluating BO convergence (Liu et al., 2022; Ji et al., 2021; Dagr´ eou et al., 2022). Our goal is to isolate the benefit of replacing the IHVP subrou-tine in IFT-based methods with our IKVP solver. Given a corrupted training set Dtr = {(xn, y n)}Nn=1 (ran-dom label noise) and a clean validation set Dval , we learn per-example weights λ ∈ [0 , 1] N by the bilevel objective: 
+
+min  
+
+> λ,θ
+
+Lval (θ⋆),
+
+s.t. θ⋆ ∈ arg min θ
+
+Ltr (θ, λ) + α∥θ∥2 ,
+
+(3) where Lval (θ⋆) is the cross-entropy loss evaluated on the validation set. Ltr (θ, λ) is the weighted training loss, de-fined as: Ltr (θ, λ) = PNn=1 σ(λn)ℓn(xn, y n, θ), where 
+
+σ(λn) = Clip (λn, [0 , 1]) ensures that λn ∈ [0 , 1] . The training loss ℓ(xn, y n, θ) is also cross-entropy, and α∥θ∥2
+
+adds an L2 regularization to prevent overfitting. Since the GGN scales with the sample weight σn, in the Monte Carlo approximation, we rescale each pseudo-loss by √σn for unbiased curvature estimation (details in Appendix A.2). Previous works focusing on theoretical guarantees typi-cally use MNIST with a linear model, far from practical scenarios. We instead evaluate on CIFAR-10 with a three-layer CNN and ResNet-18 to stress scalability. We adapt AmIGO (Arbel & Mairal, 2022), MRBO (Ji et al., 2021), and AID-CG (Grazzi et al., 2020), all IFT-based methods that approximate the IHVP. We replace their solver with IKVPs and compare against other methods including the IFT-based stocBiO (Ji et al., 2021), and first-order methods BOME (Liu et al., 2022), BSG-1 (Giovannelli et al., 2025), stocBiO (Ji et al., 2021). We also replace the Hessian with the GGN and apply Neumann and CG. For fairness, we use CG with 3 iterations and Neumann with 10 terms, which strikes a balance between runtime and accuracy. We run every method for fixed iterations to ensure they reach the minimum validation loss. Hyperparameters, including in-ner/outer learning rates, momentum, and damping values, were selected via grid search on a dedicated validation set. Figure 2 highlights our main experimental finding: re-placing IHVPs with IKVPs yields clear efficiency gains. The plots, which track the lowest test loss achieved within 1000 iterations, show that KFAC adapted methods (AID-KFAC, MRBO-KFAC, Amigo-KFAC) converge faster in wall-clock time and improve iteration-wise performance compared to their original IHVP-based counterparts. In Figure 1, we vary the number of CG iterations and Neu-mann terms within the AID algorithm. While the GGN is slightly more efficient than the Hessian, both remain weaker than KFAC in terms of the balance between ac-curacy and runtime. We detail the experimental results for a three-layer CNN and a linear model in Appendix E, where the performance gap between KFAC and the base-line solvers is less pronounced on these simpler architec-tures than on the more complex ResNet-18. 
+
+4.2 KFAC performs better across different batch sizes 
+
+Using a smaller batch size is a common technique to re-duce computational cost. However, small batches intro-duce noise, which can destabilize curvature estimates and harm solvers like CG that are sensitive to ill-conditioning (Granziol et al., 2022). We want to test the robustness of KFAC compared to CG as the batch size is varied. We study this under the data hypercleaning setting with a linear model and ResNet-18. We solve the BO problem for 1000 iterations across varying batch sizes and record the minimum test loss and time taken to reach that loss (Fig-ure 3). For the linear model, full convergenc is achievable: both methods perform poorly with small batches but im-prove as batch size grows, eventually closing the gap be-tween KFAC and CG, likely due to instability in hyper-gradient estimates under small batches. We give more de-tails in Appendix G.2. For ResNet-18, where full conver-Figure 3: Batch size effects on data hypercleaning. KFAC consistently achieves lower minimum test loss than CG across models and batch sizes. For linear model, CG will converge early to a worse point than KFAC. gence is unattainable, no monotonic improvement is seen, yet KFAC consistently outperforms CG at all batch sizes. 
+
+4.3 EKFAC and Amortization 
+
+In second-order optimization, it is common to amortize KFAC’s curvature factors across iterations to save cost. Also, Eigenvalue-Corrected KFAC (EKFAC, George et al. 2018) is a popular refinement that improves KFAC’s accu-racy. We study both effects on ResNet-18 data hyperclean-ing by comparing KFAC to EKFAC under factor-update in-tervals τ ∈ { 1, 5, 10 , 50 }: gradients are recomputed every step but curvature is frozen within an interval. We summarize the trade-off between computational effi-ciency and model performance in Section 4.3. As expected, amortizing curvature computation drastically reduces the per-iteration runtime. Specifically, increasing the update interval from τ = 1 to τ = 10 reduces KFAC’s runtime by approximately 62% (0.69 s to 0.26 s). Consistent with our analysis of the computational overhead, EKFAC is signifi-cantly slower than KFAC at low intervals due to the costly eigendecomposition, though this gap narrows at larger τ .Crucially, the test loss remains robust under amortization; KFAC achieves its lowest test loss at τ = 5 (1.33 ), sug-gesting that moderate amortization ( τ = 5 or 10 ) yields an optimal balance between efficiency and accuracy. Besides EKFAC and amortization, we also ablate the commonly used EMA technique (Martens & Grosse, 2015) in Ap-pendix G.1, and we show that EMA can help stabilize the convergence for the linear model under small batch size. 
+
+## 5 Curvature Matters at Scale 
+
+Scaling BO to transformers poses unique challenges: cur-vature matrices such as the Hessian or GGN become pro-hibitively large, making direct solvers infeasible. Scalable baselines like SAMA (Choe et al., 2023a) sidestep this by ignoring curvature, achieving low cost but sacrificing accu-racy and stability. In this section, we address two critical 
+
+τ Best Test Loss Avg. iter Time (s) KFAC EKFAC KFAC EKFAC 
+
+1 1.24 1.21 0.69 1.83 5 1.33 1.24 0.28 0.62 10 1.35 1.30 0.26 0.36 50 1.36 1.33 0.22 0.28 Table 2: Best test loss and average per-iteration runtime for KFAC and EKFAC with varying update intervals ( τ )on ResNet-18. Amortization significantly reduces compu-tational cost while maintaining competitive performance. 60          
+
+> 70
+> Accuracy (%)
+> TREC
+> 1-layer 7-layers 12-layers
+> 80
+> 82
+> 84
+> Accuracy (%)
+> SemEval
+> 10 3
+> Time (s)
+> 50
+> 60
+> 70
+> 80
+> Accuracy (%)
+> YouTube
+> 10 3
+> Time (s)
+> 10 310 4
+> Time (s)
+> Baseline KFAC KFAC EMP SAMA CG Neu-3 Neu-10
+
+Figure 4: Results on BERT data hypercleaning. We re-port test accuracy (y-axis) versus total training time (x-axis) on three datasets when fine-tuning 1, 7, 12 encoder layers (columns). Each marker corresponds to one hypergradient solver. The gray region highlights the Pareto frontier. questions for scaling BO to massive models like BERT: 1. Is curvature still beneficial at this scale, compared to gradient-only approximations (like SAMA)? 2. Can KFAC provide curvature information scalably and efficiently, without becoming prohibitively expensive? To answer this, we design an experiment on three text clas-sification datasets from the WRENCH benchmark (Zhang et al., 2021). We use the same data hypercleaning formu-lation as equation 3, but remove the L2 regularization (for a large-scale model like BERT, this sums the squares of over 100 million parameters, which can become numeri-cally unstable or dominate the inner task loss). To system-atically vary the inner problem size and to make Hessian-based baselines feasible, we freeze different numbers of en-coder layers in BERT and gradually unfreeze them starting Table 3: ResNet-32 accuracy (%) on long-tailed CIFAR-10/100 with different imbalanced factors (IFs), best is in bold .Dataset CIFAR-10 CIFAR-100 IF 200 100 50 20 10 200 100 50 20 10 Base Model 65.3 70.0 74.2 81.8 86.1 34.4 38.5 43.4 50.7 55.5 Focal Loss 65.2 69.9 74.3 81.5 85.9 34.9 38.4 43.7 51.8 55.6 MWN + T1-T2 66.3 72.8 78.6 84.8 87.5 36.0 40.2 46.0 52.0 58.6 MWN + SAMA 66.3 72.9 79.5 85.4 87.6 35.8 40.0 45.7 52.5 59.7 MWN + KFAC (ours) 67.0 73.1 78.9 85.6 88.4 35.6 40.9 46.2 53.2 60.8 
+
+Table 4: Experiment results for auxiliary learning with the continued pretraining task. Following Choe et al. (2023a), we report test micro-F1 for ChemProt and macro-F1 for other datasets; the result is averaged over 3 runs.                    
+
+> ChemProt HyperPartisan ACL-ARC SciERC Baseline 82.54 ±0.32 90.05 ±1.24 67.85 ±2.03 79.87 ±0.59
+> TARTAN-MT 83.97 ±0.25 94.64 ±0.91 72.86 ±3.01 80.49 ±0.82
+> SAMA 83.75 ±0.24 95.18 ±0.03 71.75 ±1.65 81.06 ±0.09
+> KFAC (ours) 85.04 ±0.23 95.13 ±0.05 72.98 ±1.58 81.22 ±0.14
+
+from the last layer. This avoids out-of-memory issues for Neumann and CG and allows us to study solver behaviour as more layers are trained, from only the last layer ( ≈6% of parameters) up to the full 12-layer model. We compare SAMA, Neumann with 3 or 10 terms, CG, and two variants of our approach, KFAC and KFAC EMP, trained for 1000 bilevel iterations under the AID-style double-loop frame-work. We report validation accuracy, runtime, and memory footprint in Figures 1 and 4. Across all tuning depths, KFAC consistently attains the best accuracy, showing that curvature information remains beneficial at BERT scale. At the same time, its runtime stays in the same overall range as competing baselines, while its memory use remains manageable. As more layers are unfrozen, KFAC continues to perform reliably, whereas CG and Neumann become less practical due to memory limits or degraded performance. Interestingly, the layer-wise trend suggests that restricting the inner problem to a single layer can yield higher accuracy than full fine-tuning, meaning that the regularization provided by a smaller pa-rameter space can improve the stability of hypergradient estimation. Further details can be found in Appendix D. 
+
+## 6 Broader Applicability 
+
+Thus far, we have focused on the data hypercleaning prob-lem, but BO underlies many other machine learning tasks. To test generality, we integrate KFAC into existing frame-works for meta-learning and AI safety. Across these do-mains, we used KFAC EMP. This section shows our final experimental contribution: our method seamlessly applies across domains and achieves better performance. All ex-perimental details of this section are in Appendix F. 
+
+6.1 Meta Learning Applications 
+
+Meta-learning seeks to acquire inductive biases, such as sample reweighting or task-specific initialization, that enable downstream models to adapt efficiently to user-specific objectives. These problems naturally admit a bilevel structure and form an ideal testbed for our method. We integrate KFAC into the Betty library (Choe et al., 2023b) and study two tasks: 
+
+(1) Meta-Weight-Net (MWN) for Class Imbalance. 
+
+This task addresses training under long-tailed class distri-butions, where some classes have far fewer examples than others, by learning a meta-network that assigns adaptive sample weights to balance training. Following Shu et al. (2019), we construct long-tailed CIFAR-10 and CIFAR-100 by exponentially decaying the number of samples per class. A small validation set of 10 images per class is used as meta-data. The original MWN work employed one-step unrolling ( T1 − T2) to approximate the bilevel objec-tive. We compare this baseline to alternatives where the inner problem is solved with different hypergradient ap-proximations: MWN with SAMA and MWN with our pro-posed KFAC approximated hypergradients. We also com-pare to another baseline trained using the focal loss (Lin et al., 2020). Table 3 summarizes the results. On CIFAR-10, KFAC achieves the best accuracy for most imbalances (e.g., 88.4% vs. 87.6% for MWN+SAMA at imbalance fac-tor 10). On CIFAR-100, the advantage is clearer: KFAC improves over SAMA by up to +1.1% under severe imbal-ance. This suggests that additional curvature information stabilizes MWN training under extreme data imbalance. 
+
+(2) Continued Pretraining of Large Language Models. 
+
+We next evaluate continued pretraining on four domain-specific corpora, where BO is used to balance auxiliary and end-task objectives. Baselines include TARTAN (Dery et al., 2022) and SAMA (Choe et al., 2023a). As shown in Table 4, KFAC achieves the strongest or tied-best per-formance on three datasets: +1.1% on ChemProt compared to TARTAN, and +0.2–1.2% on ACL-ARC compared to Table 5: Accuracy drop (%) and training time of different data poisoning algorithms on LR, MLP, and CNN. Results are averaged over 5 runs. Label flipping requires no training, so time is omitted.                                                            
+
+> MODEL DATASET CLEAN TGDA H ESSIAN →KFAC (O URS )BOME (VF) LABEL FLIP
+> ACC ACC DROP TIME ACC DROP TIME ACC DROP TIME
+> LR MNIST 92.34 2.78 ±0.04 →5.40 ±0.06 0.7 →0.4 HRS 2.22 ±0.04 0.4 HRS 1.52 ±0.03 -MLP MNIST 98.02 1.48 ±0.04 →3.99 ±0.05 7.3 →3.2 HRS 1.63 ±0.05 3.0 HRS 0.05 ±0.01 -CNN CIFAR-10 64.30 2.04 ±0.03 →3.44 ±0.07 21.5 →6.2 HRS 2.15 ±0.03 5.9 HRS 0.17 ±0.02 -
+
+Table 6: Unlearnable examples with different BO algo-rithms and non-bilevel algorithms. The unlearnable exam-ples trained on CNN and tested on ResNet18 and CNN. ResNet18 CNN Time Bilevel? None (clean) 92.36 86.89 - -AID-CG 78.23 57.32 11.5h !                
+
+> BOME 48.09 26.34 2.2h !
+> stocBiO 84.92 75.13 6.7h !
+> AID-KFAC (ours) 42.33 22.96 3.8h !
+> EM 32.71 21.83 <0.5h %
+
+SAMA. On HyperPartisan, all methods exceed 95%, leav-ing little room for improvement. These results indicate that KFAC can be seamlessly integrated into large-scale lan-guage model pretraining pipelines, where even small ac-curacy improvements are valuable. 
+
+6.2 AI Safety Applications 
+
+Many safety-critical machine learning problems can be seen as BO, often in the form of an attacker-defender game. The outer-level variable controls adversarial perturbations or poisoned data, while the inner-level learner attempts to minimize training loss on potentially corrupted inputs. Such problems are particularly challenging due to their ad-versarial nature and the need to scale to larger models like CNNs and ResNets. We evaluate KFAC on two standard testbeds: data poisoning and unlearnable examples. 
+
+Data Poisoning. We evaluate on MNIST (LR/MLP) and CIFAR-10 (CNN) with a small poisoning ratio ( ϵ = 3% ), comparing against TGDA (Lu et al., 2022), BOME, and label flipping ( y → 10 − y). Following Lu et al. (2022), evaluation involves attacker pretraining, joint training, and testing via defender retraining on poisoned data. As shown in Table 5, our KFAC-based method consistently surpasses baselines, matching BOME’s efficiency while achieving stronger attacks. Label flipping is nearly cost-free but in-effective, while the smaller drops on CNN/MLP versus LR indicate that more complex models are less vulnerable. 
+
+Unlearnable Examples. We adopt the GUE framework (Liu et al., 2024), where the attacker is a U-Net trained with a CNN backbone to generate imperceptible perturba-tions that render training data unexploitable. We evaluate on CIFAR-10 with both CNN and ResNet-18 defenders, comparing KFAC-enhanced bilevel solvers against BOME, stocBiO, AID-CG, and error minimization (Huang et al., 2021, EM). Results are shown in Table 6. While bilevel ap-proaches can reduce classifier accuracy, they remain com-putationally expensive. AID-KFAC improves both effi-ciency and attack strength relative to AID-CG, but EM is still faster and more effective overall. This underscores the strengths and limitations of BO: KFAC narrows the effi-ciency gap, yet in some large-scale adversarial settings, di-rect perturbation optimization may remain preferable. 
+
+## 7 Conclusion 
+
+We introduced KFAC for BO, replacing expensive IHVPs with IKVPs. Across diverse tasks (data hypercleaning, meta-learning for class imbalance, large-scale BERT fine-tuning, continued pretraining, and AI safety problems), our method consistently accelerates convergence and im-proves performance. Compared to curvature-free meth-ods such as SAMA, our KFAC-based approach preserves richer second-order information with modest overhead while avoiding the prohibitive cost of iterative solvers such as CG and Neumann. These results establish KFAC as a practical and general middle ground, enabling curvature-aware BO at previously infeasible scales. Looking ahead, important directions include developing a theoretical quan-tification of the extent to which KFAC can benefit BO, refining our approximation by solving the inner problem more efficiently (e.g., Dong et al. 2025), designing system-atic strategies for damping, and exploring alternative struc-tured approximations across broader application domains. 
+
+## Acknowledgement 
+
+We gratefully acknowledge funding support from NSERC, the Canada CIFAR AI Chairs program and the Ontario Early Researcher program. Resources used in preparing this research were provided, in part, by the Province of Ontario, the Government of Canada through CIFAR, and companies sponsoring the Vector Institute. We thank Yi-han Wang for some early discussions. References 
+
+Shun-Ichi Amari. Natural gradient works efficiently in learning. Neural Computation , 10(2):251–276, 1998. URL https://doi.org/10.1162/08997669 8300017746 .Michael Arbel and Julien Mairal. Amortized implicit differentiation for stochastic bilevel optimization. In 
+
+International Conference on Learning Representations (ICLR) , 2022. URL https://openreview.net/f orum?id=3PN4iyXBeF .A. B. Bakushinsky and M. Yu. Kokurin. Iterative Methods for Approximate Solution of Inverse Problems . Springer, 2004. URL https://doi.org/10.1007/978-1 -4020-3122-9 .Alberto Bernacchia, M´ at´ e Lengyel, and Guillaume Hen-nequin. Exact natural gradient in deep linear networks and its application to the nonlinear case. In Advances in Neural Information Processing Systems (NeurIPS) , vol-ume 31, 2018. URL https://papers.nips.cc /paper_files/paper/2018/hash/7f018eb 7b301a66658931cb8a93fd6e8-Abstract.ht ml .Luca Bertinetto, Joao F. Henriques, Philip Torr, and Andrea Vedaldi. Meta-learning with differentiable closed-form solvers. In International Conference on Learning Repre-sentations (ICLR) , 2019. URL https://openrevi ew.net/forum?id=HyxnZh0ct7 .Aleksandar Botev and James Martens. KFAC-JAX, 2022. URL https://github.com/google-deepmin d/kfac-jax .Aleksandar Botev, Hippolyt Ritter, and David Barber. Prac-tical Gauss-Newton optimisation for deep learning. In 
+
+International Conference on Machine Learning (ICML) ,pp. 557–565, 2017. URL https://proceedings. mlr.press/v70/botev17a.html .Tianyi Chen, Yuejiao Sun, and Wotao Yin. Closing the gap: Tighter analysis of alternating stochastic gradient methods for bilevel problems. In Advances in Neural Information Processing Systems (NeurIPS) , 2021. URL 
+
+https://openreview.net/forum?id=OItv P2-i9j .Sang Choe, Sanket Vaibhav Mehta, Hwijeen Ahn, Willie Neiswanger, Pengtao Xie, Emma Strubell, and Eric Xing. Making scalable meta learning practical. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) , pp. 26271–26290, 2023a. URL https: //openreview.net/forum?id=Xazhn0JoNx .Sang Keun Choe, Willie Neiswanger, Pengtao Xie, and Eric Xing. Betty: An automatic differentiation library for multilevel optimization. In The Eleventh Interna-tional Conference on Learning Representations (ICLR) ,2023b. URL https://openreview.net/forum ?id=LV_MeMS38Q9 .Mathieu Dagr´ eou, Pierre Ablin, Samuel Vaiter, and Thomas Moreau. A framework for bilevel optimization that enables stochastic and global variance reduction al-gorithms. In Advances in Neural Information Process-ing Systems (NeurIPS) , pp. 26698–26710, 2022. URL 
+
+https://openreview.net/forum?id=wlEO sQ917F .Mathieu Dagr´ eou, Pierre Ablin, Samuel Vaiter, and Thomas Moreau. How to compute Hessian-vector prod-ucts? In The Third Blogpost Track at ICLR , 2024. URL 
+
+https://openreview.net/forum?id=rTgj QtGP3O .Felix Dangel, Stefan Harmeling, and Philipp Hennig. Mod-ular block-diagonal curvature approximations for feed-forward architectures. In International Conference on Artificial Intelligence and Statistics (AISTATS) , 2020a. URL https://proceedings.mlr.press/v1 08/dangel20a.html .Felix Dangel, Frederik Kunstner, and Philipp Hennig. BackPACK: Packing more into backprop. In Interna-tional Conference on Learning Representations (ICLR) ,2020b. URL https://openreview.net/forum ?id=BJlrF24twB .Felix Dangel, Runa Eschenhagen, Weronika Ormaniec, Andres Fernandez, Lukas Tatzel, and Agustinus Kris-tiadi. Position: Curvature matrices should be de-mocratized via linear operators. arXiv Preprint arXiv:2501.19183, 2025a. URL https://arxiv. org/abs/2501.19183 .Felix Dangel, B´ alint Mucs´ anyi, Tobias Weber, and Runa Eschenhagen. Kronecker-factored approximate curva-ture (KFAC) from scratch. code at https://github .com/f-dangel/kfac-tutorial , 2025b. URL 
+
+https://arxiv.org/abs/2507.05127 .Erik Daxberger, Agustinus Kristiadi, Alexander Immer, Runa Eschenhagen, Matthias Bauer, and Philipp Hen-nig. Laplace redux - effortless Bayesian deep learning. In Advances in Neural Information Processing Systems (NeurIPS) , 2021. URL https://openreview.n et/forum?id=gDcaUj4Myhn .Lucio M. Dery, Paul Michel, Ameet Talwalkar, and Gra-ham Neubig. Should we be pre-training? An argument for end-task aware training as an alternative. In Interna-tional Conference on Learning Representations (ICLR) ,2022. URL https://openreview.net/forum ?id=2bO2x8NAIMB .Youran Dong, Junfeng Yang, Wei Yao, and Jin Zhang. Ef-ficient curvature-aware hypergradient approximation for bilevel optimization. In Forty-second International Con-ference on Machine Learning , 2025. URL https: //openreview.net/forum?id=oah1fwo6Wv .Runa Eschenhagen, Alexander Immer, Richard E. Turner, Frank Schneider, and Philipp Hennig. Kronecker-factored approximate curvature for modern neural net-work architectures. In Advances in Neural Information Processing Systems (NeurIPS) , 2023. URL https: //openreview.net/forum?id=Ex3oJEKS53 .Yunzhen Feng, Shanmukha Ramakrishna Vedantam, and Julia Kempe. Embarrassingly simple dataset distilla-tion. In The Twelfth International Conference on Learn-ing Representations (ICLR) , 2024. URL https://op enreview.net/forum?id=PLoWVP7Mjc .Chelsea Finn, Pieter Abbeel, and Sergey Levine. Model-agnostic meta-learning for fast adaptation of deep net-works. In International Conference on Machine Learn-ing (ICML) , pp. 1126–1135, 2017. URL https://pr oceedings.mlr.press/v70/finn17a.html .Luca Franceschi, Michele Donini, Paolo Frasconi, and Massimiliano Pontil. Forward and reverse gradient-based hyperparameter optimization. In International Conference on Machine Learning (ICML) , pp. 1165– 1173, 2017. URL https://proceedings.mlr. press/v70/franceschi17a.html .Luca Franceschi, Paolo Frasconi, Saverio Salzo, Riccardo Grazzi, and Massimiliano Pontil. Bilevel programming for hyperparameter optimization and meta-learning. In 
+
+International conference on Machine Learning (ICML) ,pp. 1568–1577, 2018. URL https://proceeding s.mlr.press/v80/franceschi18a.html .Thomas George, C´ esar Laurent, Xavier Bouthillier, Nico-las Ballas, and Pascal Vincent. Fast approximate natu-ral gradient descent in a Kronecker factored eigenbasis. In Advances in Neural Information Processing Systems (NeurIPS) , 2018. URL https://proceedings.ne urips.cc/paper/2018/hash/48000647b31 5f6f00f913caa757a70b3-Abstract.html .Saeed Ghadimi and Mengdi Wang. Approximation methods for bilevel programming. arXiv Preprint arXiv:1802.02246, 2018. URL https://arxiv. org/abs/1802.02246 .Tommaso Giovannelli, Griffin Kent, and Luis Nunes Vi-cente. Inexact bilevel stochastic gradient methods for constrained and unconstrained lower-level problems. 
+
+Journal of Global Optimization , 92:569–614, 2025. URL https://doi.org/10.1007/s10898-0 25-01502-8 .Erin Grant, Chelsea Finn, Sergey Levine, Trevor Darrell, and Thomas Griffiths. Recasting gradient-based meta-learning as hierarchical Bayes. In International Confer-ence on Learning Representations (ICLR) , 2018. URL 
+
+https://openreview.net/forum?id=BJ_U L-k0b .Diego Granziol, Stefan Zohren, and Stephen Roberts. Learning Rates as a Function of Batch Size: A Random Matrix Theory Approach to Neural Network Training. 
+
+Journal of Machine Learning Research , 23(173):1–65, 2022. URL https://www.jmlr.org/papers/ v23/20-1258.html .Riccardo Grazzi, Luca Franceschi, Massimiliano Pontil, and Saverio Salzo. On the iteration complexity of hyper-gradient computation. In International Conference on Machine Learning (ICML) , pp. 3748–3758, 2020. URL 
+
+https://proceedings.mlr.press/v119/g razzi20a.html .Roger Grosse and James Martens. A Kronecker-factored approximate Fisher matrix for convolution layers. In In-ternational Conference on Machine Learning (ICML) ,2016. URL https://proceedings.mlr.pres s/v48/grosse16.html .Roger Grosse, Juhan Bae, Cem Anil, Nelson Elhage, Alex Tamkin, Amirhossein Tajdini, Benoit Steiner, Dustin Li, Esin Durmus, Ethan Perez, et al. Studying large language model generalization with influence functions. arXiv Preprint arXiv:2308.03296, 2023. URL https: //arxiv.org/abs/2308.03296 .Mingyi Hong, Hoi-To Wai, Zhaoran Wang, and Zhuoran Yang. A two-timescale stochastic algorithm framework for bilevel optimization: Complexity analysis and appli-cation to actor-critic. SIAM Journal on Optimization , 33 (1):147–180, 2023. URL https://doi.org/10.1 137/20M1387341 .Nathan Hu, Eric Mitchell, Christopher D Manning, and Chelsea Finn. Meta-learning online adaptation of lan-guage models. In Proceedings of the Conference on Empirical Methods in Natural Language Processing (EMNLP) , pp. 4418–4432, 2023. URL https://ac lanthology.org/2023.emnlp-main.268/ .Hanxun Huang, Xingjun Ma, Sarah Monazam Erfani, James Bailey, and Yisen Wang. Unlearnable examples: Making personal data unexploitable. In International Conference on Learning Representations (ICLR) , 2021. URL https://openreview.net/forum?id= iAmZUo0DxC0 .W. Ronny Huang, Jonas Geiping, Liam Fowl, Gavin Tay-lor, and Tom Goldstein. Metapoison: Practical general-purpose clean-label data poisoning. In Advances in Neural Information Processing Systems (NeurIPS) , pp. 12080–12091, 2020. URL https://papers.nip s.cc/paper/2020/hash/8ce6fc704072e35 1679ac97d4a985574-Abstract.html .Arthur Jacot, Franck Gabriel, and Cl´ ement Hongler. Neu-ral tangent kernel: Convergence and generalization in neural networks. In Advances in neural information processing systems (NeurIPS) , volume 31, 2018. URL 
+
+https://papers.nips.cc/paper_files/p aper/2018/hash/5a4be1fa34e62bb8a6ec6 b91d2462f5a-Abstract.html .Kaiyi Ji, Junjie Yang, and Yingbin Liang. Bilevel opti-mization: Convergence analysis and enhanced design. In International Conference on Machine Learning (ICML) ,pp. 4882–4892, 2021. URL https://proceeding s.mlr.press/v139/ji21c.html .Ryo Karakida and Kazuki Osawa. Understanding approx-imate Fisher information for fast convergence of natural gradient descent in wide neural networks. In Advances in neural information processing systems (NeurIPS) , vol-ume 33, pp. 10891–10901, 2020. URL https://pr oceedings.neurips.cc/paper_files/pap er/2020/hash/7b41bfa5085806dfa24b8c9 de0ce567f-Abstract.html .Yeongjoon Kim, Donggoo Kang, Yeongheon Mok, Sunkyu Kwon, and Joonki Paik. Bidirectional meta-kronecker factored optimizer and Hausdorff distance loss for few-shot medical image segmentation. Scientific Reports , 13 (1):8088, 2023. URL https://doi.org/10.103 8/s41598-023-35276-4 .Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International Conference on Learning Representations (ICLR) , 2015. URL https: //arxiv.org/abs/1412.6980 .Frederik Kunstner, Philipp Hennig, and Lukas Balles. Lim-itations of the empirical Fisher approximation for natu-ral gradient descent. In Advances in neural information processing systems (NeurIPS) , volume 32, 2019. URL 
+
+https://proceedings.neurips.cc/paper /2019/hash/46a558d97954d0692411c861c f78ef79-Abstract.html .Jeongyeol Kwon, Dohyun Kwon, Stephen Wright, and Robert D. Nowak. A fully first-order method for stochas-tic bilevel optimization. In International Conference on Machine Learning (ICML) , pp. 18083–18113, 2023. URL https://proceedings.mlr.press/v2 02/kwon23c.html .Tsung-Yi Lin, Priya Goyal, Ross Girshick, Kaiming He, and Piotr Doll´ ar. Focal loss for dense object detec-tion. IEEE Transactions on Pattern Analysis and Ma-chine Intelligence , 42(2):318–327, 2020. URL https: //doi.org/10.1109/TPAMI.2018.2858826 .Wu Lin, Felix Dangel, Runa Eschenhagen, Kirill Neklyu-dov, Agustinus Kristiadi, Richard E Turner, and Alireza Makhzani. Structured inverse-free natural gradient de-scent: Memory-efficient & numerically-stable KFAC. In 
+
+roceedings of the 41st International Conference on Ma-chine Learning , 2024. URL https://proceeding s.mlr.press/v235/lin24f.html .Bo Liu, Mao Ye, Stephen Wright, Peter Stone, and Qiang Liu. BOME! Bilevel optimization made easy: A simple first-order approach. In Advances in Neural Information Processing Systems (NeurIPS) , 2022. URL https:// openreview.net/forum?id=DTsCy9Lyj5-.Hanxiao Liu, Karen Simonyan, and Yiming Yang. DARTS: Differentiable architecture search. In International Conference on Learning Representations (ICLR) , 2019. URL https://openreview.net/forum?id= S1eYHoC5FX .Risheng Liu, Xuan Liu, Xiaoming Yuan, Shangzhi Zeng, and Jin Zhang. A value-function-based interior-point method for non-convex bi-level optimization. In Interna-tional conference on machine learning , pp. 6882–6892, 2021. URL https://proceedings.mlr.pres s/v139/liu21o.html .Shuang Liu, Yihan Wang, and Xiao-Shan Gao. Game-theoretic unlearnable example generator. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) ,pp. 21349–21358, 2024. URL https://doi.org/ 10.1609/aaai.v38i19.30130 .Jonathan Lorraine, Paul Vicol, and David Duvenaud. Opti-mizing millions of hyperparameters by implicit differen-tiation. In International Conference on Artificial Intel-ligence and Statistics (AISTATS) , pp. 1540–1552, 2020. URL https://proceedings.mlr.press/v1 08/lorraine20a.html .Yiwei Lu, Gautam Kamath, and Yaoliang Yu. Indiscrimi-nate data poisoning attacks on neural networks. Trans-actions on Machine Learning Research , 2022. URL 
+
+https://openreview.net/forum?id=x4hm IsWu7e .James Martens. New insights and perspectives on the nat-ural gradient method. Journal of Machine Learning Re-search , 21(146):1–76, 2020. URL https://jmlr.o rg/papers/v21/17-678.html .James Martens and Roger Grosse. Optimizing neural networks with Kronecker-factored approximate curva-ture. In International Conference on Machine Learning (ICML) , pp. 2408–2417, 2015. URL https://proc eedings.mlr.press/v37/martens15.html .James Martens, Jimmy Ba, and Matt Johnson. Kronecker-factored curvature approximations for recurrent neural networks. In International Conference on Learning Rep-resentations (ICLR) , 2018. URL https://openre view.net/forum?id=HyMTkQZAb .Kazuki Osawa, Yohei Tsuji, Yuichiro Ueno, Akira Naruse, Rio Yokota, and Satoshi Matsuoka. Large-scale dis-tributed second-order optimization using Kronecker-factored approximate curvature for deep convolutional neural networks. In IEEE Conference on Computer Vi-sion and Pattern Recognition (CVPR) , 2019. URL ht tps://doi.org/10.1109/CVPR.2019.01264 .Kazuki Osawa, Satoki Ishikawa, Rio Yokota, Shigang Li, and Torsten Hoefler. ASDL: A unified interface for gra-dient preconditioning in PyTorch, 2023. URL https: //arxiv.org/abs/2305.04684 .Eunbyung Park and Junier B Oliva. Meta-curvature. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) , 2019. URL https://papers.nips. cc/paper_files/paper/2019/hash/57c05 31e13f40b91b3b0f1a30b529a1d-Abstract. html .Barak A. Pearlmutter. Fast exact multiplication by the Hes-sian. Neural Computation , 6(1):147–160, 1994. URL 
+
+https://doi.org/10.1162/neco.1994.6. 1.147 .Felix Petersen, Tobias Sutter, Christian Borgelt, Dongsung Huh, Hilde Kuehne, Yuekai Sun, and Oliver Deussen. ISAAC Newton: Input-based approximate curvature for newton’s method. In The Eleventh International Confer-ence on Learning Representations , 2023. URL https: //openreview.net/forum?id=0paCJSFW7j .Evani Radiya-Dixit, Sanghyun Hong, Nicholas Carlini, and Florian Tramer. Data poisoning won’t save you from fa-cial recognition. In International Conference on Learn-ing Representations (ICLR) , 2022. URL https://op enreview.net/forum?id=B5XahNLmna .Aravind Rajeswaran, Chelsea Finn, Sham M. Kakade, and Sergey Levine. Meta-learning with implicit gradients. In Advances in Neural Information Processing Systems (NeurIPS) , 2019. URL https://papers.nips. cc/paper/8306-meta-learning-with-imp licit-gradients .Levent Sagun, Leon Bottou, and Yann LeCun. Eigenvalues of the Hessian in deep learning: Singularity and beyond. 
+
+arXiv preprint arXiv:1611.07476 , 2016. URL https: //arxiv.org/abs/1611.07476 .Nicol N. Schraudolph. Fast curvature matrix-vector prod-ucts for second-order gradient descent. Neural Compu-tation , 14(7):1723–1738, 2002. URL https://doi. org/10.1162/08997660260028683 .Amirreza Shaban, Ching-An Cheng, Nathan Hatch, and Byron Boots. Truncated back-propagation for bilevel op-timization. In The 22nd International Conference on Ar-tificial Intelligence and Statistics (AISTATS) , pp. 1723– 1732, 2019. URL https://proceedings.mlr. press/v89/shaban19a.html .Qianli Shen, Yezhen Wang, Zhouhao Yang, Xiang Li, Hao-nan Wang, Yang Zhang, Jonathan Scarlett, Zhanxing Zhu, and Kenji Kawaguchi. Memory-efficient gradi-ent unrolling for large-scale bi-level optimization. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) , pp. 90934–90964, 2024. URL https: //openreview.net/forum?id=MI8Z9gutIn .Jun Shu, Qi Xie, Lixuan Yi, Qian Zhao, Sanping Zhou, Zongben Xu, and Deyu Meng. Meta-weight-net: Learn-ing an explicit mapping for sample weighting. In 
+
+Advances in Neural Information Processing Systems (NeurIPS) , 2019. URL https://proceedings.ne urips.cc/paper/2019/hash/e58cc5ca942 70acaceed13bc82dfedf7-Abstract.html .Harold R. Parks Steven G. Krantz. The Implicit Function Theorem . Birkh¨ auser New York, NY, 2002. URL ht tps://doi.org/10.1007/978-1-4614-598 1-1 .Heinrich von Stackelberg. Market structure and equilib-rium . Springer, 1934. URL https://doi.org/10 .1007/978-3-642-12586-7 .Chaoqi Wang, Roger Grosse, Sanja Fidler, and Guodong Zhang. Eigendamage: Structured pruning in the Kronecker-factored eigenbasis. In International Con-ference on Machine Learning (ICML) , 2019. URL 
+
+https://proceedings.mlr.press/v97/wa ng19g.html .Ce Zhang, Xiao Yao, Changfeng Shi, and Min Gu. Kronecker-factored approximate curvature with adap-tive learning rate for optimizing model-agnostic meta-learning. Multimedia Systems , 29(6):3169–3177, 2023. URL https://doi.org/10.1007/s00530-0 23-01159-x .Jieyu Zhang, Yue Yu, Yinghao Li, Yujing Wang, Yaming Yang, Mao Yang, and Alexander Ratner. WRENCH: A comprehensive benchmark for weak supervision. In 
+
+Thirty-fifth Conference on Neural Information Process-ing Systems Datasets and Benchmarks Track (Round 2) ,2021. URL https://openreview.net/forum ?id=Q9SKS5k8io .Lin Zhang, Shaohuai Shi, Wei Wang, and Bo Li. Scal-able K-FAC training for deep neural networks with dis-tributed preconditioning. IEEE Transactions on Cloud Computing , 11(3):2365–2378, 2022. URL https: //doi.org/10.1109/TCC.2022.3205918 .Yihua Zhang, Prashant Khanduri, Ioannis Tsaknakis, Yuguang Yao, Mingyi Hong, and Sijia Liu. An intro-duction to bilevel optimization: Foundations and appli-cations in signal processing and machine learning. IEEE Signal Processing Magazine , 41(1):38–59, 2024. URL 
+
+https://doi.org/10.1109/MSP.2024.335 8284 .Checklist 
+
+1. For all models and algorithms presented, check if you include: (a) A clear description of the mathematical setting, assumptions, algorithm, and/or model. [Yes] (b) An analysis of the properties and complexity (time, space, sample size) of any algorithm. [Yes] (c) (Optional) Anonymized source code, with spec-ification of all dependencies, including external libraries. [Yes] 2. For any theoretical claim, check if you include: (a) Statements of the full set of assumptions of all theoretical results. [Not Applicable] This work is mainly empirical and we make no theoretical claim. (b) Complete proofs of all theoretical results. [Not Applicable] (c) Clear explanations of any assumptions. [Not Ap-plicable] 3. For all figures and tables that present empirical results, check if you include: (a) The code, data, and instructions needed to repro-duce the main experimental results (either in the supplemental material or as a URL). [Yes] (b) All the training details (e.g., data splits, hyperpa-rameters, how they were chosen). [Yes] (c) A clear definition of the specific measure or statistics and error bars (e.g., with respect to the random seed after running experiments multiple times). [Yes] (d) A description of the computing infrastructure used. (e.g., type of GPUs, internal cluster, or cloud provider). [Yes] 4. If you are using existing assets (e.g., code, data, mod-els) or curating/releasing new assets, check if you in-clude: (a) Citations of the creator If your work uses existing assets. [Not Applicable] (b) The license information of the assets, if applica-ble. [Not Applicable] (c) New assets either in the supplemental material or as a URL, if applicable. [Not Applicable] (d) Information about consent from data providers/curators. [Not Applicable] (e) Discussion of sensible content if applicable, e.g., personally identifiable information or offensive content. [Not Applicable] 5. If you used crowdsourcing or conducted research with human subjects, check if you include: (a) The full text of instructions given to participants and screenshots. [Not Applicable] (b) Descriptions of potential participant risks, with links to Institutional Review Board (IRB) ap-provals if applicable. [Not Applicable] (c) The estimated hourly wage paid to participants and the total amount spent on participant com-pensation. [Not Applicable] A Probabilistic Interpretation of Losses and Monte-Carlo KFAC 
+
+This section explains how the random vector distribution p(sn) used in the main text arises from the probabilistic interpre-tation of the loss and how it is instantiated in Monte-Carlo KFAC in practice. 
+
+A.1 How to implement Monte-Carlo KFAC 
+
+Many supervised learning objectives can be written as negative log-likelihoods. Given an input-target pair (x, y), let the network output be fθ (x) ∈ RC that parametrizes a predictive distribution q(y | fθ (x)) . This viewpoint covers two standard losses used in practice. In regression, the loss is 
+
+ℓ(f , y) = 12 ∥y − f ∥2,
+
+which corresponds, up to an additive constant, to the negative log-likelihood of the Gaussian model 
+
+q(y | f ) = N (y; f , I).
+
+In multiclass classification, if f ∈ RC are logits and p = softmax( f ), then the cross-entropy loss is 
+
+ℓ(f , y) = − log py
+
+is the negative log-likelihood of the categorical model 
+
+q(y | f ) = Cat( p).
+
+Given the above probabilistic view of loss functions, we now explain how Monte-Carlo KFAC is implemented. For a training example (xn, y n), let 
+
+fn = fθ (xn), cn = ℓ(fn, yn).
+
+In Section 3.1, we introduced a distribution p(sn) such that 
+
+∇2 
+
+> fn
+
+cn = Esn∼p(sn)[sns⊤ 
+
+> n
+
+].
+
+This identity says that the Hessian w.r.t. fn, ∇2 
+
+> fn
+
+cn, can be represented as the second moment of a suitable random vector 
+
+sn. In MC-KFAC, this random vector is constructed by sampling a pseudo-target 
+
+˜yn ∼ q(· | fn),
+
+from the model’s predictive distribution, and then differentiating the corresponding pseudo-loss 
+
+˜cn = − log q( ˜ yn | fn).
+
+The random vector is therefore 
+
+sn := ∇fn ˜cn.
+
+Equivalently, p(sn) is the distribution induced by first drawing ˜yn ∼ q(· | fn), and then mapping it to the gradient 
+
+sn = ∇fn (− log q( ˜ yn | fn)) .
+
+With this definition, 
+
+E˜yn∼q(·| fn)[sns⊤ 
+
+> n
+
+] = Esn∼p(sn)[sns⊤ 
+
+> n
+
+],
+
+and this expectation equals the output-space GGN term used by KFAC. In practice, we draw M i.i.d. samples sn,i ∼ p(sn):
+
+∇2 
+
+> fn
+
+cn ≈ 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+sn,i s⊤
+
+> n,i
+
+.In essence, we applied the following identity: 
+
+E˜yn∼q(·| fn)[∇fn log q(˜ yn|fn) ·  ∇fn log q(˜ yn|fn)⊤] = −E˜yn∼q(·| fn)[∇2 
+
+> fn
+
+log q(˜ yn|fn)] (4) 
+
+= −∇ 2 
+
+> fn
+
+log q(yn|fn) =: ∇2 
+
+> fn
+
+cn, (5) where the first equality is a familiar consequence of integration by parts while the second equality holds if the Hessian 
+
+∇2 
+
+> fn
+
+log q(yn|fn) does not depend on yn, e.g., for a simple exponential family where 
+
+log q(yn|fn) = h(yn) + T (yn) · fn − A(fn).
+
+We now make the distribution p(sn) explicit for two commonly used loss functions. 
+
+Cross-entropy loss. Let fn ∈ RC be the logits for example n, and let pn = softmax( fn), For a lable yn ∈ { 1, · · · , C },the softmax cross-entropy loss is 
+
+ℓ(fn, y n) = − log pyn = −fn,y n + log 
+
+> C
+
+X
+
+> c=1
+
+efn,c .
+
+Its Hessian w.r.t. fn is 
+
+∇2 
+
+> fn
+
+ℓ(fn, y n) = diag( pn) − pnp⊤ 
+
+> n
+
+,
+
+which is the standard output-space GGN term for softmax classification (Kunstner et al., 2019). To realize this Hessian as a second memoent, we sample a pseudo-target 
+
+˜yn ∼ Cat( pn),
+
+and define the corresponding pseudo-loss ˜ℓn = − log pn, ˜yn .
+
+If ej denotes the one-hot vector of class j, then when ˜yn = j,
+
+sn := ∇fn
+
+˜ℓn = pn − ej .
+
+Hence p(sn) is the distribution induced by j ∼ Cat( p) and the map 
+
+sn = pn − ej .
+
+Since 
+
+E[ej ] = pn, E[ej e⊤ 
+
+> j
+
+] = diag( pn),
+
+we obtain that 
+
+E[sn] = 0 ,
+
+and 
+
+Esn∼p(sn)[sns⊤ 
+
+> n
+
+] = E[( pn − ej )( pn − ej )⊤] = diag( pn) − pnp⊤ 
+
+> n
+
+.
+
+Therefore, for cross-entropy, the random vector sn is obtained by sampling a pseudo-label from the model predictive dis-tribution and differentiating the corresponding pseudo-loss, yielding an unbiased rank-one estimator of the output Hessian. 
+
+Mean squared error. For MSE, 
+
+ℓ(f , y) = 12 ∥y − f ∥2, ∇2 
+
+> f
+
+ℓ(f , y) = I.
+
+In this case, p(sn) can be taken as a standard Gaussian 
+
+sn ∼ N (0, I),
+
+so that 
+
+Esn∼p(sn)[sns⊤ 
+
+> n
+
+] = I.
+
+Thus, for MSE, the random vector sn is not obtained by sampling a discrete pseudo-label, but by sampling a Gaussian output perturbation whose covariance matches the output curvature. A.2 Weighted cross-entropy and Fisher 
+
+In data hypercleaning, each training example (xn, y n) is assigned a learnable nonnegative weight σn ≥ 0, yielding the weighted objective 
+
+Lσ (θ) = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+σn ℓ(fθ (xn), y n).
+
+For a fixed example n, define the weighted per-example loss 
+
+ℓn,σ := σn ℓ(fn, y n), fn = fθ (xn).
+
+Since σn does not depend on fn, its Hessian with respect to the network output is simply 
+
+∇2 
+
+> fn
+
+ℓn,σ = σn ∇2 
+
+> fn
+
+ℓ(fn, y n).
+
+For softmax cross-entropy, let p = softmax( fn). Then the Hessian w.r.t. fn is 
+
+∇2 
+
+> fn
+
+ℓ(fn, y n) = diag( pn) − pnp⊤ 
+
+> n
+
+,
+
+and therefore the weighted output-space curvature is 
+
+∇2 
+
+> fn
+
+ℓn,σ = σn
+
+ diag( pn) − pnp⊤
+
+> n
+
+.
+
+To realize this matrix as a second moment, we sample a pseudo-label 
+
+j ∼ Cat( pn),
+
+and define the vector sn
+
+sn := √σn (pn − ej ),
+
+where ej is the one-hot vector for class j. Since 
+
+Ej∼Cat( pn)
+
+(pn − ej )( pn − ej )⊤ = diag( p) − pp ⊤,
+
+we obtain 
+
+E[sns⊤ 
+
+> n
+
+] = σn
+
+ diag( pn) − pnp⊤
+
+> n
+
+ = ∇2 
+
+> fn
+
+ℓn,σ .
+
+Thus, in the weighted setting, the correct Monte-Carlo estimator is obtained by multiplying the usual cross-entropy vector by √σn. Equivalently, the corresponding pseudo-loss can be written as 
+
+˜ℓn,σ = √σn (− log pn,j ), j ∼ Cat( pn),
+
+whose gradient with respect to the logits is exactly 
+
+∇fn
+
+˜ℓn,σ = √σn (pn − ej ).
+
+This ensures that the rank-one estimator sns⊤ 
+
+> n
+
+is unbiased for the weighted output Hessian. Scaling the pseudo-loss directly by σn instead would produce 
+
+E[sns⊤ 
+
+> n
+
+] = σ2
+
+> n
+
+ diag( pn) − pnp⊤
+
+> n
+
+,
+
+which would over-scale the curvature term. 
+
+## B Related Work 
+
+B.1 More on KFAC 
+
+Originially introduced by Martens & Grosse (2015) for MLP, KFAC has been extended to a range of modern architectures, including convolutional networks (Grosse & Martens, 2016), recurrent networks (Martens et al., 2018), and transformers (Eschenhagen et al., 2023). There are also refinements of the basic approximation, such as eigenvalue-corrected KFAC (George et al., 2018, EKFAC). KFAC has been successfully applied in the context of optimization (Osawa et al., 2019), model sparsification (Wang et al., 2019), Laplace approximations (Daxberger et al., 2021) and influence functions (Grosse et al., 2023). We are unaware of works applying this curvature approximation in the context of bilevel optimization. B.2 Meta Learning and KFAC 
+
+Several prior works have incorporated curvature information into meta-learning through KFAC or related approximations, but in fundamentally different ways from ours. We will discuss the difference between our work and theirs. MAML (Finn et al., 2017) is a model-agnostic algorithm to train a model with the greatest sensitivity to the loss function of the new task. Suppose there are tasks obeying T ∼ p(T ) distribution. We can also formulate MAML as a bilevel optimization problem, if we choose the initialization parameter θ ∈ Rd.
+
+min  
+
+> θ
+
+ET ∼p(T )[Lval (ϕ∗ 
+
+> T
+
+(θ); T )] , s.t. ϕ∗ 
+
+> T
+
+(θ) = arg min 
+
+> ϕ
+
+Ltr (ϕ; T, θ),
+
+where ϕ is the task-adapted model parameter. That is, we want to find the task-specific parameter ϕ∗ 
+
+> T
+
+(θ) which will minimize the expected post-adaptation loss across tasks. In practice, MAML does not solve the inner problem to full convergence, but uses one step of SGD from θ to approximate it, and the objective becomes: 
+
+min  
+
+> θ
+
+ET ∼p(T )[Lval (θ − α∇θ Ltr (θ; T ), T )] ,
+
+for the learning rate α. There are several works that have adapted KFAC to improve the algorithms for MAML. Zhang et al. (2023) replace the inner optimizer with natural gradient descent preconditioned by KFAC, focusing on improving convergence speed rather than on BO. Grant et al. (2018) reinterpret MAML as hierarchical Bayes and employ KFAC only to approximate Hessian determinants within Laplace correction to the marginal likelihood, rather than to compute hypergradients. Kim et al. (2023) propose BM-KFP, which applies Kronecker factorization to the parameter of a learned meta-optimizer, a structural efficiency technique unrelated to Hessian approximation. Meta-Curvature (Park & Oliva, 2019) learns gradient transformation matrices for fast adaptation, and to ensure tractability, parameterizes them with low-rank and Kronecker-structured factors, which are conceptually related to KFAC’s block-Kronecker approximation of curvature. Unlike KFAC, however, these operators are not derived from the GGN but are meta-learned directly from data. In contrast, we use KFAC as an efficient means for inverse Hessian-vector products. 
+
+## C Connection between GU and IFT 
+
+The idea of MAML can be seen as a one-step gradient unrolling (GU), and we can show that GU is equivalent to IFT for the one-step case or the infinite step case. We consider the BO formulation: 
+
+min  
+
+> λ∈Rm
+
+Φ( λ) := Jout 
+
+ λ, θ⋆(λ), s.t. θ⋆(λ) = arg min 
+
+> θ∈Rd
+
+Jin (λ, θ).
+
+Here, we demonstrate how to solve it using GU and how this is connected to the hypergradient. Let the inner problem be optimized by T steps of gradient descent with step size η > 0,
+
+θt+1 = θt − η ∇2 Jin (λ, θt), t = 0 , . . . , T − 1, (6) with initialization θ0 (typically independent of λ). Define the unrolled outer objective ΦT (λ) := Jout (λ, θ T (λ)) . By the chain rule, 
+
+∇λΦT (λ) = ∇1 Jout (λ, θT ) +   dθT
+
+> dλ
+
+⊤ ∇2 Jout (λ, θT ). (7) Let St := dθt 
+
+> dλ
+
+∈ Rd×m and Ht := ∇222 Jin (λ, θt). If θ0 does not depend on λ (i.e., S0 = dθ0 
+
+> dλ
+
+= 0 ), differentiating the update in eq. (6) and expanding the recursion, we can get the explicit formula for St+1 :
+
+St+1 = St − η
+
+h
+
+∇221 Jin (λ, θt) + ∇222 Jin (λ, θt) Sti
+
+= −η∇221 Jin (λ, θt) + ( I − ηHt)St
+
+= −η∇221 Jin (λ, θt) + ( I − ηHt) (I − ηHt−1)St−1 − η∇221 Jin (λ, θt−1)
+
+= −η∇221 Jin (λ, θt) − η(I − ηHt)∇21 Jin (λ, θt−1) +   tY
+
+> j=t−1
+
+(I − ηHj )St−1
+
+= . . . 
+
+= −η
+
+> t
+
+X
+
+> s=0
+> t
+
+Y
+
+> j=s+1
+
+ I − ηHj
+
+!
+
+∇221 Jin (λ, θs).Plugging back to equation 7, the T -step unrolled hypergradient is 
+
+∇λΦT (λ) = ∇1 Jout (λ, θT ) − η 
+
+> T−1
+
+X
+
+> t=0
+
+h
+
+∇221 Jin (λ, θt)⊤  T −1Y
+
+> j=t+1
+
+ I − ηHj
+
+
+
+∇2 Jout (λ, θT )
+
+i
+
+,
+
+where products over an empty index set are the identity. Now, recall the expression of IFT based hypergradient: 
+
+∇λΦ( λ) = ∇1 Jout (λ, θ⋆) − ∇ 212 Jin (λ, θ⋆) H−1∇2 Jout (λ, θ⋆),
+
+where θ∗ is the optimal θ for the inner problem and H = ∇222 Jin (λ, θ∗), and this value is usually estimated by running a few steps of an optimization algorithm. For T = 1 , we have S1 = −η∇221 Jin (λ, θ0), and thus 
+
+∇λΦ1(λ) = ∇1 Jout (λ, θ1) − η ∇221 Jin (λ, θ0)⊤∇2 Jout (λ, θ1).
+
+Comparing to the IFT form, if we (i) approximate θ∗ ≈ θ0 ≈ θ1 and (ii) approximate the inner curvature by the identity, 
+
+H ≈ I (so H−1∇2Jout ≈ ∇ 2Jout ), then with η ≈ 1 we recover the same algebraic structure: 
+
+∇λΦ( λ) ≈ ∇ 1 Jout (λ, θ⋆) − ∇ 212 Jin (λ, θ⋆) ∇2 Jout (λ, θ⋆).
+
+Lorraine et al. (2020) shows that as T → ∞ , under the assumption θ0 = θ1 = · · · = θ∗ and I − ηHt is contractive, GU can again happen to align with IFT. To see this, consider ST :
+
+lim   
+
+> T→∞
+
+ST = lim  
+
+> T→∞
+
+h
+
+− η 
+
+> T−1
+
+X
+
+> t=0
+
+  T −1Y
+
+> j=t+1
+
+(I − ηHj )∇221 Jin (λ, θt)
+
+i
+
+= lim  
+
+> T→∞
+
+h
+
+− η 
+
+> T−1
+
+X
+
+> t=0
+
+ T −1Y
+
+> j=t+1
+
+(I − ηH)
+
+
+
+∇221 Jin (λ, θ∗)
+
+i
+
+θ0 = θ∗ = θt
+
+= lim  
+
+> T→∞
+
+h
+
+− η 
+
+> T−1
+
+X
+
+> t=0
+
+
+
+I − ηH
+
+T −1−t
+
+∇221 Jin (λ, θ∗)
+
+i
+
+= lim  
+
+> T→∞
+
+h
+
+− η 
+
+> T−1
+
+X
+
+> t=0
+
+
+
+I − ηH
+
+t
+
+∇221 Jin (λ, θ∗)
+
+i
+
+re-index 
+
+= −H−1∇221 Jin (λ, θ∗). Neumann series and contractive Plugging back to equation 7, we will get the same expression as the hypergradient. Therefore, under the local optimality and contraction assumption, unrolling to infinity is exactly implicit differentiation: the Neumann series induced by unrolling sums to the inverse Hessian, turning GU into IFT. Our KFAC-based hypergradient can be seen as a middle ground between 
+
+I and H, balancing the hypergradient accuracy and the computational cost. 
+
+## D BERT Data Hypercleaning 
+
+We provide additional experimental details and results for the BERT data hypercleaning experiments described in the main text. The bilevel formulation is the same as in Appendix E, with the difference that the inner model is a pretrained BERT classifier and we vary the number of trainable layers. We consider text classification tasks from the WRENCH benchmark (Zhang et al., 2021), namely S EM EVAL , Y OUTUBE ,and T REC . These datasets are weak-supervision benchmarks with noisy labeling sources and are large enough to show clear performance differences between bilevel optimization methods while remaining computationally manageable for repeated BERT fine-tuning. We use the pretrained BERT-base model (110M parameters) from HuggingFace . In the inner problem, we optimize with AdamW using a fixed learning rate of 10 −5 and a cosine learning-rate scheduler. In the outer problem, we use SGD with momentum 0.9 and perform a grid search over learning rates {0.01 , 0.1, 1, 10 , 100 }. Each outer iteration contains 10 inner updates. For KFAC and KFAC EMP, we use damping 10 −3; for CG, we use 3 conjugate-gradient iterations; for Neumann, we use either 3 or 10 truncation steps; and for SAMA, we set α = 0 .1. All experiments use batch size 128 and maximum sequence length 100. We run each experiment for 2000 iterations and report averages over multiple random seeds on a single NVIDIA RTX 4090 GPU. Full numerical results are shown in Table 7. Table 7: Comparison of Methods on T REC , S EM EVAL , and Y OUTUBE at Different Tuning Levels. Each entry shows Accuracy and Training Time. Each result is averaged over 5 runs. These are the same results as Figure 4 but in numbers. 
+
+Method Trec SemEval Youtube 
+
+Acc(%) Time (s) Acc(%) Time (s) Acc(%) Time (s) 
+
+1 Layer (6.5% Params) 
+
+Baseline 60.12 ±0.43 73.3 ±0.1 78.94 ±0.87 121.2 ±0.3 68.53 ±1.24 124.6 ±1.2
+
+KFAC 77.62 ±1.28 772.8 ±3.4 83.83 ±0.47 840.5 ±3.8 81.33 ±1.55 955.7 ±4.4
+
+KFAC EMP 74.25 ±2.57 791.5 ±3.5 81.61 ±0.75 838.6 ±4.5 80.53 ±1.32 962.8 ±3.2
+
+SAMA 62.93 ±0.84 602.7 ±2.2 81.61 ±1.46 628.0 ±5.7 77.86 ±1.15 630.1 ±5.3
+
+CG 75.60 ±1.85 963.7 ±3.8 79.72 ±0.91 1020.3 ±4.5 77.42 ±1.58 1207.9 ±3.8
+
+Neumann ( K=3 ) 53.53 ±0.75 1208.8 ±15 .3 81.22 ±1.32 928.5 ±2.4 48.89 ±1.20 934.7 ±7.5
+
+Neumann ( K=10 ) 70.73 ±3.43 1681.5 ±3.6 82.17 ±0.36 1196.8 ±1.8 61.47 ±1.54 1198.0 ±3.3
+
+7 Layers (45.3% Params) 
+
+Baseline 63.43 ±0.68 135.9 ±0.1 79.89 ±0.42 152.8 ±0.1 69.73 ±0.19 162.3 ±3.6
+
+KFAC 73.42 ±1.08 1414.3 ±2.6 85.61 ±0.08 1475.2 ±2.9 79.92 ±1.94 1491.0 ±6.9
+
+KFAC EMP 72.17 ±1.09 1442.1 ±3.0 85.02 ±1.03 1475.4 ±2.0 79.24 ±0.82 1504.3 ±5.4
+
+SAMA 63.07 ±0.52 828.3 ±4.1 80.78 ±0.64 878.4 ±7.3 73.43 ±1.68 873.1 ±11 .9
+
+CG 68.27 ±0.50 2285.6 ±12 .2 83.67 ±0.62 2332.4 ±7.4 72.43 ±1.39 1967.3 ±6.2
+
+Neumann ( K=3 ) 61.07 ±0.34 2177.0 ±5.5 78.61 ±1.13 2195.4 ±9.9 67.62 ±4.27 1897.2 ±7.8
+
+Neumann ( K=10 ) 64.87 ±2.86 4336.1 ±8.8 80.33 ±2.43 4327.5 ±10 .9 64.13 ±4.15 4375.6 ±31 .0
+
+12 Layers (100% Params) 
+
+Baseline 60.58 ±0.59 189.6 ±0.2 80.06 ±1.14 190.6 ±0.1 67.07 ±0.50 184.8 ±0.1
+
+KFAC 63.67 ±1.43 1988.1 ±2.9 82.72 ±1.51 1986.9 ±5.4 76.08 ±1.94 2110.8 ±5.5
+
+KFAC EMP 63.74 ±1.17 2027.6 ±3.1 82.56 ±0.83 2020.9 ±2.6 75.80 ±1.28 2117.2 ±6.4
+
+SAMA 59.80 ±0.65 1038.7 ±6.1 78.50 ±0.89 1096.2 ±3.6 71.07 ±0.94 1096.2 ±3.6
+
+CG 62.79 ±1.61 4609.8 ±4.3 82.32 ±1.23 4618.3 ±5.2 73.56 ±1.15 4607.2 ±5.9
+
+Neumann ( K=3 ) 61.42 ±2.01 3823.2 ±6.2 81.92 ±0.92 3828.4 ±5.3 71.78 ±1.42 3825.4 ±1.37 
+
+Neumann ( K=10 ) 61.53 ±1.75 8729.2 ±6.3 82 .53 ±1.24 8727.9 ±5.7 72.34 ±1.24 8735 ±6.2
+
+## E Data Hypercleaning 
+
+The training dataset, denoted as Dtr = {(xi, y i)}mi=1 , is corrupted by randomly assigning labels to a proportion of the data points. The objective is to assign weights to the training data points such that a model trained on the weighted training set performs optimally on the validation dataset Dval . This process can be formulated as: 
+
+min  
+
+> λ,θ
+
+Lval (θ⋆), s.t. θ⋆ ∈ arg min 
+
+> θ
+
+Ltr (θ, λ)+ α∥θ∥2 ,
+
+where Lval (θ⋆) is the cross-entropy loss evaluated on the validation set. Ltr (θ, λ) is the weighted training loss, defined as: Ltr (θ, λ) = PNn=1 σ(λn)ℓ(xn, y n, θ),where σ(λn) = Clip (λn, [0 , 1]) ensures that the weights λn remain in the range 
+
+[0 , 1] . The training loss ℓ(xn, y n, θ) is also computed using cross-entropy. The term α∥θ∥2 adds an L2 regularization to prevent overfitting. The goal is to optimize both the data weights λ and the model parameters θ to achieve the best validation performance. The overall structure of our code was adapted from https://github.com/Cranial-XIX/BOME . However, in BOME’s implementation, their model was implemented as a tensor using Pytorch. In our implementation, we imple-Figure 5: Data hypercleaning results for CNN on CIFAR-10 and linear on MNIST. For the linear model, Solid black line is the test loss reached on the cleaned dataset, while the dashed black line is trained only on validation set. For CNN, solid black line is test loss reached on validation dataset, while dashed line is trained on the validation dataset and noisy dataset. mented LR, MLP and CNN using torch.nn.Module , which is more practical. However, this will slow down first-order methods like BSG-1 and BOME since we need to convert each layer of the model to a vector. In the experiment, we split the dataset (both MNIST and CIFAR-10) into 4 parts. The training data size is 50000, and the validation data 1 size is 5000, the validation data 2 size is 5000, and the test data size is 10000. We train the models on training data, update the weight v according to validation data 1, and tune the other hyperparameters on validation data 2. We train on MNIST (linear) and CIFAR-10 (three-layer CNN, ResNet-18) with 50% label corruption, and we report the results on the test data. We fix the number of inner steps to 10. For the step sizes, we conducted a grid search over inner learning rate ηθ ∈ { 0.1, 0.01 , 0.001 } and outer learning rate ηw ∈ { 0.1, 1, 10 , 100 , 500 , 1000 }, and whether to apply momentum by searching the momentum value over {0, 0.9 }. For BOME, BVSFM and BSG-1, we also search their hyperparameter over {0.001, 0.01, 0.1, 1 }. For KFAC, we also grid search the damping value over {0.001, 0.01, 0.1, 1, 10, 100 }. We report the results for MNIST and CIFAR in Figure 5. We can see that our method not only results in a faster convergence rate but also helps to converge to a better optimum point. 
+
+## F More Applications 
+
+In this section, we introduce the detailed problem formulations and experimental details for the four applications we consider. For the class imbalance and the continued pretraining problem, our experiment code is based on the Betty 
+
+library (Choe et al., 2023b) , which provides a template to add more hypergradient estimation methods. F.1 Class Imbalance 
+
+Following Shu et al. (2019), we aim to train a Meta-Weight-Net (MWN) that assigns weights to different training samples to achieve good performance on the validation set. We can formulate the problem as: 
+
+min  
+
+> λ
+
+Lmeta (θ∗), s.t. θ∗ ∈ arg min 
+
+> θ
+
+X
+
+> n
+
+w(ℓn(xn, y n, θ), λ) · ℓn(xn, y n, θ),
+
+where w(·, λ) is MWN parametrized by λ, taking the training loss of the n-th data point, and returning a weight. The Lmeta 
+
+is the loss on a small meta-set. We construct the long-tailed CIFAR dataset by reducing the number of training samples per class using an exponential function n = niμi, where i is the class index, ni is the original number of training samples. We train ResNet-32 with softmax cross-entropy loss and SGD, with momentum 0.9, a weight decay of 5 × 10 −4 and a learning rate 0.1. The outer learning rate is set to 10 −5 with the Adam optimizer. For SAMA and KFAC, we train the inner problem for 10 steps per outer iteration and set SAMA α = 0 .1 and damping value for KFAC to be 10 −3. We train the model for 100 epochs, and we randomly select 10 images per class on the validation set as the meta dataset. For the T1 − T2 method, we use the code in https://github.com/xjtushujun/Meta-weight-net_class-imbalance .
+
+F.2 Continued Pretraining 
+
+We further evaluate our method on the continued pretraining task for large language models, following Dery et al. (2022) and Choe et al. (2023a). Continued pretraining aims to adapt a pretrained language model to domain-specific data while avoiding negative transfer from low-quality samples. Choe et al. (2023a) formulate the continued pretraining task as BO: 
+
+min  
+
+> λ
+
+Lft (Dft , θ∗), s.t. θ∗ = arg min 
+
+> θ
+
+h
+
+Lft (Dft , θ) + 1
+
+|D pt |
+
+X
+
+> x∈D pt
+
+w(x, λ)Lpt (x; θ)
+
+i
+
+,
+
+where Lft and Lpt are finetuning and pretraining loss functions (respectively), Dft and Dpt are finetuning and pretraining datasets (respectively), and w(·, λ) is the MWN similar to class imbalance, which dynamically reweighs samples from the pretraining corpus Dpt , mitigating the negative effect of noisy or low-quality data. We use RoBERTa-base as the backbone for both the downstream and auxiliary pretraining tasks; each task is optimized with Adam at an initial learning rate of 2×10 −5 and a linear decay schedule with 0.6 warmup proportion. No weight decay is applied. The meta-network, implemented as a two-layer MLP, is optimized with Adam at a learning rate of 1 × 10 −5
+
+without a scheduler. For SAMA and our KFAC-integrated variant, we use 10 inner steps per outer iteration and set SAMA 
+
+α = 0 .3 and KFAC damping value to be 10 −3. All experiments were conducted on the ChemProt, HyperPartisan, ACL-ARC, and SciERC datasets, with a batch size of 16 and a maximum sequence length of 256. 
+
+F.3 Data Poisoning 
+
+Data poisoning attacks aim to inject a small fraction of poisoned samples into the training dataset, thereby degrading the performance of the model trained on the corrupted data. As described by Lu et al. (2022), this problem can be expressed as a BO problem: 
+
+max  
+
+> Dp
+
+Lval (Dval , θ∗), s.t. θ∗ ∈ arg min 
+
+> θ
+
+Ltr (Dtr ∪ D p, θ),
+
+Where Ltr and Lval represent the training and validation losses, which can be implemented as the cross-entropy loss, Dp
+
+denotes the poisoned data injected into the training set. The goal is to optimize the poisoned data Dp such that a model trained on the combined dataset Dtr ∪ D p performs poorly on the validation dataset Dval . The implementation of TGDA was adapted from the repo: https://github.com/watml/TGDA-Attack .During training time, we use generator models (attackers) to generate poisoned samples from random noise. The attacker model for the MNIST dataset is a three-layer neural network, with three fully connected layers and leaky ReLU activations; for the CIFAR-10 dataset, we use an autoencoder with three convolutional layers as encoder and three conv transpose layers as decoder. For the classifier on the MNIST dataset, we used logistic regression (LR) and Multi-layer Perceptron (MLP), while on the CIFAR-10 dataset, we used a convolutional neural network (CNN) with two convolutional layers, maxpooling and one fully connected layer. In the data poisoning training setup, we used a batch size of 1000 for all methods on the MNIST dataset. Even for deterministic methods such as BOME AID-CG, batch processing was employed due to the computational expense of alternative approaches. For AID-KFAC, the damping value was set to 10 −3. The models were trained for 200 epochs, with the attacker’s learning rate set to 0.1 and the classifier’s learning rate set to 0.01. Following Lu et al. (2022), for each update of the attacker, the classifier was updated 20 times. On the CIFAR-10 dataset, we used a batch size of 256 for all methods and trained for 200 epochs. The learning rates were set to 0.1 for the upper level (attacker) and 0.01 for the classifier. Both the attacker and classifier optimizers utilized SGD. For stocBiO, we set the Neumann series parameter K = 3 . For BOME, the upper-level learning rate was 0.1, while the lower-level learning rate was 0.01. As outlined by Lu et al. (2022), pretraining the attacker and classifier was necessary to ensure convergence. The attacker was pretrained using SGD for 100 epochs with a learning rate of 0.1, utilizing MSE reconstruction loss. Similarly, the classifier was pretrained using SGD with a learning rate of 0.1 for 100 epochs. 
+
+F.4 Unlearnable Example 
+
+We follow the problem formulation of GUE (Liu et al., 2024). On a dataset Dtr = {(xi, y i)}mi=1 , an attacker (leader) employs a generator model to produce perturbations, and a classifier (follower) mimics the victim, with only access to the poisoned data, namely clean data plus the imperceptible perturbations. The classifier minimizes the cross-entropy loss on the poisoned data, but the resulting model exhibits poor performance on clean validation data. Formally, the objective is as follows: 
+
+min  
+
+> λ,θ
+
+Lval (θ), s.t. θ∗ ∈ arg min 
+
+> θ
+
+Ltr (θ, λ),
+
+where Lval (θ) = − 1
+
+> m
+
+P 
+
+> n
+
+ℓn(xn, y n, θ), Ltr (θ, λ) = 1
+
+> m
+
+P 
+
+> n
+
+ℓn(xn + gλ(xn), y n; θ), ℓn is the cross-entropy loss, and 
+
+gλ represents the generator that produces small perturbations for each training example xi. To address gradient explosion issues caused by the unbounded outer objective function, Liu et al. (2024) proposed replacing Lval by the following surrogate loss during training, for each pair of samples (x, y ):
+
+L(x, y ; θ) := max   
+
+> y′̸=y
+
+ℓn(x, y ′; θ).
+
+Minimizing this surrogate loss means minimizing the cross-entropy with respect to all other labels instead of y. Liu et al. (2024) also showed this loss is bounded and has the same monotonicity as regular cross-entropy. The framework implementation and BOME implementation were adapted from the repo: https://github.com/h ong-xian/gue/tree/master/attacks , while the implementation of AID-CG and AID-KFAC is the same as in data poisoning. The dataset is CIFAR-10, with 50000 clean training samples and 10000 test samples. For unlearnable examples, we use generator models to generatee a small perturbation for each input image. We used the U-Net as a poison generator during training. We clip the perturbation radius to ϵ = 25 /255 , since below this threshold we found that most BO algorithms fail to generate effective perturbations that can significantly downgrade the performance of the classifier. For the classifier model, we used a three-layer CNN with ReLU activation and two fully connected layers. During training, we train 50 epochs for attackers which generate small perturbations. We used a batch size of 512 for training, with the attacker’s learning rate set to 1 and the classifier’s learning rate set to 0. We used the SGD optimizer for both the attacker and classifer. And we update the attacker 10 times after updating the classifier 10 times. However, we found that for BOME, the batch size 512 fails to generate perturbations that can significantly downgrade the performance of the classifier, so we used batch size 256 for BOME. For the inner approximation of BOME, we used Adam (Kingma & Ba, 2015) with a learning rate of 0.001 for T = 10 iterations. For evaluation, we train the model on a poisoned dataset for 100 epochs using an SGD optimizer with an initial learning rate of 0.01 and test the classification accuracy on the test set. 
+
+## G Ablation Study 
+
+G.1 Exponential Moving Average (EMA) 
+
+Martens & Grosse (2015) suggest maintaining running estimates of AKFAC and BKFAC using an exponential moving average (EMA), which can smooth stochastic curvature estimates across iterations. After computing new mini-batch estimates 
+
+Anew KFAC and Bnew KFAC , the running factors are updated as 
+
+AKFAC ← βAKFAC + (1 − β)Anew KFAC , BKFAC ← βBKFAC + (1 − β)Bnew KFAC ,(a) damping = 0.001  (b) damping = 0.001       
+
+> (c) damping = 10 −5(d) damping = 10 −5
+> (e) damping = 10 −10 (f) damping = 10 −10
+
+Figure 6: Effect of EMA coefficient β on convergence for data hypercleaning with logistic regression on MNIST. Each curve corresponds to a different β ∈ { 0, 0.3, 0.5, 0.9}. Left column : batch size 1000. Right column : batch size 50000. In this setting, EMA is most helpful for small damping and small batch sizes, where curvature estimates are noisier, while its effect is modest for larger batches or stronger damping. where β ∈ [0 , 1) controls the amount of temporal smoothing. To study the role of EMA in BO, we evaluate data hypercleaning with logistic regression on MNIST, varying the batch size B ∈ { 1000 , 50000 }, the EMA coefficient β ∈ { 0, 0.3, 0.5, 0.9}, and the damping strength. The results are shown in Figure 6. In this setting, EMA is most beneficial when both the batch size and damping are small, where curvature estimates are noisier and temporal averaging can stabilize the KFAC factors. By contrast, for larger batches or stronger damping, the performance differences across β are small, suggesting that EMA provides only limited additional benefit once the curvature estimates are already stable. Overall, these results support EMA as a useful stabilization mechanism in noisier BO regimes, rather than as a uniformly necessary component. Since our main experiments do not operate in this particularly noisy small-batch regime, we use the simpler non-EMA variant there. We note, however, that these conclusions are drawn from a small-scale linear model, and EMA may still be valuable in larger or more stochastic settings. G.2 Batch Size 
+
+We compare AID-CG and AID-KFAC under varying batch sizes, following the same grid search setup described in Appendix E. Specifically, we consider batch size B = {256 , 512 , 1024 , 2048 , 5000 } for ResNet-18 and B =
+
+{128 , 1000 , 5000 , 10000 , 50000 } for the linear model and consider the lowest test loss achieved within 1000 optimiza-tion iterations. We report the extra results in Figure 7. The results show that batch size has a noticeable effect on BO performance. In both the ResNet-18 and linear settings, AID-KFAC consistently matches or outperforms AID-CG across all tested batch sizes, with the largest gains typically appearing in the smaller-batch regime. As the batch size increases, the performance gap narrows, especially for the linear model, but AID-KFAC remains competitive throughout. These results suggest that KFAC provides a robust curvature surrogate across a wide range of practical batch-size settings. 
+
+Figure 7: Convergence of AID-CG and AID-KFAC on data hypercleaning for different batch sizes. KFAC achieves faster and more stable convergence, particularly for smaller batches, where curvature estimates are noisier and the inner problem becomes ill-conditioned. Compared with Figure 3, this figure shows the evolution of the test loss for different batch sizes.
