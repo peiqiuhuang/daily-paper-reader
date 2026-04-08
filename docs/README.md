@@ -6,55 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-07
-- 运行时间：2026-04-07 20:25:33 UTC
+- 最新运行日期：2026-04-08
+- 运行时间：2026-04-08 20:11:10 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：4
-- 速读区：7
+- 本次总论文数：9
+- 精读区：3
+- 速读区：6
 
 ### 今日简报（AI）
-今日深度探索提示工程的系统化变革，涵盖从声明式学习到视觉语言模型的二阶统计优化。
-满分论文揭示了 DSPy 框架如何重塑 LLM 开发范式，同时 Gram 矩阵锚定技术显著提升了多模态学习的稳定性。
-建议开发者优先掌握声明式提示优化工具，并关注扩散模型在文本填充与图像修复领域的跨界应用。
-- 详情：[/202604/07/README](/202604/07/README)
+今日精选 9 篇前沿成果，深度复盘循环经济供应链优化与多智能体文生视频技术。
+核心突破在于利用双层优化驱动咖啡包装回收，并通过多智能体自我修正显著提升复杂视频生成的精准度。
+建议关注 AI 提示词工程在视觉问答与视频创作中的进阶应用，以及异构负载下的 LoRA 高效训练方案。
+- 详情：[/202604/08/README](/202604/08/README)
 
 ### 精读区论文标签
-1. [Optimizing LLM Prompt Engineering with DSPy Based Declarative Learning](/202604/07/2604.04869v1-optimizing-llm-prompt-engineering-with-dspy-based-declarative-learning)  
-   标签：评分：10.0/10、query:bopl
-   evidence：通过DSPy进行自动化和可学习的提示构建
-2. [Gram-Anchored Prompt Learning for Vision-Language Models via Second-Order Statistics](/202604/07/2604.03980v1-gram-anchored-prompt-learning-for-vision-language-models-via-second-order-statistics)  
+1. [Incorporating circular economy policies into product supply chains using bilevel optimization -- A case study on coffee packaging](/202604/08/2604.02247v1-incorporating-circular-economy-policies-into-product-supply-chains-using-bilevel-optimization----a-case-study-on-coffee-packaging)  
    标签：评分：9.0/10、query:bopl
-   evidence：视觉语言模型的参数高效提示学习
-3. [Fine-grained Analysis of Stability and Generalization for Stochastic Bilevel Optimization](/202604/07/2604.04090v1-fine-grained-analysis-of-stability-and-generalization-for-stochastic-bilevel-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：一阶基于梯度的双层优化方法的分析
-4. [Combee: Scaling Prompt Learning for Self-Improving Language Model Agents](/202604/07/2604.04247v1-combee-scaling-prompt-learning-for-self-improving-language-model-agents)  
-   标签：评分：9.0/10、query:bopl
-   evidence：为语言模型智能体扩展提示学习
+   evidence：用于供应链层级交互的双层优化框架
+2. [SCMAPR: Self-Correcting Multi-Agent Prompt Refinement for Complex-Scenario Text-to-Video Generation](/202604/08/2604.05489v1-scmapr-self-correcting-multi-agent-prompt-refinement-for-complex-scenario-text-to-video-generation)  
+   标签：评分：8.0/10、query:bopl
+   evidence：多智能体提示词精炼与优化
+3. [PromptEvolver: Prompt Inversion through Evolutionary Optimization in Natural-Language Space](/202604/08/2604.06061v1-promptevolver-prompt-inversion-through-evolutionary-optimization-in-natural-language-space)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于提示词反推的进化优化
 
 ### 速读区论文标签
-1. [Unlocking Prompt Infilling Capability for Diffusion Language Models](/202604/07/2604.03677v1-unlocking-prompt-infilling-capability-for-diffusion-language-models)  
+1. [Less Detail, Better Answers: Degradation-Driven Prompting for VQA](/202604/08/2604.04838v2-less-detail-better-answers-degradation-driven-prompting-for-vqa)  
    标签：评分：7.0/10、query:bopl
-   evidence：模型填充的提示词优于手动设计且与提示词优化方法互补
-2. [Is Prompt Selection Necessary for Task-Free Online Continual Learning?](/202604/07/2604.04420v1-is-prompt-selection-necessary-for-task-free-online-continual-learning)  
+   evidence：视觉语言模型的退化驱动提示技术
+2. [End-to-End Learning of Correlated Operating Reserve Requirements in Security-Constrained Economic Dispatch](/202604/08/2604.05167v1-end-to-end-learning-of-correlated-operating-reserve-requirements-in-security-constrained-economic-dispatch)  
    标签：评分：7.0/10、query:bopl
-   evidence：持续学习中的提示选择与优化
-3. [Your Pre-trained Diffusion Model Secretly Knows Restoration](/202604/07/2604.04924v1-your-pre-trained-diffusion-model-secretly-knows-restoration)  
+   evidence：双层优化问题转化为单阶段可微目标
+3. [ALTO: Adaptive LoRA Tuning and Orchestration for Heterogeneous LoRA Training Workloads](/202604/08/2604.05426v1-alto-adaptive-lora-tuning-and-orchestration-for-heterogeneous-lora-training-workloads)  
    标签：评分：7.0/10、query:bopl
-   evidence：扩散模型的提示词嵌入学习
-4. [SPG: Sparse-Projected Guides with Sparse Autoencoders for Zero-Shot Anomaly Detection](/202604/07/2604.02871v1-spg-sparse-projected-guides-with-sparse-autoencoders-for-zero-shot-anomaly-detection)  
+   evidence：加速LoRA超参数调优
+4. [Agentic Tool Use in Large Language Models](/202604/08/2604.00835v1-agentic-tool-use-in-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：优化引导向量作为类提示参考向量
-5. [Love Me, Love My Label: Rethinking the Role of Labels in Prompt Retrieval for Visual In-Context Learning](/202604/07/2604.03657v1-love-me-love-my-label-rethinking-the-role-of-labels-in-prompt-retrieval-for-visual-in-context-learning)  
+   evidence：大语言模型中的即插即用提示范式
+5. [Emergent Inference-Time Semantic Contamination via In-Context Priming](/202604/08/2604.04043v1-emergent-inference-time-semantic-contamination-via-in-context-priming)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉上下文学习的提示检索
-6. [Context Engineering: A Practitioner Methodology for Structured Human-AI Collaboration](/202604/07/2604.04258v1-context-engineering-a-practitioner-methodology-for-structured-human-ai-collaboration)  
+   evidence：通过上下文引导产生的推理时语义偏移
+6. [Learning to Edit Knowledge via Instruction-based Chain-of-Thought Prompting](/202604/08/2604.05540v1-learning-to-edit-knowledge-via-instruction-based-chain-of-thought-prompting)  
    标签：评分：6.0/10、query:bopl
-   evidence：结构化上下文与提示工程方法论
-7. [Less Detail, Better Answers: Degradation-Driven Prompting for VQA](/202604/07/2604.04838v1-less-detail-better-answers-degradation-driven-prompting-for-vqa)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于视觉问答的降级驱动提示框架，结合了语境学习
+   evidence：基于指令的思维链提示用于知识编辑
 
 
 <div class="dpr-home-promo-card">
