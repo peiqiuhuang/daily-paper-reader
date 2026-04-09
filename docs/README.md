@@ -6,49 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-08
-- 运行时间：2026-04-08 20:11:10 UTC
+- 最新运行日期：2026-04-09
+- 运行时间：2026-04-09 20:33:52 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：3
-- 速读区：6
+- 本次总论文数：13
+- 精读区：6
+- 速读区：7
 
 ### 今日简报（AI）
-今日精选 9 篇前沿成果，深度复盘循环经济供应链优化与多智能体文生视频技术。
-核心突破在于利用双层优化驱动咖啡包装回收，并通过多智能体自我修正显著提升复杂视频生成的精准度。
-建议关注 AI 提示词工程在视觉问答与视频创作中的进阶应用，以及异构负载下的 LoRA 高效训练方案。
-- 详情：[/202604/08/README](/202604/08/README)
+今日精选 13 篇前沿成果，深度解析单域泛化与临床 NLP 的参数高效迁移方案。
+重点关注双层优化对模型泛化力的提升，以及多任务提示蒸馏在医疗垂直领域的卓越表现。
+建议同步探索大模型频率定律与多智能体图像编辑，从底层规律到应用协同实现全面进阶。
+- 详情：[/202604/09/README](/202604/09/README)
 
 ### 精读区论文标签
-1. [Incorporating circular economy policies into product supply chains using bilevel optimization -- A case study on coffee packaging](/202604/08/2604.02247v1-incorporating-circular-economy-policies-into-product-supply-chains-using-bilevel-optimization----a-case-study-on-coffee-packaging)  
+1. [Bi-Level Optimization for Single Domain Generalization](/202604/09/2604.06349v1-bi-level-optimization-for-single-domain-generalization)  
    标签：评分：9.0/10、query:bopl
-   evidence：用于供应链层级交互的双层优化框架
-2. [SCMAPR: Self-Correcting Multi-Agent Prompt Refinement for Complex-Scenario Text-to-Video Generation](/202604/08/2604.05489v1-scmapr-self-correcting-multi-agent-prompt-refinement-for-complex-scenario-text-to-video-generation)  
+   evidence：用于领域提示编码器的双层优化
+2. [A Parameter-Efficient Transfer Learning Approach through Multitask Prompt Distillation and Decomposition for Clinical NLP](/202604/09/2604.06650v1-a-parameter-efficient-transfer-learning-approach-through-multitask-prompt-distillation-and-decomposition-for-clinical-nlp)  
+   标签：评分：9.0/10、query:bopl
+   evidence：参数高效的多任务提示词蒸馏
+3. [Adaptive Prompt Structure Factorization: A Framework for Self-Discovering and Optimizing Compositional Prompt Programs](/202604/09/2604.06699v1-adaptive-prompt-structure-factorization-a-framework-for-self-discovering-and-optimizing-compositional-prompt-programs)  
+   标签：评分：9.0/10、query:bopl
+   evidence：自动提示词优化与结构自发现
+4. [Holistic Optimal Label Selection for Robust Prompt Learning under Partial Labels](/202604/09/2604.06614v1-holistic-optimal-label-selection-for-robust-prompt-learning-under-partial-labels)  
    标签：评分：8.0/10、query:bopl
-   evidence：多智能体提示词精炼与优化
-3. [PromptEvolver: Prompt Inversion through Evolutionary Optimization in Natural-Language Space](/202604/08/2604.06061v1-promptevolver-prompt-inversion-through-evolutionary-optimization-in-natural-language-space)  
+   evidence：提示学习作为一种参数高效的视觉语言模型适配方法
+5. [DiffuMask: Diffusion Language Model for Token-level Prompt Pruning](/202604/09/2604.06627v1-diffumask-diffusion-language-model-for-token-level-prompt-pruning)  
    标签：评分：8.0/10、query:bopl
-   evidence：用于提示词反推的进化优化
+   evidence：自动提示词剪枝与压缩
+6. [VertAX: a differentiable vertex model for learning epithelial tissue mechanics](/202604/09/2604.06896v1-vertax-a-differentiable-vertex-model-for-learning-epithelial-tissue-mechanics)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于参数推断的端到端双层优化
 
 ### 速读区论文标签
-1. [Less Detail, Better Answers: Degradation-Driven Prompting for VQA](/202604/08/2604.04838v2-less-detail-better-answers-degradation-driven-prompting-for-vqa)  
+1. [Adam's Law: Textual Frequency Law on Large Language Models](/202604/09/2604.02176v2-adams-law-textual-frequency-law-on-large-language-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：视觉语言模型的退化驱动提示技术
-2. [End-to-End Learning of Correlated Operating Reserve Requirements in Security-Constrained Economic Dispatch](/202604/08/2604.05167v1-end-to-end-learning-of-correlated-operating-reserve-requirements-in-security-constrained-economic-dispatch)  
+   evidence：基于文本频率的提示技术
+2. [CAMEO: A Conditional and Quality-Aware Multi-Agent Image Editing Orchestrator](/202604/09/2604.03156v1-cameo-a-conditional-and-quality-aware-multi-agent-image-editing-orchestrator)  
    标签：评分：7.0/10、query:bopl
-   evidence：双层优化问题转化为单阶段可微目标
-3. [ALTO: Adaptive LoRA Tuning and Orchestration for Heterogeneous LoRA Training Workloads](/202604/08/2604.05426v1-alto-adaptive-lora-tuning-and-orchestration-for-heterogeneous-lora-training-workloads)  
+   evidence：避免手动提示调优的多智能体框架
+3. [Visual prompting reimagined: The power of the Activation Prompts](/202604/09/2604.06440v1-visual-prompting-reimagined-the-power-of-the-activation-prompts)  
    标签：评分：7.0/10、query:bopl
-   evidence：加速LoRA超参数调优
-4. [Agentic Tool Use in Large Language Models](/202604/08/2604.00835v1-agentic-tool-use-in-large-language-models)  
+   evidence：通过激活图的通用扰动进行视觉提示
+4. [Context Matters: Evaluating Context Strategies for Automated ADR Generation Using LLMs](/202604/09/2604.03826v1-context-matters-evaluating-context-strategies-for-automated-adr-generation-using-llms)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型中的即插即用提示范式
-5. [Emergent Inference-Time Semantic Contamination via In-Context Priming](/202604/08/2604.04043v1-emergent-inference-time-semantic-contamination-via-in-context-priming)  
+   evidence：大语言模型的上下文感知提示策略
+5. [BOSCH: Black-Box Binary Optimization for Short-Context Attention-Head Selection in LLMs](/202604/09/2604.05942v1-bosch-black-box-binary-optimization-for-short-context-attention-head-selection-in-llms)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过上下文引导产生的推理时语义偏移
-6. [Learning to Edit Knowledge via Instruction-based Chain-of-Thought Prompting](/202604/08/2604.05540v1-learning-to-edit-knowledge-via-instruction-based-chain-of-thought-prompting)  
+   evidence：LLM 组件的黑盒二进制优化
+6. [In-Place Test-Time Training](/202604/09/2604.06169v1-in-place-test-time-training)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于指令的思维链提示用于知识编辑
+   evidence：在推理时更新模型参数子集
+7. [From Static to Interactive: Adapting Visual in-Context Learners for User-Driven Tasks](/202604/09/2604.06748v1-from-static-to-interactive-adapting-visual-in-context-learners-for-user-driven-tasks)  
+   标签：评分：6.0/10、query:bopl
+   evidence：视觉上下文学习适配
 
 
 <div class="dpr-home-promo-card">
