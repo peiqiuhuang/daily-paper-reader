@@ -6,61 +6,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-09
-- 运行时间：2026-04-09 20:33:52 UTC
+- 最新运行日期：2026-04-10
+- 运行时间：2026-04-10 19:43:45 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：6
-- 速读区：7
+- 本次总论文数：10
+- 精读区：2
+- 速读区：8
 
 ### 今日简报（AI）
-今日精选 13 篇前沿成果，深度解析单域泛化与临床 NLP 的参数高效迁移方案。
-重点关注双层优化对模型泛化力的提升，以及多任务提示蒸馏在医疗垂直领域的卓越表现。
-建议同步探索大模型频率定律与多智能体图像编辑，从底层规律到应用协同实现全面进阶。
-- 详情：[/202604/09/README](/202604/09/README)
+今日聚焦复杂场景视频生成的智能提示优化与边缘侧持续学习的稀疏化突破。
+重点关注多智能体自我修正（SCMAPR）对视频质量的提升，以及解耦训练在边缘端实现高效模型演进的潜力。
+建议关注多智能体
+- 详情：[/202604/10/README](/202604/10/README)
 
 ### 精读区论文标签
-1. [Bi-Level Optimization for Single Domain Generalization](/202604/09/2604.06349v1-bi-level-optimization-for-single-domain-generalization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于领域提示编码器的双层优化
-2. [A Parameter-Efficient Transfer Learning Approach through Multitask Prompt Distillation and Decomposition for Clinical NLP](/202604/09/2604.06650v1-a-parameter-efficient-transfer-learning-approach-through-multitask-prompt-distillation-and-decomposition-for-clinical-nlp)  
-   标签：评分：9.0/10、query:bopl
-   evidence：参数高效的多任务提示词蒸馏
-3. [Adaptive Prompt Structure Factorization: A Framework for Self-Discovering and Optimizing Compositional Prompt Programs](/202604/09/2604.06699v1-adaptive-prompt-structure-factorization-a-framework-for-self-discovering-and-optimizing-compositional-prompt-programs)  
-   标签：评分：9.0/10、query:bopl
-   evidence：自动提示词优化与结构自发现
-4. [Holistic Optimal Label Selection for Robust Prompt Learning under Partial Labels](/202604/09/2604.06614v1-holistic-optimal-label-selection-for-robust-prompt-learning-under-partial-labels)  
+1. [SCMAPR: Self-Correcting Multi-Agent Prompt Refinement for Complex-Scenario Text-to-Video Generation](/202604/10/2604.05489v2-scmapr-self-correcting-multi-agent-prompt-refinement-for-complex-scenario-text-to-video-generation)  
    标签：评分：8.0/10、query:bopl
-   evidence：提示学习作为一种参数高效的视觉语言模型适配方法
-5. [DiffuMask: Diffusion Language Model for Token-level Prompt Pruning](/202604/09/2604.06627v1-diffumask-diffusion-language-model-for-token-level-prompt-pruning)  
+   evidence：用于文本到视频生成的多智能体提示精炼
+2. [Critical Patch-Aware Sparse Prompting with Decoupled Training for Continual Learning on the Edge](/202604/10/2604.07399v1-critical-patch-aware-sparse-prompting-with-decoupled-training-for-continual-learning-on-the-edge)  
    标签：评分：8.0/10、query:bopl
-   evidence：自动提示词剪枝与压缩
-6. [VertAX: a differentiable vertex model for learning epithelial tissue mechanics](/202604/09/2604.06896v1-vertax-a-differentiable-vertex-model-for-learning-epithelial-tissue-mechanics)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于参数推断的端到端双层优化
+   evidence：参数高效的基于提示的持续学习
 
 ### 速读区论文标签
-1. [Adam's Law: Textual Frequency Law on Large Language Models](/202604/09/2604.02176v2-adams-law-textual-frequency-law-on-large-language-models)  
+1. [CLEAR: Context Augmentation from Contrastive Learning of Experience via Agentic Reflection](/202604/10/2604.07487v1-clear-context-augmentation-from-contrastive-learning-of-experience-via-agentic-reflection)  
    标签：评分：7.0/10、query:bopl
-   evidence：基于文本频率的提示技术
-2. [CAMEO: A Conditional and Quality-Aware Multi-Agent Image Editing Orchestrator](/202604/09/2604.03156v1-cameo-a-conditional-and-quality-aware-multi-agent-image-editing-orchestrator)  
+   evidence：用于提示工程的生成式上下文增强和智能体反思
+2. [Synthetic Data for any Differentiable Target](/202604/10/2604.08423v1-synthetic-data-for-any-differentiable-target)  
    标签：评分：7.0/10、query:bopl
-   evidence：避免手动提示调优的多智能体框架
-3. [Visual prompting reimagined: The power of the Activation Prompts](/202604/09/2604.06440v1-visual-prompting-reimagined-the-power-of-the-activation-prompts)  
-   标签：评分：7.0/10、query:bopl
-   evidence：通过激活图的通用扰动进行视觉提示
-4. [Context Matters: Evaluating Context Strategies for Automated ADR Generation Using LLMs](/202604/09/2604.03826v1-context-matters-evaluating-context-strategies-for-automated-adr-generation-using-llms)  
+   evidence：用于数据归因和优化的二阶梯度
+3. [FourierMoE: Fourier Mixture-of-Experts Adaptation of Large Language Models](/202604/10/2604.01762v1-fouriermoe-fourier-mixture-of-experts-adaptation-of-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型的上下文感知提示策略
-5. [BOSCH: Black-Box Binary Optimization for Short-Context Attention-Head Selection in LLMs](/202604/09/2604.05942v1-bosch-black-box-binary-optimization-for-short-context-attention-head-selection-in-llms)  
+   evidence：大语言模型的参数高效微调与适配
+4. [TalkLoRA: Communication-Aware Mixture of Low-Rank Adaptation for Large Language Models](/202604/10/2604.06291v1-talklora-communication-aware-mixture-of-low-rank-adaptation-for-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：LLM 组件的黑盒二进制优化
-6. [In-Place Test-Time Training](/202604/09/2604.06169v1-in-place-test-time-training)  
+   evidence：通过通信感知的LoRA混合进行参数高效微调
+5. [Continuous Interpretive Steering for Scalar Diversity](/202604/10/2604.07006v1-continuous-interpretive-steering-for-scalar-diversity)  
    标签：评分：6.0/10、query:bopl
-   evidence：在推理时更新模型参数子集
-7. [From Static to Interactive: Adapting Visual in-Context Learners for User-Driven Tasks](/202604/09/2604.06748v1-from-static-to-interactive-adapting-visual-in-context-learners-for-user-driven-tasks)  
+   evidence：将连续激活层级转向作为提示词操作的替代方案
+6. [Dynamic Context Evolution for Scalable Synthetic Data Generation](/202604/10/2604.07147v1-dynamic-context-evolution-for-scalable-synthetic-data-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉上下文学习适配
+   evidence：用于提示的动态上下文演化和言语化尾部采样
+7. [MemCoT: Test-Time Scaling through Memory-Driven Chain-of-Thought](/202604/10/2604.08216v1-memcot-test-time-scaling-through-memory-driven-chain-of-thought)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于测试时扩展的存储驱动思维链
+8. [RewardFlow: Generate Images by Optimizing What You Reward](/202604/10/2604.08536v1-rewardflow-generate-images-by-optimizing-what-you-reward)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于调节奖励权重和步长的提示感知自适应策略
 
 
 <div class="dpr-home-promo-card">
