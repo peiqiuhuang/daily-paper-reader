@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-04-11 <!--dpr-date:20260411-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202604/11/2604.06285v1-harnessing-hyperbolic-geometry-for-harmful-prompt-detection-and-sanitization" data-sidebar-item="{&quot;title&quot;: &quot;Harnessing Hyperbolic Geometry for Harmful Prompt Detection and Sanitization&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2604.06285v1-harnessing-hyperbolic-geometry-for-harmful-prompt-detection-and-sanitization&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;有害提示检测与净化&quot;}">Harnessing Hyperbolic Geometry for Harmful Prompt Detection and Sanitization</a>
   * 2026-04-10 <!--dpr-date:20260410-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202604/10/2604.05489v2-scmapr-self-correcting-multi-agent-prompt-refinement-for-complex-scenario-text-to-video-generation" data-sidebar-item="{&quot;title&quot;: &quot;SCMAPR: Self-Correcting Multi-Agent Prompt Refinement for Complex-Scenario Text-to-Video Generation&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2604.05489v2-scmapr-self-correcting-multi-agent-prompt-refinement-for-complex-scenario-text-to-video-generation&quot;, &quot;score&quot;: &quot;8.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;用于文本到视频生成的多智能体提示精炼&quot;}">SCMAPR: Self-Correcting Multi-Agent Prompt Refinement for Complex-Scenario Text-to-Video Generation</a>
