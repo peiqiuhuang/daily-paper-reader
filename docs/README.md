@@ -6,26 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-11
-- 运行时间：2026-04-11 19:49:05 UTC
+- 最新运行日期：2026-04-12
+- 运行时间：2026-04-12 19:38:06 UTC
 - 运行状态：成功
-- 本次总论文数：1
+- 本次总论文数：4
 - 精读区：0
-- 速读区：1
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦利用双曲几何技术强化大模型安全防线，实现对有害提示词的精准识别与净化。
-研究通过引入非欧几里得空间建模，证明了双曲几何在捕捉复杂语义层次及自动化修复违规提示词方面的独特优势。
-建议关注非欧几何在安全护栏（Guardrails）中的跨界应用，探索更稳健的 LLM 防御新范式。
-- 详情：[/202604/11/README](/202604/11/README)
+今日聚焦 AI 鲁棒性与隐私保护，涵盖多模态情感分析、无文本 LLM 推理及强化学习对齐优化。
+重点关注针对缺失模态的“先评估后生成”新范式，以及通过自适应课程学习提升 RL 对齐效率的 SPARD 框架。
+建议关注多模态模型在不完整数据下的稳定性提升方案，并探索隐私敏感场景下的无文本推理技术。
+- 详情：[/202604/12/README](/202604/12/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Harnessing Hyperbolic Geometry for Harmful Prompt Detection and Sanitization](/202604/11/2604.06285v1-harnessing-hyperbolic-geometry-for-harmful-prompt-detection-and-sanitization)  
+1. [Evaluation Before Generation: A Paradigm for Robust Multimodal Sentiment Analysis with Missing Modalities](/202604/12/2604.05558v1-evaluation-before-generation-a-paradigm-for-robust-multimodal-sentiment-analysis-with-missing-modalities)  
+   标签：评分：7.0/10、query:bopl
+   evidence：多模态情感分析中的提示学习
+2. [Towards Privacy-Preserving Large Language Model: Text-free Inference Through Alignment and Adaptation](/202604/12/2604.06831v1-towards-privacy-preserving-large-language-model-text-free-inference-through-alignment-and-adaptation)  
    标签：评分：6.0/10、query:bopl
-   evidence：有害提示检测与净化
+   evidence：通过适配消除传输原始提示文本的需求
+3. [SPARD: Self-Paced Curriculum for RL Alignment via Integrating Reward Dynamics and Data Utility](/202604/12/2604.07837v1-spard-self-paced-curriculum-for-rl-alignment-via-integrating-reward-dynamics-and-data-utility)  
+   标签：评分：6.0/10、query:bopl
+   evidence：强化学习对齐与奖励优化的自动课程
+4. [Improved Convergence for Decentralized Stochastic Optimization with Biased Gradients](/202604/12/2604.08236v1-improved-convergence-for-decentralized-stochastic-optimization-with-biased-gradients)  
+   标签：评分：6.0/10、query:bopl
+   evidence：带偏置梯度的去中心化随机优化
 
 
 <div class="dpr-home-promo-card">
