@@ -1,0 +1,4118 @@
+Title: Binomial Gradient-Based Meta-Learning for Enhanced Meta-Gradient Estimation
+
+URL Source: https://arxiv.org/pdf/2604.13263v1
+
+Published Time: Thu, 16 Apr 2026 00:15:11 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+Published as a conference paper at ICLR 2026 
+
+# BINOMIAL GRADIENT -B ASED META -L EARNING FOR 
+
+# ENHANCED META -G RADIENT ESTIMATION 
+
+Yilang Zhang ∗1, Abraham Jaeger Mountain ∗1, Bingcong Li 2 & Georgios B. Giannakis 11Department of Electrical and Computer Engineering University of Minnesota Minneapolis, MN 55455, USA 
+
+{zhan7453,jaege252,georgios}@umn.edu 
+
+> 2
+
+Department of Computer Science ETH Zürich 8092 Zürich, Switzerland 
+
+{bingcong.li}@inf.ethz.ch 
+
+## ABSTRACT 
+
+Meta-learning offers a principled framework leveraging task-invariant priors from related tasks, with which task-specific models can be fine-tuned on downstream tasks, even with limited data records. Gradient-based meta-learning (GBML) relies on gradient descent (GD) to adapt the prior to a new task. Albeit effective, these methods incur high computational overhead that scales linearly with the number of GD steps. To enhance efficiency and scalability, existing methods approximate the gradient of prior parameters (meta-gradient) via truncated backpropagation, yet suffer large approximation errors. Targeting accurate approximation, this work puts forth binomial GBML (BinomGBML), which relies on a truncated binomial expansion for meta-gradient estimation. This novel expansion endows more in-formation in the meta-gradient estimation via efficient parallel computation. As a running paradigm applied to model-agnostic meta-learning (MAML), the resultant BinomMAML provably enjoys error bounds that not only improve upon existing approaches, but also decay super-exponentially under mild conditions. Numerical tests corroborate the theoretical analysis and showcase boosted performance with slightly increased computational overhead. 
+
+## 1 INTRODUCTION 
+
+Deep learning (DL) has well-documented success in recent years across various domains (Vaswani, 2017; He et al., 2016; Brown et al., 2020). With its merits granted, the effectiveness of DL relies markedly on high-dimensional models that require massive datasets for training. In applications where data are scarce, acquiring massive training datasets can be prohibitively expensive. Examples of such “data-limited” regimes include medical imaging (Varoquaux & Cheplygina, 2022), social sciences (Grimmer et al., 2022), and robot manipulation (Kroemer et al., 2021). As opposed to data-hungry DL, a hallmark of human intelligence is the ability to exploit past knowledge to swiftly acquire new skills through limited experiences and trials. Meta-learning aims to impart humans’ knowledge-generalizing ability into DL by identifying some task-invariant prior knowledge, which can be subsequently transferred to aid the learning of new tasks, even when training data are limited. Akin to human learning from past experiences, meta-learning accumulates the sought prior knowledge from a set of related tasks. Model-based approaches, which attempt to encode prior task knowledge in some additional meta-NN, have seen some success, but are prone to poor robustness and require hand-tooled design. In contrast, gradient-based meta-learning (GBML) uses an iterative optimizer, such as gradient descent (GD), to train task-specific models, with prior information embedded in the learnable hyperparameters of the optimizer. By learning efficient optimization hyperparameters, the model can rapidly adapt to 
+
+> ∗
+
+Equal contribution 
+
+1
+
+> arXiv:2604.13263v1 [cs.LG] 14 Apr 2026
+
+Published as a conference paper at ICLR 2026 new tasks in a few optimization iterations (Andrychowicz et al., 2016). A representative example is model-agnostic meta-learning (MAML) (Finn et al., 2017), which encodes the prior using an initialization shared across tasks and relies on GD to adapt the task-specific models. By starting from an informative initial point, the model can easily converge to some local minimum even with limited training data. Building upon MAML, many GBML variants have been developed to further improve performance (Yoon et al., 2018; Khodak et al., 2019; Nichol, 2018; Raghu et al., 2019). While GBML has gained popularity in various application domains (Zhu et al., 2020; Zang et al., 2020; Chen et al., 2021) the process of learning the prior can incur high computational complexity. In particular, the complexity for calculating the gradient of prior (a.k.a. meta-gradient) is linear with the number of adaptation steps, rendering these algorithms barely scalable. To lower the computational overhead of GBML, meta-gradient estimators have been investigated as an alternative to vanilla full backpropagation. For instance, first-order approaches (Finn et al., 2017; Nichol, 2018) do not make explicit use of higher-order information. However, this “over-simplification” can lead to large estima-tion errors, thereby decelerating meta-learning convergence and resulting in degraded performance. For a desirable trade-off between accuracy and complexity, truncated backpropagation (Shaban et al., 2019) is advocated, in the more general context of gradient-based bilevel optimization, to retain a specific portion of second-order information. Another line of work (Rajeswaran et al., 2019; Ravi & Beatson, 2019; Zhang et al., 2023) utilizes implicit differentiation to replace full backpropagation, but the implicit function theorem (Krantz & Parks, 2002) involved relies markedly on the stationarity of the solution found by the iterative optimizer. While first-order and truncated backpropagation lessen the computational load of GBML, we will demonstrate with analysis and empirical observations that they can lead to large approximation errors. With this motivation, we revisit the GBML meta-gradient formulation and develop a novel meta-gradient estimate, binomial gradient-based meta-learning (BinomGBML), which earns its name from the keystone binomial theorem. Our contribution is three-fold: • Embracing efficient parallelization, BinomGBML improves upon state-of-the-art meta-gradient estimators by retaining more information to markedly reduce the estimation error. • Theoretical analyses under three different assumptions reveal BinomMAML’s reduced estimation error, which decays super-exponentially. Extensive numerical tests on synthetic and real datasets further validate these claims. • As a side benefit, when combined with MAML (Finn et al., 2017), BinomMAML addresses the memory scalability of MAML through dynamic management of computational graphs. 
+
+Notation. Bold lowercase (uppercase) letters denote vectors (matrices); ∥ · ∥ and ⟨· , ·⟩ stand for 
+
+ℓ2-norm and inner product; and [·]i for the i-th entry (column) of a vector (matrix). 
+
+## 2 PRELIMINARIES 
+
+2.1 PROBLEM STATEMENT 
+
+Meta-learning first acquires a task-invariant prior parameterized by θ ∈ RD that is common to a set of related tasks. Let t = 1 , . . . , T index these tasks, and Dt := {(xnt , y nt )}Nt 
+
+> n=1
+
+denote the per-task datasets comprising Nt (limited) input-label pairs. For compactness, let matrix Xt ∈ Rd×Nt be formed with columns xnt , and yt ∈ RNt be the corresponding label vector. Each Dt is partitioned into a training subset Dtrn  
+
+> t
+
+⊂ D t and a validation subset Dval  
+
+> t
+
+:= Dt \ D trn  
+
+> t
+
+. Instead, the meta-training process first extracts a task-invariant prior from these tasks by leveraging their associated data. Then, to measure the quality of the meta-trained prior, an unseen meta-testing task indexed by ⋆ is provided with limited training data Dtrn  
+
+> ⋆
+
+, and some test inputs {xn⋆ }. As N⋆ can be markedly smaller than required for DL, directly training a model over Dtrn  
+
+> ⋆
+
+could easily lead to overfitting. The meta-testing process transfers the acquired prior to the new task, at which point a DL model can be fine-tuned over the small Dtrn  
+
+> ⋆
+
+to predict the corresponding test labels {yn⋆ }.The meta-training process amounts to a nested empirical risk minimization problem. The inner level (task level) trains the per-task model parameter ϕt ∈ Rd over Dtrn  
+
+> t
+
+using the task-invariant prior provided by the outer level. The outer level (meta level) assesses the trained model on Dval  
+
+> t
+
+, and adjusts the prior accordingly. Recall θ ∈ RD is the shared prior parameter (a.k.a. meta-parameter). 2Published as a conference paper at ICLR 2026 This nested structure is naturally expressed as a bilevel objective 
+
+min 
+
+> θ
+> T
+
+X
+
+> t=1
+
+ℓval  
+
+> t
+
+(ϕ∗ 
+
+> t
+
+(θ)) (1a) s.t. ϕ∗ 
+
+> t
+
+(θ) = arg min 
+
+> ϕt
+
+ℓtrn  
+
+> t
+
+(ϕt) + R(ϕt; θ) (1b) where ℓtrn  
+
+> t
+
+(ϕt) := ℓtrn (ϕt; Dtrn  
+
+> t
+
+) := − log p(ytrn  
+
+> t
+
+|ϕt; Xtrn  
+
+> t
+
+) is the training loss (negative log-likelihood) evaluating the fit of the task-specific model to Dtrn  
+
+> t
+
+, and regularizer R(ϕt; θ) := 
+
+− log p(ϕt; θ) represents the negative log-prior probability density function. Using Bayes’ rule, one can verify that ϕ∗ 
+
+> t
+
+(θ) = arg min ϕt − log p(ϕt|D trn  
+
+> t
+
+; θ) is the maximum a posteriori estimator. While formulation (1) is appealing, the global optimum ϕ∗ 
+
+> t
+
+in (1b) is generally intractable for highly nonlinear NNs. A feasible alternative is to rely on a manageable solver to approximate ϕ∗ 
+
+> t
+
+.Gradient-based meta-learning (GBML) poses the solver as a few cascaded optimization steps. The meta-parameter θ acts as the optimizer hyperparameters shared among all tasks. The first work along this line is termed model-agnostic meta-learning (MAML) (Finn et al., 2017). It relies on a K-step GD optimizer as the solver, with a task-invariant initialization being the meta-parameter (thus D = d), which renders the alternative objective 
+
+min 
+
+> θ
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+Lt(θ) := 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+ℓval  
+
+> t
+
+(ϕKt (θ)) (2a) s.t. ϕ0 
+
+> t
+
+(θ) = θ, ϕk+1  
+
+> t
+
+(θ) = ϕkt (θ) − α∇ℓtrn  
+
+> t
+
+(ϕkt (θ)) , k = 0 , . . . , K − 1 (2b) where α > 0 is a constant learning rate. Although (2) contains no explicit R, it is pointed out that under second-order approximation (Grant et al., 2018), (2b) satisfies 
+
+ϕKt (θ) ≈ ϕ∗ 
+
+> t
+
+(θ) = arg min 
+
+> ϕt
+
+ℓtrn  
+
+> t
+
+(ϕt) + 12 ∥ϕt − θ∥2
+
+> Λt
+
+where Λt is determined by α, K, and ∇2ℓtrn  
+
+> t
+
+(θ). In other words, MAML’s optimization strategy is equivalent to an implicit Gaussian prior p(ϕt; θ) = N (ϕt; θ, Λt), whose mean is the task-invariant initialization. 2.2 COMPUTATIONAL CHALLENGES IN META -LEARNING 
+
+This section examines the time and space complexities of GBML. For illustration, the discussion will particularly focus on MAML, while similar analysis can be readily applied to other GBML methods including (Li et al., 2017; Lee & Choi, 2018; Rusu et al., 2018; Park & Oliva, 2019). Optimizing θ in (2a) requires computing the gradient 
+
+∇L t(θ) = ∇θ ℓval  
+
+> t
+
+(ϕKt (θ)) (a)
+
+=
+
+> K−1
+
+Y
+
+> k=0
+
+∇ϕkt (ϕk−1 
+
+> t
+
+)∇ℓval  
+
+> t
+
+(ϕKt ) (b)
+
+=
+
+> K−1
+
+Y
+
+> k=0
+
+Id − α∇2ℓtrn  
+
+> t
+
+(ϕkt )∇ℓval  
+
+> t
+
+(ϕKt )
+
+(3) where (a) utilizes the chain rule, and (b) is from (2b) . For compactness, let Hkt := ∇2ℓtrn  
+
+> t
+
+(ϕkt )
+
+denote the Hessian, and gKt := ∇ℓval  
+
+> t
+
+(ϕKt ) the validation gradient. It follows from (3) that 
+
+∇L t(θ) = 
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+gKt . (4) For any vector g ∈ Rd, one can compute [Id − αHkt ]g by first expanding [Id − αHkt ]g = g − αHkt g
+
+and then using the Hessian-vector product (HVP) to efficiently obtain Hkt g = ∇ϕkt ⟨∇ ℓtrn  
+
+> t
+
+(ϕkt ), g⟩.As a result, O(Kd ) time and space are required to compute (4) through backpropagation. Note that acquiring ϕKt via (2b) also incurs O(Kd ) time complexity, but the constant hidden inside 
+
+O is much smaller than (3) . Thus, the overall time complexity is dominated by the backpropagation process (Griewank, 1993). Given that GD converges sub-linearly when the gradient is Lipschitz, it 3Published as a conference paper at ICLR 2026 requires K = O(1 /ϵ ) iterations for ϕKt to reach an ϵ-stationary point (Bertsekas, 2016). This implies that a sufficiently large K is required to accurately solve (2) , raising concerns about the scalability of MAML as its time and space complexities both grow linearly with K.To address this issue, first-order (FO)MAML (Finn et al., 2017) was proposed alongside ‘vanilla MAML,’ providing a simpler but less accurate approximation to ∇L t(θ). FOMAML discards all second-order information by simply setting Hkt = 0d×d, ∀ k , thus resulting in the O(d) time and space estimate 
+
+ˆ∇FO Lt(θ) = gKt .
+
+This “brutal” simplification heavily prioritizes reduction of computations at the expense of estimation accuracy, which can degrade model quality and slow meta-training convergence (Sow et al., 2022). A different first-order approach, Reptile (Nichol, 2018), proposes the meta-update rule θ ← θ +
+
+ϵ 1
+
+> T
+
+PTt=1 (ϕKt − θ), with ϵ ∈ (0 , 1] , rather than performing GD on L(θ). This method implicitly retains higher-order information, but suffers from sensitivity to training setup in practice and, under favorable conditions, results in comparable performance to FOMAML. To address the limitations of first-order methods, Truncated MAML (TruncMAML) (Shaban et al., 2019) suggests retaining a portion of second-order information by truncating the backpropagation (4) .Upon setting Hkt = 0, k = 0 , 1, . . . , K − L − 1, where L ∈ [0 , K ] is a user-defined truncation constant, the gradient estimate boils down to 
+
+ˆ∇Tr Lt(θ) = 
+
+> K−1
+
+Y
+
+> k=K−L
+
+Id − αHkt
+
+gKt . (5) Since (5) involves L ≤ K HVP computations, the time and space complexities of TruncMAML both decrease to O(Ld ). It is seen that TruncMAML reduces to FOMAML when L = 0 , and recovers vanilla MAML when L = K. It is empirically observed, however, that the gradient error of TruncMAML decreases slowly when L is small; cf. Figure 3b. More rigorous performance analyses will be provided in Section 3.2, with error bounds illustrated in Figure 2. It will turn out that large L
+
+sufficiently close to K will be needed to ensure an accurate meta-gradient estimate. Another approach for meta-gradient estimation, termed implicit MAML (iMAML), is to rely on the implicit function theorem (Krantz & Parks, 2002), which yields a closed-form solution to ∇L t(ϕ∗ 
+
+> t
+
+).For instance, it has been shown in (Rajeswaran et al., 2019) that, with an explicit regularizer 
+
+R(ϕt; θ) = λ 
+
+> 2
+
+∥ϕt − θ∥2 induced by an isotropic Gaussian prior, the per-task validation gradient is ∇θ ℓval  
+
+> t
+
+(ϕ∗ 
+
+> t
+
+(θ))= 
+
+h
+
+Id + 1 
+
+> λ
+
+∇2ℓtrn  
+
+> t
+
+(ϕ∗ 
+
+> t
+
+(θ)) 
+
+i−1
+
+∇ℓval  
+
+> t
+
+(ϕ∗ 
+
+> t
+
+(θ)) . Similarly, as the global optimum ϕ∗
+
+> t
+
+is intractable, it must be approximated with a nearly optimal ϕKt in the calculation. Moreover, the inverse Hessian-vector product requires another approximate solver, such as conjugate gradient iterations (Rajeswaran et al., 2019). As memory does not grow with the number of solver iterations (denoted L), iMAML has time complexity O(Ld ) and memory complexity O(d). However, the iterative solver introduces additional errors in the meta-gradient estimation, making the algorithms numerically less stable than FOMAML and TruncMAML (Rajeswaran et al., 2019; Zhang et al., 2023). Consequently, reverse-mode explicit automatic differentiation (i.e., backpropagation) has become more prevalent in practice, and this work will primarily focus on it. 
+
+## 3 META -GRADIENT VIA TRUNCATED BINOMIAL EXPANSION 
+
+While they reduce computational complexity compared to vanilla MAML, FOMAML and Trunc-MAML can suffer from high estimation errors that impair the meta-learning convergence and performance. Our motivation stems from the observation that both (3) and (5) entail a sequential chain of HVP computations that cannot be parallelized. To enhance the accuracy of meta-gradient estimation, our key idea is to incorporate more information by performing parallel computations concurrent with each HVP. To this end, we will first develop a meta-gradient estimator by truncating the binomial expansion of (4) . This leads to an approach that we naturally term binomial gradient-based meta-learning (BinomGBML). In the ensuing Section 3.1, the truncated expansion will be reformulated as a cascade of L vector operators, each corresponding to several parallel HVP computations. Then, Section 3.2 will provably show that BinomGBML not only leads to low estimation error bounds under various 4Published as a conference paper at ICLR 2026 assumptions, but also diminishes at a super-exponential rate as L increases, as opposed to the slow decay of TruncGBML. Consequently, a small L suffices for accurate gradient estimation. Again, the discussion will be exclusive to MAML for simplicity, while our approach can be broadened to other GBML algorithms, along the lines adopted by FOMAML and TruncMAML extensions. All proofs of this section are deferred to the Appendix. 3.1 META -GRADIENT ESTIMATION VIA BINOMIAL EXPANSION 
+
+Our approach is based on the binomial expansion of (4) . Recall the binomial theorem (Beyer, 1984) 
+
+(1 + z)K =
+
+> K
+
+X
+
+> l=0
+
+Kl
+
+
+
+zl, ∀z ∈ R. (6) This expansion can be generalized to multivariate product Qni=1 (1 + zi) and even the matrix product in (4) to yield 
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+ = Id +
+
+> K
+
+X
+
+> l=1
+
+X
+
+> 0≤k1: l↑<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+). (7) where we define {0 ≤ k1: l ↑< K } := {0 ≤ k1 < k 2 < . . . < k l < K } as a combinatorial set containing  Kl
+
+ terms. In (7) , Id corresponds to the l = 0 term  K
+
+> 0
+
+z0 = 1 in (6) ; the summation over 0 ≤ k1: l ↑< K and product Qli=1 (−αHki 
+
+> t
+
+) respectively align with the binomial factor  Kl
+
+
+
+and the l-th power zl in (6) . Intuitively, if the learning rate α is sufficiently small, the product 
+
+Qli=1 (−αHki 
+
+> t
+
+) = O(αl) can decrease exponentially with l. This motivates our meta-gradient estimator based on the truncated binomial expansion as 
+
+ˆ∇Bi Lt(θ) = 
+
+"
+
+Id +
+
+> L
+
+X
+
+> l=1
+
+X
+
+> 0≤k1: l↑<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+gKt . (8) As the ignored higher-order terms can be as small as O(αL+1 ), the gradient error is expected to diminish exponentially as truncation L increases. This expansion is also amenable to parallelization. With L = 1 for instance, it follows from (8) that ˆ∇Bi Lt(θ) = gKt − α PK−1 
+
+> k=0
+
+Hkt gKt , where the 
+
+K HVPs in the summation can be efficiently performed in parallel thanks to their computational independence. However, the double sum in (8) involves a total of PLl=1 
+
+ Kl
+
+ terms. Directly computing each of them using parallel HVPs can be prohibitive. To improve efficiency, we advocate reducing redundancy in the summation by merging common terms of different matrix products; see Appendix A.1 for an illustrative example. Using this idea, the next Proposition shows that the truncated binomial expansion can be rewritten as a cascade of matrix operators. 
+
+Proposition 3.1 (matrix operator Bit). Let P0 
+
+> t
+
+:= Id, Pit := QK−1
+
+> k=K−i
+
+(Id − αHkt ), i = 1 , . . . , K ,and dummy index k0 = −1. Define operator Bit : Rd×d 7 → Rd×d such that for any matrix M ∈ Rd×d,
+
+BitM := Pit − α PK−1−ikL−i=kL−1−i+1 HkL−i 
+
+> t
+
+M, i = 0 , . . . , L − 1. For 0 ≤ L ≤ K, it holds that 
+
+Id +
+
+> L
+
+X
+
+> l=1
+
+X
+
+> 0≤k1: l↑<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+) = BL−1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id. (9) 
+
+Proof (sketch). The proof is carried out by induction on L. The base case L = 1 is readily shown by applying the definition of Bit. Assuming the cases L = 1 , . . . , L ′ (where L′ < K ) hold, the sums of (9) can be recursively expanded and rewritten in terms of Bit to obtain 
+
+Id +
+
+> L′+1
+
+X
+
+> l=1
+
+X
+
+> 0≤k1: l↑<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+) = BL′ 
+
+> t
+
+BL′−1 
+
+> t
+
+. . . B1
+
+> t
+
+"
+
+Id +
+
+> K−1
+
+X 
+
+> kL′+1 =kL′+1
+
+(−αHkL′+1  
+
+> t
+
+)
+
+#
+
+= BL′ 
+
+> t
+
+BL′−1 
+
+> t
+
+. . . B1 
+
+> t
+
+B0 
+
+> t
+
+Id
+
+5Published as a conference paper at ICLR 2026 Notably, with the definition of matrix product Pkt , the meta-gradients (4) and (5) can be further simplified as ∇L t(θ) = PKt gKt and ˆ∇Tr Lt(θ) = PLt gKt . Essentially, each matrix Id − αHkt
+
+represents a mapping Rd 7 → Rd when multiplying with gKt , and thus can be viewed as a vector operator in Rd that requires one HVP computation. Building upon these insights and Proposition 3.1, we have established the following result. 
+
+Theorem 3.2 (vector operator Bg,i t ). With the notational convention in Proposition 3.1, and given vector g ∈ Rd, consider operator Bg,i t : Rd 7 → Rd such that for any vector v ∈ Rd, Bg,i t v := 
+
+Pitg − α PK−1−ikL−i=kL−1−i+1 HkL−i 
+
+> t
+
+v, for i = 0 , 1, . . . , L − 1. For 0 ≤ L ≤ K, it holds that 
+
+ˆ∇Bi L(θ) = BgKt ,L −1 
+
+> t
+
+BgKt ,L −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt . (10) Theorem 3.2 reformulates the complicated binomial expansion in (8) as a series of L vec-tor operators. Note that the vector operator in Theorem 3.2 is distinguished by a super-script from the matrix operator in Proposition 3.1. Similar to the cascaded matrix-vector multiplication in (4) and (5) , these vector operators must be carried out from right to left sequentially. However, each operator in (10) may contain multiple computationally inde-pendent HVPs that can be readily parallelized on the GPU. The next remark elaborates on this parallelization and analyzes the complexity of the resultant BinomMAML algorithm. 
+
+Figure 1: Depiction of BgKt ,L −lt operator 
+
+Remark 3.3 . In Theorem 3.2, each operator requires computing HVPs with HkL−i 
+
+> t
+
+, where the index kL−i =
+
+kL−1−i+1 , . . . , K −1−i. By the re-cursive relationship of kL−i and the definition k0 = −1, it can be deduced that kL−i ranges from L−i−1 to 
+
+K−1−i. Therefore, K−L+1 paral-lel HVPs must be performed per oper-ator, so the overall complexity of (10) is O(Ld ) time and O(( K−L+1) d)
+
+space. The Step-by-step pseudocode is pre-sented in Algorithm 1, where each iter-ation (that is, computing {ul,k t }K−lk=L−l
+
+and {vl+1 ,k t }K−1−lk=L−1−l) corresponds to one vector operator Bg,i t , with {ul,k t }K−lk=L−l involving K−L+1 
+
+parallel HVPs. An illustrative diagram of the BgKt ,L −lt operator is provided in fig. 1, while a detailed derivation of Algorithm 1 is provided in appendix A. Complexity considerations bring up two limitations of BinomGBML. First, the parallelization requires 
+
+(K − L + 1) computational cores compared to a single HVP. While modern GPUs are abundant in such resources, applying BinomGBML to systems lacking cores or without GPUs can be challenging. Second, implementing parallel computations could incur an extra overhead cost. Fortunately, our numerical tests on real datasets suggest this cost is relatively small compared to the HVPs themselves; cf. Figure 4. Next, we compare the advocated BinomMAML to MAML and its variants outlined in Section 2.2. 
+
+Remark 3.4 . First, it is easily seen that BinomMAML conforms with FOMAML when L = 0 .Moreover, BinomMAML with L = K incurs the same time complexity as MAML, yet a markedly reduced space complexity. This is due to MAML creating the K computation graphs for HVPs when computing ϕKt , which are saved in memory. In contrast, BinomMAML creates the HVP computational graphs on the fly, and frees up the associated memory once completed. As a side benefit, thus, BinomMAML addresses the space scalability issue in vanilla MAML. For general 
+
+L, BinomMAML and TruncMAML have identical time complexity, but the space complexity of BinomMAML decreases affinely with L.6Published as a conference paper at ICLR 2026 
+
+Algorithm 1 BinomMAML’s meta-gradient estimation 
+
+Input: training gradients {∇ ℓtrn  
+
+> t
+
+(ϕkt )}K−1 
+
+> k=0
+
+, validation gradient gKt ,step size α, truncation L ∈ { 1, . . . , K − 1}
+
+Initialize v0,k t = gKt , k = L, · · · , K 
+
+for l = 0 , . . . , L − 1 do 
+
+[ul,L −lt , . . . , ul,K −lt ] = [ ∇ϕL−lt
+
+⟨∇ ℓtrn (ϕL−lt ), vl,L −lt ⟩, . . . , ∇ϕK−lt
+
+⟨∇ ℓtrn (ϕK−lt ), vl,K −lt ⟩]
+
+vl+1 ,K −l−1 
+
+> t
+
+= vl,K −lt − αul,K −lt
+
+for k = K − 2 − l, . . . , L − 1 − l do 
+
+vl+1 ,k t = vl+1 ,k +1  
+
+> t
+
+− αul,k +1 
+
+> t
+
+end for end for Output: ˆ∇Bi Lt(θ) = vL, 0
+
+> t
+
+3.2 ERROR BOUNDS 
+
+Having developed the BinomMAML algorithm and elaborated on its computation, this section delves into the estimation errors of FOMAML, TruncMAML, and BinomMAML. The analysis will be performed under three different assumptions that are common and useful in meta-learning. 
+
+Assumption 3.5. Loss ℓtrn  
+
+> t
+
+has H-Lipschitz gradient ∀t, i.e., ∥∇ ℓtrn  
+
+> t
+
+(ϕt) − ∇ ℓtrn  
+
+> t
+
+(ϕ′
+
+> t
+
+)∥ ≤ H∥ϕt −
+
+ϕ′
+
+> t
+
+∥, ∀ϕt, ϕ′ 
+
+> t
+
+∈ Rd.Assumption 3.5 is very mild and widely used not only for meta-learning (Fallah et al., 2020; Wang et al., 2022), but also more general machine learning (Jain & Kar, 2017; Ji et al., 2021), and can be readily satisfied by a wide range of loss functions and NNs (Virmaux & Scaman, 2018). Under Assumption 3.5, three bounds can be established as follows. 
+
+Theorem 3.6. With Assumption 3.5 in effect, it holds that 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ [(1 + αH )K −1] ∥gKt ∥, (11a) 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ [(1 + αH )K − (1 + αH )L]∥gKt ∥, (11b) 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥≤ 
+
+> K
+
+X
+
+> l=L+1
+
+Kl
+
+
+
+(αH )l∥gKt ∥. (11c) 
+
+With eFO  
+
+> t
+
+, e Tr  
+
+> t
+
+, e Bin  
+
+> t
+
+denoting these bounds, it follows that eBin  
+
+> t
+
+< e Tr  
+
+> t
+
+< e FO  
+
+> t
+
+.
+
+Theorem 3.6 compares the error bounds of the three meta-gradient estimators, where BinomMAML enjoys the smallest loss due to the additional information injected. Note that all three upper bounds are sharp, and can be attained upon setting Hkt = −HId, ∀k. Figure 2a shows the three bounds in Theorem 3.6 across L, with K = 5 , α = 0 .25 , and H = 1 .0. One can observe that the error of TruncMAML decreases slowly when L is small. In comparison, the error of BinomMAML diminishes swiftly with L, and a small error can be readily achieved even with L = 1 .Next, a stricter yet important assumption will be considered. 
+
+Assumption 3.7. The loss function ℓtrn  
+
+> t
+
+is convex ∀t.Although Assumption 3.7 hardly holds for highly non-convex NNs, it is especially useful if the task-specific part of the model is linear; e.g., when adapting solely the last layer of an NN (Revaud et al., 2019; Lee et al., 2019; Oreshkin et al., 2018). This extra assumption on convexity allows us to establish tighter error bounds as follows. 
+
+Theorem 3.8. Under Assumptions 3.5 and 3.7, and with 0 < α ≤ 1/H , it holds that 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ [1 − (1 − αH )K ]∥gKt ∥, (12a) 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ [1 − (1 − αH )K−L]∥gKt ∥, (12b) 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ 
+
+ KL + 1 
+
+
+
+(αH )L+1 ∥gKt ∥. (12c) 
+
+Moreover, there exists a constant Cα = O(K/ (L + 1)) such that if 0 < α ≤ 1/(CαH), the upper bound in (12c) decreases super-exponentially with L.
+
+7Published as a conference paper at ICLR 2026   
+
+> (a) (b) (c)
+
+Figure 2: Estimation error upper bounds in Theorems (a) 3.6, (b) 3.8, and (c) 3.10, normalized to FOMAML error. In addition to convexity, Theorem 3.8 also assumes the learning rate α is not too “aggressive.” It is known that a sufficient condition for GD to “descend” is 0 < α < 2/H , with α = 1 /H being an oracle choice (Bertsekas, 2016). Since H is unknown or difficult to estimate in practice, it is common to assume α = O(1 /H ) in general, which is also necessary for the analysis of TruncGBML; cf. (Shaban et al., 2019). Estimation error bounds (12) are depicted in Figure 2b. It is important to note that the bounds for FOMAML and TruncMAML are sharp, yet the BinomMAML bound is loose. To be specific, (12a) can be attained by letting Hkt = HId, ∀k, and (12b) is reached when 
+
+Hkt = HId, k = 0 , . . . , K − L − 1 and Hkt = 0d×d, k = K − L, . . . , K − 1. Regardless, the error bound of BinomMAML decreases super-exponentially and outperforms TruncMAML when L > 0.Recall that both TruncMAML and BinomMAML are exactly FOMAML with L = 0 , so their actual errors are identical in this case. Aside from global convexity, another assumption worth probing is local strong convexity. 
+
+Assumption 3.9. The loss ℓtrn  
+
+> t
+
+is locally h-strongly convex ∀t around {ϕkt }K−1 
+
+> k=K−M
+
+, where M ≤
+
+min {L, K − L}.Assumption 3.9 is milder than Assumption 3.7 as it presumes strong convexity around only the last M
+
+points of the optimization trajectory, which can be sufficiently adjacent to a local optimum. Moreover, such an assumption has been widely used for analyzing bilevel optimization; see e.g., (Ghadimi & Wang, 2018; Shaban et al., 2019). 
+
+Theorem 3.10. If Assumptions 3.5 and 3.9 hold, and 0 < α ≤ 1/H , it then follows that 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ max {(1 + αH )K−M (1 − αh )M − 1, 1 − (1 − αH )K }∥ gKt ∥, (13a) 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ [(1 + αH )K−M − (1 + αH )L−M ](1 − αh )M ∥gKt ∥, (13b) 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ 
+
+"
+
+(αH )L+1 
+
+> M
+
+X
+
+> l=1
+
+K − lL
+
+
+
+(1 − αh )l−1 (13c) 
+
++ (1 − αh )MK−MX
+
+> l=L+1
+
+K − Ml
+
+
+
+(αH )l
+
+#
+
+∥gKt ∥.
+
+Moreover, there exists a constant C′ 
+
+> α
+
+= O(( K − 1) /L ) such that if 0 < α ≤ 1/(C′
+
+> α
+
+H), the upper bound in (13c) decreases super-exponentially with L.
+
+Again, the estimation error bound of BinomMAML decays more rapidly and is markedly smaller than TruncMAML in this setup, as corroborated by Figure 2c. Since Assumption 3.9 requires 
+
+M ≤ min {L, K − L}, the bounds are plotted with M = 1 , so that L ∈ { 1, . . . , 5}. Other parameters are the same as in Figures 2a and 2b, and h = 0 .1.
+
+## 4 NUMERICAL TESTS 
+
+With analytical error bounds established, here we test the empirical performance of BinomMAML on both synthetic and real datasets. Test details can be found in Appendix C. 4.1 SYNTHETIC DATA 
+
+The first test is a few-shot sinusoid regression problem (Finn et al., 2017), where data are sampled from sinusoids with random phases and amplitudes; each phase-amplitude combination defines a distinct task. Figure 3 compares the actual errors of different meta-gradient estimates calculated on the synthetic sinusoid datasets. Specifically, the left subfigure 3a displays meta-gradient error 8Published as a conference paper at ICLR 2026 Table 1: Few-shot classification accuracies on real datasets with early stopping, where ± represents sample standard deviation, and the number in parentheses indicates the mean accuracy relative to MAML, highest one marked in bold.                                                                                                                                                                                             
+
+> LMethod 5-way miniImageNet (%) 5-way tieredImageNet (%) 1-shot 5-shot 1-shot 5-shot 0FOMAML 44.57 ±0.92 (-1.93) 62.97 ±0.50 (-1.26) 43.53 ±0.94 (-3.50) 63.31 ±0.52 (-1.81) Reptile 42.11 ±0.92 (-4.39) 61.07 ±0.51 (-3.16) 45.06 ±0.91 (-1.97) 61.27 ±0.50 (-3.85) 1iMAML 44.47 ±0.92 (-2.03) 60.32 ±0.49 (-3.91) 44.77 ±0.98 (-2.26) 60.81 ±0.50 (-4.31) TruncMAML 44.53 ±0.89 (-1.97) 62.43 ±0.50 (-1.80) 43.67 ±0.96 (-3.36) 64.15 ±0.51 (-0.97) BinomMAML 45.50 ±0.91 (-1.00) 62.36 ±0.48 (-1.87) 46.23 ±0.95 (-0.80) 64.49 ±0.51 (-0.63)
+> 2iMAML 44.57 ±0.95 (-1.93) 60.63 ±0.48 (-3.60) 44.13 ±0.93 (-2.90) 61.15 ±0.50 (-3.97) TruncMAML 44.93 ±0.90 (-1.57) 63.61 ±0.48 (-0.62) 45.93 ±0.99 (-1.10) 64.81 ±0.49 (-0.31)
+> BinomMAML 46.23 ±0.92 (-0.27) 63.49 ±0.48 (-0.74) 46.20 ±0.92 (-0.83) 64.41 ±0.52 (-0.71) 3iMAML 45.03 ±0.92 (-1.47) 62.77 ±0.48 (-1.46) 44.80 ±0.95 (-2.23) 62.38 ±0.50 (-2.74) TruncMAML 44.33 ±0.92 (-2.17) 63.67 ±0.48 (-0.56) 45.62 ±0.98 (-1.41) 63.69 ±0.51 (-1.43) BinomMAML 46.00 ±0.92 (-0.50) 64.17 ±0.47 (-0.06) 46.43 ±0.93 (-0.60) 65.37 ±0.49 (+0.25)
+> 4iMAML 45.43 ±0.92 (-1.07) 62.64 ±0.47 (-1.59) 45.40 ±0.95 (-1.63) 61.80 ±0.51 (-3.32) TruncMAML 44.83 ±0.93 (-1.67) 63.44 ±0.48 (-0.79) 44.93 ±0.95 (-2.10) 64.83 ±0.51 (-0.29)
+> BinomMAML 46.24 ±0.94 (-0.16) 63.86 ±0.48 (-0.37) 46.73 ±0.94 (-0.30) 64.63 ±0.50 (-0.49) 5MAML 46.50 ±0.93 64.23 ±0.50 47.03 ±0.91 65.12 ±0.50
+
+averaged on a batch of tasks, where the horizontal axis represents different random batches. With the same truncation L = 4 , BinomMAML consistently outperforms TruncMAML on varying tasks by an order of 10 3 to 10 4. The right subfigure 3b depicts the meta-gradient error across various L values. It is observed that BinomMAML significantly reduces the error relative to TruncMAML. In particular, BinomMAML with L = 1 exhibits an error comparable to TruncMAML of L = 4 , and the error becomes negligible when L ≥ 2. This suggests BinomMAML can potentially achieve MAML-level performance in certain settings even with a small L. These observations corroborate our analysis in Section 3.2. The empirical benefits of BinomMAML are larger than the analytical ones in Fig. 2. 4.2 REAL DATA 
+
+To assess BinomMAML’s performance in practice, real datasets are tested here, including miniIm-ageNet (Vinyals et al., 2016) and tieredImageNet (Ren et al., 2018). The tests follow the “ W -way 
+
+S-shot” few-shot classification protocol in (Ravi & Larochelle, 2017; Finn et al., 2017), where “way” stands for the number of classes, and “shot” refers to training data per class; that is, |D trn  
+
+> t
+
+| = W S .The hyperparameters are as in (Finn et al., 2017). The first test compares the performance of different meta-gradient estimates. To highlight the role of estimation errors, meta-training is early-stopped at 20 , 000 iterations. Note that MAML can readily converge in such a setup, while the meta-gradient error can slow down convergence when using an estimator. The results are summarized in Table 1, where L represents the truncation parameter of BinomMAML and TruncMAML, and the number of conjugate gradient iterations for iMAML. BinomMAML surpasses TruncMAML in most cases when adopting the same L and exhibits comparable performance for other cases, while outperforming iMAML across the board. Of major note is that BinomMAML dominates TruncMAML (+1.33 average) in the 1-shot regime, while the gap narrows (+0.27 average) in the 5-shot regime. This observation suggests TruncMAML benefits from gradient averaging when data are abundant, whereas BinomMAML remains well-equipped for low-data settings. Moreover, it is seen that the performance gap of BinomMAML relative to vanilla MAML shrinks rapidly with L, as opposed to the slow improvement of TruncMAML, and a small L
+
+suffices for BinomMAML to attain desirable performance, supporting our analytical results. 
+
+(a) (b) 
+
+Figure 3: Actual meta-gradient error against (a) different mini-batches of tasks, and (b) truncation L.9Published as a conference paper at ICLR 2026  
+
+> (a) (b)
+> (c)
+
+Figure 4: (a) Time complexity; (b) space complexity; and (c) GPU utilization of GBML algorithms on miniImageNet. The next test showcases the actual time, space, and compute consumption of BinomMAML, as measured under the same miniImageNet test setup. Figure 4 displays the elapsed time per meta-training step, peak GPU memory occupation, and GPU compute core utilization across L values. It should be highlighted that the parallelism, alongside the dynamic creation and release of computation graphs, both incur computational overhead, which varies with L. Consequently, the time and compute of BinomMAML slightly outpaces TruncMAML, and the space complexity is not strictly affine in L.Further, as no parallelism is required when L = 0 or L = 5 , the time complexity of BinomMAML matches FOMAML and MAML in these two cases. Additionally, BinomMAML leads to markedly reduced memory and compute consumption over vanilla MAML, thanks to the dynamic management of computational graphs; cf. Remark 3.4. Lastly, Figure 5a depicts the change of accuracy and loss during meta-training, where the curves are smoothed for visualization. Compared to TruncMAML, the convergence of BinomMAML aligns better with MAML. This underscores the importance of reducing meta-gradient error, and in turn explains BinomMAML’s superior performance in Table 1. 
+
+## 5 CONCLUSIONS 
+
+This work delved into the computational complexity of GBML, and developed a reduced-complexity meta-gradient estimator named binomial (Binom)GBML. Inspired by the unique GBML structure in backpropagation, BinomGBML leverages parallelization to maximize the information captured in its meta-gradient estimate. BinomMAML was developed as a running paradigm, showcasing improved error bounds relative to existing approaches. Experiments on synthetic and real datasets corroborate the derived error bounds, which demonstrate the superiority of BinomMAML.  
+
+> (a) (b)
+
+Figure 5: Meta-training (a) accuracy and (b) loss of GBML algorithms on miniImageNet 10 Published as a conference paper at ICLR 2026 
+
+## ETHICS STATEMENT 
+
+As this work represents foundational research in meta-learning, we do not anticipate any societal or ethical issues beyond the general and broad-reaching impacts of the advancement of machine learning. 
+
+## REPRODUCIBILITY STATEMENT 
+
+We include as supplementary material the code needed to reproduce the main results on miniImageNet and tieredImageNet. Additionally, all proofs of theoretical results are included in appendix B. 
+
+## REFERENCES 
+
+Marcin Andrychowicz, Misha Denil, Sergio Gomez, Matthew W Hoffman, David Pfau, Tom Schaul, Brendan Shillingford, and Nando De Freitas. Learning to learn by gradient descent by gradient descent. Advances in neural information processing systems , 29, 2016. Sebastien M R Arnold, Praateek Mahajan, Debajyoti Datta, Ian Bunner, and Konstantinos Saitas Zarkias. learn2learn: A library for meta-learning research. arXiv , 2020. URL http://arxiv. org/abs/2008.12284 .D Bertsekas. Nonlinear programming . Springer, 2016. William Beyer. Standard Mathematical Tables . CRC Press, Inc, 1984. Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. Advances in neural information processing systems , 33:1877–1901, 2020. Yanda Chen, Ruiqi Zhong, Sheng Zha, George Karypis, and He He. Meta-learning via language model in-context tuning. ArXiv , abs/2110.07814, 2021. Thomas H Cormen, Charles E Leiserson, Ronald L Rivest, and Clifford Stein. Introduction to algorithms . MIT press, 2022. Alireza Fallah, Aryan Mokhtari, and Asuman Ozdaglar. On the convergence theory of gradient-based model-agnostic meta-learning algorithms. In International Conference on Artificial Intelligence and Statistics , pp. 1082–1092. PMLR, 2020. Chelsea Finn, Pieter Abbeel, and Sergey Levine. Model-agnostic meta-learning for fast adaptation of deep networks. In International conference on machine learning , pp. 1126–1135. PMLR, 2017. Saeed Ghadimi and Mengdi Wang. Approximation methods for bilevel programming. arXiv: Optimization and Control , 2018. Erin Grant, Chelsea Finn, Sergey Levine, Trevor Darrell, and Thomas Griffiths. Recasting gradient-based meta-learning as hierarchical bayes. In International Conference on Learning Representa-tions , 2018. Andreas Griewank. Some bounds on the complexity of gradients, jacobians, and hessians. In 
+
+Complexity in numerical optimization , pp. 128–162. World Scientific, 1993. Justin Grimmer, Margaret E Roberts, and Brandon M Stewart. Text as data: A new framework for machine learning and the social sciences . Princeton University Press, 2022. Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition ,pp. 770–778, 2016. Prateek Jain and Purushottam Kar. Non-convex Optimization for Machine Learning . Now Publishers, Inc., 2017. doi: 10.1561/2200000058. Kaiyi Ji, Junjie Yang, and Yingbin Liang. Bilevel optimization: Convergence analysis and enhanced design. In International conference on machine learning , pp. 4882–4892. PMLR, 2021. 11 Published as a conference paper at ICLR 2026 Mikhail Khodak, Maria-Florina Balcan, and Ameet Talwalkar. Adaptive gradient-based meta-learning methods. In Neural Information Processing Systems , 2019. Steven George Krantz and Harold R Parks. The implicit function theorem: history, theory, and applications . Springer Science & Business Media, 2002. Oliver Kroemer, Scott Niekum, and George Konidaris. A review of robot learning for manipulation: Challenges, representations, and algorithms. Journal of machine learning research , 22(30):1–82, 2021. Kwonjoon Lee, Subhransu Maji, Avinash Ravichandran, and Stefano Soatto. Meta-learning with differentiable convex optimization. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pp. 10657–10665, 2019. Yoonho Lee and Seungjin Choi. Gradient-based meta-learning with learned layerwise metric and subspace. In International Conference on Machine Learning , pp. 2927–2936. PMLR, 2018. Zhenguo Li, Fengwei Zhou, Fei Chen, and Hang Li. Meta-sgd: Learning to learn quickly for few-shot learning. arXiv preprint arXiv:1707.09835 , 2017. A Nichol. On first-order meta-learning algorithms. arXiv preprint arXiv:1803.02999 , 2018. Boris Oreshkin, Pau Rodríguez López, and Alexandre Lacoste. Tadam: Task dependent adaptive metric for improved few-shot learning. In Advances in Neural Information Processing Systems ,volume 31. Curran Associates, Inc., 2018. Eunbyung Park and Junier B Oliva. Meta-curvature. Advances in neural information processing systems , 32, 2019. Aniruddh Raghu, Maithra Raghu, Samy Bengio, and Oriol Vinyals. Rapid learning or feature reuse? towards understanding the effectiveness of maml. arXiv preprint arXiv:1909.09157 , 2019. Aravind Rajeswaran, Chelsea Finn, Sham M Kakade, and Sergey Levine. Meta-learning with implicit gradients. Advances in neural information processing systems , 32, 2019. Sachin Ravi and Alex Beatson. Amortized bayesian meta-learning. In International Conference on Learning Representations , 2019. Sachin Ravi and Hugo Larochelle. Optimization as a model for few-shot learning. In International conference on learning representations , 2017. Mengye Ren, Eleni Triantafillou, Sachin Ravi, Jake Snell, Kevin Swersky, Joshua B Tenenbaum, Hugo Larochelle, and Richard S Zemel. Meta-learning for semi-supervised few-shot classification. 
+
+arXiv preprint arXiv:1803.00676 , 2018. Jerome Revaud, Cesar De Souza, Martin Humenberger, and Philippe Weinzaepfel. R2d2: Reliable and repeatable detector and descriptor. Advances in neural information processing systems , 32, 2019. Andrei A Rusu, Dushyant Rao, Jakub Sygnowski, Oriol Vinyals, Razvan Pascanu, Simon Osindero, and Raia Hadsell. Meta-learning with latent embedding optimization. International Conference on Learning Representations , 2018. Amirreza Shaban, Ching-An Cheng, Nathan Hatch, and Byron Boots. Truncated back-propagation for bilevel optimization. In The 22nd International Conference on Artificial Intelligence and Statistics , pp. 1723–1732. PMLR, 2019. Daouda Sow, Kaiyi Ji, and Yingbin Liang. On the convergence theory for hessian-free bilevel algorithms. Advances in Neural Information Processing Systems , 35:4136–4149, 2022. Gaël Varoquaux and Veronika Cheplygina. Machine learning for medical imaging: methodological failures and recommendations for the future. NPJ digital medicine , 5(1):48, 2022. A Vaswani. Attention is all you need. Advances in Neural Information Processing Systems , 2017. 12 Published as a conference paper at ICLR 2026 Oriol Vinyals, Charles Blundell, Timothy Lillicrap, Daan Wierstra, et al. Matching networks for one shot learning. Advances in neural information processing systems , 29, 2016. Aladin Virmaux and Kevin Scaman. Lipschitz regularity of deep neural networks: analysis and efficient estimation. In Advances in Neural Information Processing Systems , volume 31. Curran Associates, Inc., 2018. Haoxiang Wang, Yite Wang, Ruoyu Sun, and Bo Li. Global convergence of maml and theory-inspired neural architecture search for few-shot learning. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pp. 9797–9808, 2022. Jaesik Yoon, Taesup Kim, Ousmane Dia, Sungwoong Kim, Yoshua Bengio, and Sungjin Ahn. Bayesian model-agnostic meta-learning. Advances in neural information processing systems , 31, 2018. Xinshi Zang, Huaxiu Yao, Guanjie Zheng, Nan Xu, Kai Xu, and Zhenhui. Metalight: Value-based meta-reinforcement learning for traffic signal control. In AAAI Conference on Artificial Intelligence ,2020. Yilang Zhang, Bingcong Li, Shijian Gao, and Georgios B Giannakis. Scalable bayesian meta-learning through generalized implicit gradients. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 37, pp. 11298–11306, 2023. Hancheng Zhu, Leida Li, Jinjian Wu, Sicheng Zhao, Guiguang Ding, and Guangming Shi. Person-alized image aesthetics assessment via meta-learning with bilevel gradient optimization. IEEE Transactions on Cybernetics , 52:1798–1811, 2020. 13 Published as a conference paper at ICLR 2026 
+
+## A BINOM MAML A LGORITHM DERIVATION 
+
+Proposition A.1 (Proposition 3.1 restated ). Let Pit := QK−1
+
+> k=K−i
+
+(Id − αHkt ), i = 1 , . . . , K ,
+
+P0 
+
+> t
+
+:= Id, and dummy index k0 = −1. Define operator Bit : Rd×d 7 → Rd×d such that for any matrix M ∈ Rd×d, BitM := Pit − α PK−1−ikL−i=kL−1−i+1 HkL−i 
+
+> t
+
+M, i = 0 , . . . , L − 1. It holds for 
+
+0 ≤ L ≤ K that 
+
+Id +
+
+> L
+
+X
+
+> l=1
+
+X
+
+> 0≤k1: l↑<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+) = BL−1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id (14) 
+
+Proof. The proposition is proved using mathematical induction on L. As L will change in this proof, we will alternatively denote Bit as BL,i t for notational clarity. First consider the base case L = 1 . It can be readily verified from the definition of BL,i t that 
+
+Id + X
+
+> 0≤k1<K
+
+(−αHk1 
+
+> t
+
+) = P0 
+
+> t
+
+− α
+
+> K−1
+
+X
+
+> k1=k0+1
+
+Hk1 
+
+> t
+
+= B1,0 
+
+> t
+
+Id. (15) Now assume (14) holds for L = 1 , . . . , L ′ where L′ < K , we next prove that this equation also holds for L = L′ + 1 . It follows that 
+
+Id +
+
+> L′+1
+
+X
+
+> l=1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)= Id +
+
+> L′
+
+X
+
+> l=1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+) + X
+
+> 0≤k1<...<k L′+1 <K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+> (a)
+
+= BL′,L ′−1 
+
+> t
+
+BL′,L ′−2 
+
+> t
+
+. . . BL′,0 
+
+> t
+
+Id + X
+
+> 0≤k1<...<k L′+1 <K L′+1
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+> (b)
+
+= PL′ 
+
+> t
+
+− α
+
+> K−L′−1
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+BL′,L ′−2 
+
+> t
+
+. . . BL′,0 
+
+> t
+
+Id +
+
+> K−L′−1
+
+X
+
+> k1=0
+
+X
+
+> k1<k 2<...<k L′+1 <K L′+1
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)= PL′ 
+
+> t
+
+− α
+
+> K−L′−1
+
+X
+
+> k1=0
+
+Hk1
+
+> t
+
+"
+
+BL′,L ′−2 
+
+> t
+
+. . . BL′,0 
+
+> t
+
+Id + X
+
+> k1<k 2<...<k L′+1 <K L′+1
+
+Y
+
+> i=2
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+> (c)
+
+= BL′+1 ,L ′
+
+> t
+
+"
+
+BL′,L ′−2 
+
+> t
+
+. . . BL′,0 
+
+> t
+
+Id + X
+
+> k1<k 2<...<k L′+1 <K L′+1
+
+Y
+
+> i=2
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+> (d)
+
+= BL′+1 ,L ′ 
+
+> t
+
+BL′+1 ,L ′−1 
+
+> t
+
+. . . BL′+1 ,1
+
+> t
+
+"
+
+Id +
+
+> K−1
+
+X 
+
+> kL′+1 =kL′+1
+
+(−αHkL′+1  
+
+> t
+
+)
+
+#
+
+= BL′+1 ,L ′ 
+
+> t
+
+BL′+1 ,L ′−1 
+
+> t
+
+. . . BL′+1 ,0 
+
+> t
+
+Id (16) where (a) relies on the inductive hypothesis for L = L′, (b) follows from Lemma A.4 and the fact that P 
+
+> 0≤k1<...<k L′+1 <K
+
+= PK−L′−1
+
+> k1=0
+
+P 
+
+> k1<k 2<...<k L′+1 <K
+
+, (c) is from the definition of BL,i t , and 
+
+(d) is by recursively applying (a) through (c). This demonstrates (14) also holds for L = L′ + 1 .By induction, we conclude that (14) holds for any L = 1 , . . . , K , which completes the proof. 
+
+Theorem A.2 (Theorem 3.2 restated ). Let Pit := QK−1
+
+> k=K−i
+
+(Id − αHkt ), i = 1 , . . . , K , P0 
+
+> t
+
+:= Id,and k0 = −1. Given vector g ∈ Rd, define operator Bg,i t : Rd 7 → Rd such that for any vector 
+
+v ∈ Rd, Bg,i t v := Pitg − α PK−1−ikL−i=kL−1−i+1 HkL−i 
+
+> t
+
+v, i = 0 , . . . , L − 1. It holds for 0 ≤ L ≤ K
+
+that 
+
+ˆ∇Bi L(θ) = BgKt ,L −1 
+
+> t
+
+BgKt ,L −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt . (17) 14 Published as a conference paper at ICLR 2026 
+
+Proof. For any M ∈ Rd×d, it can be verified from the definition of Bit that 
+
+[BitM]g =
+
+"
+
+Pit−α
+
+> K−1−i
+
+X
+
+> kL−i=kL−1−i+1
+
+HkL−i 
+
+> t
+
+M
+
+#
+
+g = Pitg−α
+
+> K−1−i
+
+X
+
+> kL−i=kL−1−i+1
+
+HkL−i 
+
+> t
+
+Mg = Bg,i t [Mg ].
+
+(18) Therefore, using Proposition A.1 results in 
+
+ˆ∇Bi L(θ) = ( BL−1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id)gKt = [ BL−1 
+
+> t
+
+(BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id)] gKt
+
+> (a)
+
+= BgKt ,L −1 
+
+> t
+
+[( BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id)g]
+
+> (b)
+
+= BgKt ,L −1 
+
+> t
+
+BgKt ,L −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+[IdgKt ]= BgKt ,L −1 
+
+> t
+
+BgKt ,L −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt . (19) where (a) is by applying (18), and (b) is from recursion. 
+
+Remark A.3 . As stated in section 3, each BgKt ,i t corresponds to one iteration of O(d) parallel HVP computation. Likewise, the meta-gradient calculation in MAML and TruncMAML can be also respectively reformulated as a chain of K and L vector operators. 
+
+Lemma A.4. Consider the notation convention in Proposition 3.1. It holds that 
+
+BL−1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id = PLt − α
+
+> K−L−1
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id. (20) 
+
+Proof. By the definition of Bit, we have 
+
+BL−1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id
+
+= PL−1 
+
+> t
+
+− α
+
+> K−L
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id
+
+> (a)
+
+= PL−1 
+
+> t
+
+− αHK−Lt
+
+(
+
+PL−2 
+
+> t
+
+− α
+
+> K−L+1
+
+X
+
+> k2=K−L+1
+
+Hk2
+
+> t
+
+h
+
+PL−3 
+
+> t
+
+− . . . (P0 
+
+> t
+
+− α
+
+> K−1
+
+X
+
+> kL=K−1
+
+HkL 
+
+> t
+
+Id)
+
+i)
+
+− α
+
+> K−L−1
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id
+
+= PL−1 
+
+> t
+
+− αHK−Lt
+
+n
+
+PL−2 
+
+> t
+
+− αHK−L+1 
+
+> t
+
+h
+
+PL−3 
+
+> t
+
+− . . . (P0 
+
+> t
+
+− αHK−1 
+
+> t
+
+)
+
+io 
+
+− α
+
+> K−L−1
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id
+
+> (b)
+
+= PLt − α
+
+> K−L−1
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+BL−2 
+
+> t
+
+. . . B0 
+
+> t
+
+Id (21) where (a) separates out the k1 = K − L term from the summation, and (b) is because Pit −
+
+αHK−1−it Pit = ( Id − αHK−1−it )Pit = Pi+1  
+
+> t
+
+, i = 0 , . . . , L − 1 and the definition P0 
+
+> t
+
+= Id.A.1 CASE STUDY FOR L = 2 
+
+To give some intuition on the derivation of the BinomMAML algorithm 2, the BinomMAML expansion (8) truncated to L = 2 is examined. 
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+gKt =
+
+h
+
+Id − α
+
+> K−1
+
+X
+
+> k1=0
+
+Hkt + α2
+
+> K−2
+
+X
+
+> k1=0
+
+ K−1X
+
+> k2=k1+1
+
+Hk1 
+
+> t
+
+Hk2
+
+> t
+
+i 
+
+gKt + o(α3).
+
+The double sum encapsulates all possible combinations of Hk1 
+
+> t
+
+Hk2 
+
+> t
+
+from the product expansion. Expand and rewrite 
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+gKt =
+
+h
+
+Id − αHK−1 
+
+> t
+
+− α
+
+> K−2
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
++ α2
+
+> K−2
+
+X
+
+> k1=0
+
+ K−1X
+
+> k2=k1+1
+
+Hk1 
+
+> t
+
+Hk2
+
+> t
+
+i 
+
+gKt
+
+15 Published as a conference paper at ICLR 2026 
+
+=
+
+h
+
+gKt − αHK−1 
+
+> t
+
+gKt − α
+
+> K−2
+
+X
+
+> k1=0
+
+Hk1
+
+> t
+
+
+
+gKt − α
+
+> K−1
+
+X
+
+> k2=k1+1
+
+Hk2 
+
+> t
+
+gKt
+
+i 
+
+(22) How can we calculate (22) ? Note for each k1, a unique sum of HVPs over k2 is required. Denote HVPs u1,k = Hkt gKt , k = 1 , . . . , K − 1.
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+gKt =
+
+h
+
+gKt − αHK−1 
+
+> t
+
+gKt − α
+
+> K−2
+
+X
+
+> k1=0
+
+Hk1
+
+> t
+
+
+
+gKt − α
+
+> K−1
+
+X
+
+> k2=k1+1
+
+u0,k 2
+
+i 
+
+Then denote each unique sum as v1,k = gKt −α PK−1 
+
+> k′=k
+
+u0,k ′
+
+, k = 1 , . . . , K −1. Letting v1,K = gKt ,then this implies v1,k = v1,k +1 − αu0,k , k = 1 , . . . , K − 1. Finally, note gKt − αHK−1 
+
+> t
+
+gKt =
+
+v1,K −1.
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+gKt =
+
+h
+
+v1,K −1 − α
+
+> K−2
+
+X
+
+> k1=0
+
+Hk1 
+
+> t
+
+v1,k 1+1 i
+
+The expression is similar to that inside the parentheses above. Indeed, we can define u1,k =
+
+Hkt v1,k +1 , k = 0 , . . . , K − 2 and v2,k = v1,K −1 − α PK−2 
+
+> k′=k
+
+u1,k ′
+
+Rewrite 
+
+> K−1
+
+Y
+
+> k=0
+
+Id − αHkt
+
+gKt =
+
+h
+
+v1,K −1 − α
+
+> K−2
+
+X
+
+> k1=0
+
+u1,k 1
+
+i
+
+= v2,0
+
+Which is the final gradient estimation. This procedure boils down to (1) calculate HVPs {u0,k }K−1
+
+> k=1
+
+and sums {v1,k }K−1 
+
+> k=1
+
+, then (2) calculate HVPs {u1,k }K−2 
+
+> k=0
+
+and sums {v2,k }K−2 
+
+> k=0
+
+. This illustrates some intuition behind the operators BgKt ,i t introduced in theorem 3.2. A.2 COMPUTATION OF BINOM MAML’ S VECTOR OPERATORS 
+
+Now consider the more general BinomMAML truncation where 1 ≤ L ≤ K. It will be shown that computing each vector operator BgKt 
+
+> t
+
+can be done with K − L + 1 parallel HVPs in O(d) time and 
+
+O(( K − L + 1) d) space. First, denote 
+
+vl,k t = BgKt ,l −1 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt kL−l=k−1 ∈ Rd, l = 1 , . . . , L, (23a) 
+
+v0,k t = gKt , ∀ k, 
+
+ul,k t = Hkt vl,k t ∈ Rd, l = 0 , . . . , L − 1. (23b) 
+
+vl,k t an the intermediate term resulting from the chain of operators BgKt ,l −1 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt . Since 
+
+BgKt ,l −1 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt can represent a set of vlt depending on the value of the prior index kL−l, the second superscript k dictates kL−l. Additionally, ul,k t represents an HVP operation whose role is described shortly. With this notation, each BgKt ,l t is computed using the set of intermediate terms 
+
+{vl−1,k +1  
+
+> t
+
+}K−l+1  
+
+> k=L−l+1
+
+and HVPs {ul,k t }K−lk=L−l. To see how this leads to the BinomMAML algorithm 2, first note that the definitions of vl,k t (23a) and BgKt ,l t (Theorem A.2) lead to 
+
+vl,k t = BgKt ,l −1 
+
+> t
+
+vl−1,k +1   
+
+> tkL−l=k−1
+
+=
+
+
+
+Pl−1 
+
+> t
+
+gKt − α
+
+> K−l
+
+X
+
+> kL+1 −l=kL−l+1
+
+HkL−1−l 
+
+> t
+
+vl−1,k L+1 −l+1 
+
+> t
+
+
+
+> kL−l=k−1
+
+,
+
+(24a) 
+
+=
+
+
+
+Pl−1 
+
+> t
+
+gKt − α
+
+> K−l
+
+X
+
+> kL+1 −l=kL−l+1
+
+ul−1,k L+1 −l+1 
+
+> t
+
+
+
+> kL−l=k−1
+
+.
+
+(24b) The above equations expand BgKt ,l −1 
+
+> t
+
+as expressions with vl,k t and ul,k t . In (24a) , each vl,k t depends on a unique subset of the previously calculated terms {vl+1 ,k t }K−l−1
+
+> k=L−l−1
+
+, which requires that {vl,k t }K−lk=L−l
+
+16 Published as a conference paper at ICLR 2026 
+
+Algorithm 2 BinomMAML’s meta-gradient estimation (matrix implementation) 
+
+Input: training gradients {∇ ℓtrn  
+
+> t
+
+(ϕkt )}K−1 
+
+> k=0
+
+, validation gradient gKt ,step size α, and truncation L ∈ { 1, . . . , K − 1}
+
+Initialize V0 
+
+> t
+
+:= [ gKt , . . . , gKt ] ∈ Rd×(K−L+1) 
+
+for l = 0 , . . . , L − 1 do 
+
+Ult = [ ∇ϕL−l−1
+
+> t
+
+⟨∇ ℓtrn  
+
+> t
+
+(ϕL−l−1 
+
+> t
+
+), [Vlt]1⟩, . . . , ∇ϕK−l−1
+
+> t
+
+⟨∇ ℓtrn  
+
+> t
+
+(ϕK−l−1 
+
+> t
+
+), [Vlt]K−L+1 ⟩]
+
+Vl+1  
+
+> t
+
+= [ Vlt]K−L+1 1TK−L+1 − αUltTK−L+1 
+
+end for Output: ˆ∇Bi Lt(θ) = [ VLt ]1
+
+be saved (rather than summed to find BgKt ,l −1 
+
+> t
+
+directly). (24b) reveals that, though originally unclear, 
+
+vl,k t is simply a sum of HVPs {ul−1,k t }K−l+1 
+
+> k=L−l+1
+
+. In fact, (24b) implies that vl,k t = vl,k +1  
+
+> t
+
+−
+
+αul−1,k +1  
+
+> t
+
+, meaning {vl,k t }K−lk=L−l can be computed as a sequence of computationally trivial additions 
+
+{vl,k t = vl,k +1  
+
+> t
+
+− αul−1,k +1  
+
+> t
+
+}K−lk=L−l starting from the highest index k = K − l. The K − L + 1 
+
+computationally independent HVPs can be performed in parallel with O(d) time and O(( K −L+1) d)
+
+space. Using this framework, BinomMAML (17) , as cascade of L × BgKt ,l t operators, can be calculated by recursively finding {vl+1 ,k t }K−l−1 
+
+> k=L−l−1
+
+via the HVPs {ul,k t }K−lk=L−l for l = 0 , . . . , L − 1. The total complexity of BinomMAML is then O(Ld ) time and O(( K − L + 1) d) space, meaning the space requirement actually decreases affinely with L.The final estimate ˆ∇Bi L(θ) is found as 
+
+ˆ∇Bi L(θ) = BgKt ,L −1 
+
+> t
+
+BgKt ,L −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+v0,k t
+
+= BgKt ,L −1 
+
+> t
+
+vL−1,k 1+1 
+
+> t
+
+= PL−1 
+
+> t
+
+gKt − α
+
+> K−L
+
+X
+
+> k1=k0+1
+
+uL−1,k 1+1 
+
+> t
+
+
+
+= vL, 0 
+
+> t
+
+.
+
+In other words, {vL,k t }K−Lk=0 are summed to produce ˆ∇Bi L(θ). Finally, it is shown in lemma A.5 that PltgKt = vl−1,K −lt , which allows us to reuse vl−1,K −lt as PltgKt rather than directly calculate 
+
+PltgKt = ( Id − αHK−lt )Pl−1 
+
+> t
+
+gKt . This recursive operator structure leads to Algorithm 1, requiring 
+
+O(Ld ) time and O(( K − L + 1) d) space. However, Algorithm 1 can be improved by reformulating the vector additions in the inner for loop as a matrix multiplication to take advantage of low-level matrix optimizations in libraries such as PyTorch. This can be achieved by stacking {vl−1,k +1  
+
+> t
+
+}K−l+1  
+
+> k=L−l+1
+
+and {ul,k t }K−lk=L−l as the columns of the matrices 
+
+Vlt := [ vl,L −lt , . . . , vl,K −lt ],
+
+Ult := [ ul,L −lt , . . . , ul,K −lt ].
+
+Then it follows that 
+
+Vl+1  
+
+> t
+
+= vl,K −l−1 
+
+> t
+
+1TK−L+1 − αUltTK−L+1 ,
+
+where TK−L+1 ∈ R(K−L+1) ×(K−L+1) is a strictly lower-triangular matrix filled with 1’s. This reformulation produces Algorithm 2. 
+
+Lemma A.5. Consider the notation vl,k t in (23a) . It holds for 1 ≤ l < L that 
+
+PltgKt = vl−1,K −lt . (25) 17 Published as a conference paper at ICLR 2026 
+
+Proof. As a result of lemma A.4, we have the two equations 
+
+BgKt ,l −1 
+
+> t
+
+BgKt ,l −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt = Pl−1 
+
+> t
+
+gKt − α
+
+> K−l
+
+X
+
+> kL+1 −l=kL−l+1
+
+HkL+1 −l 
+
+> t
+
+BgKt ,l −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt ,
+
+(26a) 
+
+BgKt ,l −1 
+
+> t
+
+BgKt ,l −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt = PltgKt − α
+
+> K−1−l
+
+X
+
+> kL+1 −l=kL−l+1
+
+HkL+1 −l 
+
+> t
+
+BgKt ,l −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt . (26b) Subtracting (26b) from (26a), we get 
+
+PltgKt = Pl−1 
+
+> t
+
+gKt − αHK−lt BgKt ,l −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt kL−l=K−1−l
+
+Or, by the definition of BgKt ,i t , that 
+
+PltgKt = BgKt ,l −1 
+
+> t
+
+BgKt ,l −2 
+
+> t
+
+. . . BgKt ,0 
+
+> t
+
+gKt kL−l=K−1−l
+
+= vl,K −lt
+
+## B ERROR ANALYSIS 
+
+Theorem B.1 (Theorem 3.6 restated ). With Assumption 3.5 in effect, it holds that 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ [(1 + αH )K − 1] ∥gKt ∥, (27a) 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ [(1 + αH )K − (1 + αH )L]∥gKt ∥, (27b) 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ 
+
+" KX
+
+> l=L+1
+
+Kl
+
+
+
+(αH )l
+
+#
+
+∥gKt ∥. (27c) 
+
+Moreover, denoting these three upper bounds by eFO  
+
+> t
+
+, e Tr  
+
+> t
+
+, e Bin  
+
+> t
+
+, it follows that eBin  
+
+> t
+
+< e Tr  
+
+> t
+
+< e FO  
+
+> t
+
+.Proof. Using Lemma B.2 yields 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ = ∥PKt gKt − gKt ∥ ≤ ∥ PKt − Id∥∥ gKt ∥ ≤ [(1 + αH )K − 1] ∥gKt ∥.
+
+For TruncMAML, we have that 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ = ∥PKt gKt − PLt gKt ∥ ≤ 
+
+> K−L−1
+
+Y
+
+> k=0
+
+(Id − αHkt ) − Id ∥PLt ∥∥ gKt ∥ (28) 
+
+≤ [(1 + αH )K−L − 1](1 + αH )L∥gKt ∥
+
+where the last line utilizes Lemma B.2 and that ∥PLt ∥ ≤ QK−1 
+
+> k=K−L
+
+∥1 − αHkt ∥ ≤ (1 + αH )L.Next, we prove the upper bound for BinomMAML. Notice from (8) that 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ PKt −
+
+h
+
+Id +
+
+> L
+
+X
+
+> l=1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+i
+
+∥gKt ∥
+
+> (a)
+
+= Id −
+
+> K
+
+X
+
+> l=1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+) −
+
+h
+
+Id +
+
+> L
+
+X
+
+> l=1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+i
+
+∥gKt ∥
+
+=
+
+> K
+
+X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+) ∥gKt ∥ (29) 
+
+≤
+
+> K
+
+X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l<K l
+
+Y
+
+> i=1
+
+α∥Hki 
+
+> t
+
+∥∥ gKt ∥
+
+18 Published as a conference paper at ICLR 2026 
+
+> (b)
+
+≤
+
+> K
+
+X
+
+> l=L+1
+
+Kl
+
+
+
+(αH )l∥gKt ∥
+
+where (a) applies binomial theorem to PKt = QK−1 
+
+> k=0
+
+(Id − αHkt ), and (b) uses Assumption 3.5. Lastly, we prove that eBin  
+
+> t
+
+< e Tr  
+
+> t
+
+< e FO  
+
+> t
+
+. As (1 + αH )L > 1 for 1 ≤ L < K , it is easy to see that 
+
+eTr  
+
+> t
+
+= [(1 + αH )K − (1 + αH )L]∥gKt ∥ < [(1 + αH )K − 1] ∥gKt ∥ = eFO  
+
+> t
+
+.
+
+In addition, we have 
+
+eTr  
+
+> t
+
+− eBin  
+
+> t
+
+=
+
+"
+
+(1 + αH )K − (1 + αH )L −
+
+> K
+
+X
+
+> l=L+1
+
+Kl
+
+
+
+(αH )l
+
+#
+
+∥gKt ∥
+
+> (a)
+
+=
+
+" KX
+
+> l=0
+
+Kl
+
+
+
+(αH )l −
+
+> L
+
+X
+
+> l=0
+
+Ll
+
+
+
+(αH )l −
+
+> K
+
+X
+
+> l=L+1
+
+Kl
+
+
+
+(αH )l
+
+#
+
+∥gKt ∥
+
+=
+
+" LX
+
+> l=0
+
+Kl
+
+
+
+(αH )l −
+
+> L
+
+X
+
+> l=0
+
+Ll
+
+
+
+(αH )l
+
+#
+
+∥gKt ∥
+
+=
+
+( LX
+
+> l=0
+
+"Kl
+
+
+
+−
+
+Ll
+
+#
+
+(αH )l
+
+)
+
+∥gKt ∥ (b)
+
+> 0
+
+where (a) relies on the binomial theorem, and (b) is due to  Kl
+
+ −  Ll
+
+ > 0 for K > L . The proof is thus completed. 
+
+Lemma B.2. With Assumption 3.5 in effect, it holds for i = 0 , . . . , K that 
+
+∥Pit − Id∥ ≤ (1 + αH )i − 1. (30) 
+
+Proof. First notice that 
+
+Pit − Id = ( Id − αHK−it )Pi−1 
+
+> t
+
+− Id
+
+= ( Pi−1 
+
+> t
+
+− Id) − αHK−it Pi−1
+
+> t
+> (a)
+
+= ( P0 
+
+> t
+
+− Id) − α
+
+> K−1
+
+X
+
+> k=K−i
+
+Hkt PK−k−1
+
+> t
+
+= −α
+
+> K−1
+
+X
+
+> k=K−i
+
+Hkt PK−k−1
+
+> t
+
+where (a) is by telescoping the second line. Then, it follows from Assumption 3.5 and the definition of Pit that 
+
+∥Pit − Id∥ = α
+
+> K−1
+
+X
+
+> k=K−i
+
+Hkt PK−1−kt
+
+≤ α
+
+> K−1
+
+X
+
+> k=K−i
+
+∥Hkt ∥∥ PK−1−kt ∥≤ αH 
+
+> K−1
+
+X
+
+> k=K−i
+
+(1 + αH )K−1−k
+
+= (1 + αH )i − 1
+
+which completes the proof. 19 Published as a conference paper at ICLR 2026 
+
+Theorem B.3 (Theorem 3.8 restated ). Assume Assumptions 3.5 and 3.7 hold, and 0 < α ≤ 1/H . It follows that 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ [1 − (1 − αH )K ]∥gKt ∥, (31a) 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ [1 − (1 − αH )K−L]∥gKt ∥, (31b) 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ 
+
+ KL + 1 
+
+
+
+(αH )L+1 ∥gKt ∥. (31c) 
+
+Moreover, there exists a constant Cα = O(K/ (L + 1)) such that if 0 < α ≤ 1/(CαH), the upper bound in (31c) decreases super-exponentially with L.Proof. By Assumption 3.7 and 0 < αH ≤ 1, we have 0 ≤ 1 − αH ⪯ Id − αHkt ⪯ 1. It follows that 
+
+∥Pit∥ ≤ QK−1 
+
+> k=K−i
+
+∥Id − αHkt ∥ ≤ 1, and the smallest eigenvalue λmin (Pit) ≥ QK−1 
+
+> k=K−i
+
+λmin (Id −
+
+αHkt ) = (1 − αH )i ≥ 0. As a consequence, we obtain 0 ⪯ Id − Pit ⪯ 1 − (1 − αH )i, thus giving 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ ∥ PKt − Id∥∥ gKt ∥ ≤ [1 − (1 − αH )K ]∥gKt ∥.
+
+Similarly, we have for TruncMAML that 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ 
+
+> K−L−1
+
+Y
+
+> k=0
+
+(Id − αHkt ) − Id ∥PLt ∥∥ gKt ∥ ≤ [1 − (1 − αH )K−L]∥gKt ∥.
+
+Regarding BinomMAML, using Lemma B.4 gives 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ =
+
+> K−L
+
+X
+
+> l=1
+
+" X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−lt )Pl−1 
+
+> t
+
+gKt
+
+≤
+
+> K−L
+
+X
+
+> l=1
+
+" X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+α∥Hki 
+
+> t
+
+∥
+
+#
+
+α∥HK−lt ∥∥ Pl−1 
+
+> t
+
+∥∥ gKt ∥
+
+> (a)
+
+≤
+
+" K−LX
+
+> l=1
+
+K − lL
+
+#
+
+(αH )L+1 ∥gKt ∥
+
+where (a) relies on Assumption 3.5 and ∥Pit∥ ≤ 1.To obtain the desired result (27c), notice that 
+
+> K−L
+
+X
+
+> l=1
+
+K − lL
+
+
+
+=
+
+LL
+
+
+
++
+
+L + 1 
+
+L
+
+
+
++
+
+> K−L−2
+
+X
+
+> l=1
+
+K − LL
+
+
+
+> (a)
+
+=
+
+L + 1 
+
+L + 1 
+
+
+
++
+
+L + 1 
+
+L
+
+
+
++
+
+> K−L−2
+
+X
+
+> l=1
+
+K − LL
+
+
+
+> (b)
+
+=
+
+L + 2 
+
+L + 1 
+
+
+
++
+
+> K−L−2
+
+X
+
+> l=1
+
+K − LL
+
+
+
+> (c)
+
+=
+
+ KL + 1 
+
+
+
+where (a) uses  LL
+
+ = 1 =  L+1 
+
+> L+1
+
+, (b) is because  L+1 
+
+> k+1
+
+ +  L+1 
+
+> k
+
+ =  L+2 
+
+> k+1
+
+ for 0 ≤ k ≤ L, and (c) is by recursively applying (a) through (b).Lastly, using Lemma B.5 incurs 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ 
+
+ KL + 1 
+
+
+
+(αH )L+1 ∥gKt ∥ <
+
+
+
+αH eK L + 1 
+
+L+1 
+
+∥gKt ∥.
+
+The second bound is not tight. As a result, there exists Cα ≤ eK/ (L + 1) to ensure the super-exponential decrease wrt L, thus completing the proof. 20 Published as a conference paper at ICLR 2026 
+
+Lemma B.4. It holds for 1 ≤ L < K that 
+
+∇L t(θ) − ˆ∇Bi Lt(θ) = 
+
+> K−L
+
+X
+
+> l=1
+
+" X
+
+> 0≤k1<...<k L≤K−1−ll
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−lt )Pl−1 
+
+> t
+
+gKt .
+
+Proof. Using binomial theorem as in (29) yields 
+
+∇L t(θ) − ˆ∇Bi Lt(θ) = 
+
+> K
+
+X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−1
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)gKt := Mt[K]gKt
+
+> (a)
+
+=
+
+" KX
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l−1≤K−2
+> l−1
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−1 
+
+> t
+
+)gKt +
+
+> K−1
+
+X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−2
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)gKt
+
+> (b)
+
+=
+
+" K−1X
+
+> l=L
+
+X
+
+> 0≤k1<...<k l≤K−2
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−1 
+
+> t
+
+)gKt +
+
+> K−1
+
+X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−2
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)gKt
+
+> (c)
+
+=
+
+" X
+
+> 0≤k1<...<k L≤K−2
+> L
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−1 
+
+> t
+
+)gKt +
+
+" K−1X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−2
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−1 
+
+> t
+
+)gKt +
+
+" K−1X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−2
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+gKt
+
+=
+
+" X
+
+> 0≤k1<...<k L≤K−2
+> L
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−1 
+
+> t
+
+)gKt +
+
+" K−1X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−2
+> l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(Id − αHK−1 
+
+> t
+
+)gKt
+
+=
+
+" X
+
+> 0≤k1<...<k L≤K−2
+> L
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+(−αHK−1 
+
+> t
+
+)gKt + Mt[K − 1]( Id − αHK−1 
+
+> t
+
+)gKt (32) where (a) splits the summation into two parts based on whether kl = K − 1, (b) rewrites the first summation by replacing index l with l + 1 , and (c) separates out the l = L term from the first summation. Telescoping the series Mt[K] in (32) until Mt[L + 1] leads to 
+
+∇L t(θ) − ˆ∇Bi Lt(θ)=
+
+> K−1−L
+
+X
+
+> l=1
+
+ X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+
+
+(−αHK−lt )Pl−1 
+
+> t
+
+gKt + Mt[L + 1] PK−1−Lt gKt
+
+=
+
+> K−1−L
+
+X
+
+> l=1
+
+ X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+
+
+(−αHK−lt )Pl−1 
+
+> t
+
+gKt +
+
+" LY
+
+> k=0
+
+(−αHkt )
+
+#
+
+PK−1−Lt gKt
+
+=
+
+> K−L
+
+X
+
+> l=1
+
+ X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+
+
+(−αHK−lt )Pl−1 
+
+> t
+
+gKt (33) which is the sought result. 
+
+Lemma B.5 ((Cormen et al., 2022)) . For L = 0 , . . . , K , it holds 
+
+KL
+
+
+
+<
+
+ eK L
+
+L
+
+where e is Euler’s number. 
+
+Theorem B.6 (Theorem 3.10 restated ). Assume Assumptions 3.5 and 3.9 hold, and 0 < α ≤ 1/H . It follows that 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ max {(1 + αH )K−M (1 − αh )M − 1, 1 − (1 − αH )K }∥ gKt ∥, (34a) 21 Published as a conference paper at ICLR 2026 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ [(1 + αH )K−M − (1 + αH )L−M ](1 − αh )M ∥gKt ∥, (34b) 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥ ≤ 
+
+"
+
+(αH )L+1 
+
+> M
+
+X
+
+> l=1
+
+K − lL
+
+
+
+(1 − αh )l−1 + (1 − αh )MK−MX
+
+> l=L+1
+
+K − Ml
+
+
+
+(αH )l
+
+#
+
+∥gKt ∥.
+
+(34c) 
+
+Moreover, there exists a constant C′ 
+
+> α
+
+= O(( K − 1) /L ) such that if 0 < α ≤ 1/(CαH), the upper bound in (34c) decreases super-exponentially with L.Proof. Assumption 3.9 implies for k = K − M, . . . , K − 1, it holds h ⪯ Hkt ⪯ H, and hence 
+
+0 < 1 − αH ⪯ Id − αHkt ⪯ 1 − αh . In addition, 0 < αH ≤ 1 leads to 0 ≤ 1 − αH ⪯ Id − αHkt ⪯
+
+1 + αH, k = 0 , . . . , K − M − 1. Therefore, PKt ⪰ 0, and the error of FO-MAML has upper bound 
+
+∥∇L t(θ) − ˆ∇FO Lt(θ)∥ ≤ ∥ PKt − Id∥∥ gKt ∥ =
+
+> K−1−M
+
+Y
+
+> k=0
+
+(Id − αHkt )
+
+> K−1
+
+Y
+
+> k=K−M
+
+(Id − αHkt ) − Id ∥gKt ∥≤ max {(1 + αH )K−M (1 − αh )M − 1, 1 − (1 − αH )K }∥ gKt ∥.
+
+Moreover, it follows from (28) that 
+
+∥∇L t(θ) − ˆ∇Tr Lt(θ)∥ ≤ 
+
+> K−L−1
+
+Y
+
+> k=0
+
+(Id − αHkt ) − Id ∥PLt ∥∥ gKt ∥≤ [(1 + αH )K−L − 1](1 + αH )L−M (1 − αh )M ∥gKt ∥.
+
+Next, we prove the upper bound for our BinomMAML. Telescoping the series Mt[K] in (32) through 
+
+Mt[K − M ] leads to 
+
+∇L t(θ) − ˆ∇Bi Lt(θ) (35) 
+
+=
+
+> M
+
+X
+
+> l=1
+
+ X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+
+
+(−αHK−lt )Pl−1 
+
+> t
+
+gKt + Mt[K − M ]PMt gKt (36) Thus, its ℓ2-norm can be upper bounded via 
+
+∥∇L t(θ) − ˆ∇Bi Lt(θ)∥≤
+
+> M
+
+X
+
+> l=1
+
+ X
+
+> 0≤k1<...<k L≤K−1−lL
+
+Y
+
+> i=1
+
+α∥Hki 
+
+> t
+
+∥
+
+
+
+α∥HK−lt ∥∥ Pl−1 
+
+> t
+
+∥∥ gKt ∥+
+
+> K−M
+
+X
+
+> l=L+1
+
+X
+
+> 0≤k1<...<k l≤K−1−M
+
+" lY
+
+> i=1
+
+α∥Hki 
+
+> t
+
+∥
+
+#
+
+∥PMt ∥∥ gKt ∥≤
+
+
+
+(αH )L+1 
+
+> M
+
+X
+
+> l=1
+
+K − lL
+
+
+
+(1 − αh )l−1 +
+
+> K−M
+
+X
+
+> l=L+1
+
+K − Ml
+
+
+
+(αH )l(1 − αh )M
+
+
+
+∥gKt ∥. (37) To this end, we next show that the two terms in (37) both decrease super-exponentially with L.On one hand, plugging Lemma B.5 into the first term of (37) renders 
+
+(αH )L+1 
+
+> M
+
+X
+
+> l=1
+
+K − lL
+
+
+
+(1 − αh )l−1 < (αH )L+1 
+
+> M
+
+X
+
+> l=1
+
+h e(K − l)
+
+L
+
+iL
+
+(1 − αh )l−1(a)
+
+≤ (αH )L+1 h e(K − 1) 
+
+L
+
+iL MX
+
+> l=1
+
+(1 − αh )l−1
+
+= Hh
+
+h
+
+αH e(K − 1) 
+
+L
+
+iL
+
+[1 − (1 − αh )M ]
+
+22 Published as a conference paper at ICLR 2026 where (a) is because the index l ≥ 1. This suggests there exists C′ 
+
+> α
+
+≤ e(K − 1) /L to ensure its super-exponential diminish. On the other hand, applying Lemmas B.7 and B.5 to the second term of (37) yields 
+
+> K−M
+
+X
+
+> l=L+1
+
+K − Ml
+
+
+
+(αH )l(1 − αh )M = (1 − αh )M (αH )L+1  
+
+> K−M−L
+
+X
+
+> l=1
+
+K − M − lL
+
+
+
+(1 + αH )l−1
+
+≤ (1 − αh )M (αH )L+1  
+
+> K−M−L
+
+X
+
+> l=1
+
+h e(K − M − l)
+
+L
+
+iL
+
+(1 + αH )l−1
+
+≤ (1 − αh )M (αH )L+1 h e(K − M − 1) 
+
+L
+
+iL K−M −LX
+
+> l=1
+
+(1 + αH )l−1
+
+= (1 − αh )M h
+
+αH e(K − M − 1) 
+
+L
+
+iL
+
+[(1 + αH )K−L−M − 1] 
+
+which decreases super-exponentially with some C′ 
+
+> α
+
+≤ e(K − M − 1) /L < e (K − 1) /L .
+
+Lemma B.7. Let γ ∈ R be a constant. It holds for L = 0 , . . . , K − 1 that 
+
+> K
+
+X
+
+> l=L+1
+
+Kl
+
+
+
+γl = γL+1 
+
+> K−L
+
+X
+
+> l=1
+
+K − lL
+
+
+
+(1 + γ)l−1. (38) 
+
+Proof. Defining the left-hand side of (38) as S[K], it follows 
+
+S[K] := 
+
+> K
+
+X
+
+> l=L+1
+
+Kl
+
+
+
+γl (a)
+
+=
+
+> K
+
+X
+
+> l=L+1
+
+K − 1
+
+l − 1
+
+
+
+γl +
+
+> K−1
+
+X
+
+> l=L+1
+
+K − 1
+
+l
+
+
+
+γl
+
+> (b)
+
+=
+
+> K−1
+
+X
+
+> l=L
+
+K − 1
+
+l
+
+
+
+γl+1 +
+
+> K−1
+
+X
+
+> l=L+1
+
+K − 1
+
+l
+
+
+
+γl
+
+> (c)
+
+=
+
+K − 1
+
+L
+
+
+
+γL+1 +
+
+> K−1
+
+X
+
+> l=L+1
+
+K − 1
+
+l
+
+
+
+γl+1 +
+
+> K−1
+
+X
+
+> l=L+1
+
+K − 1
+
+l
+
+
+
+γl
+
+=
+
+K − 1
+
+L
+
+
+
+γL+1 +
+
+> K−1
+
+X
+
+> l=L+1
+
+K − 1
+
+l
+
+
+
+γl(γ + 1) =
+
+K − 1
+
+L
+
+
+
+γL+1 + ( γ + 1) S[K − 1] 
+
+> (d)
+
+=
+
+> K−L+1
+
+X
+
+> l=1
+
+K − lL
+
+
+
+γL+1 (1 + γ)l−1 + (1 + γ)K−L−1S[L + 1] = γL+1 
+
+> K−L
+
+X
+
+> l=1
+
+K − lL
+
+
+
+(1 + γ)l−1
+
+where (a) is due to  Kl
+
+ =  K−1
+
+> l−1
+
+ +  K−1
+
+> l
+
+ for L + 1 ≤ l ≤ K − 1 and  KK
+
+ = 1 =  K−1
+
+> K−1
+
+,
+
+(b) changes the index in the first summation from l to l + 1 , (c) isolates the l = L term from the summation, and (d) leverages the relationship between S[K] and S[K − 1] recursively. 
+
+## C NUMERICAL TEST SETUPS 
+
+All experiments are implemented on a desktop with an NVIDIA RTX A5000 GPU, and a server with NVIDIA A100 GPUs. 23 Published as a conference paper at ICLR 2026 C.1 SYNTHETIC DATA TEST 
+
+1-dimensional continuous sinusoid regression is performed, where the tasks are to fit the randomly sampled input values xt ∈ [−5, 5] to sinusoids yt = At sin( xt + ϕt) of varying amplitudes At ∈
+
+[0 .1, 5.0] and phases ϕt ∈ [0 , π ]. During task-level training, the model is shown 10 data points. Since the purpose of this test is to view the meta-loss gradient accuracy of TruncMAML and BinomMAML, no meta-optimization was performed. For comparison, each method uses the same randomly generated dataset, ensuring parity among methods. In Figure 3a, we set K = 5 and L = 4 . In Figure 3b, the average errors are taken over 1,000 meta-batches, each containing 10 tasks. C.2 REAL DATA TEST 
+
+Real data tests are carried out on the miniImageNet (Vinyals et al., 2016) and tieredImageNet(Ren et al., 2018) datasets, which are both subsets of the ILSVRC-12 geared toward meta-learning. The 
+
+learn2learn Python library (Arnold et al., 2020) was used to load the datasets. All images in both datasets are 3-channel RGB natural images cropped to 84 × 84 pixels. The datasets are divided as such: • miniImageNet: 64 meta-train classes, 16 meta-validation classes, 20 meta-test classes. Each class contains 600 samples. This split was originally proposed in (Ravi & Larochelle, 2017). • tieredImageNet: 351 meta-train classes (448,695 images), 97 meta-validation classes (124,261 images), and 160 meta-test (206,209 images). This split was originally proposed in (Ren et al., 2018). For both datasets, the model architecture and training protocol is that suggested by (Vinyals et al., 2016; Finn et al., 2017), with 4 layers of 3 × 3 convolutions and 32 filters, followed by batch normalization, ReLU non-linearity, and 2 × 2 max-pooling. We sample our training and validation sets using the standard W -way Str -shot few-shot learning protocol. Specifically, for each mini-batch of classes, we randomly sample W classes and draw Str training images and Sval validation images, totaling W × Str training and W × Sval training and validation images, respectively. We adopt the usual choices of W = 5 classes, Str = 1 or Str = 5 images, and Sval = 15 images. In addition, K = 5 adaptation steps are adopted. Meta-training are limited to 20 , 000 iterations. Other hyperparameters follow from (Finn et al., 2017), i.e., adaptation step size α = 10 −2, meta-training step size β = 10 −3, and meta batch size B = 4 .For numerical stability, we found it beneficial to replace the α in (8) with α′ := Lα/K . This substitution makes the condition α = O(( L + 1) /(KH )) in Theorems 3.8 and 3.10 more easily satisfied. It is worth stressing that α′ = 0 recovers FOMAML when L = 0 , and α′ = α with L = K
+
+reduces to MAML. We also note that, current DL libraries such as PyTorch lack support for the niche but crucial ability to parallelize HVPs. Although the training gradients {∇ ℓtrn  
+
+> t
+
+(ϕkt )}K−1 
+
+> k=0
+
+are obtained in the adaptation steps, our current implementation requires calculating them again in the backward pass of ∇L t(θ).For a fair comparison, we have excluded the time for the this repeated gradient calculation. 
+
+## D EXTENSIONS AND FUTURE WORK 
+
+D.1 HYBRID BINOM -T RUNC ESTIMATOR 
+
+Intuitively, in (4) , the final training gradient gKt is less sensitive to second-order terms Hkt , with small k, from the earlier task-level training GD. In truncated backpropagation, this logic leads to the TruncGBML estimate (5) , where Hkt = 0d×d, 0 ≤ k < K − L. However, this intuition can also be applied to the BinomGBML estimate by similarly truncating the early Hessians and performing a binomial expansion on the remaining terms; thus, we arrive at a hybrid “binom-trunc” GBML estimate. To this end, the constant C ∈ { L, . . . , K } is introduced, which determines the truncation of the computational graph, with L determining the polynomial order of the binomial expansion. The hybrid estimator can be constructed by setting Hkt = 0d×d, 0 ≤ k < K − C, rendering 
+
+ˆ∇BiTr Lt(θ) := 
+
+"
+
+Id +
+
+> L
+
+X
+
+> l=1
+
+X
+
+> K−C≤k1: l↑<K l
+
+Y
+
+> i=1
+
+(−αHki 
+
+> t
+
+)
+
+#
+
+gKt . (39) 24 Published as a conference paper at ICLR 2026 Table 2: Hybrid binom-trunc estimate performance on miniImageNet and tieredImageNet with with 
+
+K = 5 , L = 1 , and C = 4 and all other settings identical to that of tab. 1 .5-way miniImageNet (%) 5-way tieredImageNet (%) 1-shot 5-shot 1-shot 5-shot Hybrid 45.17 ± 0.91 62.41 ± 0.49 44.30 ± 0.91 63.78 ± 0.49 Trunc 44.53 ± 0.90 62.43 ± 0.50 44.67 ± 0.96 65.14 ± 0.51 Binom 45.50 ± 0.91 62.36 ± 0.48 46.23 ± 0.95 64.49 ± 0.51 The corresponding estimate can be constructed via alg. 1, setting ∇ℓtrn  
+
+> t
+
+(ϕkt ) = 0d, k = 0 , . . . , K −C.Results on miniImageNet and tieredImageNet with K = 5 , L = 1 , and C = 4 are presented in table 2. Overall, the hybrid estimate performs slightly worse than TruncMAML and BinomMAML, which is expected since the constant C introduces a trade-off between computational overhead and estimation accuracy. D.2 RELATION TO ANIL As mentioned in section 3, akin to other meta-gradient estimates (TruncGBML, iMAML), our approach can be readily combined with ANIL (Raghu et al., 2019). Specifically, ANIL omits the task-specific adaptation of certain model layers, whereas BinomGBML can be used to efficiently estimate the meta-gradient of the remaining layers. While both ANIL and MAML have been shown effective on ImageNet-like datasets, such as those used for evaluation in section 4, it is up to the practitioner to choose the appropriate meta-learning algorithm. 25
