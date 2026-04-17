@@ -1,0 +1,1452 @@
+Title: BayMOTH: Bayesian optiMizatiOn with meTa-lookahead -- a simple approacH
+
+URL Source: https://arxiv.org/pdf/2604.12005v1
+
+Published Time: Wed, 15 Apr 2026 00:09:13 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# BayMOTH: Bayesian optiMizatiOn with meTa-lookahead – a simple approacH 
+
+Rahman Ejaz 1,2∗ Varchas Gopalaswamy 1,2 Ricardo Luna 3 Aarne Lees 1,2
+
+Vineet Gundecha 3 Christopher Kanan 4 Soumyendu Sarkar 3 Riccardo Betti 1,2,51Laboratory for Laser Energetics, Rochester, NY, USA 
+
+> 2
+
+Department of Mechanical Engineering, University of Rochester, Rochester, NY, USA 
+
+> 3
+
+Hewlett Packard Labs, Santa Clara, CA, USA 
+
+> 4
+
+Department of Computer Science, University of Rochester, Rochester, NY, USA 
+
+> 5
+
+Department of Physics, University of Rochester, Rochester, NY, USA 
+
+# Abstract 
+
+Bayesian optimization (BO) has for sequential optimization of expensive black-box functions demonstrated practicality and effectiveness in many real-world settings. Meta-Bayesian optimization (meta-BO) focuses on improving the sample efficiency of BO by making use of information from related tasks. Although meta-BO is sample-efficient when task structure transfers, poor alignment between meta-training and test tasks can cause suboptimal queries to be suggested during online optimization. To this end, we propose a simple meta-BO algorithm that utilizes related-task information when determined useful, falling back to lookahead otherwise, within a unified framework. We demonstrate competitiveness of our method with existing approaches on function optimization tasks, while retaining strong performance in low task-relatedness regimes where test tasks share limited structure with the meta-training set. 
+
+# 1 Introduction 
+
+For realistic applications that requires optimization of an unknown function f , high sample evaluation costs often constrains the sampling budget. Examples of such applications arise in hyperparameter tuning of machine learning models Snoek et al. (2012); Zoph & Le (2016); Feurer & Hutter (2019), in materials design Frazier & Wang (2015), and in physics applications such as in the domain of laser-driven nuclear fusion experiments (ICF) Ejaz et al. (2023); Gundecha et al. (2024). For such tasks, Bayesian optimization (BO) Frazier (2018) has proven its utility. However, on the quest of more performant methods i.e. higher sample efficiency, approaches such as meta-BO and lookahead Bayesian optimization (lookahead BO) have emerged. Both improve sample efficiency albeit both utilize different approaches. In order to facilitate discussion, we borrow from the nomenclature of reinforcement learning and refer to the sampling strategy as the sampling policy denoted by π.In meta-BO various strategies are used to transfer information Bai et al. (2023); Ma et al. (2025) drawn from related tasks into components of the optimization methods’ pipeline. This enables a more efficient policy π to be realized, especially compared with baselines such as random sampling and BO Volpp et al. (2019). In contrast to meta-BO, lookahead BO does not rely on knowledge from related tasks and seeks to improve upon BO by recognizing that conventional BO operates under a one-step assumption without consideration of future samples allowed within the sample budget. Polices focused on maximizing the unknown function f in the immediate step are commonly referred to as “myopic" policies and recent work Wu & Frazier (2019); Cheon et al. (2024) demonstrates that  
+
+> ∗Correspondence to: reja@lle.rochester.edu
+> Preprint.
+> arXiv:2604.12005v1 [cs.LG] 13 Apr 2026
+
+during online optimization, lookahead policies reach near-optimal regions in fewer samples across a variety of benchmarks, indicating a superior sampling policy. Combining meta-BO and lookahead BO appears to be a natural extension. However, it has been relatively unexplored, motivating a straightforward framework combining the two approaches. The presented method, which is referred to as BayMOTH, makes use of alternative alternative virtual environments for inferring the presence of shared structure during online optimization between the test task (i.e., unknown function) and source tasks (training functions) provided to it offline Levine et al. (2020) during meta-training. The shared structure information is used as a task descriptor similar in spirit to usage in multi-task learning Zhao et al. (2019) to gate into the pertinent alternative virtual environment which provides meta-data for informing the lookahead based policy. We demonstrate the competitiveness of BayMOTH on hyperparameter optimization tasks and sci-entific experiments (ICF experiments) optimization tasks and compare it to incumbent meta-BO methods, multi-fidelity BO, lookahead BO, and conventional BO. The experimental tests are con-ducted under the context of relevant meta-data being available for meta-BO. Details are provided in Section 4. 2
+
+In many practical applications, however, it is often unclear if prior meta-information is useful. BayMOTH is, by construction, more robust to useless prior information, unlike meta-BO. We demonstrate this through targeted experiments, in which to the meta-BO methods the training tasks that are provided are not strongly related to the unknown function f . This experimental setup emulates real-world scenarios where the assumed relationship between the meta-information and the unknown function may not hold. In autonomous applications where the value of prior information is unknown, it is vital that the sampling policy must be able to self-assess the value of its priors. In existing BO works, this mismatch has been remarkably understudied, and to the best of our knowledge has only been considered previously by the robust multi-fidelity BO (MFBO) of Mikkola et al. (2023) which accepts a MFBO proposal over a single-fidelity BO proposal, if the MFBO surrogate passes some conditions. Moreover, as becomes evident in Section 3, BayMOTH is a relatively simple algorithm when com-pared with popular meta-BO approaches, which employ reinforcement learning (RL) to incorporate meta-information into their respective sampling policies. It is well known that training RL based policies can be challenging due to the deadly triad of RL Sutton et al. (1998). To counteract such effects, state-of-the-art (SOTA) meta-BO methods often include auxiliary tasks for stable policy training such as in the work of Maraval et al. (2023), which complicates the training process. While simplicity is not sufficient in isolation as a merit-able attribute, the complexity in algorithms and training procedure can preclude usage from practitioners outside of ML/RL expertise. For such practitioners sample efficient black-box optimization can be of great interest due to high cost of evaluations for their respective domains such as for scientific experiments. Therefore, the competitive performance and simplicity of BayMOTH, we deem useful to practitioners. 
+
+Contributions. Our main contributions are summarized as follows: • We highlight brittleness in meta-BO under source task mismatch. • We propose a simple meta-Bayesian optimization algorithm (BayMOTH), that remains robust under source-task mismatch and leverages related-task structure without relying on RL pretraining. • BayMOTH unifies lookahead and meta-BO perspectives in a simple algorithm. • We show empirically that BayMOTH performs competitively against state-of-the-art meta-BO methods and strong established baselines, and we situate its performance relative to these approaches. 
+
+# 2 Background 
+
+2.1 Problem formulation 
+
+We wish to find the optimum of an unknown expensive to evaluate black-box function f : D → R
+
+on a known domain D ⊆ Rd, within a sample budget T . A policy π chooses points to sample 
+
+> 2All datasets and code is provided as supplementary material.
+
+2x ∈ D from f (x) in a sequential manner resulting in a evaluation history Ht = {xi, f (xi)}ti=1 
+
+after t sample steps. A sampling policy π is considered superior if the simple regret r(t) := max x∈D f (x) − max 1≤i≤t f (xi) is minimized in fewer sample steps. 
+
+2.2 Bayesian Optimization 
+
+In Bayesian optimization (BO) Shahriari et al. (2015); Frazier & Wang (2015) a probabilistic surrogate model, commonly a Gaussian Process (GP ) Williams & Rasmussen (2006) is used in conjunction with an acquisition function (AF) for choosing sample locations that potentially maximize f (x).Given an evaluation history Ht = {xi, f (xi)}ti=1 , the GP posterior is characterized by the mean 
+
+μt(x) = E[f (x)|H t] and variance σt = V[f (x)|H t] 12 , which have closed analytic forms Williams & Rasmussen (2006). Utilizing the GP posterior, an acquisition function provides a score value for 
+
+x ∈ D taking also into account exploitation-exploration tradeoffs. A widely used AF is Expected Improvement (EI) Jones et al. (1998) which at sample step t is given as: 
+
+EI t+1 (x) = E[max( f (x) − max  
+
+> 1≤i≤t
+
+f (xi), 0)] 
+
+The BO policy, πBO → xt+1 is argmax x∈D EI t+1 (x).
+
+2.3 Meta-Bayesian Optimization 
+
+In contrast to BO, where only the evaluation history informs the policy, meta-BO makes use of information available from related functions which is typically available in the form of sample-evaluation pairs as shown: 
+
+Dτ = {(x1, f τ (x1)) , . . . , (xN , f τ (xN )) },
+
+from any arbitrary policy forming task-specific datasets D1, D2, . . . Dτ that collectively constitute the meta-dataset ( Dmeta-train ). Approaches on how the meta-dataset is utilized differs among different approaches. Prior work has focused on the surrogate model component of BO, such as through ranking-weighted Gaussian process ensembles Feurer et al. (2018) and multi-task Gaussian processes, or on the acquisition function component of BO, for example via transfer acquisition functions Wistuba et al. (2018), whereas the work of Maraval et al. (2023) focuses on both components in an end-to-end framework. A comprehensive survey of meta-BO can be found in Bai et al. (2023) and Ma et al. (2025). Here, we expand on some foundational meta-BO methods. Generally, these methods learn a general sampling rule (policy) that at test-time require less sample steps compared with non-meta-BO. This is achieved by incorporating information from the meta-dataset obtained from related functions. Examples of related functions may include synthetic families of a well defined function such as sine waves with varying phase and amplitude over a shared domain Finn et al. (2017), or in more abstract settings can be in the context of hyperparameter optimization (HPO) where model accuracies as a function of different hyperparameter configurations and search spaces are available for multiple classification problems Arango et al. (2021). The approach of Volpp et al. (2019) (known as MetaBO) makes use of a GP surrogate model similar to the traditional BO setup, but makes use of a neural acquisition function (NAF) in lieu of a classical AF. The meta-dataset is used to train the NAF with the Proximal Policy Optimization (PPO) RL algorithm where NAF takes as input [μt(x), σ t(x), x ] for the state-action representation at each sample step to output a score-value on a discrete set of points on the optimization domain. During PPO training the current policy rolls-out Ht = {xi, f (xi)}ti=1 from f available in Dmeta-train , and a respective GP t provides μt(x) and σt(x) to the NAF. In the training loop the input information for NAF along with the auxiliary information (i.e. reward) needed for PPO is recorded for an episode, batches of which are used for the NAF policy update. Conceptually, after meta-training, NAF has learned how to use [μt(x), σ t(x), x ] for providing a high-score for promising sample locations over a variety of functions. As mentioned by Volpp et al. (2019) the inclusion of x as an input enables it to identify shared structure between functions used during offline meta-training and functions it will encounter in usage. Similar to MetaBO Volpp et al. (2019), FSAF Hsieh et al. (2021) also uses [μt(x), σ t(x)] from a GP 
+
+as part of an embedding for the state-action representation. For the acquisition function a Bayesian 3approach is used to learn N deep-Q-networks (DQNs) in a MAML bi-level framework Finn et al. (2017); Yoon et al. (2018), such that from the collection of f ∈ D meta-train a generalized policy is learned that is well suited for one-shot adaption to the unknown function f , by making gradient updates to the DQN using Ht = {xi, f (xi)}ti=1 .
+
+2.4 Multi-fidelity Bayesian optimization (MFBO) 
+
+MFBO extends standard BO by allowing (during online sampling) a query be made to the expensive test task or cheaper auxiliary information sources, by utilizing a joint surrogate over all fidelities in an augmented space and an acquisition function that trades off informativeness vs. cost across fidelities. Its benefit relies on the auxiliary fidelities being sufficiently informative about the test task. However, when this assumption fails, MFBO can waste budget on misleading sources and even under perform single-fidelity BO under the same evaluation budget. The robust MFBO of Mikkola et al. (2023) addresses this issue through a wrapper for GP-based MFBO methods that only accepts a multi-fidelity proposal when reliability conditions are met and otherwise falls back to a conservative single-fidelity alternative. We draw attention that BayMOTH is related to this perspective at a high-level, as both are motivated by the principle that source information should be exploited only when it is determined useful, with the sampling policy remaining robust under source-test task mismatch. However, both approaches are fundamentally different. Furthermore, in the MFBO paradigm, auxiliary source information is revealed only online through sequential queries to that fidelity, with the objective being more focused on reducing costly evaluations on the target task. In contrast, in BayMOTH and meta-BO more broadly, source-task information is available a priori through meta-training, therefore, source task information is already available before online optimization begins. 
+
+2.5 Lookahead Bayesian Optimization 
+
+Lookahead BO polices aim to improve upon BO by taking into consideration the allowance of future evaluations within the sample budget, with the assumption that an exploration sample taken at a current sample step t can reveal promising locations for finding the optimum location in future samples. 
+
+Remark 2.1 . The meta-BO methods mentioned in Section 2.3 also utilize t/T as part of their state-action representation which can influence future sample points. However, this approach remains myopic, as, unlike lookahead methods, it does not explicitly simulate possible future sample outcomes. The practical two-step lookahead acquisition function proposed by Wu & Frazier (2019), known as 2-OPT, demonstrates that even limited-horizon (two-step) lookahead can yield meaningful performance gains over standard one-step BO. The 2-OPT acquisition function itself consists of two EI acquisition functions each pertaining to a stage in the two-stage process, The first EI component ( EI 0) considers 
+
+GP 0 from Ht = {xi, f (xi)}ti=1 , whereas EI 1 considers GP 1 from Htsim = Ht ∪ { xt+1 , f (xt+1 ) ∼GP 0}. Thus, the 2-OPT acquisition function takes the form 
+
+2-OPT( xt+1 ) ≈ EI 0(xt+1 ) + E
+
+
+
+max 
+
+> xt+2
+
+EI 1(xt+2 )
+
+
+
+.
+
+Where, the expectation is taken under GP 0. The BayMOTH policy is based on the 2-OPT acquisition function, its details are presented in section 3. Multi-step lookahead aims to maximize long-horizon optimization performance. However, due to scalability issues, emulating multi-step BO has been considered instead and is shown to be performant in the work by Cheon et al. (2024) by making use of an Attention-Deep-Sets encoder for projecting state information onto a latent space suitable for a RL framework. 
+
+# 3 BayMOTH 
+
+In this section we introduce BayMOTH, a meta-BO policy that extends the 2-OPT acquisition function by incorporating meta-information through a well-defined selection rule, and fallbacks to 2-OPT when such information is deemed uninformative. A key feature of BayMOTH is that it is capable of autonomously deciding when the meta-information is useful. We first describe the inclusion procedure of meta-information based on shared structure identification with the related functions, 4Test 
+
+# Task 
+
+# 𝑥 𝑡 
+
+Virtual 
+
+History 
+
+Offline training 
+
+NCC buffer and 
+
+selection 
+
+Step 𝒕 
+
+Step 𝒕 + 𝟏 
+
+# 𝐺 𝑃 𝑡 
+
+# > 𝜸 
+
+𝑮 𝑷 𝒕 
+
+𝑮 𝑷 𝝌 Figure 1: An overview of BayMOTH and then present the BayMOTH policy. Finally, we discuss simplifications made to the policy for practical usage. The full algorithm for BayMOTH is presented in Section A.1 
+
+3.1 Shared structure formulism 
+
+A common peril for meta-learning based approaches is the memorization problem Yin et al. (2019). The memorization problem is a form of task overfitting where the meta-learner overfits to the finite set of provided training tasks 3 by implicitly encoding task-specific solutions, rather than learning transferable attributes that enable good performance on unseen tasks. This form of overfitting is subtle as the meta-learning based model can still be performant if the unseen task is similar to the training tasks. This concept is formalized in Yin et al. (2019). Meta–BO methods are also susceptible to memorization, as strong meta-learned surrogates or acquisition policies can achieve low meta-training regret by encoding task-specific structure present in the training set, rather than learning robust exploration/exploitation mechanisms that generalize to unseen tasks. As a result, when task diversity is limited, performance gains may diminish when evaluated on unseen objectives or complex tasks. A mitigating strategy is to increase the number of training tasks Volpp et al. (2019), though, its applicability is limited in scientific or HPO settings where datasets are expensive to generate and the available meta-data is inherently fixed. Other strategies include restricting model capacity and Yin et al. (2019) propose a meta-regularizer based on information theory. For robustness against memorization and explicit usage of only relevant meta-information, Bay-MOTH makes use of alternative virtual environments. A alternative virtual environment for each dataset in Dmeta-train is constructed by fitting a GP to Dχ = {(xi, f χ(xi)) }ni=1 , where Dχ ∈ D meta-train .Consequently, given τ related tasks available for meta-training, i.e., {D 1, . . . , Dχ, . . . , Dτ }, this procedure induces a collection of τ task-specific alternative virtual environments containing 
+
+{GP 1, . . . , GP χ, . . . , GP τ }.At optimization step t + 1 on an unknown task, the observed sample history Ht = {(xi, f (xi)}ti=1 is reused to query in each virtual environment yielding virtual sample histories ˜Hχt = {(xi, ˜fχ(xi)}ti=1 ,where ˜fχ(xi) = μχ(xi) from GP χ(xi). Each virtual history ˜Hχt is then used to fit a ˜GP χ,t using the same kernel and hyperparameter configuration as the surrogate GP t fitted to the unknown task. The resulting surrogates are compared to GP t using normalized cross-correlation (NCC) between their     
+
+> 3In the meta-learning literature, the terms related tasks Finn et al. (2017) and related functions are often used interchange-ably.
+
+5predictive mean functions, defined as: 
+
+NCC( μt, ˜μχ,t ) = 
+
+PMj=1 (μt(xj ) − ¯μt)(˜ μχ,t (xj ) − ¯˜μχ,t )
+
+∥μt − ¯μt∥2 ∥˜μχ,t − ¯˜μχ,t ∥2
+
+,
+
+where μt(·) and ˜μχ,t (·) denote the predictive means of GP t and ˜GP χ,t , respectively, evaluated on a shared reference set {xj }Mj=1 , and ¯μt and ¯˜μχ,t denote their empirical means. The meta-training task achieving the highest NCC score is selected as exhibiting the most shared structure with the unknown task. This score is used as a task descriptor to gate into the pertinent alternative virtual environment through the selection rule, whose corresponding GP now denoted as GP χ∗ is used in Eq 1. If each alternative virtual environment’s NCC score is below a threshold, BayMOTH fallbacks to 2-OPT. Normalized cross-correlation is well suited for this comparison, as it is invariant to affine scaling of function values and emphasizes structural alignment, making it robust to differences in magnitude and noise levels even in high-dimensional input spaces. While this procedure requires fitting τ auxiliary Gaussian processes at each optimization step, the computational overhead remains modest relative to the cost of unknown function evaluations in many real-world usage scenarios. Furthermore, the resulting simplicity and interpretability of the task-selection mechanism provide a favorable trade-off in practice. 
+
+3.2 BayMOTH policy 
+
+Given data H1: t from the unknown function f , where, 
+
+H1: t =
+
+n
+
+(x1, f 1), (x2, f 2), . . . , (xt, f t)
+
+o
+
+,
+
+the next sample location is provided from BayMOTH according to its policy πBayMOTH which is given by: 
+
+arg max 
+
+> xt+1
+
+h
+
+Λ0(xt+1 ) + EGP χ∗
+
+h
+
+(1 − α) max 
+
+> xt+2
+
+Λ1(xt+2 ) + α Ω
+
+ii 
+
+(1) Here, Λ0 is the EI acquisition function considering the GP posterior from data H1: t, and Λ1 is EI 
+
+considering the GP posterior from data H1: tsim . Where , H1: tsim contains the simulated sample evaluation at xt+1 ,
+
+H1: tsim = H1: t ∪
+
+n
+
+xt+1 , f (xt+1 ) ∼ GP χ∗
+
+o
+
+. (2) The Ω term is a greedy improvement component defined as Ω = max  0, f (xt+1 ) − f (t)max 
+
+ where 
+
+f (t)max = max 1≤i≤t fi. The term in the expectation is interpreted as a convex combination of a meta-information derived future expected improvement term with an immediate greedy improvement term. By interpolating these terms as such, we are balancing horizon planning with direct exploitation, with both terms being informed by meta-information. The behavior of BayMOTH with this balancing is elaborated through an ablation study on α in Appendix A.6. 
+
+3.3 BayMOTH simplification 
+
+The second term in Eq.1 is an expectation under GP χ∗ , considering the randomness of GP χ∗ as 
+
+P(ω) we define this term as, 
+
+J(ω) := Eω∼P 
+
+h
+
+(1 − α) max 
+
+> xt+2
+
+Λ1(xt+2 ; ω) + αΩ( ω)
+
+i
+
+and, 
+
+Z(ω) := (1 − α) max 
+
+> xt+2
+
+Λ1(xt+2 ; ω) + αΩ( ω)
+
+then, 
+
+J(ω) = 
+
+Z
+
+Z(ω)P(ω)d ω
+
+6=
+
+Z 
+
+(1 − α) max 
+
+> xt+2
+
+Λ1(xt+2 ; ω) + αΩ( ω)
+
+
+
+P(ω)d ω
+
+as this is intractable analytically, we use a Monte Carlo estimator 
+
+ˆJM = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Z(ω(m)), ω(m) ∼ GP χ∗ i.i.d. (3) This estimator is unbiased and converges to J as M → ∞ by the law of large numbers, with variance 
+
+V( ˆJM ) = σ2/M where σ2 is the variance of Z. These properties are detailed in Appendix A.2. Although the variance of the estimator decays at rate (O(1 /M )) , in practice, relatively small number of samples is sufficient for estimator accuracy Bishop & Bishop (2023). As GP χ∗ posterior depends on the samples drawn from Dχ, the variance on the random variable Z(ω) depends directly on how well Dχ covers the underlying function over the domain of interest. When the domain is densely sampled, the posterior variance of GP χ∗ is typically small throughout the domain, which in turn implies that σ2 is also small. Since the estimator has variance σ2/M , a modest number of samples is a sufficient approximation for small σ2.In instances where the domain is sparsely sampled for Dχ, BayMOTH is still performant as a relative ranking of candidate points is the quantity of interest over accurately estimating Z. Moreover, the stochasticity in Z can even encourage exploration. In all experiments we set M = 5 , which we found to provide a good trade-off between computational cost and performance. A small ablation in Appendix A.5 shows that larger M yields only marginal performance gains. 
+
+3.4 Informal Theoretical Analysis 
+
+BayMOTH is built on a gated two-branch architecture. When the inferred task-relatedness is low, it reverts to the 2-OPT acquisition; when the inferred task-relatedness is sufficiently high ( γ dependent), it uses a meta-informed lookahead branch that modifies the horizon planning term through the selected alternative virtual environment and the greedy improvement component. Accordingly, rather than comparing BayMOTH to a universally optimal policy, we analyze it relative to an idealized oracle version of itself. This oracle comparator uses the correct branch, correct source-task (when applicable), together with the exact lookahead term, and in particular reduces to 2-OPT on rounds where fallback is the appropriate choice. To formalize this, let 
+
+f ⋆ := max  
+
+> x∈D
+
+f (x), rBM  
+
+> T
+
+:= f ⋆ − max  
+
+> 1≤t≤T
+
+f (xBM  
+
+> t
+
+)
+
+denote the simple regret of BayMOTH after T evaluations. At round t, let Xt denote the candidate set considered by the optimization routine. We write the fallback 2-OPT acquisition as 
+
+A2OPT  
+
+> t
+
+(x) := Λ 0,t (x) + EGP t
+
+
+
+max 
+
+> x′∈X t
+
+Λ1,t (x′; x)
+
+
+
+,
+
+and let Ameta ,† 
+
+> t
+
+(x) denote the oracle meta-informed acquisition, defined as the exact meta-lookahead branch evaluated using the correct source task and exact expectation. Let g† 
+
+> t
+
+∈ { 0, 1} denote the oracle branch selection decision, where g† 
+
+> t
+
+= 0 selects the fallback (2-OPT) and g† 
+
+> t
+
+= 1 selects the oracle meta branch. The resulting oracle-gated comparator is 
+
+A† 
+
+> t
+
+(x) = (1 − g† 
+
+> t
+
+)A2OPT  
+
+> t
+
+(x) + g† 
+
+> t
+
+Ameta ,† 
+
+> t
+
+(x).
+
+Let 
+
+x† 
+
+> t
+
+∈ arg max 
+
+> x∈X t
+
+A† 
+
+> t
+
+(x), r† 
+
+> T
+
+:= f ⋆ − max  
+
+> 1≤t≤T
+
+f (x† 
+
+> t
+
+)
+
+denote the corresponding oracle-gated simple regret. BayMOTH itself uses a NCC based branch selection decision gt ∈ { 0, 1}. When gt = 0 , it optimizes the same fallback 2-OPT branch. When gt = 1 , it optimizes a Monte Carlo approximation of the 7meta branch based on the selected alternative virtual environment. We denote the acquisition actually optimized by BayMOTH as ˆABM  
+
+> t
+
+(x).We make the following assumptions. 
+
+Assumption 1 (bounded objective). There exists B > 0 such that 
+
+0 ≤ f (x) ≤ B, ∀x ∈ D. 
+
+Assumption 2 (meta-vs-fallback branch disagreement probability). Let 
+
+Eroute  
+
+> t
+
+:= {gt̸ = g† 
+
+> t
+
+}
+
+denote the event that BayMOTH disagrees with the oracle branch selection rule at round t. Assume 
+
+Pr( Eroute  
+
+> t
+
+) ≤ pt.
+
+Assumption 3 (within-meta branch virtual-environment selection error). For each round t,let χ† 
+
+> t
+
+denote the oracle virtual-environment index, i.e., the source task that the oracle meta branch would use when meta-routing is appropriate. Let ˆχt denote the virtual-environment index selected by BayMOTH’s NCC rule on rounds where gt = 1 .Let 
+
+Ameta  
+
+> t
+
+(x; χ)
+
+denote the common exact meta-acquisition template evaluated using alternative virtual environment 
+
+GP χ and with the expectation computed exactly (that is, without Monte Carlo approximation). Then, on rounds where both BayMOTH and the oracle use the meta branch, 
+
+Ameta ,† 
+
+> t
+
+(x) = Ameta  
+
+> t
+
+(x; χ† 
+
+> t
+
+), Ameta ,⋆ t (x) = Ameta  
+
+> t
+
+(x; ˆ χt),
+
+and we assume 
+
+sup 
+
+> x∈X t
+
+Ameta  
+
+> t
+
+(x; ˆ χt) − Ameta  
+
+> t
+
+(x; χ† 
+
+> t
+
+) ≤ ηt.
+
+If (gt, g † 
+
+> t
+
+)̸ = (1 , 1) , this assumption is not invoked: the case gt̸ = g† 
+
+> t
+
+is handled by Assumption 2, and when gt = g† 
+
+> t
+
+= 0 , both methods use the same fallback 2-OPT branch. 
+
+Assumption 4 (Monte Carlo approximation error). Let ˆJt,M (x) denote the Monte Carlo estima-tor used by BayMOTH in the meta branch with M samples. Assume 
+
+Var( ˆJt,M (x)) = σ2 
+
+> t
+
+(x)
+
+M ,
+
+and define 
+
+σt := sup 
+
+> x∈X t
+
+σt(x).
+
+Assumption 5 (acquisition-to-value stability). There exists Lt > 0 such that for any two acquisi-tions At and ˜At on Xt,
+
+sup 
+
+> x∈X t
+
+|At(x) − ˜At(x)| ≤ ε =⇒ f (x ˜At ) − f (xAt ) ≤ Ltε, 
+
+where xAt ∈ arg max x∈X t At(x) and similarly for x ˜At .
+
+Proposition 1 (Informal simple-regret decomposition for BayMOTH) . For any sequence {δt}Tt=1 
+
+with δt ∈ (0 , 1) , with probability at least 
+
+1 −
+
+> T
+
+X
+
+> t=1
+
+|X t|δt −
+
+> T
+
+X
+
+> t=1
+
+pt,
+
+the simple regret of BayMOTH satisfies 
+
+rBM  
+
+> T
+
+≤ r† 
+
+> T
+
++ max  
+
+> 1≤t≤T
+
+g† 
+
+> t
+
+Lt
+
+
+
+ηt + σt
+
+√M δ t
+
+
+
+.
+
+Moreover, 
+
+E[rBM  
+
+> T
+
+] ≤ E[r† 
+
+> T
+
+] + max  
+
+> 1≤t≤T
+
+g† 
+
+> t
+
+Lt
+
+
+
+ηt + σt
+
+√M δ t
+
+
+
++ B
+
+> T
+
+X
+
+> t=1
+
+|X t|δt +
+
+> T
+
+X
+
+> t=1
+
+pt
+
+!
+
+.
+
+8Figure 2: Optimization trajectories across relatedness settings (Sets 1–4) for synthetic ICF experi-ments. Sample budget is restricted to 10, reflecting the realistic sample budget for ICF. 
+
+Proof sketch. The proof sketch is given in A.3 This proposition should be interpreted as a regret decomposition rather than as a sharp problem-dependent theorem. It shows that BayMOTH tracks an oracle-gated version of its own two-branch architecture. In particular, BayMOTH differs from it only through three BayMOTH-specific sources of error: meta-vs-fallback branch disagreement, mismatch between the selected alternative virtual environment and the oracle source model on meta-routed rounds, and Monte Carlo approximation error in the lookahead term. 
+
+# 4 Experiments 
+
+We demonstrate the competitiveness and position the performance of BayMOTH with existing meta-BO approaches that have demonstrated (MetaBO Volpp et al. (2019) and NAP Maraval et al. (2023)), with myopic and non-myopic BO (GPBO-EI and 2-OPT Wu & Frazier (2019)) and additionally compare with random search (RS). We evaluate across a variety of optimization tasks under a meta-learning context. For hyperparameter optimization tasks we use the HBO-B benchmark Arango et al. (2021) and the HPOBench dataset (Eggensperger et al., 2021). For scientific experiments optimization tasks we work in the domain of synthetic ICF experiments. Our results are reported in terms of simple regrets as a function of optimization step, shown in the corresponding figures is the 
+
+<> line and ±σ shaded region from optimization trajectories obtained over 100 runs (unless stated otherwise) from randomly initialized starting locations on the test task. 
+
+4.1 Synthetic ICF Experiments 
+
+Inertial confinement fusion (ICF) is a laser-driven scheme for nuclear fusion and offers a path to a clean and abundant energy source Atzeni & Meyer-ter Vehn (2004). A key hindrance towards the realization of optimal experimental designs is the limited predictive capability via physics modeling tools, therefore, approaches that use direct experimental feedback for optimization are increasingly becoming popular Ejaz et al. (2024). However, as ICF experiments are extremely costly and allocation of facility time is competitive, we first demonstrate the practicality of BayMOTH for this purpose through synthetic ICF optimization experiments, similar to the studies of Gundecha et al. (2024); Gutierrez et al. (2024). In addition, we study the behavior of BO approaches under progressively increasing distribution shift between the test task and the source tasks used in meta-training. Specifically, we consider four evaluation regimes spanning low, moderate, medium and high degrees of relatedness to the source tasks. This experimental design is intended to emulate realistic scenarios in which the assumed physics-based models are only weakly related, or potentially unrelated, to the experimental response. Details on task generation, source/test tasks sets’ relatedness determination and visualizations of the sets are provided in Appendix B.1. 
+
+High Relatedness (Set 1): In this setting, BayMOTH reaches the vicinity of the optimum region (0.1 regret) rapidly during the initial iterations (3 steps), suggesting that it is most effective at leveraging specific information from the source tasks, followed by NAP, which also exhibits quicker reduction in regret initially. Here, we highlight that GPBO-EI is also effective at minimizing the regret within the sample budget, indicating its robustness as a general sampling policy. 9Figure 3: Simple regret trajectories on HPO tasks. The combined plot includes HPO-B tasks such as glmnet (ID:5860) and rpart.preproc (ID:4796), along with the HPOBench XGBoost results. Curves show performance versus sample steps, with mean trajectories and variability over randomly initialized starting locations. 
+
+Medium/Moderate Relatedness (Set 2/3): In this regime, no clear advantage of meta-BO can be observed. On the contrary for set 2 it is observed that neither NAP or MetaBO are able to obtain less than 0.1 regret ( 90% optimal value). This is possibly due to the test task optimum not sufficiently overlapping with that of any individual source task. In contrast, BayMOTH exhibits more robust behavior, and is less susceptible to over reliance on source tasks. For test 3, all methods obtain less than 0.1 regret, with NAP reaching below that level the quickest. We attribute strong performance from all approaches due the optimum region covering a large portion of the domain. 
+
+Low Relatedness (Set 4): In this setting we observe both MetaBO and NAP to exhibit suboptimal performance, with both failing for regret reduction. This is suggestive of egregious samples being proposed and is indicative of the memorization problem for meta-BO. As MetaBO and NAP, rely on policies learned from meta-training data, in the low-relatedness regime, they continue to exploit uninformative priors on the policy, and are unable to identify task mismatch leading to downgraded sampling performance. In contrast, BayMOTH is designed to disregard meta-information once it is identified as uninformative, falling back to the 2-OPT policy. As a result, it is able to effectively minimize regret, demonstrating robustness even in this low-relatedness setting. While BayMOTH may be susceptible to memorization effects early in the optimization trajectory, when limited observations make it difficult to discard alternative virtual environments, it nevertheless remains reliable for regret reduction. 
+
+General observations from all Sets: From these tests it is observed that BayMOTH is performant under a variety of distribution shift scenarios. Whereas, NAP can learn a strong sampling policy when provided with appropriate related tasks during meta-training, as can been deduced from Figure 2a and Figure 2c, MetaBO is less competitive on these tests, potentially due to the limited number of available meta-training tasks (10 tasks). The weaker performance could also be attributed to generally a weaker sampling policy for MetaBO, which is consistent with the observations of Maraval et al. (2023) where MetaBO rarely outperformed GPBO-EI. We further investigate the sensitivity of provided training tasks on test task performance in Appendix B.2. 
+
+4.2 Hyper Parameter Optimization Experiments 
+
+Here, we experiment on hyperparameter optimization tasks using the HPO-B benchmark (Arango et al., 2021) and HPOBench dataset (Eggensperger et al., 2021). These datasets contain accuracies of classification models as a function of model hyperparameters. The HPO-B datasets contains different search spaces comprising of model class, hyperparameter settings, and search domain which are evaluated on different supervised training datasets and splits. The HPO-B benchmark provides predefined datasets to be used for meta-training and meta-testing. From this benchmark dataset we select the search spaces glmnet(ID:5860, dim=2) and rpart.preproc(ID:4796, dim=3). For these search spaces all meta-training datasets are used for training and evaluation is done on one task drawn from the meta-test datasets. Due to resource limitations, for these HPO experiments, we restrict the number search spaces for evaluation. We refer the reader to (Arango et al., 2021) for more details on this benchmark. Pertaining to HPOBench (Eggensperger et al., 2021) we use the dataset utilized by Maraval et al. (2023), which is a hyperparameter optimization task (6D) for XGBoost. The same 10 datasets as Maraval et al. (2023) are used for meta-training and testing is conducted on a dataset drawn from the test datasets. On the glmnet search space, NAP substantially outperforms all competing methods, as shown in Figure 3. The other approaches, including BayMOTH, exhibit comparable performance. For the rpart search space, NAP again achieves the strongest results, followed by BayMOTH and MetaBO. Notably, a clear performance gap emerges between meta-BO methods and non-meta-BO baselines, underscoring the benefit of leveraging meta-information when it is available. On the higher-dimensional HPOBench optimization task for XGBoost, meta-BO methods demonstrate a consistent advantage during the early optimization phase (up to step 5). Beyond this point, MetaBO ultimately attains the best overall performance. 
+
+# 5 Discussion 
+
+In this work, we introduce BayMOTH, a simple yet effective framework that unifies meta–Bayesian optimization and two-step lookahead BO. To the best of our knowledge, no prior work combines meta-BO with lookahead planning while explicitly accounting for the relatedness between source and target tasks and its impact on the robustness of the sampling policy. BayMOTH extends the 2-OPT acquisition function to operate with meta-information and also includes an immediate greedy improvement term. Both the horizon planning component and the immediate improvement component influence the sample suggestion strategy, as is analyzed in Appendix A.6. Despite the simplicity of BayMOTH, our experiments demonstrate that it is competitive with state-of-the-art meta-BO approaches. Moreover, by selectively incorporating meta-information, BayMOTH exhibits a robust sampling policy even when training tasks have limited similarity to the test task, a behavior that is observed across our experiments. We acknowledge that BayMOTH’s interpretability and ease of implementation come at the cost of increased computational overhead. In particular, single-sample suggestion times can reach up to one minute in the 6-dimensional setting. More efficient optimization strategies Wu & Frazier (2019) for the 2-OPT acquisition function could therefore be explored for the horizon-planning term in Equation 1 in future versions of the method.Nevertheless, in practical HPO settings, where per-evaluation costs are often orders of magnitude larger, this overhead is negligible. Moreover, our experiments suggest that BayMOTH often attains near-optimal configurations 2–3 evaluations earlier, making this trade-off favorable in practice. BayMOTH is particularly appealing in low- to moderately high-dimensional settings where source-task relatedness is uncertain and complicated training procedures are undesirable In future works, we plan to investigate learned task-similarity identification mechanisms and more sophisticated routing strategies, potentially spanning multiple environments, to better exploit both global and local task features for improved sample efficiency. These directions may benefit from ideas drawn from mixture-of-experts (MoE) models Mu & Lin (2025). Additionally, we aim to further explore BayMOTH’s core principle, leveraging meta-information when it is informative and reverting to a robust default strategy otherwise, through alternative approaches such as Q-transformers Chebotar et al. (2023), which are well suited for multi-task learning and could naturally integrate within a MoE framework. 
+
+# Impact Statement 
+
+The simplicity of our approach lowers the barrier to adoption and enables practitioners, especially those without specialized reinforcement learning expertise, to readily understand and fully leverage BayMOTH’s capabilities. Overall, this paper presents work whose goal is to advance the field of sample efficient optimization. There are many potential societal consequences of our work, none which we feel must be specifically highlighted here. 
+
+# Acknowledgments and Disclosure of Funding 
+
+This material is based upon work supported by the Department of Energy under Award Nos. DE-SC0024381, DESC0022132, DE-SC0021072 and DE-SC0024456 as well as the Department of 11 Energy (National Nuclear Security Administration) University of Rochester “National Inertial Con-finement Program” under Award No. DE-NA0004144. This report was prepared as an account of work sponsored by an agency of the United States Government. Neither the United States Government nor any agency thereof, nor any of their employees, makes any warranty, express or implied, or assumes any legal liability or responsibility for the accuracy, completeness, or usefulness of any information, apparatus, product, or process disclosed, or represents that its use would not infringe privately owned rights. Reference herein to any specific commercial product, process, or service by trade name, trademark, manufacturer, or otherwise does not necessarily constitute or imply its endorsement, recommendation, or favoring by the United States Government or any agency thereof. The views and opinions of authors expressed herein do not necessarily state or reflect those of the United States Government or any agency thereof. 
+
+# References 
+
+Kenneth Scott Anderson. Adiabat shaping in direct-drive inertial confinement fusion implosions .University of Rochester, 2006. Sebastian Pineda Arango, Hadi S Jomaa, Martin Wistuba, and Josif Grabocka. Hpo-b: A large-scale reproducible benchmark for black-box hpo based on openml. arXiv preprint arXiv:2106.06257 ,2021. Stefano Atzeni and Jürgen Meyer-ter Vehn. The Physics of Inertial Fusion: BeamPlasma Interaction, Hydrodynamics, Hot Dense Matter . Number 125. Oxford University Press, 2004. Tianyi Bai, Yang Li, Yu Shen, Xinyi Zhang, Wentao Zhang, and Bin Cui. Transfer learning for bayesian optimization: A survey. arXiv preprint arXiv:2302.05927 , 2023. R Betti, AR Christopherson, BK Spears, R Nora, A Bose, J Howard, KM Woo, MJ Edwards, and J Sanz. Alpha heating and burning plasmas in inertial confinement fusion. Physical review letters ,114(25):255003, 2015. Ricardo Betti, PY Chang, BK Spears, KS Anderson, J Edwards, M Fatenejad, JD Lindl, RL McCrory, R Nora, and D Shvarts. Thermonuclear ignition in inertial confinement fusion and comparison with magnetic confinement. Physics of Plasmas , 17(5), 2010. Christopher M Bishop and Hugh Bishop. Deep learning: Foundations and concepts . Springer Nature, 2023. Yevgen Chebotar, Quan Vuong, Karol Hausman, Fei Xia, Yao Lu, Alex Irpan, Aviral Kumar, Tianhe Yu, Alexander Herzog, Karl Pertsch, et al. Q-transformer: Scalable offline reinforcement learning via autoregressive q-functions. In Conference on Robot Learning , pp. 3909–3928. PMLR, 2023. Mujin Cheon, Jay H Lee, Dong-Yeun Koh, and Calvin Tsay. Earl-bo: Reinforcement learning for multi-step lookahead, high-dimensional bayesian optimization. arXiv preprint arXiv:2411.00171 ,2024. AR Christopherson, R Betti, J Howard, KM Woo, A Bose, EM Campbell, and V Gopalaswamy. Theory of alpha heating in inertial fusion: Alpha-heating metrics and the onset of the burning-plasma regime. Physics of Plasmas , 25(7), 2018. AR Christopherson, R Betti, S Miller, V Gopalaswamy, OM Mannion, and D Cao. Theory of ignition and burn propagation in inertial fusion implosions. Physics of Plasmas , 27(5), 2020. RS Craxton, KS Anderson, TR Boehly, VN Goncharov, DR Harding, JP Knauer, RL McCrory, PW McKenty, DD Meyerhofer, JF Myatt, et al. Direct-drive inertial confinement fusion: A review. 
+
+Physics of Plasmas , 22(11), 2015. J Delettrez, R Epstein, MC Richardson, PA Jaanimagi, and BL Henke. Effect of laser illumination nonuniformity on the analysis of time-resolved x-ray measurements in uv spherical transport experiments. Physical Review A , 36(8):3926, 1987. Katharina Eggensperger, Philipp Müller, Neeratyoy Mallik, Matthias Feurer, René Sass, Aaron Klein, Noor Awad, Marius Lindauer, and Frank Hutter. Hpobench: A collection of reproducible multi-fidelity benchmark problems for hpo. arXiv preprint arXiv:2109.06716 , 2021. 12 Rahman Ejaz, Varchas Gopalaswamy, Aarne Lees, Duc Cao, Soumyendu Sarkar, and Christopher Kanan. Direct-drive implosion performance optimization using gaussian process modeling and reinforcement learning. In APS Division of Plasma Physics Meeting Abstracts , volume 2023, pp. BO07–007, 2023. Rahman Ejaz, Varchas Gopalaswamy, Ricardo Luna, Vineet Gundecha, Aarne Lees, Riccardo Betti, Sahand Ghorbanpour, Soumyendu Sarkar, and Christopher Kanan. Optimizing the performance of direct-drive implosion experiments using meta-bayesian optimization. Bulletin of the American Physical Society , 2024. Matthias Feurer and Frank Hutter. Hyperparameter optimization. In Automated machine learning: Methods, systems, challenges , pp. 3–33. Springer International Publishing Cham, 2019. Matthias Feurer, Benjamin Letham, and Eytan Bakshy. Scalable meta-learning for bayesian optimiza-tion. stat , 1050(6):7, 2018. Chelsea Finn, Pieter Abbeel, and Sergey Levine. Model-agnostic meta-learning for fast adaptation of deep networks. In International conference on machine learning , pp. 1126–1135. PMLR, 2017. Peter I Frazier. A tutorial on bayesian optimization. arXiv preprint arXiv:1807.02811 , 2018. Peter I Frazier and Jialei Wang. Bayesian optimization for materials design. In Information science for materials discovery and design , pp. 45–75. Springer, 2015. Varchas Gopalaswamy, Riccardo Betti, JP Knauer, N Luciani, D Patel, KM Woo, A Bose, IV Igu-menshchev, EM Campbell, KS Anderson, et al. Tripled yield in direct-drive laser fusion through statistical modelling. Nature , 565(7741):581–586, 2019. Vineet Gundecha, Ricardo Luna Gutierrez, Sahand Ghorbanpour, Rahman Ejaz, Varchas Gopalaswamy, Riccardo Betti, Avisek Naug, Paolo Faraboschi, and Soumyendu Sarkar. Meta-learned bayesian optimization for energy yield in inertial confinement fusion. In NeurIPS CCAI Workshop , 2024. Ricardo Luna Gutierrez, Sahand Ghorbanpour, Vineet Gundecha, Rahman Ejaz, Varchas Gopalaswamy, Riccardo Betti, Avisek Naug, Desik Rengarajan, Ashwin Ramesh Babu, Paolo Faraboschi, et al. Explainable meta bayesian optimization with human feedback for scientific applications like fusion energy. In NeurIPS 2024 Workshop on Tackling Climate Change with Machine Learning , 2024. Bing-Jing Hsieh, Ping-Chun Hsieh, and Xi Liu. Reinforced few-shot acquisition function learning for bayesian optimization. Advances in Neural Information Processing Systems , 34:7718–7731, 2021. Donald R Jones, Matthias Schonlau, and William J Welch. Efficient global optimization of expensive black-box functions. Journal of Global optimization , 13(4):455–492, 1998. A Lees, R Betti, JP Knauer, V Gopalaswamy, D Patel, KM Woo, KS Anderson, EM Campbell, D Cao, J Carroll-Nellenback, et al. Experimentally inferred fusion yield dependencies of omega inertial confinement fusion implosions. Physical review letters , 127(10):105001, 2021. A Lees, R Betti, V Gopalaswamy, JP Knauer, LA Ceurvorst, D Patel, R Ejaz, KS Anderson, KA Bauer, MJ Bonino, et al. Approaching hydro-equivalent ignition in laser direct-drive via target design optimization using novel statistical modeling. Physics of Plasmas , 32(7), 2025. Sergey Levine, Aviral Kumar, George Tucker, and Justin Fu. Offline reinforcement learning: Tutorial, review, and perspectives on open problems. arXiv preprint arXiv:2005.01643 , 2020. Zeyuan Ma, Hongshu Guo, Yue-Jiao Gong, Jun Zhang, and Kay Chen Tan. Toward automated algorithm design: A survey and practical guide to meta-black-box-optimization. IEEE Transactions on Evolutionary Computation , 2025. Alexandre Maraval, Matthieu Zimmer, Antoine Grosnit, and Haitham Bou Ammar. End-to-end meta-bayesian optimisation with transformer neural processes. Advances in Neural Information Processing Systems , 36:11246–11260, 2023. 13 Petrus Mikkola, Julien Martinelli, Louis Filstroff, and Samuel Kaski. Multi-fidelity bayesian opti-mization with unreliable information sources. In International Conference on Artificial Intelligence and Statistics , pp. 7425–7454. PMLR, 2023. Siyuan Mu and Sen Lin. A comprehensive survey of mixture-of-experts: Algorithms, theory, and applications. arXiv preprint arXiv:2503.07137 , 2025. PB Radha, TJB Collins, JA Delettrez, Y Elbaz, R Epstein, V Yu Glebov, VN Goncharov, RL Keck, JP Knauer, JA Marozas, et al. Multidimensional analysis of direct-drive, plastic-shell implosions on omega. Physics of Plasmas , 12(5), 2005. Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P Adams, and Nando De Freitas. Taking the human out of the loop: A review of bayesian optimization. Proceedings of the IEEE , 104(1): 148–175, 2015. Jasper Snoek, Hugo Larochelle, and Ryan P Adams. Practical bayesian optimization of machine learning algorithms. Advances in neural information processing systems , 25, 2012. Richard S Sutton, Andrew G Barto, et al. Reinforcement learning: An introduction , volume 1. MIT press Cambridge, 1998. Michael Volpp, Lukas P Fröhlich, Kirsten Fischer, Andreas Doerr, Stefan Falkner, Frank Hutter, and Christian Daniel. Meta-learning acquisition functions for transfer learning in bayesian optimization. 
+
+arXiv preprint arXiv:1904.02642 , 2019. Christopher KI Williams and Carl Edward Rasmussen. Gaussian processes for machine learning ,volume 2. MIT press Cambridge, MA, 2006. Martin Wistuba, Nicolas Schilling, and Lars Schmidt-Thieme. Scalable gaussian process-based transfer surrogates for hyperparameter optimization. Machine Learning , 107(1):43–78, 2018. Jian Wu and Peter Frazier. Practical two-step lookahead bayesian optimization. Advances in neural information processing systems , 32, 2019. Mingzhang Yin, George Tucker, Mingyuan Zhou, Sergey Levine, and Chelsea Finn. Meta-learning without memorization. arXiv preprint arXiv:1912.03820 , 2019. Jaesik Yoon, Taesup Kim, Ousmane Dia, Sungwoong Kim, Yoshua Bengio, and Sungjin Ahn. Bayesian model-agnostic meta-learning. Advances in neural information processing systems , 31, 2018. Zhe Zhao, Lichan Hong, Li Wei, Jilin Chen, Aniruddh Nath, Shawn Andrews, Aditee Kumthekar, Maheswaran Sathiamoorthy, Xinyang Yi, and Ed Chi. Recommending what video to watch next: a multitask ranking system. In Proceedings of the 13th ACM conference on recommender systems ,pp. 43–51, 2019. Barret Zoph and Quoc V Le. Neural architecture search with reinforcement learning. arXiv preprint arXiv:1611.01578 , 2016. 14 A Appendix 
+
+A.1 BayMOTH Pseudo Code Algorithm 1 BAY MOTH 
+
+Require: Meta-training datasets Dmeta-train = {D χ}τχ=1 ; greedy balancing parameter α; correlation threshold γ; kernel k(·, ·) and GP hyperparameters θ; unseen-task history H0 = ∅; domain 
+
+x ∈ D; optimization routine over x; sample budget T . 
+
+> 1:
+
+alternative virtual environments: For each χ ∈ { 1, . . . , τ } fit GP χ using Dχ. 
+
+> 2:
+
+for t = 1 , 2, . . . , T do  
+
+> 3:
+
+Fit target surrogate: Fit GP t on Ht = {(xi, f (xi)}ti=1 using (k, θ ). 
+
+> 4:
+
+Compute predictive mean μt(·) from GP t. 
+
+> 5:
+
+Construct virtual histories and select closest task:  
+
+> 6:
+
+for χ = 1 , 2, . . . , τ do  
+
+> 7:
+
+Form virtual history ˜Hχt = {(xi, ˜fχ(xi)}ti=1 with ˜fχ = μχ(xi) from GP χ. 
+
+> 8:
+
+Fit auxiliary ˜GP χ,t on ˜Hχt using the same (k, θ ). 
+
+> 9:
+
+Compute predictive mean ˜μχ,t (·) from ˜GP χ,t . 
+
+> 10:
+
+Compute similarity score 
+
+Sχ,t ← NCC( μt, ˜μχ,t ) 
+
+> 11:
+
+end for  
+
+> 12:
+
+Sample selection:  
+
+> 13:
+
+if max χ∈{ 1,...,τ } Sχ,t > γ then ▷ correlation threshold γ 
+
+> 14:
+
+χ⋆ ← arg max χ∈{ 1,...,τ } Sχ,t . 
+
+> 15:
+
+Compute xt+1 using optimization routine:  
+
+> 16:
+
+xt+1 ← arg max xt+1 
+
+h
+
+Λ0(xt+1 ) + EGP χ⋆
+
+h
+
+(1 − α) max xt+2 Λ1(xt+2 ) + αΩ
+
+ii 
+
+▷πBayMOTH  
+
+> 17:
+
+else  
+
+> 18:
+
+Compute xt+1 using optimization routine:  
+
+> 19:
+
+xt+1 ← arg max xt+1 
+
+h
+
+Λ0(xt+1 ) + EGP t
+
+h
+
+max xt+2 Λ1(xt+2 )
+
+ii 
+
+▷ fallback  
+
+> 20:
+
+end if  
+
+> 21:
+
+Evaluate the true objective: ft+1 ← f (xt+1 ). 
+
+> 22:
+
+Update history: Ht+1 ← H t ∪ { (xt+1 , f t+1 )}. 
+
+> 23:
+
+end for A.2 Proof of Properties of the Monte Carlo Estimator 
+
+Consider the second term in Eq.1, also shown below 
+
+J(ω) = Eω∼GP χ∗ [Z(ω)] , Z(ω) = (1 − α) max 
+
+> xt+2
+
+Λ1(xt+2 ; ω) + αΩ( ω)
+
+to approximate J we draw M iid samples ω(1) , ω (2) , . . . , ω (M ) ∼ GP χ∗ and compute the estimator 
+
+ˆJM = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Z(m), Z(m) = Z(ω(m))
+
+The statistical guarantees for ˆJM are outlined below. 15 Estimator is unbiased: 
+
+E[ ˆJM ] = E
+
+"
+
+1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Z(m)
+
+#
+
+= 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+E[Z(m)] (linearity of expectation) 
+
+= 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+E[Z] (Z(1) , . . . , Z(M ) identically distributed) 
+
+= 1
+
+M M E[Z]= E[Z] .
+
+Estimator variance: 
+
+V[ ˆJM ] = E[ ˆJ2 
+
+> M
+
+] − E[ ˆJM ]2
+
+= E
+
+h 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Z(m)2i
+
+− E[Z]2
+
+= E
+
+h 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+
+(Z(m))2 + 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+> M
+
+X 
+
+> k=1 ,k ̸=m
+
+Z(m)Z(k)i
+
+− E[Z]2
+
+= 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+
+E[( Z(m))2] + 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+> M
+
+X 
+
+> k=1 ,k ̸=m
+
+E[Z(m)Z(k)] − E[Z]2
+
+= 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+
+E[( Z(m))2] + 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+> M
+
+X 
+
+> k=1 ,k ̸=m
+
+E[Z(m)]E[Z(k)] − E[Z]2
+
+= 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+
+E[Z2] + 1
+
+M 2
+
+> M
+
+X
+
+> m=1
+> M
+
+X 
+
+> k=1 ,k ̸=m
+
+E[Z]E[Z] − E[Z]2
+
+= 1
+
+M 2 M ∗ E[Z2] + 1
+
+M 2 M (M − 1) E[Z]2 − E[Z]2
+
+= 1
+
+M E[Z2] − 1
+
+M E[Z]2
+
+= σ2
+
+M
+
+16 A.3 Proofs 
+
+Proof sketch of Proposition 1. Let GT denote the event that, for every round t ≤ T , BayMOTH agrees with the oracle branch decision We first work on the event GT .Fix a round t. Since gt = g† 
+
+> t
+
+on GT , there are two cases. If g† 
+
+> t
+
+= 0 , both BayMOTH and the oracle comparator optimize the same fallback acquisition A2OPT  
+
+> t
+
+,and hence there is no acquisition discrepancy at round t.If g† 
+
+> t
+
+= 1 , both procedures use the meta branch, and the discrepancy can be decomposed as 
+
+ˆABM  
+
+> t
+
+(x) − A† 
+
+> t
+
+(x) =   ˆABM  
+
+> t
+
+(x) − Ameta ,⋆ t (x)| {z }
+
+> Monte Carlo error
+
++  Ameta ,⋆ t (x) − Ameta ,† 
+
+> t
+
+(x)| {z }
+
+> virtual-environment mismatch
+
+.
+
+Under Assumption 3, 
+
+sup 
+
+> x∈X t
+
+Ameta ,⋆ t (x) − Ameta ,† 
+
+> t
+
+(x) ≤ ηt.
+
+For the Monte Carlo term, Assumption 4 and Chebyshev’s inequality imply that for each fixed 
+
+x ∈ X t,
+
+Pr 
+
+
+
+| ˆJt,M (x) − Jmeta ,⋆ t (x)| ≥ σt
+
+√M δ t
+
+
+
+≤ δt.
+
+Equivalently, for each fixed x ∈ X t, with probability at least 1 − δt,
+
+| ˆJt,M (x) − Jmeta ,⋆ t (x)| ≤ σt
+
+√M δ t
+
+.
+
+Now define the bad event 
+
+Bt := 
+
+
+
+∃x ∈ X t : | ˆJt,M (x) − Jmeta ,⋆ t (x)| > σt
+
+√M δ t
+
+
+
+.
+
+By the union bound, 
+
+Pr( Bt) ≤ X
+
+> x∈X t
+
+Pr 
+
+
+
+| ˆJt,M (x) − Jmeta ,⋆ t (x)| > σt
+
+√M δ t
+
+
+
+≤ |X t| δt.
+
+Hence, with probability at least 1 − |X t|δt,
+
+∀x ∈ X t, | ˆJt,M (x) − Jmeta ,⋆ t (x)| ≤ σt
+
+√M δ t
+
+.
+
+Since the Monte Carlo approximation enters through the acquisition, this implies 
+
+sup 
+
+> x∈X t
+
+ˆABM  
+
+> t
+
+(x) − Ameta ,⋆ t (x) ≤ σt
+
+√M δ t
+
+.
+
+Therefore, on GT ,
+
+sup 
+
+> x∈X t
+
+ˆABM  
+
+> t
+
+(x)−A† 
+
+> t
+
+(x) ≤ sup 
+
+> x∈X t
+
+ˆABM  
+
+> t
+
+(x)−Ameta ,⋆ t (x) + sup 
+
+> x∈X t
+
+Ameta ,⋆ t (x)−Ameta ,† 
+
+> t
+
+(x) ≤ ηt+ σt
+
+√M δ t
+
+.
+
+Multiplying by g† 
+
+> t
+
+makes the bound valid uniformly over both fallback and meta rounds: 
+
+sup 
+
+> x∈X t
+
+ˆABM  
+
+> t
+
+(x) − A† 
+
+> t
+
+(x) ≤ g†
+
+> t
+
+
+
+ηt + σt
+
+√M δ t
+
+
+
+.
+
+Assumption 5 then transfers this to an objective-value difference: 
+
+f (x† 
+
+> t
+
+) − f (xBM  
+
+> t
+
+) ≤ g† 
+
+> t
+
+Lt
+
+
+
+ηt + σt
+
+√M δ t
+
+
+
+.
+
+17 Since simple regret depends on the best value attained over all rounds, we obtain on GT
+
+rBM  
+
+> T
+
+≤ r† 
+
+> T
+
++ max  
+
+> 1≤t≤T
+
+g† 
+
+> t
+
+Lt
+
+
+
+ηt + σt
+
+√M δ t
+
+
+
+.
+
+Finally, by Assumption 2 and a union bound over rounds, 
+
+Pr( GcT ) ≤
+
+> T
+
+X
+
+> t=1
+
+|X t|δt +
+
+> T
+
+X
+
+> t=1
+
+pt,
+
+which gives the stated high-probability bound. For the expectation bound, decompose over GT and GcT . On GT , the above regret bound holds. On 
+
+GcT , Assumption 1 gives the crude bound rBM  
+
+> T
+
+≤ B. This yields 
+
+E[rBM  
+
+> T
+
+] ≤ E[r† 
+
+> T
+
+] + max  
+
+> 1≤t≤T
+
+g† 
+
+> t
+
+Lt
+
+
+
+ηt + σt
+
+√M δ t
+
+
+
++ B
+
+> T
+
+X
+
+> t=1
+
+|X t|δt +
+
+> T
+
+X
+
+> t=1
+
+pt
+
+!
+
+.
+
+18 A.4 Ablation on γ
+
+Figure 4: Set 1 (highest NCC in set ≈ 0.85) trajectory and source-task usage across γ values. 
+
+Figure 5: Set 2 (highest NCC in set ≈ 0.60) trajectory and source-task usage across γ values. This ablation studies the effect of the NCC threshold γ, which controls the extent to which BayMOTH relies on source task transfer, we sweep γ and record the distribution of selected source tasks, measured as the percentage of total optimization steps, across randomly initialized runs. The results show that when γ is below the NCC value of the most correlated source task, the optimization trajectory remains largely unchanged. This is consistent with the source task usage distributions, which are also nearly identical across these settings. Once γ exceeds the NCC of the most correlated source task, however, the method enters a weak-transfer regime: usage of the highest-NCC source task drops substantially, and BayMOTH increasingly selects no source task as 
+
+γ → 1.On the high-relatedness set, increasing γ from 0.8 to 1.0 slows the initial reduction in regret, while leaving the final regret essentially unchanged. This behavior is consistent with the corresponding shift in source-task usage, from predominantly selecting source task 1 and source task 3 to predominantly selecting no source task. On the low-relatedness set, the γ = 1 .0 setting also yields a noticeably slower initial reduction in regret than the other threshold values, but achieves the best final performance, with regret approximately 2% lower than the other settings. Overall, this ablation characterizes the behavior of BayMOTH with usage of source tasks across the spectrum from strong transfer to near always-fallback behavior. 19 Figure 6: Set 3 (highest NCC in set ≈ 0.82) trajectory and source-task usage across γ values. 
+
+Figure 7: Set 4 (highest NCC in set ≈ 0.10) trajectory and source-task usage across γ values. 
+
+A.5 Ablation on estimator number of samples M 
+
+Here, we investigate the effect of the sampling number for the Monte Carlo estimator of the expec-tation term in Equation 1. We find that BayMOTH is only weakly sensitive to the choice of M on Set 1 of the synthetic ICF dataset. As is shown in Figure 8, increasing M beyond M=1 yields only marginal performance improvements, with M=10 performing the best, without a clear monotonic trend. This behavior is consistent with the chosen GP χ∗ posterior being well-constrained in our experimental settings. Consequently, the estimator variance is small and a modest number of samples is sufficient. We anticipate that the dependence on M would become more pronounced in settings where the posterior variance of GP χ∗ is larger, such as under severe data sparsity, higher-dimensional domains, or strongly misspecified kernels, where additional samples may be required to stabilize the estimator. We anticipate the M number to be treated as a hyperparameter which can be tuned using the training/validation tasks for a specific problem domain. 
+
+A.6 Ablation on α
+
+Here, again using set 1 from the ICF datasets, we study the effect of the greedy balancing parameter 
+
+α that controls the relative weighting between the immediate greedy improvement term and the meta-informed lookahead term in BayMOTH’s policy. Several observations emerge. First, even for 
+
+α = 0 which corresponds to pure horizon planning under GP χ∗ , BayMOTH outperforms the 2-OPT baseline during the initial 5 sample steps (approx. 10% difference at sample step 3). In the domain of ICF experiments this is significant as sample evaluation costs are extremely high (500k USD - 1M USD per sample). This indicates that incorporating meta-information into Λ1 provides a meaningful advantage in meta-BO settings even in the absence of the greedy improvement term. At the same time, intermediate values of α (specifically α ∈ { 0.25 , 0.5}) yield the strongest overall performance 20 Figure 8: Scan on the number of samples for the Monte Carlo estimator, using set 1 of the synthetic ICF dataset. Shown is <> line and ±σ shaded region over 30 randomly initialized starting locations. 
+
+Figure 9: Ablation on the greedy balancing parameter α. Shown is <> line and ±σ shaded region over 30 randomly initialized starting locations. and exhibit comparable behavior, suggesting that jointly leveraging both immediate and lookahead components is beneficial. While α = 1 , which places full emphasis on the immediate greedy improvement term, still improves upon α = 0 , it slightly under-performs relative to intermediate settings. This pattern indicates that neither component alone is sufficient to fully capture the benefits of the policy; rather, their combination provides a more effective balance between short-horizon planning and meta-informed greedy exploitation. Therefore, the greedy balancing parameter should be treated as hyperparameter by a user and based on the nature of the problem domain and goals should be tuned. 
+
+A.7 Computational cost analysis 
+
+BayMOTH is not intended to reduce computational cost on a per-decision basis relative to offline-trained meta-BO methods. Instead, it makes a different computational tradeoff: rather than incurring the complexity of offline RL-based meta-training, it shifts computation to online planning within a simple and interpretable framework. Its intended advantage is therefore not lower proposal-time cost, but algorithmic simplicity, explicit decision logic, and the avoidance of a separate offline 21 Table 1: High-level computational cost profile of BayMOTH and offline-trained baselines. Method Cost profile BayMOTH Offline source task GP meta-training (cheap ≈ 40s); primary computational cost is paid online during proposal generation. MetaBO Main cost is offline PPO training; approximately 4 hours for 2000 PPO iterations. NAP Main cost is offline PPO training; approximately 11 hours for 2000 PPO iterations. Table 2: Profiling-based breakdown of BayMOTH proposal-time cost on ranger9 (d = 10 ). BayMOTH stage Frequency Share of proposal time Avg per call Meaning Source-task GP training once N/A 40.00 s One-time offline training. Comparison GP update once after observation N/A 0.234 s Online overhead outside the proposer. Proposal optimization once per suggestion 100.00% 44.84 s Full online proposal cost. BayMOTH acquisition evaluation inside L-BFGS-B 98.66% 145.85 ms Nearly all proposal-time computation is spent here. Horizon-step simulation once per acquisition evaluation 97.99% 144.85 ms Main bottleneck. Future EI (inside horizon) M times per acquisition evaluation 72.17% 21.34 ms Repeated future-EI computation dominates the inner loop. Current EI (outside horizon) once per acquisition evaluation 0.67% 0.99 ms Negligible contribution. Selection + NCC + optimizer orchestration once per suggestion 1.34% 0.60 s Upper bound on source selection and orchestration overhead. policy-training phase. In the settings considered in this paper, this tradeoff is favorable for the reasons discussed in the main text. To make this tradeoff explicit, we compare the offline RL meta-training cost of MetaBO and NAP against BayMOTH’s online cost on the ranger9 test problem ( d = 10 ), and additionally provide a profiling-based breakdown of BayMOTH’s internal runtime components. In our implementation, the source-task GPs are fit once offline, while the comparison GPs used for virtual-environment selection are updated after each real observation. At proposal time, source-task selection itself is lightweight and requires only NCC scoring across candidate source tasks. The dominant computational cost does not arise from this GP-based selection mechanism, but from the nested two-step acquisition optimization used to generate each proposal. Specifically, each proposal is obtained using multi-restart L-BFGS-B optimization (3 restarts, up to 100 iterations per restart). Each acquisition evaluation then performs a horizon-step simulation, which, over M Monte Carlo samples, requires future-GP fitting and future-EI evaluation. As a result, BayMOTH’s runtime is driven primarily by the 2-OPT-style horizon-planning term rather than by the transfer-selection stage itself. Overall, these results show that BayMOTH’s computational overhead is dominated by explicit online lookahead planning, not by the GP-based source-task selection mechanism. In particular, the overwhelming majority of proposal-time cost is spent inside acquisition evaluation and horizon-step 22 simulation, while source-task selection and orchestration contribute only a small fraction of runtime. This makes the computational tradeoff clear: BayMOTH avoids offline RL meta-training, but pays for this simplicity through a more expensive online planning step. 
+
+Computational resources. All experiments were conducted on a single workstation with an NVIDIA Quadro RTX 6000 GPU and an Intel(R) Xeon(R) W-2125 CPU @ 4.00GHz. 
+
+# B Additional experimental details 
+
+B.1 Synthetic ICF experiments 
+
+For the synthetic ICF experiments, the optimization is done with respect to parameters x1 and x2.These parameters correspond to features of laser pulse shape design, which along with a target specification make up the explicit inputs ( ≈ 20 D ) for an ICF implosion. A number of performance metrics Betti et al. (2010, 2015); Christopherson et al. (2018, 2020) have been devised to asses the quality of an implosion. The response of the performance metric with respect to [x1, x2] is the focus of these optimization experiments. The parameters [x1, x2] are consequential for performance through non-linear 1D and 3D physics effects, which are studied by using physics simulation codes such as LILAC Delettrez et al. (1987), DRACO Radha et al. (2005) and statistical models Gopalaswamy et al. (2019); Lees et al. (2021, 2025). However, as simplifying assumptions and reduced order modeling methodologies are employed in the simulations and models, the true response of performance w.r.t x1
+
+and x2 is potentially not captured, which contributes to the lack of a priori predictive ability. The model inaccuracies could mean the value of their prior information could be limited, motivating the use of BayMOTH. For constructing source tasks, the physics models are varied in the physics simulator along with the coefficients of the 3D degradation model of Lees et al. (2021) which is convolved with the simulation to produce a response function. This results in varied shock-timing Craxton et al. (2015) from the front end of the pulse ( x1 and x2 are part of the front end) resulting in a non-ideal variation of the entropy profile in the fusion fuel Anderson (2006) and consequently effecting the performance Lees et al. (2025). Using this procedure, a total of 11 response functions were generated. We consider four distinct source-test task combinations for the experiments, these are shown in Figures 10. The four source-test task configurations are constructed to exhibit progressively increasing distributional shift between the test task and the source tasks, with the lowest shift setting corresponding to the configuration with the highest average positive NCC, and subsequent settings defined by decreasing average positive correlation. These experiments are designed to span scenarios ranging from cases in which the source tasks (i.e., physics-based models) accurately capture the experimental response to regimes in which these models are increasingly misaligned with, or fail to represent, the true response, and as such these experiments probe the robustness of the BO methods when the assumed physics-based models progressively diverge from the true experimental response. Additionally, these experiments assess sample efficiency in realistic settings where a candidate physics-based response is provided as a source task, but its validity with respect to the true experimental response is unknown a priori. 23 (a) Set 1: High relatedness 
+
+(b) Set 2: Medium relatedness Figure 10: Source/test tasks across relatedness settings. (a) Set 1: High relatedness. (b) Set 2: Medium relatedness. (c) Set 3: Moderate relatedness. (d) Set 4: Low relatedness. 24 (c) Set 3: Moderate relatedness 
+
+(d) Set 4: Low relatedness Figure 10: Source/test tasks across relatedness settings (continued). 25 Figure 11: Source task pool sensitivity studies on test task performance (Set 1 test task). Shown is 
+
+<> line and ±σ shaded region over 100 randomly initialized starting locations. 
+
+Figure 12: Source task pool sensitivity studies on test task performance (Set 4 test task). Shown is 
+
+<> line and ±σ shaded region over 100 randomly initialized starting locations. 
+
+B.2 Source Tasks Sensitivity 
+
+In Sections 4.1 and B.1 we describe the four source–test configurations (Sets 1–4), each specifying a test task and an associated pool of source tasks. Using those sets we additionally probe the sensitivity to the choice of source-task pool which is used for meta-training while holding the test task fixed for the meta-BO approaches, MetaBO, NAP and BayMOTH. We consider two target instances: (i) the test task from Set 1 is used and (ii) the test task from Set 4 is used. For each fixed target, we alternate the source-task pools from Sets 1–4, one pool at a time, without modifying their composition. Since these source pools are reused “as is,” there are three configurations in which the fixed test task appears among the selected source tasks i.e. when source tasks from set 2,3,4 are used in set 1 test task case and when source tasks from set 1,2,3 are used in set 4 test task case. This setup enables us to understand how performance depends on source pool selection and if the meta-BO methods can tightly leverage the specific information needed (presented during meta-training) for enabling rapid optimization. MetaBO exhibits low sensitivity to the choice of source pool, as evidenced in Figures 11 and 12. The optimization trajectories show little variation across source-task configurations, suggesting robustness to source-task choice. However, it also indicates that MetaBO is less capable of learning sophisticated sampling policies that can accelerate optimization. NAP shows more variation in its trajectories indicating it is more sensitive to the choice of source pool. As seen in Figure 11, in instances when the test task is including in the source pool, rapid reduction in regret occurs, indicating that NAP is effective in recognizing relevant meta-training information and utilizing it. However, Figure 12 shows that even when the test task is included in the source pool, NAP fails to reach the optimum. We 26 (a) Convergence study over PPO iterations for NAP. Curves show the mean trajectory, with shaded regions indicating ±1 standard deviation over 100 randomly initialized starting locations.         
+
+> (b) Convergence study over PPO iterations for MetaBO. Curves show the mean trajectory, with shaded regions indicating ±1standard deviation over 100 randomly initialized starting locations.
+
+Figure 13: Convergence study over PPO iterations using Set 2 of the ICF dataset. hypothesize that this arises because the trajectory rollouts from NAP’s learned policy are dominated by the overall source pool distribution. In the case of using the set 4 test task, the average similarity between the source tasks and the test task remains low, and therefore, the learned policy generates poor samples, even if highly relevant meta-training information is present. By contrast, BayMOTH maintains low regret across all source-pool configurations, with a discernible performance gain observed when the test task is included in the source pool. This behavior is expected as BayMOTH’s protocol for gating to the pertinent alternative virtual environment allows it to make direct use of the relevant meta-information. In this setting, BayMOTH’s performance exhibits minimal sensitivity to the choice of source pool, provided that the test task is included. 
+
+B.3 Model Hyperparameters 
+
+Here, we provide the associated hyperparameters used for the different models. Any additional details are present in the provided code repository. All hyperparameters were kept the same for all experiments. Minimal manual tuning was done for selection. The hyperparameters for MetaBO and NAP, were taken from their respective codebases, and the implementation from the NAP repository (https://github.com/huawei-noah/HEBO/tree/master/NAP) was used. The only change we make to the training configuration of MetaBO and NAP is for the synthetic ICF experiments, where we reduce the number of training PPO iterations to 500 due to computational resource limitations. However, we first conducted a convergence study on any changes to the optimization trajectory using set 2 of the ICF dataset. We found no meaningful difference between 500 PPO iterations vs more PPO iterations, we show evidence for this in Figure 13. 27 Table 3: BayMOTH configuration. 
+
+BayMOTH 
+
+Λ0 GP kernel RBF 
+
+Λ0 GP kernel length-scale 0.05*4 
+
+Λ1 GP kernel RBF 
+
+Λ1 GP kernel length-scale 0.05 
+
+GP χ kernel RBF 
+
+GP χ kernel length-scale 0.05 
+
+˜GP χ Kernel RBF 
+
+˜GP χ Kernel length-scale 0.05*4 Estimator number of samples M 5greedy balancing parameter α 0.5 Observation noise 10 −6
+
+Correlation threshold γ 0.7 Input normalization [0 , 1] d
+
+Table 4: 2-OPT configuration. 
+
+2-OPT 
+
+Λ0 GP kernel RBF 
+
+Λ0 GP kernel length-scale 0.05*4 
+
+Λ1 GP kernel RBF 
+
+Λ1 GP kernel length-scale 0.05 Estimator number of samples M 5Input normalization [0 , 1] d
+
+Table 5: GPBO-EI configuration. 
+
+GPBO-EI 
+
+Λ0 GP kernel RBF 
+
+Λ0 GP kernel length-scale 0.05*4 Input normalization [0 , 1] d
+
+28
