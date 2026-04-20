@@ -6,35 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-19
-- 运行时间：2026-04-19 19:41:18 UTC
+- 最新运行日期：2026-04-20
+- 运行时间：2026-04-20 20:05:39 UTC
 - 运行状态：成功
-- 本次总论文数：4
-- 精读区：0
-- 速读区：4
+- 本次总论文数：5
+- 精读区：3
+- 速读区：2
 
 ### 今日简报（AI）
-今日聚焦大模型多模态感知与推理优化，涵盖音频细粒度时间感知及无线网络下的高效微调方案。
-重点关注通过音频侧时间提示增强模型的时间感知力，以及利用零阶优化技术一举解决无线微调中的通信、内存与隐私难题。
-建议关注多模态时序理解的开发者深入研究音频提示技术，以提升复杂场景下的交互精度。
-- 详情：[/202604/19/README](/202604/19/README)
+今日深度解析 5 篇前沿论文，聚焦 3D 视觉语言模型与智能体技能优化的核心突破。
+重点关注 P3T 协议如何通过点级提示增强 3D 泛化，以及 MCTS 在智能体技能双层优化中的创新应用。
+建议优先研读这两篇 9 分佳作，快速掌握 3D 感知与自主决策领域的最新技术范式。
+- 详情：[/202604/20/README](/202604/20/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [P3T: Prototypical Point-level Prompt Tuning with Enhanced Generalization for 3D Vision-Language Models](/202604/20/2604.15703v1-p3t-prototypical-point-level-prompt-tuning-with-enhanced-generalization-for-3d-vision-language-models)  
+   标签：评分：9.0/10、query:bopl
+   evidence：针对3D视觉语言模型的参数高效提示微调
+2. [Bilevel Optimization of Agent Skills via Monte Carlo Tree Search](/202604/20/2604.15709v1-bilevel-optimization-of-agent-skills-via-monte-carlo-tree-search)  
+   标签：评分：9.0/10、query:bopl
+   evidence：智能体技能与指令的双层优化
+3. [SCHK-HTC: Sibling Contrastive Learning with Hierarchical Knowledge-Aware Prompt Tuning for Hierarchical Text Classification](/202604/20/2604.15998v1-schk-htc-sibling-contrastive-learning-with-hierarchical-knowledge-aware-prompt-tuning-for-hierarchical-text-classification)  
+   标签：评分：8.0/10、query:bopl
+   evidence：层次化知识感知提示微调
 
 ### 速读区论文标签
-1. [Towards Fine-grained Temporal Perception: Post-Training Large Audio-Language Models with Audio-Side Time Prompt](/202604/19/2604.13715v1-towards-fine-grained-temporal-perception-post-training-large-audio-language-models-with-audio-side-time-prompt)  
+1. [AtManRL: Towards Faithful Reasoning via Differentiable Attention Saliency](/202604/20/2604.16158v1-atmanrl-towards-faithful-reasoning-via-differentiable-attention-saliency)  
    标签：评分：7.0/10、query:bopl
-   evidence：音频语言模型的音频侧时间提示
-2. [CHAIRO: Contextual Hierarchical Analogical Induction and Reasoning Optimization for LLMs](/202604/19/2604.10502v1-chairo-contextual-hierarchical-analogical-induction-and-reasoning-optimization-for-llms)  
+   evidence：用于推理的可微注意力操作
+2. [Prompt-Driven Code Summarization: A Systematic Literature Review](/202604/20/2604.15385v1-prompt-driven-code-summarization-a-systematic-literature-review)  
    标签：评分：6.0/10、query:bopl
-   evidence：类比检索与规则生成的优化
-3. [Three Birds, One Stone: Solving the Communication-Memory-Privacy Trilemma in LLM Fine-tuning Over Wireless Networks with Zeroth-Order Optimization](/202604/19/2604.12401v1-three-birds-one-stone-solving-the-communication-memory-privacy-trilemma-in-llm-fine-tuning-over-wireless-networks-with-zeroth-order-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于大语言模型微调的零阶优化
-4. [A Noise Tolerant SQP Algorithm for Inequality Constrained Optimization](/202604/19/2604.14368v1-a-noise-tolerant-sqp-algorithm-for-inequality-constrained-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：含噪声约束优化的SQP算法
+   evidence：代码摘要生成中提示工程的系统性综述
 
 
 <div class="dpr-home-promo-card">
