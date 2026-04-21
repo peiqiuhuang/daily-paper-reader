@@ -6,37 +6,67 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-20
-- 运行时间：2026-04-20 20:05:39 UTC
+- 最新运行日期：2026-04-21
+- 运行时间：2026-04-21 20:45:42 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：3
-- 速读区：2
+- 本次总论文数：15
+- 精读区：5
+- 速读区：10
 
 ### 今日简报（AI）
-今日深度解析 5 篇前沿论文，聚焦 3D 视觉语言模型与智能体技能优化的核心突破。
-重点关注 P3T 协议如何通过点级提示增强 3D 泛化，以及 MCTS 在智能体技能双层优化中的创新应用。
-建议优先研读这两篇 9 分佳作，快速掌握 3D 感知与自主决策领域的最新技术范式。
-- 详情：[/202604/20/README](/202604/20/README)
+今日精选 15 篇前沿论文，深度解析检索增强软提示与结构化模型编译等核心突破。
+RASP-Tuner 凭借检索增强技术攻克了非平稳环境下的黑盒优化难题，结构化编译则显著增强了小模型的输出确定性。
+建议重点关注提示词工程从“固定模板”向“自适应路由”与“动态检索增强”演进的技术趋势。
+- 详情：[/202604/21/README](/202604/21/README)
 
 ### 精读区论文标签
-1. [P3T: Prototypical Point-level Prompt Tuning with Enhanced Generalization for 3D Vision-Language Models](/202604/20/2604.15703v1-p3t-prototypical-point-level-prompt-tuning-with-enhanced-generalization-for-3d-vision-language-models)  
+1. [RASP-Tuner: Retrieval-Augmented Soft Prompts for Context-Aware Black-Box Optimization in Non-Stationary Environments](/202604/21/2604.18026v1-rasp-tuner-retrieval-augmented-soft-prompts-for-context-aware-black-box-optimization-in-non-stationary-environments)  
    标签：评分：9.0/10、query:bopl
-   evidence：针对3D视觉语言模型的参数高效提示微调
-2. [Bilevel Optimization of Agent Skills via Monte Carlo Tree Search](/202604/20/2604.15709v1-bilevel-optimization-of-agent-skills-via-monte-carlo-tree-search)  
-   标签：评分：9.0/10、query:bopl
-   evidence：智能体技能与指令的双层优化
-3. [SCHK-HTC: Sibling Contrastive Learning with Hierarchical Knowledge-Aware Prompt Tuning for Hierarchical Text Classification](/202604/20/2604.15998v1-schk-htc-sibling-contrastive-learning-with-hierarchical-knowledge-aware-prompt-tuning-for-hierarchical-text-classification)  
+   evidence：用于黑盒优化的检索增强软提示
+2. [Compiling Deterministic Structure into SLM Harnesses](/202604/21/2604.17450v1-compiling-deterministic-structure-into-slm-harnesses)  
    标签：评分：8.0/10、query:bopl
-   evidence：层次化知识感知提示微调
+   evidence：通过语义梯度迭代优化系统提示
+3. [BioVLM: Routing Prompts, Not Parameters, for Cross-Modality Generalization in Biomedical VLMs](/202604/21/2604.17629v1-biovlm-routing-prompts-not-parameters-for-cross-modality-generalization-in-biomedical-vlms)  
+   标签：评分：8.0/10、query:bopl
+   evidence：带有动态提示词选择的提示词学习框架
+4. [RePrompT: Recurrent Prompt Tuning for Integrating Structured EHR Encoders with Large Language Models](/202604/21/2604.17725v1-reprompt-recurrent-prompt-tuning-for-integrating-structured-ehr-encoders-with-large-language-models)  
+   标签：评分：8.0/10、query:bopl
+   evidence：针对结构化数据的循环提示词微调
+5. [Enhancing Continual Learning of Vision-Language Models via Dynamic Prefix Weighting](/202604/21/2604.18075v1-enhancing-continual-learning-of-vision-language-models-via-dynamic-prefix-weighting)  
+   标签：评分：8.0/10、query:bopl
+   evidence：具有动态权重的参数高效前缀微调
 
 ### 速读区论文标签
-1. [AtManRL: Towards Faithful Reasoning via Differentiable Attention Saliency](/202604/20/2604.16158v1-atmanrl-towards-faithful-reasoning-via-differentiable-attention-saliency)  
+1. [No One Fits All: From Fixed Prompting to Learned Routing in Multilingual LLMs](/202604/21/2604.16937v1-no-one-fits-all-from-fixed-prompting-to-learned-routing-in-multilingual-llms)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于推理的可微注意力操作
-2. [Prompt-Driven Code Summarization: A Systematic Literature Review](/202604/20/2604.15385v1-prompt-driven-code-summarization-a-systematic-literature-review)  
+   evidence：提示策略选择的学习决策问题
+2. [From Adaptation to Generalization: Adaptive Visual Prompting for Medical Image Segmentation](/202604/21/2604.17455v1-from-adaptation-to-generalization-adaptive-visual-prompting-for-medical-image-segmentation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于模型适配的自适应视觉提示
+3. [MAPLE: A Meta-learning Framework for Cross-Prompt Essay Scoring](/202604/21/2604.17569v1-maple-a-meta-learning-framework-for-cross-prompt-essay-scoring)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于跨提示文章评分的元学习框架
+4. [Semantic Density Effect (SDE): Maximizing Information Per Token Improves LLM Accuracy](/202604/21/2604.17659v1-semantic-density-effect-sde-maximizing-information-per-token-improves-llm-accuracy)  
+   标签：评分：7.0/10、query:bopl
+   evidence：通过最大化语义密度进行提示词优化
+5. [Long-Text-to-Image Generation via Compositional Prompt Decomposition](/202604/21/2604.18258v1-long-text-to-image-generation-via-compositional-prompt-decomposition)  
+   标签：评分：7.0/10、query:bopl
+   evidence：文生图任务中的组合式提示分解
+6. [Spike-NVPT: Learning Robust Visual Prompts via Bio-Inspired Temporal Filtering and Discretization](/202604/21/2604.18284v1-spike-nvpt-learning-robust-visual-prompts-via-bio-inspired-temporal-filtering-and-discretization)  
+   标签：评分：7.0/10、query:bopl
+   evidence：参数高效的视觉提示微调
+7. [Understanding the Prompt Sensitivity](/202604/21/2604.18389v1-understanding-the-prompt-sensitivity)  
+   标签：评分：7.0/10、query:bopl
+   evidence：利用梯度和泰勒展开分析提示敏感性
+8. [Learning to Adapt: In-Context Learning Beyond Stationarity](/202604/21/2604.10946v1-learning-to-adapt-in-context-learning-beyond-stationarity)  
    标签：评分：6.0/10、query:bopl
-   evidence：代码摘要生成中提示工程的系统性综述
+   evidence：通过提示进行上下文学习的理论分析
+9. [Peer-Predictive Self-Training for Language Model Reasoning](/202604/21/2604.13356v1-peer-predictive-self-training-for-language-model-reasoning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：使用提示问题的语言模型推理自训练框架
+10. [TLoRA: Task-aware Low Rank Adaptation of Large Language Models](/202604/21/2604.18124v1-tlora-task-aware-low-rank-adaptation-of-large-language-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：联合优化 LoRA 中的资源分配
 
 
 <div class="dpr-home-promo-card">
