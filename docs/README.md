@@ -6,67 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-21
-- 运行时间：2026-04-21 20:45:42 UTC
+- 最新运行日期：2026-04-22
+- 运行时间：2026-04-22 20:04:05 UTC
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：5
-- 速读区：10
+- 本次总论文数：9
+- 精读区：3
+- 速读区：6
 
 ### 今日简报（AI）
-今日精选 15 篇前沿论文，深度解析检索增强软提示与结构化模型编译等核心突破。
-RASP-Tuner 凭借检索增强技术攻克了非平稳环境下的黑盒优化难题，结构化编译则显著增强了小模型的输出确定性。
-建议重点关注提示词工程从“固定模板”向“自适应路由”与“动态检索增强”演进的技术趋势。
-- 详情：[/202604/21/README](/202604/21/README)
+今日聚焦大模型动态优化，深度解析 Agent 协作提示词增强与多语言路由新范式。
+Agent-GWO 以 9.0 高分领衔动态提示词优化，揭示了多语言模型从固定指令向学习路由进化的趋势。
+建议优先研读智能体驱动的提示词工程，并关注 PEFT 领域中参数重要性的动态演变。
+- 详情：[/202604/22/README](/202604/22/README)
 
 ### 精读区论文标签
-1. [RASP-Tuner: Retrieval-Augmented Soft Prompts for Context-Aware Black-Box Optimization in Non-Stationary Environments](/202604/21/2604.18026v1-rasp-tuner-retrieval-augmented-soft-prompts-for-context-aware-black-box-optimization-in-non-stationary-environments)  
+1. [Agent-GWO: Collaborative Agents for Dynamic Prompt Optimization in Large Language Models](/202604/22/2604.18612v1-agent-gwo-collaborative-agents-for-dynamic-prompt-optimization-in-large-language-models)  
    标签：评分：9.0/10、query:bopl
-   evidence：用于黑盒优化的检索增强软提示
-2. [Compiling Deterministic Structure into SLM Harnesses](/202604/21/2604.17450v1-compiling-deterministic-structure-into-slm-harnesses)  
+   evidence：同时优化提示词和超参数
+2. [No One Fits All: From Fixed Prompting to Learned Routing in Multilingual LLMs](/202604/22/2604.16937v2-no-one-fits-all-from-fixed-prompting-to-learned-routing-in-multilingual-llms)  
    标签：评分：8.0/10、query:bopl
-   evidence：通过语义梯度迭代优化系统提示
-3. [BioVLM: Routing Prompts, Not Parameters, for Cross-Modality Generalization in Biomedical VLMs](/202604/21/2604.17629v1-biovlm-routing-prompts-not-parameters-for-cross-modality-generalization-in-biomedical-vlms)  
+   evidence：将提示策略选择建模为学习决策问题
+3. [Model-Agnostic Meta Learning for Class Imbalance Adaptation](/202604/22/2604.18759v1-model-agnostic-meta-learning-for-class-imbalance-adaptation)  
    标签：评分：8.0/10、query:bopl
-   evidence：带有动态提示词选择的提示词学习框架
-4. [RePrompT: Recurrent Prompt Tuning for Integrating Structured EHR Encoders with Large Language Models](/202604/21/2604.17725v1-reprompt-recurrent-prompt-tuning-for-integrating-structured-ehr-encoders-with-large-language-models)  
-   标签：评分：8.0/10、query:bopl
-   evidence：针对结构化数据的循环提示词微调
-5. [Enhancing Continual Learning of Vision-Language Models via Dynamic Prefix Weighting](/202604/21/2604.18075v1-enhancing-continual-learning-of-vision-language-models-via-dynamic-prefix-weighting)  
-   标签：评分：8.0/10、query:bopl
-   evidence：具有动态权重的参数高效前缀微调
+   evidence：用于实例权重的双层优化
 
 ### 速读区论文标签
-1. [No One Fits All: From Fixed Prompting to Learned Routing in Multilingual LLMs](/202604/21/2604.16937v1-no-one-fits-all-from-fixed-prompting-to-learned-routing-in-multilingual-llms)  
+1. [ShadowPEFT: Shadow Network for Parameter-Efficient Fine-Tuning](/202604/22/2604.19254v1-shadowpeft-shadow-network-for-parameter-efficient-fine-tuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：提示策略选择的学习决策问题
-2. [From Adaptation to Generalization: Adaptive Visual Prompting for Medical Image Segmentation](/202604/21/2604.17455v1-from-adaptation-to-generalization-adaptive-visual-prompting-for-medical-image-segmentation)  
+   evidence：参数高效微调框架
+2. [Chat2Workflow: A Benchmark for Generating Executable Visual Workflows with Natural Language](/202604/22/2604.19667v1-chat2workflow-a-benchmark-for-generating-executable-visual-workflows-with-natural-language)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于模型适配的自适应视觉提示
-3. [MAPLE: A Meta-learning Framework for Cross-Prompt Essay Scoring](/202604/21/2604.17569v1-maple-a-meta-learning-framework-for-cross-prompt-essay-scoring)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于跨提示文章评分的元学习框架
-4. [Semantic Density Effect (SDE): Maximizing Information Per Token Improves LLM Accuracy](/202604/21/2604.17659v1-semantic-density-effect-sde-maximizing-information-per-token-improves-llm-accuracy)  
-   标签：评分：7.0/10、query:bopl
-   evidence：通过最大化语义密度进行提示词优化
-5. [Long-Text-to-Image Generation via Compositional Prompt Decomposition](/202604/21/2604.18258v1-long-text-to-image-generation-via-compositional-prompt-decomposition)  
-   标签：评分：7.0/10、query:bopl
-   evidence：文生图任务中的组合式提示分解
-6. [Spike-NVPT: Learning Robust Visual Prompts via Bio-Inspired Temporal Filtering and Discretization](/202604/21/2604.18284v1-spike-nvpt-learning-robust-visual-prompts-via-bio-inspired-temporal-filtering-and-discretization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：参数高效的视觉提示微调
-7. [Understanding the Prompt Sensitivity](/202604/21/2604.18389v1-understanding-the-prompt-sensitivity)  
-   标签：评分：7.0/10、query:bopl
-   evidence：利用梯度和泰勒展开分析提示敏感性
-8. [Learning to Adapt: In-Context Learning Beyond Stationarity](/202604/21/2604.10946v1-learning-to-adapt-in-context-learning-beyond-stationarity)  
+   evidence：自动化可执行视觉工作流的提示工程
+3. [Parameter Importance is Not Static: Evolving Parameter Isolation for Supervised Fine-Tuning](/202604/22/2604.14010v1-parameter-importance-is-not-static-evolving-parameter-isolation-for-supervised-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过提示进行上下文学习的理论分析
-9. [Peer-Predictive Self-Training for Language Model Reasoning](/202604/21/2604.13356v1-peer-predictive-self-training-for-language-model-reasoning)  
+   evidence：微调中的演化参数隔离
+4. [MCPO: Mastery-Consolidated Policy Optimization for Large Reasoning Models](/202604/22/2604.16972v1-mcpo-mastery-consolidated-policy-optimization-for-large-reasoning-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：使用提示问题的语言模型推理自训练框架
-10. [TLoRA: Task-aware Low Rank Adaptation of Large Language Models](/202604/21/2604.18124v1-tlora-task-aware-low-rank-adaptation-of-large-language-models)  
+   evidence：针对高准确率提示的策略优化
+5. [Prompt Sensitivity in Vision-Language Grounding: How Small Changes in Wording Affect Object Detection](/202604/22/2604.17126v1-prompt-sensitivity-in-vision-language-grounding-how-small-changes-in-wording-affect-object-detection)  
    标签：评分：6.0/10、query:bopl
-   evidence：联合优化 LoRA 中的资源分配
+   evidence：视觉语言模型中提示词敏感性与措辞影响分析
+6. [Universally Empowering Zeroth-Order Optimization via Adaptive Layer-wise Sampling](/202604/22/2604.18264v1-universally-empowering-zeroth-order-optimization-via-adaptive-layer-wise-sampling)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于大语言模型微调的零阶优化
 
 
 <div class="dpr-home-promo-card">
