@@ -6,49 +6,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-22
-- 运行时间：2026-04-22 20:04:05 UTC
+- 最新运行日期：2026-04-23
+- 运行时间：2026-04-23 20:16:09 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：3
-- 速读区：6
+- 本次总论文数：10
+- 精读区：6
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦大模型动态优化，深度解析 Agent 协作提示词增强与多语言路由新范式。
-Agent-GWO 以 9.0 高分领衔动态提示词优化，揭示了多语言模型从固定指令向学习路由进化的趋势。
-建议优先研读智能体驱动的提示词工程，并关注 PEFT 领域中参数重要性的动态演变。
-- 详情：[/202604/22/README](/202604/22/README)
+今日深度研读 10 篇 AI 论文，聚焦双层优化理论突破与法律问答的提示词工程优化。
+核心结论指出一阶双层极小极大算法具备强泛化性，且通过优化提示词可显著改善 LLM 在法律领域的评判偏差。
+建议关注 OOPrompt 等结构化提示词方法，将复杂意图转化为模块化构件以提升大模型交互效率。
+- 详情：[/202604/23/README](/202604/23/README)
 
 ### 精读区论文标签
-1. [Agent-GWO: Collaborative Agents for Dynamic Prompt Optimization in Large Language Models](/202604/22/2604.18612v1-agent-gwo-collaborative-agents-for-dynamic-prompt-optimization-in-large-language-models)  
+1. [On the Stability and Generalization of First-order Bilevel Minimax Optimization](/202604/23/2604.20115v1-on-the-stability-and-generalization-of-first-order-bilevel-minimax-optimization)  
    标签：评分：9.0/10、query:bopl
-   evidence：同时优化提示词和超参数
-2. [No One Fits All: From Fixed Prompting to Learned Routing in Multilingual LLMs](/202604/22/2604.16937v2-no-one-fits-all-from-fixed-prompting-to-learned-routing-in-multilingual-llms)  
+   evidence：一阶双层优化的泛化性分析
+2. [Exploiting LLM-as-a-Judge Disposition on Free Text Legal QA via Prompt Optimization](/202604/23/2604.20726v1-exploiting-llm-as-a-judge-disposition-on-free-text-legal-qa-via-prompt-optimization)  
+   标签：评分：9.0/10、query:bopl
+   evidence：使用ProTeGi方法进行自动任务提示优化
+3. [Evolvable Embodied Agent for Robotic Manipulation via Long Short-Term Reflection and Optimization](/202604/23/2604.13533v2-evolvable-embodied-agent-for-robotic-manipulation-via-long-short-term-reflection-and-optimization)  
    标签：评分：8.0/10、query:bopl
-   evidence：将提示策略选择建模为学习决策问题
-3. [Model-Agnostic Meta Learning for Class Imbalance Adaptation](/202604/22/2604.18759v1-model-agnostic-meta-learning-for-class-imbalance-adaptation)  
+   evidence：用于自我进化机器人的提示学习
+4. [JTPRO: A Joint Tool-Prompt Reflective Optimization Framework for Language Agents](/202604/23/2604.19821v1-jtpro-a-joint-tool-prompt-reflective-optimization-framework-for-language-agents)  
    标签：评分：8.0/10、query:bopl
-   evidence：用于实例权重的双层优化
+   evidence：提示词与工具模式的迭代协同优化
+5. [Meta Additive Model: Interpretable Sparse Learning With Auto Weighting](/202604/23/2604.20111v1-meta-additive-model-interpretable-sparse-learning-with-auto-weighting)  
+   标签：评分：8.0/10、query:bopl
+   evidence：提出一种基于双层优化框架的新型元加性模型
+6. [Learning to Evolve: A Self-Improving Framework for Multi-Agent Systems via Textual Parameter Graph Optimization](/202604/23/2604.20714v1-learning-to-evolve-a-self-improving-framework-for-multi-agent-systems-via-textual-parameter-graph-optimization)  
+   标签：评分：8.0/10、query:bopl
+   evidence：针对提示微调和智能体工程的自动优化方法
 
 ### 速读区论文标签
-1. [ShadowPEFT: Shadow Network for Parameter-Efficient Fine-Tuning](/202604/22/2604.19254v1-shadowpeft-shadow-network-for-parameter-efficient-fine-tuning)  
+1. [OOPrompt: Reifying Intents into Structured Artifacts for Modular and Iterative Prompting](/202604/23/2604.19114v1-ooprompt-reifying-intents-into-structured-artifacts-for-modular-and-iterative-prompting)  
    标签：评分：7.0/10、query:bopl
-   evidence：参数高效微调框架
-2. [Chat2Workflow: A Benchmark for Generating Executable Visual Workflows with Natural Language](/202604/22/2604.19667v1-chat2workflow-a-benchmark-for-generating-executable-visual-workflows-with-natural-language)  
+   evidence：面向对象的提示词工程，用于模块化和迭代提示
+2. [Meta-Tool: Efficient Few-Shot Tool Adaptation for Small Language Models](/202604/23/2604.20148v1-meta-tool-efficient-few-shot-tool-adaptation-for-small-language-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：自动化可执行视觉工作流的提示工程
-3. [Parameter Importance is Not Static: Evolving Parameter Isolation for Supervised Fine-Tuning](/202604/22/2604.14010v1-parameter-importance-is-not-static-evolving-parameter-isolation-for-supervised-fine-tuning)  
+   evidence：评估了少样本提示与基于超网络的适配机制
+3. [Compressing Sequences in the Latent Embedding Space: $K$-Token Merging for Large Language Models](/202604/23/2604.15153v2-compressing-sequences-in-the-latent-embedding-space-k-token-merging-for-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：微调中的演化参数隔离
-4. [MCPO: Mastery-Consolidated Policy Optimization for Large Reasoning Models](/202604/22/2604.16972v1-mcpo-mastery-consolidated-policy-optimization-for-large-reasoning-models)  
+   evidence：提示压缩与潜空间优化
+4. [LLM-AUG: Robust Wireless Data Augmentation with In-Context Learning in Large Language Models](/202604/23/2604.17770v1-llm-aug-robust-wireless-data-augmentation-with-in-context-learning-in-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：针对高准确率提示的策略优化
-5. [Prompt Sensitivity in Vision-Language Grounding: How Small Changes in Wording Affect Object Detection](/202604/22/2604.17126v1-prompt-sensitivity-in-vision-language-grounding-how-small-changes-in-wording-affect-object-detection)  
-   标签：评分：6.0/10、query:bopl
-   evidence：视觉语言模型中提示词敏感性与措辞影响分析
-6. [Universally Empowering Zeroth-Order Optimization via Adaptive Layer-wise Sampling](/202604/22/2604.18264v1-universally-empowering-zeroth-order-optimization-via-adaptive-layer-wise-sampling)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于大语言模型微调的零阶优化
+   evidence：用于语境学习的结构化提示
 
 
 <div class="dpr-home-promo-card">
