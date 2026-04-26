@@ -6,52 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-23
-- 运行时间：2026-04-23 20:16:09 UTC
+- 最新运行日期：2026-04-26
+- 运行时间：2026-04-26 19:54:01 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：6
+- 本次总论文数：9
+- 精读区：5
 - 速读区：4
 
 ### 今日简报（AI）
-今日深度研读 10 篇 AI 论文，聚焦双层优化理论突破与法律问答的提示词工程优化。
-核心结论指出一阶双层极小极大算法具备强泛化性，且通过优化提示词可显著改善 LLM 在法律领域的评判偏差。
-建议关注 OOPrompt 等结构化提示词方法，将复杂意图转化为模块化构件以提升大模型交互效率。
-- 详情：[/202604/23/README](/202604/23/README)
+今日聚焦 LLM 在法律问答与任务规划中的深度优化，精选 9 篇论文探索模型自适应能力的边界。
+重点推荐通过提示词优化提升法律评判一致性，以及利用 LLM 实现任务规划解释的动态生成。
+建议开发者尝试自动化数据单元测试与红队对抗工具，以低成本强化复杂系统的安全性与稳定性。
+- 详情：[/202604/26/README](/202604/26/README)
 
 ### 精读区论文标签
-1. [On the Stability and Generalization of First-order Bilevel Minimax Optimization](/202604/23/2604.20115v1-on-the-stability-and-generalization-of-first-order-bilevel-minimax-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：一阶双层优化的泛化性分析
-2. [Exploiting LLM-as-a-Judge Disposition on Free Text Legal QA via Prompt Optimization](/202604/23/2604.20726v1-exploiting-llm-as-a-judge-disposition-on-free-text-legal-qa-via-prompt-optimization)  
+1. [Exploiting LLM-as-a-Judge Disposition on Free Text Legal QA via Prompt Optimization](/202604/26/2604.20726v2-exploiting-llm-as-a-judge-disposition-on-free-text-legal-qa-via-prompt-optimization)  
    标签：评分：9.0/10、query:bopl
    evidence：使用ProTeGi方法进行自动任务提示优化
-3. [Evolvable Embodied Agent for Robotic Manipulation via Long Short-Term Reflection and Optimization](/202604/23/2604.13533v2-evolvable-embodied-agent-for-robotic-manipulation-via-long-short-term-reflection-and-optimization)  
+2. [Mind the Prompt: Self-adaptive Generation of Task Plan Explanations via LLMs](/202604/26/2604.21092v1-mind-the-prompt-self-adaptive-generation-of-task-plan-explanations-via-llms)  
+   标签：评分：9.0/10、query:bopl
+   evidence：自动提示合成与工程的自适应方法
+3. [CAP: Controllable Alignment Prompting for Unlearning in LLMs](/202604/26/2604.21251v1-cap-controllable-alignment-prompting-for-unlearning-in-llms)  
+   标签：评分：9.0/10、query:bopl
+   evidence：用于遗忘学习的可学习提示词优化
+4. [The Last Harness You'll Ever Build](/202604/26/2604.21003v1-the-last-harness-youll-ever-build)  
    标签：评分：8.0/10、query:bopl
-   evidence：用于自我进化机器人的提示学习
-4. [JTPRO: A Joint Tool-Prompt Reflective Optimization Framework for Language Agents](/202604/23/2604.19821v1-jtpro-a-joint-tool-prompt-reflective-optimization-framework-for-language-agents)  
+   evidence：自动化提示工程等测试框架的两级优化框架
+5. [Phenomenological Detector Design and Optimization in Vertically-Integrated Differentiable Full Simulations with Agentic-AI](/202604/26/2604.21804v1-phenomenological-detector-design-and-optimization-in-vertically-integrated-differentiable-full-simulations-with-agentic-ai)  
    标签：评分：8.0/10、query:bopl
-   evidence：提示词与工具模式的迭代协同优化
-5. [Meta Additive Model: Interpretable Sparse Learning With Auto Weighting](/202604/23/2604.20111v1-meta-additive-model-interpretable-sparse-learning-with-auto-weighting)  
-   标签：评分：8.0/10、query:bopl
-   evidence：提出一种基于双层优化框架的新型元加性模型
-6. [Learning to Evolve: A Self-Improving Framework for Multi-Agent Systems via Textual Parameter Graph Optimization](/202604/23/2604.20714v1-learning-to-evolve-a-self-improving-framework-for-multi-agent-systems-via-textual-parameter-graph-optimization)  
-   标签：评分：8.0/10、query:bopl
-   evidence：针对提示微调和智能体工程的自动优化方法
+   evidence：结合 AI 智能体的双层优化框架
 
 ### 速读区论文标签
-1. [OOPrompt: Reifying Intents into Structured Artifacts for Modular and Iterative Prompting](/202604/23/2604.19114v1-ooprompt-reifying-intents-into-structured-artifacts-for-modular-and-iterative-prompting)  
+1. [ARES: Adaptive Red-Teaming and End-to-End Repair of Policy-Reward System](/202604/26/2604.18789v1-ares-adaptive-red-teaming-and-end-to-end-repair-of-policy-reward-system)  
    标签：评分：7.0/10、query:bopl
-   evidence：面向对象的提示词工程，用于模块化和迭代提示
-2. [Meta-Tool: Efficient Few-Shot Tool Adaptation for Small Language Models](/202604/23/2604.20148v1-meta-tool-efficient-few-shot-tool-adaptation-for-small-language-models)  
+   evidence：动态组合对抗性提示词
+2. [PrismaDV: Automated Task-Aware Data Unit Test Generation](/202604/26/2604.21765v1-prismadv-automated-task-aware-data-unit-test-generation)  
    标签：评分：7.0/10、query:bopl
-   evidence：评估了少样本提示与基于超网络的适配机制
-3. [Compressing Sequences in the Latent Embedding Space: $K$-Token Merging for Large Language Models](/202604/23/2604.15153v2-compressing-sequences-in-the-latent-embedding-space-k-token-merging-for-large-language-models)  
+   evidence：用于任务适配的提示优化框架
+3. [Efficient Task Adaptation in Large Language Models via Selective Parameter Optimization](/202604/26/2604.17051v1-efficient-task-adaptation-in-large-language-models-via-selective-parameter-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示压缩与潜空间优化
-4. [LLM-AUG: Robust Wireless Data Augmentation with In-Context Learning in Large Language Models](/202604/23/2604.17770v1-llm-aug-robust-wireless-data-augmentation-with-in-context-learning-in-large-language-models)  
+   evidence：针对任务适配的选择性参数优化
+4. [Memory-Augmented LLM-based Multi-Agent System for Automated Feature Generation on Tabular Data](/202604/26/2604.20261v1-memory-augmented-llm-based-multi-agent-system-for-automated-feature-generation-on-tabular-data)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于语境学习的结构化提示
+   evidence：基于大语言模型且带有学习目标反馈的自动特征生成
 
 
 <div class="dpr-home-promo-card">
