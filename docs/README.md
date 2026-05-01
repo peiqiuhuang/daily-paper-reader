@@ -6,40 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-30
-- 运行时间：2026-04-30 20:46:14 UTC
+- 最新运行日期：2026-05-01
+- 运行时间：2026-05-01 20:21:21 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：1
-- 速读区：5
+- 本次总论文数：13
+- 精读区：4
+- 速读区：9
 
 ### 今日简报（AI）
-今日深度解析满分论文 FlowBot，揭秘如何利用双层优化与文本梯度自动诱导 LLM 高效工作流。
-重点关注自动化算法优化（OMEGA）与测试时安全对齐，这些技术正显著提升模型的任务处理上限与安全性。
-建议开发者尝试系统化的 LLM 调试方法，并关注如何通过梯度优化实现更精准的任务流编排。
-- 详情：[/202604/30/README](/202604/30/README)
+今日深度研读 13 篇 AI 论文，聚焦多智能体安全授权框架与提示词优化对模型评估的颠覆性影响。
+核心结论指出：未经优化的提示词会严重误导评估结果，而 SBD 框架为多智能体协作提供了严谨的运行时安全保障。
+建议关注过程监督与提示词链技术，从底层逻辑提升大模型的推理精度与分类效率。
+- 详情：[/202605/01/README](/202605/01/README)
 
 ### 精读区论文标签
-1. [FlowBot: Inducing LLM Workflows with Bilevel Optimization and Textual Gradients](/202604/30/2604.26258v1-flowbot-inducing-llm-workflows-with-bilevel-optimization-and-textual-gradients)  
-   标签：评分：10.0/10、query:bopl
-   evidence：将工作流归纳建模为双层优化问题
+1. [Safe Bilevel Delegation (SBD): A Formal Framework for Runtime Delegation Safety in Multi-Agent Systems](/202605/01/2604.27358v1-safe-bilevel-delegation-sbd-a-formal-framework-for-runtime-delegation-safety-in-multi-agent-systems)  
+   标签：评分：9.0/10、query:bopl
+   evidence：将任务委派建模为双层优化问题
+2. [Optimization before Evaluation: Evaluation with Unoptimised Prompts Can be Misleading](/202605/01/2604.27637v1-optimization-before-evaluation-evaluation-with-unoptimised-prompts-can-be-misleading)  
+   标签：评分：9.0/10、query:bopl
+   evidence：研究用于提升大语言模型性能的提示词优化技术
+3. [Skills-Coach: A Self-Evolving Skill Optimizer via Training-Free GRPO](/202605/01/2604.27488v1-skills-coach-a-self-evolving-skill-optimizer-via-training-free-grpo)  
+   标签：评分：8.0/10、query:bopl
+   evidence：自动优化技能提示的框架
+4. [Improving Calibration in Test-Time Prompt Tuning for Vision-Language Models via Data-Free Flatness-Aware Prompt Pretraining](/202605/01/2604.27715v1-improving-calibration-in-test-time-prompt-tuning-for-vision-language-models-via-data-free-flatness-aware-prompt-pretraining)  
+   标签：评分：8.0/10、query:bopl
+   evidence：视觉语言模型的测试时提示微调
 
 ### 速读区论文标签
-1. [Test-Time Safety Alignment](/202604/30/2604.26167v1-test-time-safety-alignment)  
+1. [Process Supervision via Verbal Critique Improves Reasoning in Large Language Models](/202605/01/2604.21611v1-process-supervision-via-verbal-critique-improves-reasoning-in-large-language-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：优化输入词嵌入以实现控制
-2. [OMEGA: Optimizing Machine Learning by Evaluating Generated Algorithms](/202604/30/2604.26211v1-omega-optimizing-machine-learning-by-evaluating-generated-algorithms)  
+   evidence：用于推理的迭代生成-批评-改进循环
+2. [Automating Categorization of Scientific Texts with In-Context Learning and Prompt-Chaining in Large Language Models](/202605/01/2604.23430v1-automating-categorization-of-scientific-texts-with-in-context-learning-and-prompt-chaining-in-large-language-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：结构化元提示词工程与代码生成
-3. [A Systematic Approach for Large Language Models Debugging](/202604/30/2604.23027v1-a-systematic-approach-for-large-language-models-debugging)  
+   evidence：语境学习与提示词链
+3. [Scalable Hyperparameter-Divergent Ensemble Training with Automatic Learning Rate Exploration for Large Models](/202605/01/2604.24708v1-scalable-hyperparameter-divergent-ensemble-training-with-automatic-learning-rate-exploration-for-large-models)  
+   标签：评分：7.0/10、query:bopl
+   evidence：自动学习率探索与超参数集成
+4. [Intrinsic Mutual Information as a Modulator for Preference Optimization](/202605/01/2604.24804v1-intrinsic-mutual-information-as-a-modulator-for-preference-optimization)  
+   标签：评分：7.0/10、query:bopl
+   evidence：偏好优化的动态超参数调节
+5. [From Context to Skills: Can Language Models Learn from Context Skillfully?](/202605/01/2604.27660v1-from-context-to-skills-can-language-models-learn-from-context-skillfully)  
+   标签：评分：7.0/10、query:bopl
+   evidence：上下文学习中的自动技能构建
+6. [From Codebooks to VLMs: Evaluating Automated Visual Discourse Analysis for Climate Change on Social Media](/202605/01/2604.21786v1-from-codebooks-to-vlms-evaluating-automated-visual-discourse-analysis-for-climate-change-on-social-media)  
    标签：评分：6.0/10、query:bopl
-   evidence：优化提示词和模型参数
-4. [A Systematic Comparison of Prompting and Multi-Agent Methods for LLM-based Stance Detection](/202604/30/2604.26319v1-a-systematic-comparison-of-prompting-and-multi-agent-methods-for-llm-based-stance-detection)  
+   evidence：视觉语言模型的提示工程
+7. [EV-CLIP: Efficient Visual Prompt Adaptation for CLIP in Few-shot Action Recognition under Visual Challenges](/202605/01/2604.22595v1-ev-clip-efficient-visual-prompt-adaptation-for-clip-in-few-shot-action-recognition-under-visual-challenges)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示推理方法的系统比较
-5. [Adaptive and Fine-grained Module-wise Expert Pruning for Efficient LoRA-MoE Fine-Tuning](/202604/30/2604.26340v1-adaptive-and-fine-grained-module-wise-expert-pruning-for-efficient-lora-moe-fine-tuning)  
+   evidence：CLIP的高效视觉提示适配
+8. [Co-Director: Agentic Generative Video Storytelling](/202605/01/2604.24842v1-co-director-agentic-generative-video-storytelling)  
    标签：评分：6.0/10、query:bopl
-   evidence：使用LoRA-MoE进行参数高效微调
+   evidence：自动化提示词的全局优化
+9. [Reinforced Agent: Inference-Time Feedback for Tool-Calling Agents](/202605/01/2604.27233v1-reinforced-agent-inference-time-feedback-for-tool-calling-agents)  
+   标签：评分：6.0/10、query:bopl
+   evidence：智能体的推理时反馈与提示词微调
 
 
 <div class="dpr-home-promo-card">
