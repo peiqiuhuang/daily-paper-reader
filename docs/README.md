@@ -6,61 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-01
-- 运行时间：2026-05-01 20:21:21 UTC
+- 最新运行日期：2026-05-02
+- 运行时间：2026-05-02 19:57:05 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：4
-- 速读区：9
+- 本次总论文数：6
+- 精读区：0
+- 速读区：6
 
 ### 今日简报（AI）
-今日深度研读 13 篇 AI 论文，聚焦多智能体安全授权框架与提示词优化对模型评估的颠覆性影响。
-核心结论指出：未经优化的提示词会严重误导评估结果，而 SBD 框架为多智能体协作提供了严谨的运行时安全保障。
-建议关注过程监督与提示词链技术，从底层逻辑提升大模型的推理精度与分类效率。
-- 详情：[/202605/01/README](/202605/01/README)
+今日速读 6 篇前沿论文，聚焦上下文学习干扰、离线强化学习安全对齐及代码生成中的提示词效应。
+重点关注 ICL 中的干扰机制，以及研究发现提示词“欠说明”在特定情况下反而能提升代码生成的准确性。
+建议在优化代码生成任务时，不仅要关注提示词内容，更要警惕上下文干扰并尝试精简指令结构。
+- 详情：[/202605/02/README](/202605/02/README)
 
 ### 精读区论文标签
-1. [Safe Bilevel Delegation (SBD): A Formal Framework for Runtime Delegation Safety in Multi-Agent Systems](/202605/01/2604.27358v1-safe-bilevel-delegation-sbd-a-formal-framework-for-runtime-delegation-safety-in-multi-agent-systems)  
-   标签：评分：9.0/10、query:bopl
-   evidence：将任务委派建模为双层优化问题
-2. [Optimization before Evaluation: Evaluation with Unoptimised Prompts Can be Misleading](/202605/01/2604.27637v1-optimization-before-evaluation-evaluation-with-unoptimised-prompts-can-be-misleading)  
-   标签：评分：9.0/10、query:bopl
-   evidence：研究用于提升大语言模型性能的提示词优化技术
-3. [Skills-Coach: A Self-Evolving Skill Optimizer via Training-Free GRPO](/202605/01/2604.27488v1-skills-coach-a-self-evolving-skill-optimizer-via-training-free-grpo)  
-   标签：评分：8.0/10、query:bopl
-   evidence：自动优化技能提示的框架
-4. [Improving Calibration in Test-Time Prompt Tuning for Vision-Language Models via Data-Free Flatness-Aware Prompt Pretraining](/202605/01/2604.27715v1-improving-calibration-in-test-time-prompt-tuning-for-vision-language-models-via-data-free-flatness-aware-prompt-pretraining)  
-   标签：评分：8.0/10、query:bopl
-   evidence：视觉语言模型的测试时提示微调
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Process Supervision via Verbal Critique Improves Reasoning in Large Language Models](/202605/01/2604.21611v1-process-supervision-via-verbal-critique-improves-reasoning-in-large-language-models)  
+1. [When Context Sticks: Studying Interference in In-Context Learning](/202605/02/2604.23371v1-when-context-sticks-studying-interference-in-in-context-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于推理的迭代生成-批评-改进循环
-2. [Automating Categorization of Scientific Texts with In-Context Learning and Prompt-Chaining in Large Language Models](/202605/01/2604.23430v1-automating-categorization-of-scientific-texts-with-in-context-learning-and-prompt-chaining-in-large-language-models)  
+   evidence：研究上下文学习提示词中的上下文粘性和干扰现象
+2. [Lyapunov-Guided Self-Alignment: Test-Time Adaptation for Offline Safe Reinforcement Learning](/202605/02/2604.26516v1-lyapunov-guided-self-alignment-test-time-adaptation-for-offline-safe-reinforcement-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：语境学习与提示词链
-3. [Scalable Hyperparameter-Divergent Ensemble Training with Automatic Learning Rate Exploration for Large Models](/202605/01/2604.24708v1-scalable-hyperparameter-divergent-ensemble-training-with-automatic-learning-rate-exploration-for-large-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：自动学习率探索与超参数集成
-4. [Intrinsic Mutual Information as a Modulator for Preference Optimization](/202605/01/2604.24804v1-intrinsic-mutual-information-as-a-modulator-for-preference-optimization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：偏好优化的动态超参数调节
-5. [From Context to Skills: Can Language Models Learn from Context Skillfully?](/202605/01/2604.27660v1-from-context-to-skills-can-language-models-learn-from-context-skillfully)  
-   标签：评分：7.0/10、query:bopl
-   evidence：上下文学习中的自动技能构建
-6. [From Codebooks to VLMs: Evaluating Automated Visual Discourse Analysis for Climate Change on Social Media](/202605/01/2604.21786v1-from-codebooks-to-vlms-evaluating-automated-visual-discourse-analysis-for-climate-change-on-social-media)  
+   evidence：用于测试时自适应的上下文提示
+3. [When Prompt Under-Specification Improves Code Correctness: An Exploratory Study of Prompt Wording and Structure Effects on LLM-Based Code Generation](/202605/02/2604.24712v1-when-prompt-under-specification-improves-code-correctness-an-exploratory-study-of-prompt-wording-and-structure-effects-on-llm-based-code-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉语言模型的提示工程
-7. [EV-CLIP: Efficient Visual Prompt Adaptation for CLIP in Few-shot Action Recognition under Visual Challenges](/202605/01/2604.22595v1-ev-clip-efficient-visual-prompt-adaptation-for-clip-in-few-shot-action-recognition-under-visual-challenges)  
+   evidence：提示词措辞和结构影响的研究
+4. [Learning to Forget: Continual Learning with Adaptive Weight Decay](/202605/02/2604.27063v1-learning-to-forget-continual-learning-with-adaptive-weight-decay)  
    标签：评分：6.0/10、query:bopl
-   evidence：CLIP的高效视觉提示适配
-8. [Co-Director: Agentic Generative Video Storytelling](/202605/01/2604.24842v1-co-director-agentic-generative-video-storytelling)  
+   evidence：通过近似元梯度下降自适应调整每个参数的权重衰减
+5. [Theory Under Construction: Orchestrating Language Models for Research Software Where the Specification Evolves](/202605/02/2604.27209v1-theory-under-construction-orchestrating-language-models-for-research-software-where-the-specification-evolves)  
    标签：评分：6.0/10、query:bopl
-   evidence：自动化提示词的全局优化
-9. [Reinforced Agent: Inference-Time Feedback for Tool-Calling Agents](/202605/01/2604.27233v1-reinforced-agent-inference-time-feedback-for-tool-calling-agents)  
+   evidence：用于编排研究任务的迭代提示词自动机
+6. [Proactive Dialogue Model with Intent Prediction](/202605/02/2604.27379v1-proactive-dialogue-model-with-intent-prediction)  
    标签：评分：6.0/10、query:bopl
-   evidence：智能体的推理时反馈与提示词微调
+   evidence：在推理时将意图转移先验注入系统提示词
 
 
 <div class="dpr-home-promo-card">
