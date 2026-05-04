@@ -6,32 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-03
-- 运行时间：2026-05-03 20:31:15 UTC
+- 最新运行日期：2026-05-04
+- 运行时间：2026-05-04 20:12:20 UTC
 - 运行状态：成功
-- 本次总论文数：3
-- 精读区：0
-- 速读区：3
+- 本次总论文数：8
+- 精读区：3
+- 速读区：5
 
 ### 今日简报（AI）
-今日深入探讨了跨语言文本简化的最优路径、概率 Transformer 的高效扩展以及医疗影像分割的无提示进化。
-研究揭示了英法翻译与简化顺序对语义保留的影响，并提出通过扩散模型增强 SAM2 在少样本医疗场景下的泛化能力。
-建议关注超参数跨尺度迁移技术以优化大模型训练效率，或尝试将跨
-- 详情：[/202605/03/README](/202605/03/README)
+今日深度探索双层优化与 LLM 工作流的跨界融合，精选 8 篇涵盖算法理论与工程实践的前沿成果。
+满分论文 FlowBot 揭示了利用文本梯度自动诱导大模型工作流的新范式，同时系统梳理了 MPECs 数学规划的理论基石。
+建议开发者关注双层优化在提示工程与多智能体系统中的落地，以实现更精准、自动化的复杂任务调度。
+- 详情：[/202605/04/README](/202605/04/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [FlowBot: Inducing LLM Workflows with Bilevel Optimization and Textual Gradients](/202605/04/2604.26258v2-flowbot-inducing-llm-workflows-with-bilevel-optimization-and-textual-gradients)  
+   标签：评分：10.0/10、query:bopl
+   evidence：用于诱导LLM工作流和提示词的双层优化
+2. [Introduction to Mathematical Programming with Equilibrium Constraints (MPECs) and Bilevel Optimization](/202605/04/2605.00386v1-introduction-to-mathematical-programming-with-equilibrium-constraints-mpecs-and-bilevel-optimization)  
+   标签：评分：10.0/10、query:bopl
+   evidence：双层优化的全面介绍
+3. [Intrinsic Gradient Suppression for Label-Noise Prompt Tuning in Vision-Language Models](/202605/04/2605.00591v1-intrinsic-gradient-suppression-for-label-noise-prompt-tuning-in-vision-language-models)  
+   标签：评分：9.0/10、query:bopl
+   evidence：视觉语言模型的高效参数提示词微调
 
 ### 速读区论文标签
-1. [Translate or Simplify First: An Analysis of Cross-lingual Text Simplification in English and French](/202605/03/2604.23844v1-translate-or-simplify-first-an-analysis-of-cross-lingual-text-simplification-in-english-and-french)  
+1. [Instance-Aware Parameter Configuration in Bilevel Late Acceptance Hill Climbing for the Electric Capacitated Vehicle Routing Problem](/202605/04/2605.00572v1-instance-aware-parameter-configuration-in-bilevel-late-acceptance-hill-climbing-for-the-electric-capacitated-vehicle-routing-problem)  
    标签：评分：7.0/10、query:bopl
-   evidence：LLM不同提示策略的分析
-2. [Scaling Probabilistic Transformer via Efficient Cross-Scale Hyperparameter Transfer](/202605/03/2604.25409v1-scaling-probabilistic-transformer-via-efficient-cross-scale-hyperparameter-transfer)  
-   标签：评分：7.0/10、query:bopl
-   evidence：跨模型规模的超参数迁移
-3. [DiffuSAM: Diffusion-Based Prompt-Free SAM2 for Few-Shot and Source-Free Medical Image Segmentation](/202605/03/2604.24719v1-diffusam-diffusion-based-prompt-free-sam2-for-few-shot-and-source-free-medical-image-segmentation)  
+   evidence：用于参数配置的双层优化
+2. [JudgeSense: A Benchmark for Prompt Sensitivity in LLM-as-a-Judge Systems](/202605/04/2604.23478v1-judgesense-a-benchmark-for-prompt-sensitivity-in-llm-as-a-judge-systems)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过基于扩散的嵌入消除对用户提示的需求
+   evidence：提示词改写下的稳定性
+3. [FGDM: Reasoning Aware Multi-Agentic Framework for Software Bug Detection using Chain of Thought and Tree of Thought Prompting](/202605/04/2604.24831v1-fgdm-reasoning-aware-multi-agentic-framework-for-software-bug-detection-using-chain-of-thought-and-tree-of-thought-prompting)  
+   标签：评分：6.0/10、query:bopl
+   evidence：思维链与思维树提示工程
+4. [Theory Under Construction: Orchestrating Language Models for Research Software Where the Specification Evolves](/202605/04/2604.27209v2-theory-under-construction-orchestrating-language-models-for-research-software-where-the-specification-evolves)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于编排语言模型的迭代提示词自动机
+5. [Agent Capsules: Quality-Gated Granularity Control for Multi-Agent LLM Pipelines](/202605/04/2605.00410v1-agent-capsules-quality-gated-granularity-control-for-multi-agent-llm-pipelines)  
+   标签：评分：6.0/10、query:bopl
+   evidence：将多智能体流水线执行视为包含提示词压缩的优化问题
 
 
 <div class="dpr-home-promo-card">
