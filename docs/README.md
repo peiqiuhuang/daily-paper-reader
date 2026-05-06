@@ -6,64 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-05
-- 运行时间：2026-05-05 20:39:57 UTC
+- 最新运行日期：2026-05-06
+- 运行时间：2026-05-06 21:01:03 UTC
 - 运行状态：成功
-- 本次总论文数：14
-- 精读区：4
-- 速读区：10
+- 本次总论文数：11
+- 精读区：2
+- 速读区：9
 
 ### 今日简报（AI）
-今日深度复盘 14 篇前沿进展，重点聚焦双层学习理论突破与 LLM 文本编码能力的提示词增强。
-满分论文《Bilevel learning》系统定义了优化新范式，同时研究证实嵌入式上下文训练能显著提升大模型作为编码器的表征精度。
-建议开发者关注 LoRA 微调模型的鲁棒性边界，并尝试将双层优化思路引入复杂的约束求解场景。
-- 详情：[/202605/05/README](/202605/05/README)
+今日深挖 11 篇前沿成果，重点解析大模型在无线通信适配与提示词算术去偏领域的突破性进展。
+核心结论指出 RFPrompt 可实现无线大模型的专家级调制分类，而提示词交互技术为解决分布偏移下的去偏难题提供了新方案。
+建议读者重点关注提示词工程如何从简单的指令输入演变为跨学科、跨模态的专家级适配工具。
+- 详情：[/202605/06/README](/202605/06/README)
 
 ### 精读区论文标签
-1. [Bilevel learning](/202605/05/2605.01621v1-bilevel-learning)  
-   标签：评分：10.0/10、query:bopl
-   evidence：双层学习与优化的全面讨论
-2. [Embedding-based In-Context Prompt Training for Enhancing LLMs as Text Encoders](/202605/05/2605.01372v1-embedding-based-in-context-prompt-training-for-enhancing-llms-as-text-encoders)  
+1. [RFPrompt: Prompt-Based Expert Adaptation of the Large Wireless Model for Modulation Classification](/202605/06/2605.03279v1-rfprompt-prompt-based-expert-adaptation-of-the-large-wireless-model-for-modulation-classification)  
    标签：评分：9.0/10、query:bopl
-   evidence：基于嵌入的上下文提示训练策略
-3. [PPO guided Agentic Pipeline for Adaptive Prompt Selection and Test Case Generation](/202605/05/2605.00942v1-ppo-guided-agentic-pipeline-for-adaptive-prompt-selection-and-test-case-generation)  
+   evidence：参数高效的基于提示的适配
+2. [When Prompts Interact: Assessing Prompt Arithmetic for Deconfounding under Distribution Shift](/202605/06/2605.03096v1-when-prompts-interact-assessing-prompt-arithmetic-for-deconfounding-under-distribution-shift)  
    标签：评分：8.0/10、query:bopl
-   evidence：PPO引导的自适应提示选择代理流水线
-4. [FeedbackLLM: Metadata driven Multi-Agentic Language Agnostic Test Case Generator with Evolving prompt and Coverage Feedback](/202605/05/2605.01264v1-feedbackllm-metadata-driven-multi-agentic-language-agnostic-test-case-generator-with-evolving-prompt-and-coverage-feedback)  
-   标签：评分：8.0/10、query:bopl
-   evidence：具有演化提示和覆盖率反馈的自动测试用例生成器
+   evidence：提示微调作为任务算术的参数高效替代方案
 
 ### 速读区论文标签
-1. [Generalized Category Discovery under Domain Shifts: From Vision to Vision-Language Models](/202605/05/2605.00906v1-generalized-category-discovery-under-domain-shifts-from-vision-to-vision-language-models)  
+1. [GRPO-TTA: Test-Time Visual Tuning for Vision-Language Models via GRPO-Driven Reinforcement Learning](/202605/06/2605.03403v1-grpo-tta-test-time-visual-tuning-for-vision-language-models-via-grpo-driven-reinforcement-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：视觉语言模型的语义感知空间提示微调
-2. [A Single-Loop Stochastic Gradient Algorithm for Minimax Optimization with Nonlinear Coupled Constraints](/202605/05/2605.01246v1-a-single-loop-stochastic-gradient-algorithm-for-minimax-optimization-with-nonlinear-coupled-constraints)  
+   evidence：将特定类别的提示词预测建模为策略优化
+2. [Steer Like the LLM: Activation Steering that Mimics Prompting](/202605/06/2605.03907v1-steer-like-the-llm-activation-steering-that-mimics-prompting)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于极大极小优化的随机梯度算法
-3. [Where Do Prompt Perturbations Break Generation? A Segment-Level View of Robustness in LoRA-Tuned Language Models](/202605/05/2605.01605v1-where-do-prompt-perturbations-break-generation-a-segment-level-view-of-robustness-in-lora-tuned-language-models)  
+   evidence：将提示词引导建模为激活引导
+3. [UnAC: Adaptive Visual Prompting with Abstraction and Stepwise Checking for Complex Multimodal Reasoning](/202605/06/2605.03950v1-unac-adaptive-visual-prompting-with-abstraction-and-stepwise-checking-for-complex-multimodal-reasoning)  
    标签：评分：7.0/10、query:bopl
-   evidence：针对提示词扰动的分段级鲁棒性框架
-4. [Learn-to-learn on Arbitrary Textual Conditioning: A Hypernetwork-Driven Meta-Gated LLM](/202605/05/2605.01973v1-learn-to-learn-on-arbitrary-textual-conditioning-a-hypernetwork-driven-meta-gated-llm)  
-   标签：评分：7.0/10、query:bopl
-   evidence：基于超网络的文本条件元学习
-5. [Conventional Commit Classification using Large Language Models and Prompt Engineering](/202605/05/2605.02033v1-conventional-commit-classification-using-large-language-models-and-prompt-engineering)  
-   标签：评分：7.0/10、query:bopl
-   evidence：评估零样本、少样本和思维链提示策略
-6. [From Context to Skills: Can Language Models Learn from Context Skillfully?](/202605/05/2604.27660v2-from-context-to-skills-can-language-models-learn-from-context-skillfully)  
+   evidence：用于多模态推理的自适应视觉提示策略
+4. [Learning in the Fisher Subspace: A Guided Initialization for LoRA Fine-Tuning](/202605/06/2605.01046v1-learning-in-the-fisher-subspace-a-guided-initialization-for-lora-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：上下文学习中的自动技能构建与选择
-7. [NLPOpt-Net: A Learning Method for Nonlinear Optimization with Feasibility Guarantees](/202605/05/2605.00260v1-nlpopt-net-a-learning-method-for-nonlinear-optimization-with-feasibility-guarantees)  
+   evidence：通过LoRA初始化的参数高效微调
+5. [LLM Output Detectability and Task Performance Can be Jointly Optimized](/202605/06/2605.01350v1-llm-output-detectability-and-task-performance-can-be-jointly-optimized)  
    标签：评分：6.0/10、query:bopl
-   evidence：非线性优化的学习方法
-8. [Automated Interpretability and Feature Discovery in Language Models with Agents](/202605/05/2605.01555v1-automated-interpretability-and-feature-discovery-in-language-models-with-agents)  
+   evidence：LLM输出与性能的联合优化
+6. [Decision-Focused Learning via Tangent-Space Projection of Prediction Error](/202605/06/2605.01361v1-decision-focused-learning-via-tangent-space-projection-of-prediction-error)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过针对性提示词控制实现自动化解释优化
-9. [MultiBreak: A Scalable and Diverse Multi-turn Jailbreak Benchmark for Evaluating LLM Safety](/202605/05/2605.01687v1-multibreak-a-scalable-and-diverse-multi-turn-jailbreak-benchmark-for-evaluating-llm-safety)  
+   evidence：通过求解器和遗憾梯度进行微分
+7. [Referring Multiple Regions with Large Multimodal Models via Contextual Latent Steering](/202605/06/2605.01827v1-referring-multiple-regions-with-large-multimodal-models-via-contextual-latent-steering)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于扩展对抗性提示的主动学习
-10. [Flexi-LoRA with Input-Adaptive Ranks: Efficient Finetuning for Speech and Reasoning Tasks](/202605/05/2605.01959v1-flexi-lora-with-input-adaptive-ranks-efficient-finetuning-for-speech-and-reasoning-tasks)  
+   evidence：引导大型多模态模型的视觉提示
+8. [When Correct Isn't Usable: Improving Structured Output Reliability in Small Language Models](/202605/06/2605.02363v1-when-correct-isnt-usable-improving-structured-output-reliability-in-small-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：具有动态 LoRA 秩的参数高效微调
+   evidence：结构化输出可靠性的提示策略评估
+9. [On Adaptivity in Zeroth-Order Optimization](/202605/06/2605.03869v1-on-adaptivity-in-zeroth-order-optimization)  
+   标签：评分：6.0/10、query:bopl
+   evidence：内存受限的大语言模型微调中的零阶优化
 
 
 <div class="dpr-home-promo-card">
