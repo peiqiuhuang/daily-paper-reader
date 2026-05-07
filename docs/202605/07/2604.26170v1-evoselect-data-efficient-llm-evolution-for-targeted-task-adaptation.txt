@@ -1,0 +1,753 @@
+Title: EvoSelect: Data-Efficient LLM Evolution for Targeted Task Adaptation
+
+URL Source: https://arxiv.org/pdf/2604.26170v1
+
+Published Time: Thu, 30 Apr 2026 00:19:04 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+Preprint. Under review. 
+
+# EVO SELECT : Data-Efficient LLM Evolution for Targeted Task Adaptation 
+
+Ting-Wei Li, Sirui Chen, Jiaru Zou, Yingbing Huang, Tianxin Wei, Jingrui He, Hanghang Tong 
+
+University of Illinois Urbana-Champaign 
+
+{twli, sirui6, jiaruz2, yh21, twei10, jingrui, htong }@illinois.edu 
+
+## Abstract 
+
+Adapting large language models (LLMs) to a targeted task efficiently and effectively remains a fundamental challenge. Such adaptation often requires iteratively improving the model toward a targeted task, yet collecting high-quality human-labeled data to support this process is costly and difficult to scale. As a result, synthetic data generation has emerged as a flexible and scalable alternative. One straightforward approach is through an iterative generation–training loop , where candidate data are synthesized through an external generator, the model is updated using these data and the process is repeated over iterations. However, generated samples can be noisy, highly redundant, or even misaligned with the targeted task distribution. Training indiscriminately on such data can dilute useful learning signals and even degrade model performance. To address this, we introduce a refined paradigm, namely an iterative generation–selection–training loop ,which incorporates a selection step prior to model updates. Building on this paradigm, we propose E VO SELECT , a data-efficient framework to evolve LLM effectively. Given candidate samples produced by the data generator, E VO SELECT selects training data by jointly modeling targeted task alignment and diversity. We estimate task relevance through optimal transport with proxy gradient representations, which quantifies how well candidate samples align with the targeted task distribution. To mitigate redundancy, we incorporate a diversification mechanism that promotes coverage of complementary training samples. By interleaving alignment and diversification, E VO SELECT enables progressive LLM evolution toward targeted tasks. Extensive experiments on various benchmarks demonstrate that with either weak or strong data generators, E VO SELECT consistently improves adaptation efficacy over existing data selection methods. 
+
+## 1 Introduction 
+
+Large language models (LLMs) have demonstrated strong general-purpose capabilities and are also widely deployed as powerful autonomous agents (Minaee et al., 2024; Wei et al., 2026). However, many real-world applications require adapting LLMs to specific task distributions under limited supervision and constrained post-training resources (Zhang et al., 2026; Han et al., 2024; Zhang et al., 2025a; Albalak et al., 2024). To overcome the limitation, one prevalent solution is via a practical setting: iterative generation–training loop (Zelikman et al., 2022; Singh et al., 2023; Yang et al., 2025), where candidate data is synthesized by an external data generator, used to update the base model through fine-tuning, and the process is repeated over multiple iterations. However, even with abundant synthetic data, new challenges emerge: data efficacy and data efficiency . Firstly, not all generated examples are equally useful. Under the iterative setting, these generated samples can progressively drift away from the targeted task, leading to reduced effectiveness for adaptation. Secondly, even well-aligned samples may become redundant over successive iterations, adding little new information while increasing unnecessary computational cost. We demonstrate these issues in Figure 1, where we visualize validation and synthetic 1
+
+> arXiv:2604.26170v1 [cs.CL] 28 Apr 2026
+
+Preprint. Under review. training samples generated in different iterations with t-SNE on the MMLU dataset (Hendrycks et al., 2020). We can observe that newly generated samples exhibit two key behaviors over iterations: (1) progressively mis-aligned with the target distribution (i.e. the blue arrow: iteration 2 generated samples ( green ) move further away from the target distribution ( red )compared to iteration 1 generated samples ( orange )) and (2) substantial overlap between successive iterations (i.e. orange and green samples). These observations highlight the risk that naively training on all generated data can dilute useful information and even degrade adaptation performance. Thus, we are motivated to study a novel paradigm about effective LLM evolution for targeted task adaptation: an iterative generation-selection-training loop, which selects high-quality data before updating the base model. Accordingly, the key question now becomes: 
+
+which generated examples should be used within the iterative loop? ⚠Regions Missed By  
+
+> Attribution Method 🔍 Region that Attribution
+> Method focuses on
+> iteration 1
+> iteration 2
+> Samples drift over generation iterations
+
+Figure 1: Issues of synthetic training samples and naive targeted selection. (1) Generated samples ( orange &
+
+green ) drift away from the target distribution ( red ); (2) Generated samples increasingly overlap across itera-tions; (3) Attribution-only methods bias toward the centroid and under-cover the entire target distribution. To solve this puzzle, we argue that effective data selection in an it-erative setting must jointly con-sider two objectives across itera-tions. On one hand, selected exam-ples should be target-aligned , mean-ing they need to stay functionally relevant to the targeted tasks. On the other hand, selected examples must maintain diversity , covering complementary regions of the data space to avoid accumulating re-dundancy over iterations. How-ever, existing approaches typically address these objectives in isola-tion. Some methods leverage train-ing data attribution (Deng et al., 2025) to prioritize target-aligned examples (Xia et al., 2024; Zhou et al., 2024; Kwon et al., 2023), while others emphasize diversity through naive sampling or clus-tering strategies (Ding et al., 2023; Song et al., 2024; Ling et al., 2025). Even when both aspects are considered, they are often combined in a sequential/heuristic manner, such as through weighted sums, multiplication or local diversity adjustment (Liu et al., 2024; Wu et al., 2024; Zhang et al., 2025b). In response, we propose E VO SELECT in this paper, which synergizes data attribution and diversity into a unified, principled framework for effective data selection in targeted task adaptation. Given a pool of generated candidate samples in each iteration, E VO SELECT as-sesses task relevance through an optimal-transport-based alignment and promotes diversity by favoring samples that provide complementary training signals. A key component of EVO SELECT is the use of optimal transport (OT) (Peyr ´e & Cuturi, 2019; Flamary et al., 2021) 1
+
+for target distribution alignment. Instead of matching a single centroid as in attribution-only methods (Xia et al., 2024; Kwon et al., 2023; San Joaquin et al., 2024), OT aligns the training and full target distribution. In Figure 1, we demonstrate that due to the naive selection procedure, attribution-only methods may only select data according to the largest cluster (i.e. the red cluster) and fail to cover the entire target distribution. E VO SELECT employs an interleaved optimization procedure that iteratively refines sample importance by jointly optimizing target alignment and diversity, synergizing two signals in the iterative process. To demonstrate the superiority of E VO SELECT , we conduct evaluation across 10 knowledge-intensive benchmarks with both weak/strong data generators. Experimental results show that E VO SELECT outperforms strong data selection baselines and even training on all generated data across different selection ratios and iterations. Notably, E VO SELECT is the 
+
+> 1More background on OT can be found in Appendix A.
+
+2Preprint. Under review. only approach that consistently improves upon the base model performance throughout the evolution process, preventing harmful adaptation. 
+
+## 2 Preliminaries 
+
+2.1 Training Data Attribution 
+
+Let S = {x1, . . . , xn} denote a set of training examples drawn from a space Xtrain , and let 
+
+T = {x′
+
+> 1
+
+, . . . , x′
+
+> m
+
+} denote a set of target examples drawn from a space Xvalidation . Each data sample consists of a query–answer pair. We consider a generative model fΘ parameterized by Θ. Typically, fine-tuning starts from a pretrained base model with parameters Θ0, and the adapted parameter Θ is obtained by minimizing a task-specific objective over the dataset 
+
+S. Training data attribution (Deng et al., 2025) aims to quantify how individual training examples in S relate to the behavior of fΘ on target validation examples in T. Formally, an attribution method τ assigns a score τ(S; fΘ) ∈ Rn, where the i-th entry τ(S; fΘ)i
+
+reflects the degree to which training example xi is associated with the model’s output on the target samples. For data selection methods that employ training data attribution, a common strategy is to select the top-k training examples according to their attribution scores. Formally, letting τi denote the average attribution score of training example xi over T, the selected subset can be written as: Ssel = arg max    
+
+> S′⊆S,|S′|=k
+
+∑xi ∈S′ τ(S; fΘ)i.
+
+2.2 Problem Definition 
+
+We study the problem of adapting a base LLM fΘ0 to a targeted task distribution Dtarget 
+
+via an iterative generation–selection–training loop . We assume access to a small seed set Dseed 
+
+from the targeted task, together with a validation set Dval . At each iteration t, the base LLM is provided with a set of candidate examples D(t) 
+
+> cand
+
+synthesized by an external data generator. A subset St ⊆ D (t) 
+
+> cand
+
+is selected under a fixed budget, and the model is fine-tuned on the accumulated dataset (i.e., D(t) 
+
+> train
+
+= Dseed ∪ Stp=1 Sp) to obtain fΘt . The process is repeated for t = 1, . . . , K. Our objective is to optimize the data selection strategy such that the fine-tuned models { fΘt }t=1··· K achieve maximum accuracy on a hold-out test set from the targeted task. 
+
+## 3 Methodology 
+
+In this section, we illustrate our method, E VO SELECT , which selects data to evolve LLM for targeted task adaptation. In Section 3.1, we first discuss the limitations of existing methods. Motivated by these limitations, we then introduce E VO SELECT in Section 3.2. Specifically, EVO SELECT inherently considers task alignment and diversity simultaneously and synergies both signals into a unified, principled selection framework for LLM adaptation. 
+
+3.1 Limitations of Existing Methods Attribution-Only Selection. A popular approach to materialize data selection for targeted task adaptation is through data attribution methods (Deng et al., 2025; Xia et al., 2024; Zhang et al., 2025a), especially gradient-based ones 2. These methods assign attribution score to each training sample typically via gradient similarity (Pruthi et al., 2020) or variants of influence functions (Koh & Liang, 2017; Kwon et al., 2023; Zhou et al., 2024). Each training sample is scored by its similarity to validation samples, and the overall score is obtained by averaging over the validation set. 
+
+> 2According to Deng et al. (2025), gradient-based data attribution methods is more favored over other paradigms for LLM applications due to their efficiency under large scale settings.
+
+3Preprint. Under review. ARC-Challenge CommonsenseQA HeadQA      
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Attr. Score  0.64
+> 0.52 0.48
+> 0.60
+> 0.44 0.47
+> 0.53
+> 0.37 0.34
+> Attribution Random Diversity
+
+(a) Attribution Score Distribution ARC-Challenge CommonsenseQA HeadQA     
+
+> 0
+> 50
+> 100
+> 150
+> Vendi Score
+> 19.5
+> 42.0 54.0
+> 30.8
+> 84.9
+> 61.2
+> 47.9
+> 138.4
+> 108.0
+> Attribution Random Diversity
+
+(b) Vendi Score 
+
+Figure 2: Trade-off between target alignment and diversity. Left: Attribution (Xia et al., 2024) achieves the highest average attribution score while Diversity gets the lowest. Right: Diversity (Jung et al., 2025) achieves the highest Vendi score while Attribution gets the lowest. However, this naive averaging implicitly reduces the validation distribution to a single centroid representation. As a result, samples are ranked based on their proximity to this average signal, without accounting for the geometric structure of the data. When selecting the top-k samples as selected data, this leads to a subset concentrated in a narrow region of the training space. What’s worse, this concentration manifests as redundancy: many selected samples exhibit highly similar gradient directions. Consequently, the selected subset provides limited additional coverage of the target distribution, leading to inefficient use of the selection budget and even diluting the effectiveness of training . We compute the Vendi Score (Friedman & Dieng, 2022), a widely-used diversity metric, to showcase this redundancy issue (the higher, the less redundant). As shown in Figure 2, while attribution-only selection can successfully identify task-aligned samples (Fig. 2a), the selected samples exhibit the lowest Vendi Score (i.e. the least diverse) among baselines (Fig. 2b). 
+
+Diversity-Only Selection. On the other hand, diversity-based selection methods (Wu et al., 2023; Wang et al., 2024; Jung et al., 2025) attempt to address redundancy by encouraging coverage of the data space. These approaches typically select samples that maximizes the pairwise embedding distance (Wu et al., 2023) or kernel similarity measure (Wang et al., 2024). While such methods promote coverage of the training distribution, they do not explicitly account for the target task represented by the validation set. Consequently, the selected subset may be diverse but poorly aligned with the target objective, which may potentially degrade performance. In Figure 2, we can observe that the diversity-only method selects training samples that are the least aligned with the task (Fig. 2a), even though it achieves the highest Vendi Score (i.e. the most diverse) among all the baselines (Fig. 2b). 
+
+3.2 EVO SELECT : Synergizing Data Attribution and Diversification 
+
+In this section, we detail our design of E VO SELECT . To efficiently represent each data sample, we first utilize a proxy model to collect gradient features for both training and validation samples. Then, we apply an OT-based iterative algorithm to simultaneously optimize the targeted task alignment and coverage over the data representation space. 
+
+Proxy Model and Data Representations. Recent gradient-based attribution meth-ods (Charpiat et al., 2019; Pruthi et al., 2020) approximate sample influence via the dot product of gradient features. Formally, the similarity between training sample x and valida-tion sample x′ is given by ∇Θℓ(xi; Θ)⊤∇Θℓ(x′; Θ), where ℓ(x; Θ) denotes the loss function. Motivated by this, we represent each data by its gradient feature: ∇Θℓ(x; Θ). However, collecting per-sample gradients requires a full backward pass per example, leading to a prohibitive computational cost. To overcome this limitation, we utilize a proxy model (Engstrom et al., 2024; Jung et al., 2025; Diao et al., 2025) to collect approximate gradient representations, where the proxy model is much smaller than the base LLM. In addition, the representations are compressed through projection techniques 3 that efficiently preserve pair-wise distances. We also normalize these compressed gradients. Formally, let ℓ(x; Θ) denote the loss under the proxy model. For 
+
+> 3
+
+We adopt Sparse Johnson-Lindenstrauss Transform (Hu et al., 2025) in dattri (Deng et al., 2024). 
+
+4Preprint. Under review. 
+
+Algorithm 1 EVO SELECT 
+
+Require: Training set S = {si}ni=1, training features {gtr  
+
+> i
+
+}ni=1, validation features {gval  
+
+> j
+
+}mj=1,selection ratio ρ, number of steps T, learning rate η, regularization coefficient ε
+
+Ensure: Selected subset Ssel  
+
+> 1:
+
+k ← max (1, ⌊nρ⌋) 
+
+> 2:
+
+Construct cost matrix C = [ Cij ] = ∥gtr  
+
+> i
+
+− gval  
+
+> j
+
+∥22 ∈ Rn×m 
+
+> 3:
+
+Construct similarity matrix S = [ Sii ′ ] = ⟨gtr  
+
+> i
+
+, gtr  
+
+> i′
+
+⟩ ∈ Rn×n 
+
+> 4:
+
+Initialize validation marginal b ← 1 
+
+> m
+
+1m and training weights w(0) ← 1 
+
+> n
+
+1n 
+
+> 5:
+
+for t = 0, . . . , T − 1 do  
+
+> 6:
+
+u(t) ← ∇ w(t) OT (w(t), b, C, ε) ▷ OT gradient  
+
+> 7:
+
+d(t) ← Sw (t) ▷ diversity gradient  
+
+> 8:
+
+g(t) ← Standardize (u(t)) + Standardize (d(t)) 
+
+> 9:
+
+w(t+1) ← w(t) ⊙ exp (−ηg(t)) ▷ exponentiated update  
+
+> 10:
+
+w(t+1) ← w(t+1)/∥w(t+1)∥1 ▷ re-normalize training weights  
+
+> 11:
+
+end for  
+
+> 12:
+
+Let Itop be the indices of the top-k entries of w(T) 
+
+> 13:
+
+return Ssel ← { si : i ∈ I top }
+
+each sample x, its representation is defined as g(x) = T  ∇Θℓ(x; Θ), where T (·) is a transformation function that composes projection and normalization. Applying this to the dataset yields training features {gtr  
+
+> i
+
+}ni=1 and validation features {gval  
+
+> j
+
+}mj=1.
+
+Targeted Task Alignment via Optimal Transport. As discussed in the Introduction section and Section 3.1, prior attribution-based methods tend to concentrate selected samples around the centroid of the target task distribution, leading to limited coverage and increased redundancy. To address this limitation, we adopt optimal transport (OT) (Peyr ´e & Cuturi, 2019) to align the synthetic training sample distribution with the validation distribution. Unlike centroid matching, OT respects the full geometry of the distributions, enabling a more comprehensive and globally consistent coverage of the target task space. Formally, let w ∈ ∆n−1 denote the weight distribution over training samples and let 
+
+b = 1 
+
+> m
+
+1m ∈ ∆m−1 denote the uniform distribution over validation samples. We define the cost matrix C = [ Cij ] = ∥gtr  
+
+> i
+
+− gval  
+
+> j
+
+∥22 that measures the pairwise distance between training and validation features 4 The optimal transport distance between the two distributions is then defined as OT (w, b) = min P∈Π(w,b) ∑ni=1 ∑mj=1 Pij Cij , where P is a transport plan and 
+
+Π(w, b) denotes the set of valid couplings 5. Importantly, we can efficiently compute the gradient of the OT objective with respect to the training weights w by leveraging its dual formulation. Specifically, let u be the optimal dual variable associated with the training marginal constraint w. Following the sensitivity theorem (Bertsekas, 1997), we can obtain: 
+
+∇wOT (w, b) = u.
+
+Diversity Regularization. To mitigate the accumulated redundancy of generated training candidates throughout the iterative procedure, we introduce a diversity regularization term that penalizes selecting samples with highly similar gradients. Let S = [ Sii ′ ] = ⟨gtr  
+
+> i
+
+, gtr  
+
+> i′
+
+⟩
+
+denotes a similarity kernel between training samples. We define the diversity energy: 
+
+Ediv (w) = 12 w⊤Sw, whose gradient is given by ∇wEdiv (w) = Sw. This gradient measures how crowded the neighborhood of each sample is in gradient space. Thus, if the OT objective assigns high-weight to a sample’s similar neighbors in the representation space, the diversity gradient will discourage further increases in its own weight.  
+
+> 4With normalized data representations,
+
+∥gtr  
+
+> i
+
+− gval  
+
+> j
+
+∥22 = 2 − 2⟨gtr    
+
+> i,gval
+> j
+
+⟩, so our cost matrix is equivalent (up to scaling and shift) to the one induced by the inner product. 
+
+> 5We adopt entropic-regularized OT, which can be solved efficiently via the Sinkhorn algo-rithm (Sinkhorn, 1967). More background on OT is in Appendix A.
+
+5Preprint. Under review. 
+
+Unified Optimization. We summarize the entire procedure of E VO SELECT in Algorithm 1. At each iteration t within the generation-selection-training loop , we compute the OT gradient 
+
+u(t) together with the diversity gradient d(t), and combine them to form a joint gradient 
+
+g(t) (line 6-8) . We then update the weight vector w(t) for the synthetic samples generated in iteration t with an exponentiated update, followed by a normalization to stay on the probability simplex ( line 9-10) . After T runs of optimization, the final subset is obtained by selecting the top-k samples with the largest weights, where k = ⌊nρ⌋ corresponds to the desired budget under selection ratio ρ (line 12-13) .
+
+Complexity Analysis of E VO SELECT . Let n be the number of training samples to be selected in the current iteration, m be the number of validation samples, γ be the approxi-mation error introduced by approximate Sinkhorn solvers (Sinkhorn, 1967; Dvurechensky et al., 2018), and T be the number of update steps in E VO SELECT . The runtime complexity can be summarized in the following proposition. 
+
+Proposition 3.1 (Time Complexity Analysis (Dvurechensky et al., 2018)) . EVO SELECT has the time complexity O(Tnm log (max (n, m)) γ−2).
+
+## 4 Experiment 
+
+4.1 Experimental Setup General setting. We consider the generation–selection–training setting. At each iteration, an external data generator produces candidate examples based on the current seed set and a fixed validation set. A selection method is then applied to construct a training subset under a specified selection ratio, after which the base LLM is fine-tuned on the selected data. In this paper, we run this process for two iterations. The construction for seed/validation sets and partition for each dataset is detailed in Appendix B. The problem/answer generation configurations and prompts are included in Appendix C. The detailed training configuration is in Appendix D. 
+
+Datasets. We consider a diverse set of benchmarks spanning science, commonsense, logical and biomedical question answering datasets. These datasets include (i) scientific reasoning: 
+
+ARC-Challenge (Clark et al., 2018), MMLU (Hendrycks et al., 2020), OpenBookQA (Mihaylov et al., 2018) and ClimaQA (Manivannan et al., 2024); (ii) commonsense/logical reasoning: 
+
+CommonsenseQA (Talmor et al., 2019), LogiQA (Liu et al., 2020) and LogiQA2 (Liu et al., 2023); (iii) biomedical/healthcare reasoning: Med-MCQA (Pal et al., 2022), MedQA (Jin et al., 2021) and 
+
+HeadQA (Vilares & G ´omez-Rodr ´ıguez, 2019). The prompts and detailed configuration for evaluation is in Appendix E. 
+
+Models. We primarily conduct experiments with the Qwen2.5 family (Team, 2024b) due to its various model sizes and wild adoption. The data generator is fixed to 
+
+Qwen2.5-14B-Instruct , which is used to generate questions and solutions. The LLM to be trained (i.e. the base model) is either Qwen2.5-3B-Instruct (i.e. strong generator setting) or Qwen2.5-14B-Instruct (i.e. weak generator setting), and we use Qwen2.5-0.5B-Instruct 
+
+as the proxy model to collect gradient features. 
+
+EVO SELECT and baseline selection methods. For E VO SELECT , we fix learning rate η = 0.1, consider update steps T ∈ { 10, 20 } and regularization coefficient ϵ ∈ { 0.5, 1.0 }. The selection ratios are 0.2 and 0.5. We also evaluate several baseline methods. First, we include simple methods: All and Random , which train the base model on full and random subsets. Second, we consider Diversity , which selects examples by prioritizing smaller clusters (Jung et al., 2025), and Attribution (Xia et al., 2024), which favors samples with high gradient similarity scores against validation data. For methods that incorporate diversity and task relevance, we consider TSDS (Liu et al., 2024) as one representative method. We also compare against a baseline, Attr-Div , that combines attribution with diversity in a sequential manner. We describe further details about these baseline methods in Appendix F. 6Preprint. Under review.      
+
+> ARC-Challenge MMLU OpenBookQA ClimaQA Avg. Selection Ratio
+
+→ 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5  
+
+> Methods
+
+↓                                                                                                                                       
+
+> Base 0.8140 0.6548 0.8000 0.7329 0.7504
+> Iter. 1
+> All 0.8055 0.6522 0.7760 0.7329 0.7416 Random 0.8234 0.8063 0.6557 0.6470 0.7780 0.8060 0.7466 0.7260 0.7509 0.7463 Attribution 0.8140 0.8080 0.6503 0.6515 0.7960 0.7920 0.7089 0.7500 0.7423 0.7504 Diversity 0.8174 0.8200 0.6605 0.6534 0.7860 0.7860 0.7055 0.7397 0.7424 0.7498 Attr-Div 0.8089 0.8123 0.6457 0.6474 0.7980 0.7980 0.7021 0.7021 0.7387 0.7399 TSDS 0.8063 0.8123 0.6562 0.6474 0.8200 0.7880 0.7158 0.7295 0.7495 0.7443
+> EVO SELECT 0.8285 0.8208 0.6539 0.6561 0.8100 0.8060 0.7397 0.7568 0.7580 0.7599 Iter. 2
+> All 0.8200 0.6436 0.8040 0.7466 0.7535 Random 0.8157 0.8183 0.6498 0.6486 0.7980 0.8020 0.7158 0.7055 0.7448 0.7436 Attribution 0.8183 0.8234 0.6495 0.6508 0.7800 0.8020 0.6986 0.7534 0.7366 0.7574 Diversity 0.8191 0.8268 0.6528 0.6492 0.7660 0.7980 0.7123 0.7466 0.7376 0.7551 Attr-Div 0.8106 0.8131 0.6488 0.6542 0.7880 0.7940 0.7123 0.7329 0.7399 0.7486 TSDS 0.8229 0.8345 0.6478 0.6492 0.8060 0.7920 0.7158 0.7260 0.7506 0.7504
+> EVO SELECT 0.8242 0.8191 0.6586 0.6552 0.8080 0.8080 0.7432 0.7500 0.7585 0.7581
+
+Table 1: Performance comparison on scientific datasets ( 3b base model). Bold & underscore denote top-1/2 accuracy. 
+
+CommonsenseQA LogiQA LogiQA2 Avg. Selection Ratio → 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5 
+
+Methods ↓
+
+Base 0.7510 0.4670 0.3836 0.5339 
+
+Iter. 1 
+
+All 0.7527 0.4455 0.3995 0.5326 Random 0.7666 0.7592 0.4762 0.4378 0.4122 0.4084 0.5517 0.5351 Attribution 0.7690 0.7576 0.4531 0.4562 0.3899 0.4179 0.5373 0.5439 Diversity 0.7649 0.7527 0.4747 0.4762 0.3938 0.4001 0.5445 0.5430 Attr-Div 0.7723 0.7764 0.4485 0.4516 0.3906 0.3861 0.5371 0.5380 TSDS 0.7707 0.7527 0.4608 0.4839 0.4027 0.4020 0.5447 0.5462 
+
+EVO SELECT 0.7756 0.7690 0.4793 0.4962 0.4148 0.4109 0.5566 0.5587 Iter. 2 
+
+All 0.7420 0.4731 0.3969 0.5373 Random 0.7633 0.7641 0.4977 0.4455 0.4109 0.3995 0.5573 0.5364 Attribution 0.7584 0.7600 0.4547 0.4916 0.3766 0.4103 0.5299 0.5540 Diversity 0.7609 0.7518 0.4516 0.4639 0.4065 0.4084 0.5397 0.5414 Attr-Div 0.7764 0.7584 0.4624 0.4624 0.4001 0.3842 0.5463 0.5350 TSDS 0.7559 0.7494 0.4808 0.4547 0.3989 0.3995 0.5452 0.5345 
+
+EVO SELECT 0.7805 0.7707 0.4608 0.4854 0.4198 0.4116 0.5537 0.5559 
+
+Table 2: Performance comparison on commonsense/logical datasets ( 3b base model). Bold 
+
+and underscore denote top-1/2 accuracy. 
+
+Med-MCQA MedQA HeadQA Avg. Selection Ratio → 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5 
+
+Methods ↓
+
+Base 0.4731 0.5043 0.6510 0.5428 
+
+Iter. 1 
+
+All 0.4867 0.4918 0.6477 0.5421 Random 0.4891 0.4781 0.5263 0.5208 0.6597 0.6579 0.5584 0.5523 Attribution 0.4808 0.4817 0.5232 0.5067 0.6608 0.6532 0.5549 0.5472 Diversity 0.4848 0.4769 0.5035 0.5185 0.6524 0.6503 0.5469 0.5486 Attr-Div 0.4772 0.4829 0.5302 0.5106 0.6659 0.6557 0.5578 0.5497 TSDS 0.4808 0.4898 0.5137 0.5043 0.6601 0.6568 0.5515 0.5503 
+
+EVO SELECT 0.4915 0.4927 0.5169 0.5334 0.6619 0.6590 0.5568 0.5617 Iter. 2 
+
+All 0.4793 0.5035 0.6652 0.5493 Random 0.4843 0.4824 0.5035 0.5020 0.6590 0.6521 0.5489 0.5455 Attribution 0.4779 0.4810 0.5020 0.5082 0.6648 0.6637 0.5482 0.5510 Diversity 0.4817 0.4690 0.5224 0.4965 0.6543 0.6477 0.5528 0.5377 Attr-Div 0.4855 0.4820 0.5027 0.4933 0.6568 0.6492 0.5483 0.5415 TSDS 0.4939 0.4803 0.5145 0.5067 0.6656 0.6575 0.5580 0.5481 
+
+EVO SELECT 0.4894 0.4863 0.5153 0.5161 0.6645 0.6641 0.5564 0.5555 
+
+Table 3: Performance comparison on biomedical/healthcare datasets ( 3b base model). Bold 
+
+and underscore denote top-1/2 accuracy. 7Preprint. Under review. ARC-Challenge 
+
+> MMLU
+> OpenBookQA
+> ClimaQA
+> CommonsenseQA
+> LogiQA
+> LogiQA2
+> Med-MCQA
+> MedQA
+> HeadQA
+
+Random 
+
+Attribution 
+
+Diversity 
+
+Attr-Div 
+
+TSDS 
+
+EvoSelect                                                       
+
+> +0.6% -0.2% -1.2% -0.2% +1.4% +2.0% +2.8% +1.4% +1.1% +0.8%
+> +0.2% -0.5% -1.2% -2.9% +1.3% -1.3% -0.0% +0.6% +0.8% +1.2%
+> +0.4% +0.2% -2.4% -2.4% +1.2% -0.4% +1.7% +1.0% +0.9% +0.2%
+> -0.4% -0.8% -0.7% -2.6% +2.3% -1.2% +1.2% +0.8% +1.2% +1.0%
+> +0.2% -0.3% +1.3% -1.7% +1.2% +0.4% +1.7% +1.4% +1.2% +1.2%
+> +1.2% +0.1% +0.9% +0.9% +2.7% +0.3% +3.4% +1.7% +1.2% +1.2%
+
+Selection Ratio = 0.2                                                       
+
+> ARC-Challenge
+> MMLU
+> OpenBookQA
+> ClimaQA
+> CommonsenseQA
+> LogiQA
+> LogiQA2
+> Med-MCQA
+> MedQA
+> HeadQA
+> -0.2% -0.7% +0.4% -1.7% +1.1% -2.5% +2.0% +0.7% +0.7% +0.4%
+> +0.2% -0.4% -0.3% +1.9% +0.8% +0.7% +3.1% +0.8% +0.3% +0.7%
+> +0.9% -0.4% -0.8% +1.0% +0.1% +0.3% +2.1% -0.0% +0.3% -0.2%
+> -0.1% -0.4% -0.4% -1.5% +1.6% -1.0% +0.2% +0.9% -0.2% +0.1%
+> +0.9% -0.7% -1.0% -0.5% +0.0% +0.2% +1.7% +1.7% +0.1% +0.6%
+> +0.6% +0.1% +0.7% +2.1% +1.9% +2.4% +2.8% +1.6% +2.0% +1.1%
+
+Selection Ratio = 0.5 
+
+Figure 3: Performance gain over 3b base model. The figure shows that only E VO SELECT has consistent improvement across selection ratios & datasets. 
+
+4.2 Main Results 
+
+In this subsection, we present the main experiment results by comparing E VO SELECT with other baseline data selection methods across various settings. 
+
+EVO SELECT outperforms baseline selection methods. We present our main results in Table 1, 2 and 3, which are conducted under the strong generator setting (i.e. 3B base model and 14B data generator). Across all datasets, E VO SELECT mostly outperforms other baseline methods under different selection ratios and iterations. The experiment results conducted under the weak generator setting (i.e. 14B base model and 14B data generator) are deferred to Appendix G due to space limit. We observe that the trend follows even when the data generator is not strictly stronger than the base model. These results indicate that EVO SELECT identifies data that is fundamentally useful, i.e., data that remains beneficial for LLM adaptation regardless of the generator capacity or selection ratio. 
+
+EVO SELECT consistently improves base LLM. In Figure 3, we measure the performance difference between each method’s average performance (over two iterations) and that of the base model. We show that E VO SELECT is the only selection method that constantly outperforms base model performance ( green indicates beneficial adaption and red indicates harmful adaption). For all other baselines, there are certain failure cases, indicating their unstable LLM adaption efficacy which can even harm the model performance. 
+
+4.3 Discussion 
+
+In this subsection, we provide further discussion to analyze E VO SELECT ’s performance and its difference against prior work. More discussion is deferred to Appendix H. 
+
+EVO SELECT ’s performance gain vs base LLM capacity. One interesting observation is that E VO SELECT ’s relative performance against the base model increases as task difficulty grows. As shown in Figure 4, the performance gain becomes more pronounced on more challenging tasks, suggesting that E VO SELECT is particularly effective in scenarios where stronger adaptation is required. 
+
+EVO SELECT vs TSDS (Liu et al., 2024). We describe the key differences between TSDS (Liu et al., 2024) and E VO SELECT in this paragraph. While TSDS concatenates target alignment and diversity enhancement, we note that it has several limitations: (1) its diversity is en-forced through row-wise transport, which operates locally for each validation example and does not explicitly prevent redundancy among selected samples; (2) its solution ef-fectively reduces to a nearest-neighbor-style selection, limiting its expressiveness to local matching without capturing global interactions among training samples. The decoupled treatment of the two objectives ultimately leads to suboptimal training sets, resulting in inferior performance compared to E VO SELECT , as demonstrated in Section 4.2. 8Preprint. Under review. 0.4 0.5 0.6 0.7 0.8      
+
+> Base accuracy
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> 3.5
+> EvoSelect  base perf. (%)
+> ARC-Challenge
+> OpenBookQA
+> MMLU
+> ClimaQA
+> CommonsenseQA
+> LogiQA
+> LogiQA2
+> Med-MCQA
+> MedQA HeadQA
+> Selection ratio = 0.2
+> slope = -1.77
+> 0.4 0.5 0.6 0.7 0.8
+> Base accuracy
+> ARC-Challenge
+> OpenBookQA
+> MMLU
+> ClimaQA
+> CommonsenseQA
+> LogiQA
+> LogiQA2
+> Med-MCQA
+> MedQA
+> HeadQA
+> Selection ratio = 0.5
+> slope = -3.64
+
+Figure 4: Performance gain vs task difficulty. EVO SELECT ’s advantage becomes more significant as task difficulty increases (i.e. when base perf. is lower). 
+
+## 5 Related Work 
+
+Data Selection for LLM Adaptation. Existing work can be grouped into attribution, diversity and hybrid approaches. Attribution-only methods (Xia et al., 2024; San Joaquin et al., 2024; Zhou et al., 2024; Kwon et al., 2023; Cao et al., 2023) mostly rely on variants of influence-function (Koh & Liang, 2017) to estimate the contribution of each sample, but they may under-cover the target distribution. Diversity-only methods (Wu et al., 2023; Wang et al., 2024; Jung et al., 2025) instead improve coverage via sampling/clustering, but they do not model task alignment. Some works attempt to consider both aspects: in pretraining, these methods (Liu et al., 2025; Zhuang et al., 2025; Wang et al., 2025) combine quality and diversity through mixture weighting. However, these methods cannot be directly applied to target task adaption since (1) they operate without target-conditioned signals and (2) they learn mixture weights at the corpus or domain level instead of sample level. For targeted fine-tuning, some methods (Zhang et al., 2025b; Wu et al., 2024) typically combine multiple criteria through heuristic scoring functions and TSDS (Liu et al., 2024) solves a distribution alignment problem with an additional diversity regularizer and performs sampling to select data. In summary, these methods either rely solely on attribution/diversification or combine the two in a heuristic manner. 
+
+Optimal Transport for Data Attribution. We note that a line of work leverages Optimal Transport (OT) (Peyr ´e & Cuturi, 2019) to compute data attribution scores. LAVA (Just et al., 2023) and SAVA (Kessler et al., 2024) directly use the magnitude of the calibrated gradient of the OT objective as attribution scores. In contrast, TSDS (Liu et al., 2024) solves for a probability distribution over candidate data via an OT-based objective with local diversity augmentation, and samples training instances from this distribution. Similarly, TAROT (Feng et al., 2024) leverages greedy algorithm to select data that minimizes OT distance between candidate training and validation samples. We note that to the best of our knowledge, E VO SELECT is the first OT-based method that directly synergizes attribution and diversity objective for targeted data selection. 
+
+## 6 Conclusion 
+
+We study data-efficient LLM adaptation under an iterative generation-selection-training loop ,where generated samples can be redundant or misaligned with the target task and thus need to be selected before training. We propose E VO SELECT , an OT-based selection framework that jointly models task alignment and diversity to identify high-utility training examples for each iteration. Experiments across various benchmarks show that E VO SELECT consistently outperforms existing baselines under both weak and strong generators, highlighting the importance of a principled selection framework to achieve effective LLM adaptation. 9Preprint. Under review. 
+
+## References 
+
+Hugging face. https://huggingface.co .Alon Albalak, Yanai Elazar, Sang Michael Xie, Shayne Longpre, Nathan Lambert, Xinyi Wang, Niklas Muennighoff, Bairu Hou, Liangming Pan, Haewon Jeong, et al. A survey on data selection for language models. arXiv preprint arXiv:2402.16827 , 2024. Dimitri P Bertsekas. Nonlinear programming. Journal of the Operational Research Society , 48 (3):334–334, 1997. Yihan Cao, Yanbin Kang, Chi Wang, and Lichao Sun. Instruction mining: Instruction data selection for tuning large language models. arXiv preprint arXiv:2307.06290 , 2023. Guillaume Charpiat, Nicolas Girard, Loris Felardos, and Yuliya Tarabalka. Input similarity from the neural network perspective. Advances in Neural Information Processing Systems ,32, 2019. Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa Schoenick, and Oyvind Tafjord. Think you have solved question answering? try arc, the ai2 reasoning challenge. arXiv preprint arXiv:1803.05457 , 2018. Junwei Deng, Ting-Wei Li, Shiyuan Zhang, Shixuan Liu, Yijun Pan, Hao Huang, Xinhe Wang, Pingbang Hu, Xingjian Zhang, et al. dattri: A library for efficient data attribution. 
+
+Advances in Neural Information Processing Systems , 37:136763–136781, 2024. Junwei Deng, Yuzheng Hu, Pingbang Hu, Ting-Wei Li, Shixuan Liu, Jiachen T Wang, Dan Ley, Qirun Dai, Benhao Huang, Jin Huang, et al. A survey of data attribution: Methods, applications, and evaluation in the era of generative ai. 2025. Shizhe Diao, Yu Yang, Yonggan Fu, Xin Dong, Dan Su, Markus Kliegl, Zijia Chen, Peter Belcak, Yoshi Suhara, Hongxu Yin, et al. Nemotron-climb: Clustering-based iterative data mixture bootstrapping for language model pre-training. arXiv preprint arXiv:2504.13161 ,2025. Ning Ding, Yulin Chen, Bokai Xu, Yujia Qin, Shengding Hu, Zhiyuan Liu, Maosong Sun, and Bowen Zhou. Enhancing chat language models by scaling high-quality instructional conversations. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pp. 3029–3051, 2023. Pavel Dvurechensky, Alexander Gasnikov, and Alexey Kroshnin. Computational opti-mal transport: Complexity by accelerated gradient descent is better than by sinkhorn’s algorithm. In International conference on machine learning , pp. 1367–1376. PMLR, 2018. Logan Engstrom, Axel Feldmann, and Aleksander Madry. Dsdm: Model-aware dataset selection with datamodels. arXiv preprint arXiv:2401.12926 , 2024. Lan Feng, Fan Nie, Yuejiang Liu, and Alexandre Alahi. Tarot: Targeted data selection via optimal transport. arXiv preprint arXiv:2412.00420 , 2024. R ´emi Flamary, Nicolas Courty, Alexandre Gramfort, Mokhtar Z Alaya, Aur ´elie Boisbunon, Stanislas Chambon, Laetitia Chapel, Adrien Corenflos, Kilian Fatras, Nemo Fournier, et al. Pot: Python optimal transport. Journal of Machine Learning Research , 22(78):1–8, 2021. Dan Friedman and Adji Bousso Dieng. The vendi score: A diversity evaluation metric for machine learning. arXiv preprint arXiv:2210.02410 , 2022. Zeyu Han, Chao Gao, Jinyang Liu, Jeff Zhang, and Sai Qian Zhang. Parameter-efficient fine-tuning for large models: A comprehensive survey. arXiv preprint arXiv:2403.14608 ,2024. Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language understanding. arXiv preprint arXiv:2009.03300 , 2020. 10 Preprint. Under review. Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. 
+
+Iclr , 1(2):3, 2022. Pingbang Hu, Joseph Melkonian, Weijing Tang, Han Zhao, and Jiaqi W Ma. Grass: Scal-able data attribution with gradient sparsification and sparse projection. arXiv preprint arXiv:2505.18976 , 2025. Di Jin, Eileen Pan, Nassim Oufattole, Wei-Hung Weng, Hanyi Fang, and Peter Szolovits. What disease does this patient have? a large-scale open domain question answering dataset from medical exams. Applied Sciences , 11(14):6421, 2021. Jaehun Jung, Seungju Han, Ximing Lu, Skyler Hallinan, David Acuna, Shrimai Prabhumoye, Mostafa Patwary, Mohammad Shoeybi, Bryan Catanzaro, and Yejin Choi. Prismatic synthesis: Gradient-based data diversification boosts generalization in llm reasoning. 
+
+arXiv preprint arXiv:2505.20161 , 2025. Hoang Anh Just, Feiyang Kang, Jiachen T Wang, Yi Zeng, Myeongseob Ko, Ming Jin, and Ruoxi Jia. Lava: Data valuation without pre-specified learning algorithms. arXiv preprint arXiv:2305.00054 , 2023. Samuel Kessler, Tam Le, and Vu Nguyen. Sava: Scalable learning-agnostic data valuation. 
+
+arXiv preprint arXiv:2406.01130 , 2024. Pang Wei Koh and Percy Liang. Understanding black-box predictions via influence functions. In International conference on machine learning , pp. 1885–1894. PMLR, 2017. Yongchan Kwon, Eric Wu, Kevin Wu, and James Zou. Datainf: Efficiently estimating data influence in lora-tuned llms and diffusion models. arXiv preprint arXiv:2310.00902 , 2023. Zhenqing Ling, Daoyuan Chen, Liuyi Yao, Qianli Shen, Yaliang Li, and Ying Shen. Diversity as a reward: Fine-tuning llms on a mixture of domain-undetermined data. arXiv preprint arXiv:2502.04380 , 2025. Fengze Liu, Weidong Zhou, Binbin Liu, Zhimiao Yu, Yifan Zhang, Haobin Lin, Yifeng Yu, Bingni Zhang, Xiaohuan Zhou, Taifeng Wang, et al. Quadmix: Quality-diversity balanced data selection for efficient llm pretraining. arXiv preprint arXiv:2504.16511 , 2025. Hanmeng Liu, Jian Liu, Leyang Cui, Zhiyang Teng, Nan Duan, Ming Zhou, and Yue Zhang. Logiqa 2.0—an improved dataset for logical reasoning in natural language understanding. 
+
+IEEE/ACM Transactions on Audio, Speech, and Language Processing , 31:2947–2962, 2023. Jian Liu, Leyang Cui, Hanmeng Liu, Dandan Huang, Yile Wang, and Yue Zhang. Logiqa: A challenge dataset for machine reading comprehension with logical reasoning. arXiv preprint arXiv:2007.08124 , 2020. Zifan Liu, Amin Karbasi, and Theodoros Rekatsinas. Tsds: Data selection for task-specific model finetuning. Advances in Neural Information Processing Systems , 37:10117–10147, 2024. Veeramakali Vignesh Manivannan, Yasaman Jafari, Srikar Eranky, Spencer Ho, Rose Yu, Duncan Watson-Parris, Yian Ma, Leon Bergen, and Taylor Berg-Kirkpatrick. Climaqa: An automated evaluation framework for climate question answering models. arXiv preprint arXiv:2410.16701 , 2024. Todor Mihaylov, Peter Clark, Tushar Khot, and Ashish Sabharwal. Can a suit of armor conduct electricity? a new dataset for open book question answering. In Proceedings of the 2018 conference on empirical methods in natural language processing , pp. 2381–2391, 2018. Shervin Minaee, Tomas Mikolov, Narjes Nikzad, Meysam Chenaghlu, Richard Socher, Xavier Amatriain, and Jianfeng Gao. Large language models: A survey. arXiv preprint arXiv:2402.06196 , 2024. 11 Preprint. Under review. Ankit Pal, Logesh Kumar Umapathi, and Malaikannan Sankarasubbu. Medmcqa: A large-scale multi-subject multi-choice dataset for medical domain question answering. In 
+
+Conference on health, inference, and learning , pp. 248–260. PMLR, 2022. Gabriel Peyr ´e and Marco Cuturi. Computational optimal transport: With applications to data science . Now Foundations and Trends, 2019. Garima Pruthi, Frederick Liu, Satyen Kale, and Mukund Sundararajan. Estimating training data influence by tracing gradient descent. Advances in Neural Information Processing Systems , 33:19920–19930, 2020. Ayrton San Joaquin, Bin Wang, Zhengyuan Liu, Nicholas Asher, Brian Lim, Philippe Muller, and Nancy Chen. In2core: Leveraging influence functions for coreset selection in instruc-tion finetuning of large language models. In Findings of the Association for Computational Linguistics: EMNLP 2024 , pp. 10324–10335, 2024. Avi Singh, John D Co-Reyes, Rishabh Agarwal, Ankesh Anand, Piyush Patil, Xavier Garcia, Peter J Liu, James Harrison, Jaehoon Lee, Kelvin Xu, et al. Beyond human data: Scaling self-training for problem-solving with language models. arXiv preprint arXiv:2312.06585 ,2023. Richard Sinkhorn. Diagonal equivalence to matrices with prescribed row and column sums. 
+
+The American Mathematical Monthly , 74(4):402–405, 1967. Feifan Song, Bowen Yu, Hao Lang, Haiyang Yu, Fei Huang, Houfeng Wang, and Yongbin Li. Scaling data diversity for fine-tuning language models in human alignment. In Proceedings of the 2024 Joint International Conference on Computational Linguistics, Language Resources and Evaluation (LREC-COLING 2024) , pp. 14358–14369, 2024. Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan Berant. Commonsenseqa: A question answering challenge targeting commonsense knowledge. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers) , pp. 4149–4158, 2019. ModelScope Team. EvalScope: Evaluation framework for large models, 2024a. URL 
+
+https://github.com/modelscope/evalscope .Qwen Team. Qwen2.5: A party of foundation models, September 2024b. URL https: //qwenlm.github.io/blog/qwen2.5/ .David Vilares and Carlos G ´omez-Rodr ´ıguez. Head-qa: A healthcare dataset for complex reasoning. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics , pp. 960–966, 2019. Leandro von Werra, Younes Belkada, Lewis Tunstall, Edward Beeching, Tristan Thrush, Nathan Lambert, Shengyi Huang, Kashif Rasul, and Quentin Gallou ´edec. TRL: Trans-formers Reinforcement Learning, 2020. URL https://github.com/huggingface/trl .Peiqi Wang, Yikang Shen, Zhen Guo, Matthew Stallone, Yoon Kim, Polina Golland, and Rameswar Panda. Diversity measurement and subset selection for instruction tuning datasets. arXiv preprint arXiv:2402.02318 , 2024. Yifan Wang, Binbin Liu, Fengze Liu, Yuanfan Guo, Jiyao Deng, Xuecheng Wu, Weidong Zhou, Xiaohuan Zhou, and Taifeng Wang. Tikmix: Take data influence into dynamic mixture for language model pre-training. arXiv preprint arXiv:2508.17677 , 2025. Tianxin Wei, Ting-Wei Li, Zhining Liu, Xuying Ning, Ze Yang, Jiaru Zou, Zhichen Zeng, Ruizhong Qiu, Xiao Lin, Dongqi Fu, et al. Agentic reasoning for large language models. 
+
+arXiv preprint arXiv:2601.12538 , 2026. Minghao Wu, Thuy-Trang Vu, Lizhen Qu, and Gholamreza Haffari. The best of both worlds: Bridging quality and diversity in data selection with bipartite graph. arXiv preprint arXiv:2410.12458 , 2024. 12 Preprint. Under review. Shengguang Wu, Keming Lu, Benfeng Xu, Junyang Lin, Qi Su, and Chang Zhou. Self-evolved diverse data sampling for efficient instruction tuning. arXiv preprint arXiv:2311.08182 , 2023. Mengzhou Xia, Sadhika Malladi, Suchin Gururangan, Sanjeev Arora, and Danqi Chen. Less: Selecting influential data for targeted instruction tuning. arXiv preprint arXiv:2402.04333 ,2024. Pu Yang, Yunzhen Feng, Ziyuan Chen, Yuhang Wu, and Zhuoyuan Li. Spend wisely: Maximizing post-training gains in iterative synthetic data bootstrapping. arXiv preprint arXiv:2501.18962 , 2025. Eric Zelikman, Yuhuai Wu, Jesse Mu, and Noah Goodman. Star: Bootstrapping reasoning with reasoning. Advances in Neural Information Processing Systems , 35:15476–15488, 2022. Bolin Zhang, Jiahao Wang, Qianlong Du, Jiajun Zhang, Zhiying Tu, and Dianhui Chu. A survey on data selection for llm instruction tuning. Journal of Artificial Intelligence Research ,83, 2025a. Jia Zhang, Chen-Xi Zhang, Yao Liu, Yi-Xuan Jin, Xiao-Wen Yang, Bo Zheng, Yi Liu, and Lan-Zhe Guo. D3: Diversity, difficulty, and dependability-aware data selection for sample-efficient llm instruction tuning. arXiv preprint arXiv:2503.11441 , 2025b. Shengyu Zhang, Linfeng Dong, Xiaoya Li, Sen Zhang, Xiaofei Sun, Shuhe Wang, Jiwei Li, Runyi Hu, Tianwei Zhang, Guoyin Wang, et al. Instruction tuning for large language models: A survey. ACM Computing Surveys , 58(7):1–36, 2026. Xinyu Zhou, Simin Fan, and Martin Jaggi. Hyperinf: Unleashing the hyperpower of the schulz’s method for data influence estimation. arXiv preprint arXiv:2410.05090 , 2024. Xinlin Zhuang, Jiahui Peng, Ren Ma, Yinfan Wang, Tianyi Bai, Xingjian Wei, Qiu Jiantao, Chi Zhang, Ying Qian, and Conghui He. Meta-rater: A multi-dimensional data selection method for pre-training language models. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 10856–10896, 2025. 13 Preprint. Under review. 
+
+## A Additional Preliminary 
+
+Optimal Transport. Optimal transport (OT) (Peyr ´e & Cuturi, 2019; Flamary et al., 2021) provides a principled way to measure the discrepancy between two probability distributions. Let (Z, d) be a metric space equipped with a ground cost function d : Z × Z → R≥0, where 
+
+d(z, z′) denotes the distance between points z, z′ ∈ Z . Given two probability measures μ and 
+
+ν defined on Z, the optimal transport distance between μ and ν is defined as: OT (μ, ν, d) = 
+
+inf π∈Π(μ,ν)
+
+R 
+
+> Z ×Z
+
+d(z, z′) dπ(z, z′), where Π(μ, ν) is the set of all couplings over Z × Z with marginals μ and ν. When μ and ν are empirical distributions supported on finite sample sets, 
+
+μ = 1 
+
+> n
+
+∑ni=1 δzi , ν = 1 
+
+> m
+
+∑mj=1 δz′ 
+
+> j
+
+, where δ denotes the Dirac measure, the OT problem reduces to a discrete linear program. Let M ∈ Rn×m be the cost matrix with entries Mij = d(zi, z′
+
+> j
+
+);then the OT distance can be expressed as: OT (μ, ν, M) = min π∈Π(μ,ν) ∑ni=1 ∑mj=1 Mij πij ,where πij denotes the amount of mass transported from zi to z′ 
+
+> j
+
+under the coupling π.
+
+## B Dataset Settings 
+
+We detail the data split for seed, validation and test samples as following. We randomly obtain 100 samples from the seed split as initial seed and 1000 samples from the validation split as validation data for targeted task alignment. The full test split is used for evaluation. For each dataset, all three splits are disjoint. Dataset Name ARC-Challenge MMLU OpenBookQA ClimaQA 
+
+Seed Split Train Dev Train Silver Validation Split Val Val Val Silver Test Split Test Test Test Gold Table 4: Data split setting for scientific datasets. Dataset Name CommonsenseQA LogiQA LogiQA2 
+
+Seed Split Train Train Train Validation Split Train Train Train Test Split Val Val Test Table 5: Data split setting for commonsense/logical datasets. Dataset Name Med-MCQA MedQA HeadQA 
+
+Seed Split Train Train Train Validation Split Train Train Val Test Split Val Test Test Table 6: Data split setting for biomedical/healthcare datasets. 
+
+## C Synthetic Training Data Generation Details and Prompts 
+
+We mainly adopt the settings given by Jung et al. (2025). In the following, we show the detailed setting & prompts for question and solution generation, correspondingly. 
+
+Question generation. For question generation, we adopt the few-shot setting, where 5 random few-shot exampled are extracted from the current seed set and augmented to the prompt for novel question synthesis. At each iteration, 5k problem instance is generated. For text generation setting, the temperature is set as 1.0, top p = 0.95 and max tokens = 8192. The prompt is as follows. 14 Preprint. Under review. 
+
+Given a set of example multiple - choice questions , create 1 new multiple - choice questions that are strictly harder and test deeper understanding . Each question must have exactly 4 options labeled (A) , (B) , (C) , (D) , with exactly one correct answer . Format each question as : ---[[ Problem ]] < Question text > (A) < option A > (B) < option B > (C) < option C > (D) < option D > [[ Answer ]] < correct letter , e.g., A > ---Examples : [[ Problem ]] 
+
+$# $problem $ #$
+
+[[ Answer ]] 
+
+$# $answer $ #$
+
+Solution generation. For solution generation, we adopt the widely known rationale gen-eration (Zelikman et al., 2022) to aid solution generation. Specifically, the data generator is prompted to provide a 1-2 sentence rationale before answering. For text generation setting, the temperature is set as 0.75, top p = 0.95 and max tokens = 2048. Each question, we will generate 3 solutions. To obtain seed and validation set, we use the ground-truth solution to filter incorrect ones; while when generating candidate training samples, we use majority-voting to preserve confident rationales & answers. The system and instruction prompts are as follows. 
+
+< System Prompt > You are an expert at answering multiple - choice questions . Your role is to : 1. Carefully analyze the question and all options 2. Provide a concise 1 -2 sentence rationale explaining your reasoning 3. Select the correct answer with confidence Always provide a 1 -2 sentence brief explanation before giving the final answer . < Instruction Prompt > Answer the following multiple - choice question by selecting the correct option . Provide a concise 1 -2 sentence rationale explaining your reasoning , then give your answer in the format : Answer : [ LETTER ], where [ LETTER ] is one of A , B , C , D. 
+
+$# $problem $ #$
+
+15 Preprint. Under review. 
+
+## D Training Configurations 
+
+The base model is post-trained using SFT with LoRA (Hu et al., 2022) adapters through TRL (von Werra et al., 2020). For LoRA, we set r = 64, α = 128 and dropout rate 0.05. LoRA is applied to all linear layers. The per-device batch size is 4 with gradient accumulation of 4. For each iteration, the base models are trained for 3 epochs with a constant learning rate of 2 × 10 −5, weight decay 10 −4, and warm-up ratio 0.05. The best checkpoint is selected based on validation loss. Our experiments are conducted on an Ubuntu server equipped with Intel Xeon Platinum x86-64 CPUs and 4 Nvidia A100 80GB GPUs. 
+
+## E Evaluation Details and Prompts 
+
+We adopt a popular evaluation pipeline, Evalscope (Team, 2024a), for all datasets. For 
+
+ARC-Challenge , MMLU , CommonsenseQA , LogiQA and Med-MCQA , we use the built-in protocol; for the remaining ones, we download the datasets from Huggingface (hug). For text generation setting, the temperature is set as 0.0 and max tokens = 1024. For consistency, we adopt zero-shot evaluation for all datasets. The system and instruction prompts are as follows.                                              
+
+> < System Prompt > You are Qwen , created by Alibaba Cloud . You are ahelpful assistant . < Instruction Prompt > Answer the following multiple choice question by selecting the correct option . Provide aconcise 1 -2 sentence rationale explaining your reasoning , then give your answer in the format : Answer : [ LETTER ] where [ LETTER ] is one of { letters }. Question : { question } Options : { choices }
+
+## F Baselines 
+
+We elaborate the detailed setup for each baseline we compare in Section 4. 1. Attribution (Xia et al., 2024) selects top-k samples with highest scores, which are computed by the inner product between training and the average validation representations. Gradients are obtained from proxy model and no warm-up training is involved. 2. Diversity (Jung et al., 2025) first runs K-means clustering over the training repre-sentations, then keeps filling the candidate pool from the smallest clusters until the budget is exhausted. We follow the default configuration: cluster ratio = 0.1 (i.e. #clusters = #samples * cluster ratio). 3. Attr-Div first filters out all the bottom-25% data by attribution scores, then apply the same selection strategy as Diversity to select data from the pruned candidates. 4. TSDS (Liu et al., 2024) finds candidate samples that are closest to the validation examples via OT and down-weights redundant ones using a kernel density es-timate (KDE). It then samples from the associated probability distribution. We follow the default configuration: max k (maximum kNN neighbors) is set to 5000, kde k (neighborhood size for KDE) is set to 1000, KDE bandwidth σ = 0.75, OT regularization α = 0.5, OT regularization scale C = 5.0. 
+
+## G Additional Experiment Results 
+
+Main results with weak data generator. In Table 7, 8 and 9, we show that with weak data generator (i.e. 14B data generator), E VO SELECT is the most effective across settings. 16 Preprint. Under review.      
+
+> ARC-Challenge MMLU OpenBookQA ClimaQA Avg. Selection Ratio
+
+→ 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5  
+
+> Methods
+
+↓                                                                                                                                       
+
+> Base 0.9181 0.7882 0.9140 0.7945 0.8537
+> Iter. 1
+> All 0.9164 0.7911 0.9260 0.7979 0.8579 Random 0.9189 0.9181 0.7922 0.7879 0.9300 0.9340 0.8048 0.8014 0.8615 0.8604 Attribution 0.9138 0.9181 0.7919 0.7906 0.9440 0.9320 0.8219 0.7911 0.8679 0.8579 Diversity 0.9181 0.9147 0.7886 0.7875 0.9220 0.9320 0.8048 0.8116 0.8584 0.8614 Attr-Div 0.9249 0.9172 0.7891 0.7886 0.9260 0.9220 0.8116 0.8116 0.8629 0.8599 TSDS 0.9300 0.9280 0.7903 0.7875 0.9220 0.9240 0.8185 0.8185 0.8652 0.8645
+> EVO SELECT 0.9189 0.9181 0.7945 0.7918 0.9300 0.9420 0.8185 0.8082 0.8655 0.8650 Iter. 2
+> All 0.9164 0.7852 0.9160 0.7979 0.8539 Random 0.9147 0.9181 0.7918 0.7866 0.9440 0.9320 0.8014 0.8048 0.8630 0.8604 Attribution 0.9113 0.9172 0.7907 0.7889 0.9300 0.9340 0.8253 0.7945 0.8643 0.8587 Diversity 0.9121 0.9147 0.7915 0.7903 0.9180 0.9340 0.8185 0.8082 0.8600 0.8618 Attr-Div 0.9215 0.9198 0.7928 0.7852 0.9220 0.9240 0.7945 0.7979 0.8577 0.8567 TSDS 0.9198 0.9181 0.7913 0.7912 0.9240 0.9440 0.8151 0.8116 0.8625 0.8662
+> EVO SELECT 0.9198 0.9198 0.7922 0.7914 0.9460 0.9440 0.8082 0.8151 0.8665 0.8676
+
+Table 7: Performance comparison on scientific datasets ( 14b base model). Bold and underscore denote top-1/2 accuracy. 
+
+CommonsenseQA LogiQA LogiQA2 Avg. Selection Ratio → 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5 
+
+Methods ↓
+
+Base 0.8313 0.5853 0.4898 0.6355 
+
+Iter. 1 
+
+All 0.8477 0.5822 0.4975 0.6425 Random 0.8460 0.8468 0.5945 0.5914 0.5000 0.5019 0.6468 0.6467 Attribution 0.8518 0.8509 0.5822 0.5730 0.5038 0.5038 0.6459 0.6426 Diversity 0.8354 0.8542 0.5883 0.5745 0.5159 0.5140 0.6465 0.6476 Attr-Div 0.8493 0.8444 0.5684 0.5745 0.5153 0.5064 0.6443 0.6418 TSDS 0.8444 0.8370 0.5883 0.5837 0.5102 0.4943 0.6476 0.6383 
+
+EVO SELECT 0.8452 0.8559 0.5960 0.5975 0.5095 0.5102 0.6502 0.6545 Iter. 2 
+
+All 0.8411 0.5668 0.5032 0.6370 Random 0.8452 0.8509 0.5730 0.5899 0.5115 0.4987 0.6432 0.6465 Attribution 0.8534 0.8468 0.5853 0.5822 0.5032 0.5013 0.6473 0.6434 Diversity 0.8509 0.8436 0.5791 0.5822 0.5204 0.5000 0.6501 0.6419 Attr-Div 0.8419 0.8526 0.5684 0.5837 0.5184 0.4847 0.6429 0.6403 TSDS 0.8436 0.8428 0.5806 0.5868 0.5070 0.5000 0.6437 0.6432 
+
+EVO SELECT 0.8493 0.8559 0.6006 0.6022 0.5184 0.5013 0.6561 0.6531 
+
+Table 8: Performance comparison on commonsense/logical datasets ( 14b base model). Bold 
+
+and underscore denote top-1/2 accuracy. 
+
+Med-MCQA MedQA HeadQA Avg. Selection Ratio → 0.2 0.5 0.2 0.5 0.2 0.5 0.2 0.5 
+
+Methods ↓
+
+Base 0.6075 0.7023 0.7801 0.6966 
+
+Iter. 1 
+
+All 0.6139 0.7172 0.8023 0.7111 Random 0.6180 0.6139 0.7062 0.7062 0.7994 0.7943 0.7079 0.7048 Attribution 0.6192 0.6144 0.7086 0.7141 0.8056 0.7994 0.7111 0.7093 Diversity 0.6132 0.6156 0.7054 0.6999 0.8001 0.7976 0.7062 0.7044 Attr-Div 0.6158 0.6180 0.7054 0.7038 0.7980 0.7987 0.7064 0.7068 TSDS 0.6101 0.6139 0.7135 0.6991 0.7947 0.7965 0.7061 0.7031 
+
+EVO SELECT 0.6120 0.6173 0.7101 0.7109 0.8020 0.8005 0.7080 0.7096 Iter. 2 
+
+All 0.6158 0.7093 0.7950 0.7067 Random 0.6132 0.6132 0.7133 0.7062 0.7958 0.7969 0.7074 0.7054 Attribution 0.6146 0.6153 0.7086 0.7031 0.7969 0.7994 0.7067 0.7059 Diversity 0.6122 0.6144 0.7054 0.7031 0.8038 0.8045 0.7071 0.7073 Attr-Div 0.6122 0.6158 0.7101 0.7078 0.8005 0.7976 0.7076 0.7071 TSDS 0.6034 0.6113 0.7038 0.6968 0.7991 0.7950 0.7021 0.7010 
+
+EVO SELECT 0.6158 0.6187 0.7164 0.7086 0.7998 0.8016 0.7107 0.7096 
+
+Table 9: Performance comparison on biomedical/healthcare datasets ( 14b base model). Bold 
+
+and underscore denote top-1/2 accuracy. 17 Preprint. Under review. 
+
+## H Further Analysis 
+
+Performances vs full-data training. Figure 5 compares E VO SELECT against baseline meth-ods relative to training on the full dataset under two selection ratios by enumerating performances across all datasets. Across both settings, E VO SELECT consistently achieves the highest performance, surpassing all baselines. Notably, even at a lower selection ratio, EVO SELECT consistently exceeds full-data performance, indicating its ability to identify high-quality subsets. In contrast, attribution-only and diversity-only methods exhibit in-consistent behavior, often falling below the full-data baseline, while heuristic combinations (Attr-Div ) provide limited improvement. TSDS (Liu et al., 2024) shows competitive perfor-mance but remains consistently below E VO SELECT , suggesting that its way of combining alignment and diversity is not sufficiently effective. Random 
+
+> Attribution
+> Diversity
+> Attr-Div
+> TSDS
+> EvoSelect
+> 96
+> 98
+> 100
+> 102
+> 104
+> % of full-data performance
+> Selection Ratio = 0.2
+> full data
+> Random
+> Attribution
+> Diversity
+> Attr-Div
+> TSDS
+> EvoSelect
+> Selection Ratio = 0.5
+> full data
+
+Figure 5: Performance relative to full-data training. E VO SELECT consistently achieves the highest performance across both selection ratios, exceeding the full-data baseline. 
+
+Win-rate across task clusters. Figure 6 reports the rank-1 win rate across different task clusters. EVO SELECT achieves the highest win rate in all clusters. This indicates that EVO SELECT consistently identifies superior training subsets across diverse domains. In contrast, attribution and diversity-based methods exhibit low and unstable win rates, while TSDS achieves moderate performance but lacks consistency across clusters. These results highlight the robustness of E VO SELECT in selecting effective data across varying task characteristics. Random     
+
+> Attribution
+> Diversity
+> Attr-Div
+> TSDS
+> EvoSelect
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> Rank-1 rate (%)
+> 12% 6% 6% 0%
+> 19%
+> 56%
+> C1: Scientific Reasoning
+> Random
+> Attribution
+> Diversity
+> Attr-Div
+> TSDS
+> EvoSelect
+> 8%
+> 17%
+> 0%
+> 8%
+> 0%
+> 67%
+> C2: Commonsense/Logic Reasoning
+> Random
+> Attribution
+> Diversity
+> Attr-Div
+> TSDS
+> EvoSelect
+> 0% 0%
+> 8%
+> 17%
+> 25%
+> 50%
+> C3: Biomedical/Healthcare Reasoning
+
+Figure 6: Win-rate across task clusters. E VO SELECT attains the highest rank-1 rate across all task clusters, demonstrating robust top-performing behavior across different task domains. 18

@@ -6,55 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-06
-- 运行时间：2026-05-06 21:01:03 UTC
+- 最新运行日期：2026-05-07
+- 运行时间：2026-05-07 20:53:05 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：2
+- 本次总论文数：12
+- 精读区：3
 - 速读区：9
 
 ### 今日简报（AI）
-今日深挖 11 篇前沿成果，重点解析大模型在无线通信适配与提示词算术去偏领域的突破性进展。
-核心结论指出 RFPrompt 可实现无线大模型的专家级调制分类，而提示词交互技术为解决分布偏移下的去偏难题提供了新方案。
-建议读者重点关注提示词工程如何从简单的指令输入演变为跨学科、跨模态的专家级适配工具。
-- 详情：[/202605/06/README](/202605/06/README)
+今日深度研读 12 篇前沿论文，核心聚焦 Prompt Learning 的可解释性优化与频谱粒度解耦。
+重点推荐通过语义 Token 选择提升提示词透明度，以及利用 SpecPL 框架实现更精准的表征学习。
+建议开发者关注如何结合确定性计算评估，进一步优化大模型在复杂任务中的提示策略。
+- 详情：[/202605/07/README](/202605/07/README)
 
 ### 精读区论文标签
-1. [RFPrompt: Prompt-Based Expert Adaptation of the Large Wireless Model for Modulation Classification](/202605/06/2605.03279v1-rfprompt-prompt-based-expert-adaptation-of-the-large-wireless-model-for-modulation-classification)  
+1. [Joint Semantic Token Selection and Prompt Optimization for Interpretable Prompt Learning](/202605/07/2605.04425v1-joint-semantic-token-selection-and-prompt-optimization-for-interpretable-prompt-learning)  
    标签：评分：9.0/10、query:bopl
-   evidence：参数高效的基于提示的适配
-2. [When Prompts Interact: Assessing Prompt Arithmetic for Deconfounding under Distribution Shift](/202605/06/2605.03096v1-when-prompts-interact-assessing-prompt-arithmetic-for-deconfounding-under-distribution-shift)  
+   evidence：离散与连续提示的交替优化
+2. [SpecPL: Disentangling Spectral Granularity for Prompt Learning](/202605/07/2605.04504v1-specpl-disentangling-spectral-granularity-for-prompt-learning)  
+   标签：评分：9.0/10、query:bopl
+   evidence：视觉语言模型提示学习的新频谱视角
+3. [Telegraph English: Semantic Prompt Compression via Structured Symbolic Rewriting](/202605/07/2605.04426v1-telegraph-english-semantic-prompt-compression-via-structured-symbolic-rewriting)  
    标签：评分：8.0/10、query:bopl
-   evidence：提示微调作为任务算术的参数高效替代方案
+   evidence：自动提示压缩与重写协议
 
 ### 速读区论文标签
-1. [GRPO-TTA: Test-Time Visual Tuning for Vision-Language Models via GRPO-Driven Reinforcement Learning](/202605/06/2605.03403v1-grpo-tta-test-time-visual-tuning-for-vision-language-models-via-grpo-driven-reinforcement-learning)  
+1. [CLaC at SemEval-2026 Task 6: Response Clarity Detection in Political Discourse](/202605/07/2605.02170v1-clac-at-semeval-2026-task-6-response-clarity-detection-in-political-discourse)  
    标签：评分：7.0/10、query:bopl
-   evidence：将特定类别的提示词预测建模为策略优化
-2. [Steer Like the LLM: Activation Steering that Mimics Prompting](/202605/06/2605.03907v1-steer-like-the-llm-activation-steering-that-mimics-prompting)  
+   evidence：比较基于提示的LLM与微调编码器
+2. [Evaluating Prompting and Execution-Based Methods for Deterministic Computation in LLMs](/202605/07/2605.03227v1-evaluating-prompting-and-execution-based-methods-for-deterministic-computation-in-llms)  
    标签：评分：7.0/10、query:bopl
-   evidence：将提示词引导建模为激活引导
-3. [UnAC: Adaptive Visual Prompting with Abstraction and Stepwise Checking for Complex Multimodal Reasoning](/202605/06/2605.03950v1-unac-adaptive-visual-prompting-with-abstraction-and-stepwise-checking-for-complex-multimodal-reasoning)  
+   evidence：评估大语言模型的多种提示策略
+3. [Elicitation Matters: How Prompts and Query Protocols Shape LLM Surrogates under Sparse Observations](/202605/07/2605.04764v1-elicitation-matters-how-prompts-and-query-protocols-shape-llm-surrogates-under-sparse-observations)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于多模态推理的自适应视觉提示策略
-4. [Learning in the Fisher Subspace: A Guided Initialization for LoRA Fine-Tuning](/202605/06/2605.01046v1-learning-in-the-fisher-subspace-a-guided-initialization-for-lora-fine-tuning)  
+   evidence：提示词影响LLM代理模型进行优化
+4. [EvoSelect: Data-Efficient LLM Evolution for Targeted Task Adaptation](/202605/07/2604.26170v1-evoselect-data-efficient-llm-evolution-for-targeted-task-adaptation)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过LoRA初始化的参数高效微调
-5. [LLM Output Detectability and Task Performance Can be Jointly Optimized](/202605/06/2605.01350v1-llm-output-detectability-and-task-performance-can-be-jointly-optimized)  
+   evidence：任务适配的迭代生成-训练循环
+5. [Importance-Guided Basis Selection for Low-Rank Decomposition of Large Language Models](/202605/07/2605.01627v1-importance-guided-basis-selection-for-low-rank-decomposition-of-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：LLM输出与性能的联合优化
-6. [Decision-Focused Learning via Tangent-Space Projection of Prediction Error](/202605/06/2605.01361v1-decision-focused-learning-via-tangent-space-projection-of-prediction-error)  
+   evidence：大语言模型的原则性低秩压缩
+6. [Self-Mined Hardness for Safety Fine-Tuning](/202605/07/2605.03226v1-self-mined-hardness-for-safety-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过求解器和遗憾梯度进行微分
-7. [Referring Multiple Regions with Large Multimodal Models via Contextual Latent Steering](/202605/06/2605.01827v1-referring-multiple-regions-with-large-multimodal-models-via-contextual-latent-steering)  
+   evidence：自动提示难度评分与微调
+7. [From Code to Prediction: Fine-Tuning LLMs for Neural Network Performance Classification in NNGPT](/202605/07/2605.03686v1-from-code-to-prediction-fine-tuning-llms-for-neural-network-performance-classification-in-nngpt)  
    标签：评分：6.0/10、query:bopl
-   evidence：引导大型多模态模型的视觉提示
-8. [When Correct Isn't Usable: Improving Structured Output Reliability in Small Language Models](/202605/06/2605.02363v1-when-correct-isnt-usable-improving-structured-output-reliability-in-small-language-models)  
+   evidence：用于AutoML中超参数优化的LLM
+8. [Efficiently Aligning Language Models with Online Natural Language Feedback](/202605/07/2605.04356v1-efficiently-aligning-language-models-with-online-natural-language-feedback)  
    标签：评分：6.0/10、query:bopl
-   evidence：结构化输出可靠性的提示策略评估
-9. [On Adaptivity in Zeroth-Order Optimization](/202605/06/2605.03869v1-on-adaptivity-in-zeroth-order-optimization)  
+   evidence：通过在线自然语言反馈对齐语言模型
+9. [Understanding In-Context Learning for Nonlinear Regression with Transformers: Attention as Featurizer](/202605/07/2605.05176v1-understanding-in-context-learning-for-nonlinear-regression-with-transformers-attention-as-featurizer)  
    标签：评分：6.0/10、query:bopl
-   evidence：内存受限的大语言模型微调中的零阶优化
+   evidence：上下文学习的理论理解
 
 
 <div class="dpr-home-promo-card">
