@@ -6,29 +6,22 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-09
-- 运行时间：2026-05-09 20:34:26 UTC
+- 最新运行日期：2026-05-10
+- 运行时间：2026-05-10 20:00:50 UTC
 - 运行状态：成功
-- 本次总论文数：2
+- 本次总论文数：0
 - 精读区：0
-- 速读区：2
+- 速读区：0
 
 ### 今日简报（AI）
-今日聚焦文生图模型的动态评估框架及视频情感识别的跨模态融合技术。
-重点关注 DynT2I-Eval 带来的文生图动态评测新范式，以及通过跨模态提示微调提升视频情感识别的鲁棒性。
-建议关注生成式模型评测工具的迭代，并探索多模态融合在复杂交互场景下的应用潜力。
-- 详情：[/202605/09/README](/202605/09/README)
+> 今日无新推荐，系统未产出可展示论文。
+- 详情：[/202605/10/README](/202605/10/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [DynT2I-Eval: A Dynamic Evaluation Framework for Text-to-Image Models](/202605/09/2605.06170v1-dynt2i-eval-a-dynamic-evaluation-framework-for-text-to-image-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：通过任务特定空间和难度感知采样持续生成新提示
-2. [Adaptive Physical-Facial Representation Fusion via Subject-Invariant Cross-Modal Prompt Tuning for Video-Based Emotion Recognition](/202605/09/2605.05694v1-adaptive-physical-facial-representation-fusion-via-subject-invariant-cross-modal-prompt-tuning-for-video-based-emotion-recognition)  
-   标签：评分：6.0/10、query:bopl
-   evidence：跨模态提示微调框架
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
