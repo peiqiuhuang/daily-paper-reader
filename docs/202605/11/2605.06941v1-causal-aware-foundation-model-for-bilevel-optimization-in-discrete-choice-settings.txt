@@ -1,0 +1,512 @@
+Title: Causal-Aware Foundation-Model for Bilevel Optimization in Discrete Choice Settings
+
+URL Source: https://arxiv.org/pdf/2605.06941v1
+
+Published Time: Mon, 11 May 2026 00:20:52 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Causal-Aware Foundation-Model for Bilevel Optimization in Discrete Choice Settings 
+
+Shivaram Subramanian, Zhengliang Xue, Markus Ettl, Yingdong Lu, Jayant Kalagnanam ∗
+
+# Abstract 
+
+We introduce a causal-aware foundation-model framework for real -time optimal decision making in discrete - choice environments. We propose a constrained triple-head price optimization (C3PO) network to solve a bi - level decision problem in which a service provider selects an optimal assortment while heterogeneous users make personalized acceptance or rejection choices optimizing their own personalized preferences. C3PO integrates imitation learning of prices, multi-task learning of revenue responses, and in-context learning of price elasticity to generate pricing recommendations while adhering to business constraints. During inference, frontier model prompting retrieves an enhanced elasticity prior for new products from behavioral economics literature, improving pricing effectiveness. We demonstrate strong in-context learning performance using simulated, synthetic, and real-world datasets. C3PO is trained on simulated data generated from multiple classical discrete choice models in economics. The model is trained on data comprising simulated customer segments and counterfactual action–outcome pairs and evaluated on randomly generated choice environments with no access to the underlying preference structure. The trained model consistently improves the pricing KPIs, with gains increasing as customer price sensitivity increases. We also deploy the tuned foundation model for optimal pricing in real-world applications such as healthcare, tender - pricing, airline ancillary pricing, and other domains, achieving substantial gains across multiple products, markets, and divisions. 
+
+# 1 Introduction 
+
+Discrete choice models (DCMs) are widely used in forecasting, assortment planning, pricing, market-ing and other decision making processes across various industries such as transportation, restaurant and food service, retail, and entertainment when customers select among a finite set of products or ser-vices. DCMs naturally capture a bi-level decision process well suited to competitive settings between a firm’s offering and customers’ selection. From buyers’ perspective, individual consumers evaluate the available options and select (or decline) items based on their own utility, driven by factors such as willingness to pay, perceived quality, and personal preferences. Meanwhile, the seller strategically sets the adjustable attributes of the offer set (for example, prices) to influence customer choices and optimize key performance metrics such as expected revenue or profit margin. The decision-making literature has traditionally emphasized domain-specific models tailored to particular applications, rather than pursuing a universal model capable of capturing the common structure underlying diverse tasks and general decision strategies. This reliance on specialized models arises in part from the fact that real -world decisions are shaped by complex human behavior and tacit knowledge that are difficult to capture with a single predictor or even an ensemble of traditional modeling approaches. This paper aims to overcome these limitations by introducing a method for generating optimal actions that adapt to product types, customer heterogeneity, diverse constraints, and probabilistic objectives 
+
+> ∗IBM T.J. Watson Research Center Yorktown Heights, New York, 10598, U.S.A.
+> {subshiva, zxue, msettl, yingdong, jayant }@us.ibm.com
+> Preprint.
+> arXiv:2605.06941v1 [cs.LG] 7 May 2026
+
+through a foundation model for decision making (FMDM) built on transformer architectures. We design a new FMDM architecture is designed to overcome the decision-making limitations of leveraging pre-trained tabular foundation models for prediction such as Tabular Prior-Data Fitted Network (TabPFN)([ 1]) that rely solely on imitation learning to predict unconstrained optimal actions. Whereas the focus of this paper is on pricing as an exemplar of discrete-choice based decision-making, the proposed approach is applicable beyond pricing to many other problem areas such as optimal product design, assortment optimization, transportation planning, and marketing, among others. We first validate our approach in controlled settings using synthetic datasets generated from well-established ground-truth discrete choice models. Next, we apply the FMDM to approximately solve a complex stochastic optimization problem arising in multiple real-world settings such as competitive tender pricing for medical device supply, and airline ancillary pricing, illustrating how the model can enhance pricing strategies for major industry participants. Finally, we benchmark the FMDM recommendations against those obtained from traditional approaches and highlight the relative strengths and limitations of each approach. 
+
+# 2 Related Work 
+
+Discrete Choice Models. [ 2, 3] introduced the random utility framework and conditional logit model, thus laid the theoretical foundation of discrete choice modeling for which D. McFadden was awarded the Nobel Prize in Economics in 2000. This fundamental theory is enriched by [ 4] where the discrete choice theory of product differentiation was developed, and it provides a unified framework for modeling horizontal and vertical product differentiation that addresses the independence of irrelevant alternatives (IIA) problem. [ 5 ] derived the optimality conditions for maximizing expected margin for multinomial and nested logit models, which can be leveraged to calculate the optimal prices using a fixed point search. The work by [ 6 ] extended this result to pricing under generalized extreme value models (GEV). Data driven and nonparametric approach for decision-making in discrete choice models are pursued in [7, 8], and extended to Markov setting in [9]. Discrete choice models underpin a broad range of practical decision-making applications, including air travel demand forecasting and revenue management, [ 10 ], personalized bundle pricing, [ 11 ], joint pricing and customer segmentation under business constraints via model - free column generation, [ 12 ], and for multi-product revenue optimization across product lines, [ 13 ]. Related efforts in the vehicle routing domain include the work of [ 14 ] where the authors train a pair -wise attention pointer network to infer real -world driver routing behavior. Among other things, this network captures tacit driving hacks that are not readily modeled in classical vehicle routing formulations. 
+
+Code Generation Models for Policy Learning. Recent code generation models such as CodeT5 [15 ] and StarCoder [ 16 ] have been cited as having the ability to translate complex business constraints and optimization objectives into executable policy functions, exploiting their inherent understanding of conditional logic and structured decision rules essential for discrete choice policy generation. 
+
+Tabular Foundation Models. TabPFN [ 1, 17 ], building on the PFN framework [ 18 ], demonstrates that transformers pre-trained on synthetic data can achieve state-of-the-art (SOTA) performance on tabular classification tasks. However, these models focus exclusively on prediction. 
+
+# 3 Problem Formulation 
+
+Consider a marketplace where a product/service provider (seller) offering multiple options to buyers who can select one of these choices to maximize their own utilities. Here are the assumptions and notations for the subsequent usages: • There are K products offered by the seller, indexed by k = 1 , . . . , K . Accordingly, a customer’s choice is characterized by y = ( y1, . . . , y K ) ∈ RK , identifying the purchased product y, satisfying PKk=1 yk = 1 .• Seller’s decisions are also characterized by a vector p = ( p1, p 2, . . . , p K ) ∈ RK , a repre-sentative example is a price vector, associated with the revenue vector r = ( r1, r 2, . . . , r K ),which will the one considered in this paper. 2• There are M observable, non-decision product features, measured either as real-valued variables or elements of finite lattices (e.g., binary indicators). These numeric and categorical attributes are denoted by x = ( x1, . . . , x M ) ∈ RM for any purchased record. • There are L observable customer attributes, denoted by zi = ( zi, 1, . . . , z i,L ) ∈ RL for each customer (or customer segment) i = 1 , 2, . . . , I .• There are N historical transaction data indexed by n = 1 , . . . , N . Each transaction is represented by (pn, xn, yn, zn).Given the K choices, a customer’s utilities are denoted by ui = ( ui, 1, . . . , u i,K ), with corresponding choice probabilities q = ( q1, . . . , q K ) based on the distribution of customer preferences. For example, the Multinomial Logit (MNL) model assumes that the random components of utility are independently and identically distributed (i.i.d.) according to a Gumbel distribution. Moreover, the default choice 
+
+0 can be added, which is often interpreted as the baseline option, for example, it could refer to the selecting economy seats on a commercial flight relative to business, premium, or first class; or the no-purchase option, typically not having observed data for price or product features. Given these variables, a multi-product pricing problem can be formulated as maximizing the expected revenue for each transaction, subject to feasible prices in an action space Π:
+
+max  
+
+> pn∈Π
+
+pn · q⊤(pn, xn, zn). (1) Here, the probability of discrete choices q(ui) depends on the utility ui(pn, xn, zn), a function of the decision variables, non-decision features and customer attributes. Consequently, the seller’s optimal decisions depend on the non-decision features, for example through a pricing policy p∗
+
+> n
+
+(xn, zn).One viable approach to combining discrete choice models with machine learning techniques is to approximate the utility function u(x, z) using a neural network, and then obtain choice probabilities through a softmax operation, as shown in [ 19 ]. Specifically, [ 19 ] treat the utility function as a random field and approximate it using a system of neural networks. Their key technical result shows that, for any discrete choice model, there exists a neural network approximation whose induced choice probabilities are arbitrarily close (in total variation distance) to those of the original model for any instance. In the context of FMDM, however, the goal is more ambitious: the model should not depend on any particular underlying choice model. Instead, a desirable theoretical guarantee is that, for any discrete choice model, the probabilities it generates can be approximated by those produced by the foundation model, or equivalently, that the induced utility functions are themselves universally approximable; see [ 20 ]. FMDMs is then utilized to solve bi-level optimization (1) with the utilities, hence the probabilities, minimizes the loss function of the component of the FMDM for prediction. While we utilize the pricing domain for clarity of exposition, the proposed FMDM framework is domain-agnostic and readily extensible to diverse decision-making tasks and action spaces. 
+
+# 4 Foundation Model for Decision Making under Discrete Choice 
+
+Next, we examine modeling approaches for optimizing decision-making under discrete choice. 
+
+4.1 Model Architecture 
+
+Figure 1 illustrates the overall architecture of FMDM, which maps customer attributes and historical price–revenue contexts to a constrained price prediction via a hierarchical transformer with in-context learning. The model receives two primary inputs: a vector of customer features and a set of context samples (pi, r i), where pi denotes a historical price vector and ri the corresponding observed outcome (revenue). An optional elasticity signal, derived from economic literature, is incorporated at inference time to add domain knowledge or externally derived priors. This signal is treated as a control input rather than a learned feature. We present C3PO (Constrained triple-head price optimization), an architecture for a FMDM that combines three distinct learning paradigms. (i) Imitation learning with supervised price labels: the model imitates an oracle pricing policy via regression on labeled optimal prices; (ii) In-context learning with inference-time elasticity priors: at inference time, labeled samples are pre-pended to the batch and processed by a causal transformer, enabling few-shot adaptation; simultaneously, an 3Figure 1: High-level C3PO model architecture. elasticity prior provides a plausible elasticity range which anchors the price predictions; and (iii) Multi-task learning of the price-revenue curve: an auxiuliary revenue head learns to predict revenue for any price vector. This head is frozen and used as a reward signal to direct the price head towards higher revenue regions. The imitation learning module learns a representation of the optimal prices p, while the multitask component models the objective function (revenue-price curve) f (p) and its variation. The in-context learning further guides the predictions to the best regions by modeling price elasticity rather than directly tracking the gradients f ′(p), which boosts C3PO’s ability to generalize pricing recommendations across product types and domains. It also allows the decision-maker to specify an elasticity-prior for a new product via an LLM prompt to improve the pricing effectiveness. 
+
+Stage 1: Customer and Context Feature Encoding 
+
+Customer features are embedded by a feature token encoder to produce a customer embedding. Each context sample that consists of a price vector pi and a revenue scalar ri is independently processed by an intra-sample Transformer, which processes the elements of a single price-revenue pair to capture intra sample structure. The intra sample embeddings are then aggregated by a cross sample Transformer which performs attention across the set of context samples. This hierarchical encoding yields a task embedding that captures the historical pricing environment. 
+
+Stage 2: In Context Learning with Causal Masking 
+
+Customer and task embeddings are combined and passed to an in context learning (ICL) Transformer with a causal mask. This module allows the model to condition predictions on a small number of example rows, enabling few shot learning without retraining. At inference time, a product-level elasticity prior looked up from a dictionary of textbook ranges introduces an analytical anchor price and a directional bias. The shared representation produced by the ICL Transformer feeds a price head which outputs candidate prices. 
+
+Stage 3: Prediction Heads and Constraints 
+
+The price head implements imitation learning of the price labels. In parallel, a revenue head is trained jointly to learn the mapping from any price vector to expected revenue, enabling gradient-based revenue maximization at training time. The revenue head is used only during training to support multi task objectives and is not required at inference. It acts as a differentiable environment for the price head. The model is trained using a combination of multi task losses, including supervised price prediction, outcome modeling, and constraint related penalties. This formulation leads to representations that are operationally valid while allowing inference time enrichment to guide final decisions without modifying learned parameters. As feasible solutions in pricing optimization must often satisfy structural constraints arising from business rules and operational requirements, we also introduce a differentiable constraint layer that implements a heuristic clamp-and-redistribute-violation approach that is integrated into the end of the pricing network. This final layer works well with a blackbox optimization setting such as ours by projecting the raw price outputs onto a feasible set defined by box constraints, price-ordering, and a single global linear constraint to control the average price, and see Appendix A.4 for related theoretical reasoning. Global constraint violations are proportionally redistributed. The constraint layer minimizes infeasibility (e.g., box constraints, global constraints, and inter-product ordering) as 4soft penalties during training. More rigorous differentiable constraint layer options such as OPTNET ([21]) can be used in lieu of our lightweight approach. 
+
+4.2 Transfer Learning in Foundation Model 
+
+A foundation model can directly perform in-context learning (ICL), where it learns to make optimal decisions from sequences of the form (x′, q(x′), p∗(x′)) , for any x′ in the testing dataset X′ of the size (M + 2 K) × N ′. For this type of problems, it is common to normalize the decision variables using an appropriate baseline. For details, see Appendix A.1.1. There are two possible scenarios, depending on whether the choice probabilities q′ are retrained during transfer learning. 
+
+4.2.1 The First Scenario 
+
+In the first scenario, no discrete-choice observations are available in the testing dataset. In this case, transfer learning relies on statistically contextual similarity between the pre-trained data and the testing data. The transformer then leverages the pre-trained optimal policy p◦(xn) learned from the training dataset XM ×N , represented by learned parameters in the form of matrix weights, to approximate the optimal policy p∗(x′) for any out-of-distribution x′ that might be best quantified by a set of different learned parameters. The quality of this approximation depends on the degree of similarity between the distributions of the testing and training datasets, is an intensively studies subject in domain adaptation , see e.g. [ 22 ], a topic of transfer learning with different source and target distributions but the same task. Here, we adopt some fundamental ideas and methodologies in domain adaptation, and derive some approximation error estimations specific to the problem of optimal decision making for discrete choices models. Suppose that the pre-trained data xn follows a distribution over the feature space, is usually termed 
+
+source distribution and denoted as πS ; the testing data x′ follows a different distribution, is termed the 
+
+target distribution and denoted as πT . Each statistical hypothesis is represented by a high dimensional matrix weight θ, which means that the foundation model Tθ takes an input feature vector x to the output spaces (discrete for choice probabilities and continuous for optimal pricing). More specifically, here the foundation model produces the optimal price as the solutions to the problem defined by (1) The set of all statistical hypotheses is denoted as Θ. The error of leaning is described by Eπ [ℓ(x, y; θ)] 
+
+where ℓ denotes the loss function characterize the accuracy of the hypothesis with parameter θ.
+
+Assumption 4.1. πT is absolute continuous with respect to πS , and there exists a positive number 
+
+δ > 0, such that the likelihood ratio of πT with respect to πS is upper bounded by 1 + δ.
+
+Remark 4.2 . Depend on the topological structure of the feature space, the likelihood can be repre-sented as the ratio of probabilities(discrete case), or Radon-Nikodym derivative(continuous case), for details, see e,g, [23]. 
+
+Definition 4.3. For a subset A ⊆ Θ, the A-divergence between two probability measures π, γ ,denoted as DA(π, γ ), is defined as inf a∈A |Eπ [ℓ(x, y; a)] − Eγ [ℓ(x, y; a)] |.With these preparations, we are ready to present the following theorem on the error analysis. 
+
+Theorem 4.4. Suppose that the source and target distributions satisfy Assumption 4.1, for U , a neighborhood of optimal matrix weight θ∗ from pre-training, we have, 
+
+eT (θ∗) ≤ min {eS (θ∗) + λU + DU (πS , π T ), (1 + δ)eS (θ∗)} (2) 
+
+with eT (θ) = EπT [ℓ(x, y; θ)] , eS (θ) := EπS [ℓ(x, y; θ)] , and λU := min θ∈U [eT (θ) + eS (θ)] .Remark 4.5 . Theorem 4.4 is a typical result in domain adaptation, and its novelty lies at its connection with normalized price range, and for the two-level LLM architecture, as well as the incorporation of the likelihood which introduce a multiplicative factor instead of the additive ones in the literature. The definition of A-divergence is apparently a variation of the H∆H divergence that is introduced in [ 24 ] and has been widely studied in domain adaption research. This definition allows us to specify a focus subset of hypotheses for the optimal pricing problem (1) . As we examine the potential hypotheses which are reflected as learned matrix wrights in the foundation model, we can restrict the analysis to a neighborhood U of the optimal weighted trained with the source data. Potentially, such restriction allows us to get better estimations of the generalization error by utilizing well-documented “flat minimum” phenomenon for stochastic gradient descent, see [ 25 , 26 , 27 , 28 ]. More precisely, A proper selected neighborhood may produce a small DU -divergence between the source 5and target distributions, thus smaller generalization error. Furthermore, the bound of the likelihood ratio characterizes relations between sensitivities of demand to price, thus can be viewed as a relative quantification of the price elasticity. In this sense, Theorem 4.4 produces a very specific domain adaptation theory for optimal decision making for discrete choice models. 
+
+4.2.2 The Second Scenario 
+
+In the second scenario, the testing dataset contains either (i) choice probabilities already estimated by the training pipeline or (ii) a small number of discrete-choice observations. 
+
+Choice Probabilities: First, we address the accuracy of the choice probability estimation. The choice probability vector q′ is estimated using (x′, p′) (or normalized prices ˜p′) where p′ = p(x′)
+
+or ˜p′ = ˜ p(x′) is generated using either a predicted price p† or a near-optimal price p◦ obtained from the first scenario. Therefore, the error of estimation can be quantify quantified by Theorem 4.4 with the prediction function, a foundation model, maps the feature inputs to probability vector defined over the possible choices. 
+
+Optimal Pricing: In the foundation model, both the contextual information and the likelihood of discrete choices are incorporated. Thus, the optimal policy p∗(x′, q′(x′)) is inferred via transfer learning from the pretrained policy p•(xn, q(xn)) . The incorporation of either choice probabilities in the training or a small number of observations enriches probabilistic characterizations of target domain, and thus naturally narrows the difference between the source and target domains, hence, 
+
+Lemma 4.6. Suppose that ˜πT is the target distribution has more labels, we have DA(πS , ˜πT ) ≤
+
+DA(πS , π T ).
+
+This thus will lead to the following corollary concluding an improved bound on error estimation. 
+
+Corollary 4.7. The error in the target domain can be improved to 
+
+eT (θ∗) ≤ min {eS (θ∗) + λU + DU (πS , ˜πT ), (1 + δ)eS (θ∗)} (3) Hence, the FMDM enables transfer learning through the features and choice probabilities obtained above where q′(x′) is computed using predicted or near-optimal prices.Consequently, a foundation model obviates the need for computationally expensive optimization of an NP-hard problem for every transaction, significantly reducing the decision-processing time. After observing the actual prices 
+
+p′ and the corresponding outcomes y′, a more accurate probability estimation can be obtained to improve optimization when necessary. Another advantage of a FMDM system is that it can be trained or fine-tuned using one of many well-known approaches for generating synthetic tabular data (see Appendix B.2 for more details). We demonstrate that it sufficient to train the C3PO network using simulated data generated from classical discrete choice models in order to generalize well across diverse domains, heterogeneous customer preferences, and product types. 
+
+# 5 Experiments 
+
+5.1 Simulated Data Generation For Model Training 
+
+Training and evaluation data for the first set of experiments are simulated using several classical discrete choice models including Multinomial Logit (MNL) ( 16% ), Nested Logit (NL) ( 16% ), Mixed MNL (MMNL) ( 27% ), Iso-elastic ( 27% ), and Linear models ( 14% ). For the MNL and NL datasets, optimal prices are computed via a fixed-point search using the Gallego–Wang optimality condition for the MNL model [ 5]. For other models such as mixed MNL, Iso-elastic and linear models in a multi-product setting where we do not have readily available theoretical optimality conditions, we employ nonlinear optimization search to obtain good quality price labels. The simulations yield 13,000 datasets with more than 1.5 million labeled examples. 12,000 datasets are used to train the C3PO model. The remaining datasets are withheld for evaluation within the controlled experiment, and 1,600 examples (13 datasets) are reserved for in-context learning (ICL). For each dataset, we randomly generate segment-specific choice parameters (α, β). The price labels are generated using standard nonlinear optimization search procedures. Complete details about generating price labels and the what-if outcome data are provided in Appendix (B.3 and B.6). 65.2 Experimental Setup 
+
+We analyze the performance of the C3PO model on a variety of synthetic and real-world datasets. In addition to the simulated datasets drawn from classical models, we compile real-world datasets from six different domains, including B2B tender-pricing, airline ancillary pricing, Amazon DVD sales ([ 8]), Hotel room selection ([ 29 ]), Swiss Metro ridership ([ 30 ]), and Yogurt ([ 31 ]). The dataset details are given in Table 6 in Appendix B.6. The elasticity priors displayed in the table are based on elasticity values of similar products from literature ([32, 33]) and domain expertise (Appendix B.4). The performance of the trained C3PO model is assessed using four different model-free metrics: Price Increase Recall (PIR), Price Decrease Recall (PDR), booking regret (BR), as defined in [ 34 ], and the mean absolute error (MAE). PIR measures how effectively the pricing model identifies situations where the offered price could have been higher while still winning the bid. PDR measures how often the model correctly identifies cases where the offered price should have been lower in order to win the bid. These metrics enable an objective assessment of how the recommended price movements would have performed by examining actual wins and losses in the evaluation dataset. BR quantifies the model’s overall missed revenue due to incorrect price recommendations, combining missed upsell opportunities and avoidable losses. Scores greater than 0.55 for both PDR and PIR are considered strong (assuming the legacy prices are not optimized), whereas a high score in only one of PIR or PDR suggests unbalanced recommendations reflecting an inability to differentiate between winning and losing bids [ 35 ]. Our primary KPI is to maximize the minimum of the PDR and PIR values to generate balanced price movements. Lastly, MAE reflects the model’s imitation learning capability. .
+
+5.3 Experimental Results 
+
+The first experiment analyzes a real - world competitive healthcare B2B setting. The analysis draws on anonymized sales data from a medical device manufacturer that participates in public -sector procurement processes by responding to Requests for Quotes (RFQs), or tenders. The historical data set consists of four years of tender activity with typical win rates ranging from 25 to 50 percent. The competitive nature of the bidding significantly adds to the uncertainty of winning a bid. Within this environment, sales representatives evaluate tenders individually, reviewing factors such as product configurations, costs, list prices, and delegated price limits, to determine a quoted price based on their personal understanding of customer behavior and market conditions. Given that the B2B setting represents the core discrete choice problem (single choice, win or loss) that is widely used across domains, we analyze it in depth and compare C3PO’s performance to not only the the optimal policy obtained through stochastic optimization but two additional baselines. We test an off-the-shelf application of TabPFN, as well as a fine-tuned TabPFN (TabPFN-FT) for imitation-learning on the simulated MNL and NL datasets (which are well suited for this win-loss discrete-choice setting). We implemented the optimization approach in [ 12 ] to calculate an optimal pricing policy that maximizes expected gain while satisfying all the user-specified constraints. Table 1 compares the performance of these three baselines on the PDR/PIR/BR metrics.                
+
+> Model PDR PIR BR C3PO 0.611 0.673 0.105 Baseline TabPFN 0.767 0.393 0.055 TabPFN-FT 0.723 0.589 0.000 Stochastic Opt. Policy 0.646 0.430 0.041
+
+Table 1: Comparison of C3PO against baseline models for B2B data set. Regarding PDR, all three baselines show solid performance. However, TabPFN-FT stands out as the only baseline that delivers consistently strong results in both PDR and PIR. The stochastic optimization method nearly reaches the desired target range as well. In contrast, the baseline off-the-shelf TabPFN model exhibits a relatively high PDR, suggesting a tendency to under - price. The TabPFN-FT baseline outperforms even the stochastic optimization model on these metrics. The results in Table 5 (Appendix B.6) show that the C3PO model outperforms the classical policy optimizer in the B2B and airline setting, both of which are drawn from actual client engagements. In 7particular, Table 1 shows that C3PO outperforms all three baselines in the B2B setting in terms of the combined PDR-PIR, which is our primary KPI, by achieving a score of 61% , compared to the scores of 39% , 43% , and 59% achieved by the off-the-shelf TabPFN, TabPFN-FT, and the classical optimization solver, respectively. Table 5 also shows C3PO scaling reasonably for the DVD choice set whose problem size (15) is more than twice the maximum cardinality (6) seen by C3PO in training. As far as low-elasticity regimes, we see that both PDR-PIR numbers for the Swiss-metro dataset are acceptable and above 40% but the model prefers to drop prices more than raising them in actual wins, which differs from the optimal pricing strategy. The Yogurt dataset is an example where the model does raise prices significantly, which makes intuitive sense for a relatively inexpensive grocery item. In general, the results show that the C3PO model trained on simulated classical choice datasets is able to generalize well for price elastic settings. 
+
+5.4 Ablation Studies 
+
+The C3PO architecture is designed to overcome the limitation of TabPFN in three areas, which we want to analyze through ablation studies: 1. Move beyond imitation-learning of prices to incorporate multi-task learning of the revenue objective function. 2. Assess the impact of eliminating or reducing ICL examples. 3. Ability to learn the elasticity for a new domain via ICL examples and the use of an elasticity prior that is available in the literature. The ablation studies analyze the impact of each of these components of C3PO. Table 2 summarizes the results. In the first study we turn off the Table 2: Average metrics across all evaluation datasets (mean ± std).                                                                             
+
+> Scenario MAE PDR PIR BR C3PO 0.38 ±0.11 0.49 ±0.12 0.54 ±0.13 0.10 ±0.17 ICL-OFF 0.66 ±0.13 0.20 ±0.16 0.81 ±0.17 0.75 ±0.47 CONSTRAINT-ON 0.31 ±0.15 0.43 ±0.30 0.57 ±0.30 0.25 ±0.46 IMITATION-ONLY 0.35 ±0.06 0.59 ±0.20 0.41 ±0.16 0.03 ±0.06 PRIOR-OFF 0.41 ±0.08 0.44 ±0.15 0.58 ±0.19 0.23 ±0.30 SIMPLE-ICL 0.40 ±0.08 0.43 ±0.14 0.59 ±0.18 0.21 ±0.29
+
+attention network that models the revenue-price curve and replace it with a statistical summary. This reduces C3PO to an ’imitation-only’ learning model akin to TabPFN. The performance deteriorates when it attempts to generalize to some of the new domains as can be seen in the skewed PDR-PIR numbers, and the min(PDR, PIR) drops from C3PO’s score of 0.49 to 0.41. The detailed results of this simplified network are shown in Table 7 in Appendix B.5. The second study evaluates the influence of ICL on prediction performance. In one setting, ICL is fully disabled (“ICL - OFF”). In another, the number of ICL examples is reduced to 100 (“SIMPLE -ICL”). Without ICL, the model fails to generalize effectively, with recommended prices clustering near the upper bound and the primary KPI dropping to 0.2. Introducing even a limited set of 100 ICL examples substantially mitigates this issue, improving the KPI to 0.43. Tables 8 and 9 in Appendix B.5) show the detailed results. The third study examines the effect of incorporating an explicit elasticity modeling component within C3PO. As shown in Table 10 in Appendix B.5, we evaluate the benefit of introducing an elasticity prior which captures and quantifies consumers’ willingness to pay based on factors such as necessity (e.g., essential versus discretionary or luxury goods) and the availability of substitute options across price tiers. By integrating this elasticity model, C3PO becomes causally aware rather than relying solely on statistical correlations. In the absence of such a prior, model accuracy declines, with the KPI dropping to 0.44 as the system defaults to the training elasticity range of (-3.0, -1.0). The weights for the training loss terms reflect a decision-maker’s preference for emphasizing the elasticity prior. We recommend a substantial weight for this component (0.5–0.75). In practice, a reasonably narrow elasticity range for a new domain can be derived using domain expertise grounded in an understanding of the causal drivers. Such a prior beneficially shifts the optimal price distribution relative to the training regime and generally improves accuracy without requiring retraining. 85.5 Constraint Satisfaction 
+
+We report on the performance of the heuristic constraint satisfaction layer described in Section 4.1 that works adequately for a blackbox optimization approach in a discrete choice decision-making setting. Table 3 shows the constraint satisfaction percentage and average percentage violation for three common constraint types that show up in practical discrete choice settings. Table 3: Average constraint violations across all datasets (mean ± std across evals).                                          
+
+> Abs Mean % Mean Constraint Type Unconstrained Constrained Unconstrained Constrained Box 0.19 ±0.39 0.07 ±0.16 9.7% ±19.7% 3.3% ±8.2% Inter-Choice Ordering 0.15 ±0.17 0.06 ±0.09 16.9% ±20.2% 9.8% ±15.5% Average Price Goal 0.07 ±0.10 0.03 ±0.04 6.0% ±8.1% 3.3% ±5.5%
+
+Table 11 shows the feasibility performance without the heuristic constraint layer for each of the datasets, while Table 12 shows the improved feasibility performance after activating the constraint satisfaction layer. We can see a significant reduction in infeasibility for most of the domains evaluated. The summary results table 2 shows that the KPI drops from 0.49 to 0.43 after activating the constraint satisfaction layer, but is able to reduce the absolute constraint violations by more than 50% . A post-processing step can be applied to project the final predictions into the feasible space. 
+
+# 6 Conclusions 
+
+We propose a causal-aware foundation model for decision making (FMDM) that approximates bilevel stochastic optimization in discrete-choice settings, where heterogeneous customer preferences interact with provider-side optimization. At the core of this framework is C3PO, a constrained triple-head architecture that unifies imitation learning, multi-task revenue modeling, and in-context learning to produce scalable and domain-adaptive pricing policies. C3PO is trained on simulated data from several classical discrete choice models that is augmented by examples of constraint-feasible counterfactual action–outcome pairs. A key contribution is the integration of elasticity modeling via inference-time prompting, enabling the model to incorporate economically grounded priors for unseen products without retraining. This combination allows C3PO not only to approximate the underlying stochastic optimization problem, but also to capture latent behavioral heuristics that are typically inaccessible to classical optimization frameworks. Across both controlled simulations and diverse real-world deployments, including healthcare tender pricing and airline ancillary pricing, C3PO consistently outperforms baseline methods and classical optimization approaches, particularly in price-elastic environments where adaptability is critical. Notably, it achieves these gains while producing less conservative and more value maximizing decisions, highlighting the advantage of combining data-driven learning with causal structure. Overall, our results suggest that causal-aware foundation models can fundamentally expand the frontier of practical optimization, offering a flexible, high-performance alternative to traditional methods in complex, high-dimensional decision environments. 
+
+Impact and Limitation 
+
+This paper aims to advance machine learning for optimal decision -making under uncertainty in discrete - choice environments by leveraging foundation models for decision making (FMDMs) using a novel constrained triple-head price optimizer architecture (C3PO). When applied appropriately, FMDMs can help sellers and service providers implement high -quality, data -driven recommendations that respond more rapidly to uncertainty and improve key performance indicators. Customers in price-sensitive segments are also expected to benefit, as service providers seeking to increase win rates often offer more competitive discounts. The C3PO framework is particularly advantageous for smaller firms that may lack the resources or specialized expertise required to build, maintain, and deploy sophisticated stochastic optimization models. However, C3PO can execute actions rapidly and this comes with risks if not employed judiciously, e.g., in low-elasticity settings without practical safeguards. While C3PO is trained on counterfactual actions that can satisfy constraints, including regulatory and fairness goals, it is possible that such 9constraints may be relaxed to boost a company’s financial performance. For example, algorithmic decisions that include demographic attributes within contextual data can turn into hyper-gouging and surveillance-based pricing practices that can be disadvantageous to customer groups [36]. Real - world implementations of FMDMs should ensure transparency and uphold all regulatory and fairness requirements embedded in the optimization frameworks used for training. Preserving these requirements helps maintain the feasibility and integrity of the actions the model is trained to replicate. We also recommend using an independent post -processing layer to audit model outputs and verify compliance. Ultimately, practitioners must apply careful due diligence and consider the broader economic and societal implications before deploying these models at scale. 
+
+# References 
+
+[1] Noah Hollmann, Samuel M ¨uller, Katharina Eggensperger, and Frank Hutter. Tabpfn: A transformer that solves small tabular classification problems in a second. In NeurIPS, First Table Representation Workshop , 2022. [2] Daniel McFadden. Conditional logit analysis of qualitative choice behavior. Frontiers in Econometrics , 1974. [3] Daniel McFadden. The measurement of urban travel demand. Journal of public economics ,3(4):303–328, 1974. [4] Simon P Anderson, Andre De Palma, and Jacques-Francois Thisse. Discrete choice theory of product differentiation . MIT press, 1992. [5] Guillermo Gallego and Ruxian Wang. Multiproduct price optimization and competition under the nested logit model with product-differentiated price sensitivities. Operations Research ,62(2):450–461, 2014. [6] Heng Zhang, Paat Rusmevichientong, and Huseyin Topaloglu. Multiproduct pricing under the generalized extreme value models with homogeneous price sensitivity parameters. Operations Research , 66(6):1559–1570, 2018. [7] Vivek Farias, Srikanth Jagabathula, and Devavrat Shah. A data-driven approach to modeling choice. Advances in Neural Information Processing Systems , 22, 2009. [8] Vivek F Farias, Srikanth Jagabathula, and Devavrat Shah. A nonparametric approach to modeling choice with limited data. Management science , 59(2):305–322, 2013. [9] Jose Blanchet, Guillermo Gallego, and Vineet Goyal. A markov chain approximation to choice modeling. Operations Research , 64(4):886–905, 2016. [10] Laurie A Garrow. Discrete choice modelling and air travel demand: theory and applications .Routledge, 2016. [11] Zhengliang Xue, Zizhuo Wang, and Markus Ettl. Pricing personalized bundles: A new approach and an empirical study. Manufacturing & Service Operations Management , 18(1):51–68, 2016. [12] Shivaram Subramanian, Wei Sun, Youssef Drissi, and Markus Ettl. Constrained prescriptive trees via column generation. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 36(4), pages 4602–4610, 2022. [13] Guillermo Gallego and Gerardo Berbeglia. Bounds and heuristics for multiproduct pricing. 
+
+Management Science , 70(6):4132–4144, 2024. [14] Baichuan Mo, Qingyi Wang, Xiaotong Guo, Matthias Winkenbach, and Jinhua Zhao. Predicting drivers’ route trajectories in last-mile delivery using a pair-wise attention-based pointer neural network. Transportation Research Part E: Logistics and Transportation Review , 175:103168, 2023. [15] Yue Wang, Weishi Wang, Shafiq Joty, and Steven CH Hoi. Codet5: Identifier-aware unified pre-trained encoder-decoder models for code understanding and generation. In Proceedings of the 2021 conference on empirical methods in natural language processing , pages 8696–8708, 2021. 10 [16] Raymond Li, Loubna Ben Allal, Yangtian Zi, Niklas Muennigho, Denis Kocetkov, Chenghao Mou, Marc Marone, Christopher Akiki, Jia Li, Jenny Chim, et al. Starcoder: may the source be with you! Transactions on Machine Learning Research , 2023. [17] Noah Hollmann, Samuel M ¨uller, Lennart Purucker, Arjun Krishnakumar, Max K ¨orfer, Shi Bin Hoo, Robin Tibor Schirrmeister, and Frank Hutter. Accurate predictions on small data with a tabular foundation model. Nature , 637(8045):319–326, 2025. [18] Samuel M ¨uller, Noah Hollmann, Sebastian Pineda Arango, Josif Grabocka, and Frank Hutter. Transformers can do bayesian inference. In International Conference on Learning Representa-tions , 2022. [19] Ali Aouad and Antoine D ´esir. Representing random utility choice models with neural networks. 
+
+Management Science , 2026. [20] Yang Yuan. On the power of foundation models. In International conference on machine learning , pages 40519–40530. PMLR, 2023. [21] Brandon Amos and J Zico Kolter. Optnet: Differentiable optimization as a layer in neural networks. In International conference on machine learning , pages 136–145. PMLR, 2017. [22] Ievgen Redko, Emilie Morvant, Amaury Habrard, Marc Sebban, and Younes Bennani. Advances in domain adaptation theory . Elsevier, 2019. [23] Charles A Rohde et al. Introductory statistical inference with the likelihood function . Springer, 2014. [24] Shai Ben-David, John Blitzer, Koby Crammer, Alex Kulesza, Fernando Pereira, and Jen-nifer Wortman Vaughan. A theory of learning from different domains. Machine learning ,79(1):151–175, 2010. [25] Nitish Shirish Keskar, Dheevatsa Mudigere, Jorge Nocedal, Mikhail Smelyanskiy, and Ping Tak Peter Tang. On large-batch training for deep learning: Generalization gap and sharp minima. In International Conference on Learning Representations , 2017. [26] Yiding Jiang, Behnam Neyshabur, Hossein Mobahi, Dilip Krishnan, and Samy Bengio. Fantastic generalization measures and where to find them. In International Conference on Learning Representations , 2020. [27] Sidak Pal Singh, Hossein Mobahi, Atish Agarwala, and Yann Dauphin. Avoiding spurious sharpness minimization broadens applicability of sam. In International Conference on Machine Learning , pages 55702–55719. PMLR, 2025. [28] Gintare Karolina Dziugaite and Daniel Roy. Entropy-sgd optimizes the prior of a pac-bayes bound: Generalization properties of entropy-sgd and data-dependent priors. In International Conference on Machine Learning , pages 1377–1386. PMLR, 2018. [29] Jeffrey P Newman, Mark E Ferguson, Laurie A Garrow, and Timothy L Jacobs. Estimation of choice-based models using sales data from a single firm. Manufacturing & Service Operations Management , 16(2):184–197, 2014. [30] Michel Bierlaire, Kay W Axhausen, and Georg Abay. The acceptance of modal innovation: The case of swissmetro. Swiss Transport Research Conference , 2001. [31] Dipak C Jain, Naufel J Vilcassim, and Pradeep K Chintagunta. A random-coefficients logit brand-choice model applied to panel data. Journal of Business & Economic Statistics , 12(3):317– 328, 1994. [32] Ante Babi ´c. Microeconomics by Robert S. Pindyck and Daniel L. Rubinfeld. Financial theory and practice , 29(4):385–386, 2005. [33] N Gregory Mankiw. Principles of microeconomics , volume 1. Elsevier, 1998. 11 [34] Peng Ye, Julian Qian, Jieying Chen, Chen-hung Wu, Yitong Zhou, Spencer De Mars, Frank Yang, and Li Zhang. Customized regression model for airbnb dynamic pricing. In Proceedings of the 24th ACM SIGKDD international conference on knowledge discovery & data mining ,pages 932–940, 2018. [35] Davide Proserpio, Meng Xu, and Georgios Zervas. Pricing frictions and platform remedies: The case of airbnb. Marketing Science , 41(6):1085–1108, 2022. [36] Federal Trade Commission Ftc surveillance pricing study indicates wide range of personal data used to set individualized consumer prices. https://www .ftc .gov/news-events/news/ press-releases/2025/01/ftc-surveillance-pricing-study-indicates-wide-range-personal-data-used-set-individualized-consumer , 2025. [37] P. Langley. Crafting papers on machine learning. In Pat Langley, editor, Proceedings of the 17th International Conference on Machine Learning (ICML 2000) , pages 1207–1216, Stanford, CA, 2000. [38] M. Parkin, M. Powell, and K. Matthews. Economics . Addison-Wesley, 2008. [39] Vivek S Borkar. Stochastic approximation with two time scales. Systems & Control Letters ,29(5):291–294, 1997. [40] Yihua Zhang, Prashant Khanduri, Ioannis C Tsaknakis, Yuguang Yao, Mingyi Hong, and Sijia Liu. An introduction to bilevel optimization: Foundations and applications in signal processing and machine learning. IEEE Signal Process. Mag. , 2024. [41] Jianmo Ni, Jiacheng Li, and Julian McAuley. Justifying recommendations using distantly-labeled reviews and fine-grained aspects. In Kentaro Inui, Jing Jiang, Vincent Ng, and Xiaojun Wan, editors, Proceedings of the 2019 Conference on Empirical Methods in Natural Lan-guage Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP) , pages 188–197, Hong Kong, China, November 2019. [42] Instacart. The instacart online grocery shopping dataset 2017. https://www .instacart .com/ datasets/grocery-shopping-2017 , 2017. [43] Brllrb. Uber and lyft dataset boston, ma. https://www .kaggle .com/datasets/brllrb/ uber-and-lyft-dataset-boston-ma , 2019. [44] Junwei Ma, Apoorv Dankar, George Stein, Guangwei Yu, and Anthony Caterini. Tabpfgen– tabular data generation with tabpfn. In NeurIPS, Second Table Representation Learning Workshop , 2023. [45] Paul A. Samuelson and William D. Nordhaus. Economics . McGraw-Hill, 19th edition, 2009. [46] Paul Milgrom. Putting Auction Theory to Work . Cambridge University Press, 2004. 12 A Theoretical Development 
+
+A.1 Methodologies for Decision Model under Discrete Choice A.1.1 Normalization of the Decision Variables 
+
+Normalization is important both for the optimization procedure and for obtaining meaningful insights into the resulting optimal decisions, and is conceptually distinct from the feature standardization used in prediction tasks. For example, pricing models often require negative demand elasticity, which places structure on how normalized prices should behave. The choice of baseline varies across pricing applications and may include cost, list price, competitive price, etc. For example, in an airline dataset, we normalize the upgraded-service prices using the base economy fare p0,n as the benchmark, yielding normalized prices of the form ˜pk,n = pk,n  
+
+> p0,n
+
+− 1, for any k in the upper classes. 
+
+A.1.2 Price Elasticity 
+
+Some basic facts and results that can enhance our understanding of the basic mechanism between the optimal pricing decisions and the key quantity of price elasticity, thus improve the design and execution of FMDM, are collected below. Some basic facts in optimization can help us to understand the basic mechanism between the optimal pricing decisions and the key quantity of price elasticity. 
+
+Definition A.1. The demand elasticity matrix E ∈ RK×K is defined as Ejk = pk 
+
+> qj
+> ∂q j
+> ∂p k
+
+for all 
+
+j, k = 1 , 2, . . . K .
+
+Remark A.2 . The definition of demand elasticity matrix, which can also be written as Ejk = 
+
+> ∂q j
+> qj
+
+/ ∂p k 
+
+> pk
+
+= ∂ ln qj   
+
+> ∂ln pk
+
+and should be viewed as scaled gradient of the demand with respect to price, and it follows the basic logic of being the ratio between changes in demand and changes in price that is well known in the economics literature, see e.g. [ 38 ]. The diagonal entries Ekk are own-price elasticities and they are nonpositive naturally. The off-diagonal entries Ejk (j̸ = k) are cross-price elasticities , and they are typically positive for substitutes. Comparing to the the slope of demand curve, price elasticity is scale-invariant and dimensionless, thus is preferred for analysis of diverse product and with counterfactual actions such as ours. In the one product case, i.e. K = 1 , the price elasticity of demand takes the form of E(p) := 
+
+pq ′(p)/q (p). Without any constraints, then it is easy to see from the optimal condition, we have 
+
+ϵ(p∗) = − p∗ 
+
+> p∗−c
+
+, especially, E(p∗) = −1 when c = 0 . In the multi-product case, several basic relationship between the optimal price and the cost structure can be derived easily from the optimality condition. 
+
+Proposition A.3 (multi-product optimality condition) . At an interior optimum p∗, the first-order conditions in vector form are 
+
+RDiag (p)q + E(p∗)⊤ s(p∗) = 0 , (4) 
+
+where s = [ s1, s 2, . . . , s K ]⊤, sk = ( pk − ck) qk/R, k = 1 , 2, . . . , K is the profit-weighted revenue share of product k.Proof. Setting ∂R/∂p k = 0 for each k = 1 , 2, . . . , K :
+
+qk +
+
+> K
+
+X
+
+> j=1
+
+(pj − cj ) ∂q j
+
+∂p k
+
+= 0 . (5) Thus, 
+
+qk +
+
+> K
+
+X
+
+> j=1
+
+(pj − cj ) qj
+
+pk
+
+· pk
+
+qj
+
+∂q j
+
+∂p k
+
+| {z }
+
+> Ejk
+
+= 0 
+
+13 Equivalently, 
+
+qk + X
+
+> j
+
+(pj − cj ) qj
+
+R · Rpk
+
+· Ejk = 0 .
+
+This implies 
+
+pkqk
+
+R + X
+
+> j
+
+(pj − cj ) qj
+
+R · Ejk = 0 .
+
+Equation (4) follows. 
+
+A.1.3 MNL Closed Form and the IIA Structure 
+
+In MNL with utilities Vk = αk − βp k, i.e. price sensitivity is common across all products and outside option V0 = 0 , we have, 
+
+qk(p) = eαk −βp k
+
+1 + P 
+
+> j
+
+eαj −βp j .
+
+A direct consequence is that, 
+
+Proposition A.4 (MNL elasticity structure) .
+
+Ekk = −β p k (1 − qk) , (6) 
+
+Ejk = + β p k qk (j̸ = k) . (7) 
+
+Proof. ∂q k/∂p k = −β q k(1 − qk) and ∂q j /∂p k = β q j qk for j̸ = k (standard MNL derivatives). Multiplying by pk/q k and pk/q j respectively. Furthermore, 
+
+Theorem A.5 (MNL multi-product optimal price) . The revenue-maximizing price for product k
+
+satisfies 
+
+p∗ 
+
+> k
+
+= 1
+
+β(1 − q∗
+
+> k
+
+) . (8) 
+
+Proof. The FOC (5) with ck = 0 gives qk + P 
+
+> j
+
+pj ∂q j /∂p k = 0 . Using MNL derivatives: 
+
+qk + pk(−β q k(1 − qk)) + X 
+
+> j̸=k
+
+pj β q j qk = 0 .
+
+Dividing by qk > 0: 1 − β p k(1 − qk) + β P  
+
+> j̸=k
+
+pj qj = 0 . 1 − β p k(1 − qk) + β P  
+
+> j̸=k
+
+pj qj = 0 
+
+immediately implies 1 − βp k + β PKj=1 pj qj = 0 , equivalently, p∗ 
+
+> k
+
+= (1 + βR )/β .
+
+A.2 Bi-level Optimization 
+
+As we elaborated in the introduction, the optimization problem (1) belongs to the extensively study of domain of bi-level optimization. A general formulation of bi-level optimization takes the following form, 
+
+min 
+
+> x∈Rdx
+
+ℓ(x) := f (x, y∗(x)) , s.t. y∗(x) ∈ arg min 
+
+> y∈Rdy
+
+g(x, y), (9) with given functions f (x, y) and g(x, y). Under strong (usually convexity) conditions on the functions, algorithms have been developed and shown to be efficient. For problems with complex inner level structures such as those in (1) , algorithmic development is still quite limited. For theory, algorithms and other detailed discussion on bi-level optimization, see e.g. [39, 40]. 14 A.3 Proof of Theorem 4.4 
+
+Proof of Theorem 4.4. In a parameterized learning regime, hypotheses are represented by the op-timized parameter. In the case of transformers, they are the weights after the training, which are represented as θ∗. Consider U , a neighborhood of θ∗, and θ′ ∈ UeT (θ∗) ≤eT (θ′) + eT (θ∗, θ ′)
+
+≤eT (θ′) + eS (θ∗, θ ′) + |eT (θ∗, θ ′) − eS (θ∗, θ ′)|≤eS (θ∗) + eT (θ′) + eS (θ′) + DU (πS , π T )
+
+Therefore, we can conclude that 
+
+eT (θ∗) ≤eS (θ∗) + λU + DU (πS , π T ).
+
+On the other hand, note that, eT (θ∗) = E(x,y )∼DT [ℓ(x, y; θ∗)] , and 
+
+E(x,y )∼DT ℓ(x, y; θ∗)) = E(x,y )∼DS [ℓ(x, y; θ∗)LS,T ] ≤ (1 + δ)E(x,y )∼DS [ℓ(x, y; θ∗)] = (1 + δ)eS (θ∗),
+
+with the inequality follows from Assumption 4.1. Therefore, we have the desired result. 
+
+A.4 Effects of Inter-Product Ordering Constraints 
+
+In discrete choice-based price optimization, a firm offers K substitutable products to heterogeneous customers who select the utility-maximizing option (including a no-purchase alternative). In many settings—airline fare classes, hotel room tiers, subscription plans—business logic requires a price hierarchy among products: 
+
+pπ(k) ≥ pπ(k−1) + ∆ k, k = 2 , . . . , K, (10) where π is a known ordering (e.g., economy ≤ business ≤ first class) and ∆k ≥ 0 are minimum inter-tier price gaps. When prices are output directly by a neural network, these constraints must be enforced structurally. 
+
+Proposition A.6 (Ordering constraints by construction) . Let z1, . . . , z K ∈ R be unconstrained network outputs. Define prices recursively: 
+
+pπ(1) = z1, (11) 
+
+pπ(k) = pπ(k−1) + ∆ k + softplus( zk), k = 2 , . . . , K, (12) 
+
+where softplus( x) = log(1 + ex). Then pπ(k) > p π(k−1) + ∆ k for all k and all z ∈ RK .Remark A.7 (Reasoning and implications) . From positivity of softplus we have, pπ(k) − pπ(k−1) =∆k + softplus( zk) > ∆k. This construction is a standard technique for enforcing positivity in neural network outputs applied here to the multi-product pricing setting. 
+
+Remark A.8 (Limitations) . While the softplus reparameterization cleanly enforces ordering, it might not be sufficient in the presence of additional constraints. For example, price range constraints in the forms of ℓk ≤ pk ≤ uk, k = 1 , . . . K will become difficult to enforce given the recursive expansion (12) . Furthermore, average price constraints 1
+
+> K
+
+P 
+
+> k
+
+pk ≥ ¯p become non-separable and non-linear in z. Moverover, when target price gaps are near-tight ( pπ(k) − pπ(k−1) ≈ ∆k), the required inverse zk = log( epπ(k)−pπ(k−1) −∆k − 1) has the tendency to go to −∞ , thus create numerical instability during training. These limitations motivate a dedicated constraint satisfaction layer that operates directly in price space, jointly enforcing bounds, ordering, and aggregate constraints without distorting the network’s output representation. 15 B Omitted Details for Experiments 
+
+B.1 Datasets for Discrete Choice Modeling 
+
+Several publicly available datasets have been adapted for discrete choice research. In retail and e-commerce, the Amazon product data [ 41 ] and Instacart online grocery dataset [ 42 ] provide rich choice signals from millions of user interactions that can be restructured as discrete choice problems. For transportation choices, the Boston Uber/Lyft dataset [ 43 ] offers fare quotes with contextual features, while the Swissmetro dataset [ 30 ] remains a benchmark for revealed and stated preference modeling in transportation research. In addition to the simulated datasets, our proposed approach aims to leverage these additional resources to fine-tune the foundation model in order to generalize better across different choice contexts. 
+
+B.2 Synthetic Data Generation (SDG) 
+
+FMDM can be trained, fine-tuned, and evaluated using several approaches for generating synthetic tabular data. The TabPFN-based generation follows the approach of [ 44 ] of using a pretrained transformer to produce class-logit functions μ(x) whose softmax defines Pr( y | x).Beyond TabPFN, we also tested Synthetic Data Vault (SDV) methods that include Gaussian Copulas, CTGAN, TAVE, and bootstrap-based generators. While these methods are vital for finetuning FMDM with synthesized choice structures from different domains, they do not come with analytically derivable decision optimality conditions. Therefore, we restricted our focus to simulated data from discrete choice models (e.g., MNL), which offer unlimited samples and known optimality conditions for benchmarking, albeit under idealized modeling assumptions. 
+
+B.3 Sample Code to Generate Recommended Price Labels 
+
+This is a plain-vanilla python implementation of a known method based on [5] to enable repro-ducibility of the controlled experiment with NL and MNL models. Similar algorithms can be used to generate good quality labels for other models such as MMNL, Iso-elastic, and Linear formulations. Listing 1: Python implementation of Multinomial and Nested Logit pricing                                                                                   
+
+> import numpy as np import math from typing import Dict , Any def ca lc ul at e_ pr ic es _n es te d_logit ( alpha : np . ndarray , beta : np . ndarray , nest_assignments : np . ndarray , lam : float , tau_nest : Dict [ int , float ] =None , tol : float =1e -10 , maxit : int =10000) -> Dict [ str , Any ]: #Generating price recommendations under Multinomial and Nested Logit Models ( Based on Gallego - Wang 2014) . #Optimal for MNL and afast heuristic for NL alpha =np . asarray ( alpha , dtype = float ) beta =np . asarray ( beta , dtype = float ) nest_assignments =np . asarray ( nest_assignments , dtype = int ) if np . any ( beta >= 0) : raise ValueError ( " All beta_i must be negative . " ) N=len ( alpha ) K=len ( np . unique ( nest_assignments ) ) alpha_eff =alpha . copy () if tau_nest is not None : for m , tau in tau_nest . items () : idx =np . where ( nest_assignments == m ) [0]
+
+16 alpha_eff [ idx ] = alpha_eff [ idx ] * (1.0 + tau ) def n es t e d_ l og i t _p r ob s _given_prices ( p : np . ndarray ) : u = alpha_eff + beta * pS = {} P_cond = np . zeros (N , dtype = float ) for m in range ( K ) : idx = np . where ( nest_assignments == m ) [0] exp_scaled = np . exp ( u [ idx ] / lam ) S [ m ] = exp_scaled . sum () P_cond [ idx ] = exp_scaled / S [ m ] denom = sum ( S [ m ] ** lam for m in range ( K ) ) + 1.0 P_nest = { m : ( S [ m ] ** lam ) / denom for m in range ( K ) } q_outside = 1.0 / denom q_inside = np . zeros (N , dtype = float ) for m in range ( K ) : idx = np . where ( nest_assignments == m ) [0] q_inside [ idx ] = P_nest [ m ] * P_cond [ idx ] return q_inside , q_outside def expected_rev_given_R ( R : float ) : p = R - 1.0 / beta q_inside , q_outside = nested_logit_probs_given_prices ( p ) ER = float ( np . sum ( p * q_inside ) ) return ER , p , q_inside , q_outside R = float ( max (1 e -6 , np . mean (1.0 / ( - beta ) ) ) ) damping = 0.5 for _ in range ( maxit ) : ER , p , q , q0 = expected_rev_given_R ( R ) R_next = (1.0 - damping ) * R + damping * ER if abs ( R_next - R ) <= tol * max (1.0 , abs ( R ) ) : R = R_next break R = R_next else : def F ( x ) : v , * _ = expected_rev_given_R ( x ) return v - xa , bnd = 0.0 , max (10.0 , R *4.0 + 10.0) fa , fb = F ( a ) , F ( bnd ) tries = 0while fa * fb > 0 and tries < 60: bnd = bnd *2.0 + 10.0 fb = F ( bnd ) tries += 1if fa * fb > 0: raise RuntimeError ( " Failed to bracket R * in NL case . " ) for _ in range (200) : mid = 0.5*( a + bnd ) ; fm = F ( mid ) if abs ( fm ) < 1e -12 or abs ( bnd - a ) < 1e -12: R = mid ; break if fa * fm < 0: bnd , fb = mid , fm else : a , fa = mid , fm ER , p , q , q0 = expected_rev_given_R ( R ) return { " price " : p , " revenue " : ER , " q_in " : q , " q_out " : q0 , " method " : " fixed_point " } 
+
+B.4 Elasticity Prior from the Literature 
+
+17 Table 4: Sample of representative price elasticity of demand values. See [32] and [33] for details. 
+
+Product / Category Elasticity 
+
+Water (basic consumption) −0.1
+
+Electricity (short-run) −0.1 to −0.3
+
+Gasoline (short-run) −0.2 to −0.3
+
+Milk −0.5
+
+Gasoline (long-run) −0.6 to −0.8
+
+Electricity (long-run) −0.7
+
+Restaurant meals −2.3
+
+Air travel (long-run) −2.0
+
+Luxury goods −1.5 to −3.0
+
+Automobiles (long-run) −1.2 to −1.5
+
+Listing 2: Python example of a prompt to obtain an elasticity prior range                                                                                          
+
+> prompt =(f " <| system | > You are an economics professor who teaches from Mankiw ’s "f " Principles of Economics and Pindyck &Rubinfeld ’s Microeconomics . </s > " f " <| user | > Price elasticity of demand ( e ) is negative for normal goods . "f " INELASTIC means | e | <1( between -1.0 and 0) : gasoline $e \ sim -0.3 $,"f " bread $e \ sim -0.2 $,cigarettes $e \ sim -0.4 $."f " ELASTIC means | e | >1( more negative than -1.0) : restaurant meals "f " $e \ sim -1.6 $,vacations $e \ sim -2.5 $,new cars $e \ sim -1.5 $
+> .\ n \ n " f " Is ’{ product_string } ’ typically elastic or inelastic based on "f " economics textbooks ? "f " Answer with exactly one word : ’ elastic ’ or ’ inelastic ’. </s > " f " <| assistant | > " )
+
+B.5 Ablation Studies Tables 
+
+This section reports detailed dataset-level experimental results that are summarized in the main section. Across these datasets, we test the model on more than 600,000 simulated price points, and more than 300,000 price points drawn from real-world data. The underlying discrete choice models are diverse and include logit, neural network, and tree-ensemble based choice structures, some of which are not seen during training. Table 5: C3PO model performance. PDR/PIR/BR shown as Predicted/Optimal.                                 
+
+> Data set MAE PDR PIR BR B2B 0.2723 0.61/0.51 0.67/0.41 0.11/0.00 SIMULATED 0.4150 0.49/0.48 0.43/0.61 0.00/0.00 DVD 0.4742 0.43/0.52 0.53/0.63 0.14/0.00 HOTEL 0.2603 0.41/0.43 0.53/0.61 0.03/0.00 AIR9 0.3321 0.51/0.51 0.50/0.50 0.00/0.00 SWISS 0.4632 0.64/0.42 0.41/0.62 0.00/0.00 YOGURT 0.5531 0.24/0.47 0.82/0.50 0.52/0.00
+
+B.6 Training Data Generation and Loss Plots 
+
+The B2B experiment (B2B) represents a fundamental discrete choice model. Its experimental details are discussed in the next section B.7. The airline experiment (AIR9) relies on anonymized booking data derived from one of the largest global legacy airline carriers. The DVD and HOTEL datasets 18 Data set K N Win Rate Prior Elasticty Choice Model SIMULATED 6 633600 0.2351 (-3.00, -0.50) MULTIPLE B2B 1 313 0.3419 (-2.00, -1.00) CATBOOST DVD 15 150000 0.4442 (-1.50, -0.50) MMNL HOTEL 6 60000 0.9086 (-2.50, -1.50) MNL AIR9 2 80000 0.1378 (-2.50, -0.50) LIGHTGBM SWISS 3 27357 0.7508 (-0.60, -0.20) TASTENET-MNL YOGURT 4 3212 0.9639 (-1.50, -0.50) MMNL 
+
+Table 6: Dataset characteristics and metadata. Table 7: IMITATION-ONLY ablation results. PDR/PIR/BR shown as Scenario/Baseline.                                 
+
+> Eval MAE PDR PIR BR SIMULATED 0.4211 0.54/0.49 0.35/0.43 0.00/0.00 B2B 0.3279 0.90/0.61 0.17/0.67 0.00/0.11 DVD 0.4181 0.45/0.43 0.54/0.53 0.05/0.14 HOTEL 0.2977 0.25/0.41 0.70/0.53 0.18/0.03 AIR9 0.2383 0.49/0.51 0.49/0.50 0.00/0.00 SWISS 0.3633 0.68/0.64 0.37/0.41 0.00/0.00 YOGURT 0.4046 0.59/0.24 0.49/0.82 0.00/0.52
+
+are derived from the discrete-choice literature. The DVD dataset in particular, tests the model’s scalability in terms of generating prices for a much larger set of choices than what it was trained on. The last two datasets represent a ’stress test’ performance in a low-elasticity setting. For each domain, we provide 1,600 ICL examples with elasticity priors drawn from the literature. The model is trained sequentially on each dataset using a loss function that minimizes a weighted com-bination of imitation loss, revenue loss, and elasticity loss terms, with a learning rate of 10 −4,AdamW optimizer, smooth-L1 and ReLU loss functions, dmodel = 32 , a batch size of 128, and 30% of the rows in each batch are used as examples to enable in-context learning. The weights for the key training loss and regularization terms can be tuned through hyper-parameter optimization (HPO), but we chose these simple settings: price: 1.0, revenue: 0.25, elasticity: 0.25, anchor: 0.25, elasticity prior: 0.75 ,and the weight for constraint: 2.0. The resultant number of trainable parameters is about 337,000. Motivated by the Lerner condition ([ 4]), we include an elasticity-anchor loss term with a weight of 0.25 to encourage the model to find a solution that has an elasticity value close to -1.0 at the predicted price (Appendix section A.1.2 presents a detailed elasticity analysis). The overall training time is less than an hour on a Windows Intel 20-core laptop with a NVIDIA RTX4000 GPU and 64GB RAM. Customer heterogeneity is simulated by incorporating seven binary customer attributes for each discrete-choice dataset, which yields 27 different customer segments per dataset. The choice cardinal-ity varied between [2 , 6] . The average price elasticity of the simulated product choices range between (-3.0, -1.0), reflecting mostly price-elastic settings. Note the choices with elasticity less than −1.0
+
+are classified as price elastic, whereas elasticity values in the interval (−1, 0) indicate weakly elastic products [ 45 ]. Given this training data choice, the C3PO is suited for price-elastic purchase settings where the optimal prices typically lie in the interior of the bounds and do not simply drift to the upper bound, which is often an optimal choice in a weakly elastic setting. For training, we additionally incorporate information about the feasible space of the underlying stochastic optimization problem through a flattened matrix of counterfactual “what-if” outcomes generated from multiple feasible price vectors. These outcomes are produced using the underlying choice models in our controlled experiments. Specifically, for each data row, we generate 50 random price vectors per segment and record the corresponding expected revenues. We generate one such row per segment, yielding a total of 128 rows per dataset. Each row contains the recommended price vectors corresponding to the given discrete-choice parameter settings. As a result, the contextual features and recommendation for each row take the form (z, 50 × (p, r ∗), y), with L + 50 × (K +1) + K columns. We generate prices p for the ’what-if’ data by sampling from a normal distribution with mean and standard deviation equal to 1.0, and clip the sampled values to lie within the interval [0 , 2] . This design restricts prices to a narrow range around the mean, reflecting real-world pricing distributions 19 Table 8: ICL-OFF ablation results. PDR/PIR/BR shown as Scenario/Baseline. 
+
+Eval MAE PDR PIR BR SIMULATED 0.7430 0.15/0.49 0.87/0.43 0.62/0.00 B2B 0.8009 0.07/0.61 1.00/0.67 1.03/0.11 DVD 0.8208 0.46/0.43 0.53/0.53 0.16/0.14 HOTEL 0.4262 0.31/0.41 0.68/0.53 0.30/0.03 AIR9 0.7096 0.02/0.51 0.96/0.50 1.53/0.00 SWISS 0.5361 0.42/0.64 0.62/0.41 0.27/0.00 YOGURT 0.6564 0.12/0.24 0.88/0.82 1.30/0.52 
+
+Table 9: MINIMAL-ICL ablation results. PDR/PIR/BR shown as Scenario/Baseline. 
+
+Eval MAE PDR PIR BR SIMULATED 0.4135 0.51/0.49 0.41/0.43 0.00/0.00 B2B 0.3363 0.31/0.61 0.88/0.67 0.38/0.11 DVD 0.4115 0.50/0.43 0.45/0.53 0.00/0.14 HOTEL 0.3316 0.36/0.41 0.60/0.53 0.17/0.03 AIR9 0.3552 0.49/0.51 0.53/0.50 0.16/0.00 SWISS 0.4690 0.63/0.64 0.42/0.41 0.00/0.00 YOGURT 0.5702 0.15/0.24 0.88/0.82 0.89/0.52 
+
+that typically arise from limited experimentation. Prior to predicting prices in a new domain, we scale the contextual data, the prices and revenues by the maximum value seen in the ICL dataset. 20 Table 10: PRIOR-OFF ablation results. PDR/PIR/BR shown as Scenario/Baseline. 
+
+Eval MAE PDR PIR BR SIMULATED 0.4186 0.48/0.49 0.47/0.43 0.00/0.00 B2B 0.3036 0.35/0.61 0.87/0.67 0.33/0.11 DVD 0.4553 0.62/0.43 0.32/0.53 0.00/0.14 HOTEL 0.3465 0.36/0.41 0.61/0.53 0.19/0.03 AIR9 0.3796 0.44/0.51 0.58/0.50 0.37/0.00 SWISS 0.4685 0.64/0.64 0.41/0.41 0.00/0.00 YOGURT 0.5798 0.15/0.24 0.89/0.82 0.93/0.52 
+
+Table 11: Constraint violations: Baseline (unconstrained predictions). 
+
+Eval Constraint Abs Mean ± Std Abs Max % Mean ± Std AIR9 Bound 0.07 ± 0.02 0.22 3.3 ± 1.0% Order 0.00 ± 0.00 0.00 0.0 ± 0.0% AvgPrc 0.00 ± 0.00 0.00 0.0 ± 0.0% B2B Bound 0.00 ± 0.00 0.00 0.0 ± 0.0% Order 0.00 ± 0.00 0.00 0.0 ± 0.0% AvgPrc 0.25 ± 0.21 0.82 17.9 ± 15.5% DVD Bound 1.21 ± 0.11 1.70 60.7 ± 5.7% Order 0.35 ± 0.01 1.64 45.6 ± 1.1% AvgPrc 0.08 ± 0.01 0.13 10.7 ± 1.5% HOTEL Bound 0.00 ± 0.00 0.00 0.0 ± 0.0% Order 0.19 ± 0.01 1.10 15.4 ± 0.6% AvgPrc 0.00 ± 0.00 0.00 0.0 ± 0.0% SIMULATED Bound 0.00 ± 0.00 0.16 0.0 ± 0.0% Order 0.23 ± 0.01 1.10 21.9 ± 1.2% AvgPrc 0.21 ± 0.04 0.77 19.5 ± 3.7% SWISS Bound 0.02 ± 0.08 0.45 1.0 ± 3.8% Order 0.44 ± 0.03 1.19 52.4 ± 14.5% AvgPrc 0.00 ± 0.00 0.02 0.0 ± 0.1% YOGURT Bound 0.25 ± 0.36 1.94 12.4 ± 17.9% Order 0.00 ± 0.00 0.00 0.0 ± 0.0% AvgPrc 0.00 ± 0.00 0.00 0.0 ± 0.0% 
+
+We now describe how to generate recommended prices for in-Context learning and training. Note that the prediction targets are the optimal actions of the product/service provider that maximize a seller’s expected revenue or profit margin, under the assumption that customers respond to the seller’s actions through their discrete choice behavior over the offered products. For known choice models, such as the nested logit (NL) and multinomial logit (MNL) models, we compute the recommended prices 
+
+pi = p◦(xn, zi) for each customer segment i using the procedure based on the optimality conditions described in [ 5 ]. For robustness, we incorporate additional fallback logic and numerical safeguards. The Python implementation is provided in Appendix B.3. 21 Table 12: Constraint violations: Constrained predictions.                                                                                                                                                                   
+
+> Eval Constraint Abs Mean ±Std Abs Max % Mean ±Std AIR9 Bound 0.00 ±0.00 0.00 0.0 ±0.0% Order 0.08 ±0.01 0.18 18.6 ±1.3% AvgPrc 0.00 ±0.00 0.00 0.0 ±0.0% B2B Bound 0.00 ±0.00 0.00 0.0 ±0.0% Order 0.00 ±0.00 0.00 0.0 ±0.0% AvgPrc 0.00 ±0.00 0.00 0.0 ±0.0% DVD Bound 0.50 ±0.13 1.03 25.0 ±6.5% Order 0.29 ±0.01 1.56 47.9 ±1.1% AvgPrc 0.13 ±0.01 0.16 16.8 ±1.2% HOTEL Bound 0.00 ±0.00 0.00 0.0 ±0.0% Order 0.02 ±0.00 0.10 2.3 ±0.4% AvgPrc 0.00 ±0.00 0.01 0.0 ±0.0% SIMULATED Bound 0.03 ±0.02 0.73 1.4 ±0.9% Order 0.01 ±0.00 0.16 0.4 ±0.2% AvgPrc 0.06 ±0.01 0.65 5.4 ±0.9% SWISS Bound 0.00 ±0.00 0.00 0.0 ±0.0% Order 0.01 ±0.01 0.12 1.1 ±2.1% AvgPrc 0.02 ±0.02 0.11 4.3 ±4.7% YOGURT Bound 0.00 ±0.00 0.00 0.0 ±0.0% Order 0.05 ±0.03 0.46 5.3 ±2.3% AvgPrc 0.00 ±0.00 0.00 0.0 ±0.0%
+
+Figure 2: Revenue-loss term as a function of dataset count, including a log-scaled y-axis and a 50-point moving average. When customer preferences are represented through complex nonlinear interactions or learned via opaque, data-driven classification models for discrete choice, the optimization algorithm described above can only be used as a heuristic procedure. In practical applications, we can adopt the column-generation-based policy optimization approach proposed in [ 12 ] to construct near-optimal pricing policies that satisfy a broad range of operational, regulatory, fairness, and business constraints. 22 Figure 3: Training loss as a function of dataset count, including a log-scaled y-axis and a 50-point moving average. 
+
+Figure 4: Average price ordering constraint violation as a function of dataset count, including a linear y-axis and a 50-point moving average. 2 3 4 5 6 7 8
+
+> Predicted Competition Intensity
+> 0
+> 1
+> 2
+> 3
+> 4
+> Normalized Price
+> Price vs. Competition Intensity
+> Historical Price
+> FMDM Price
+
+(a) Scatter plot of historical and recom-mended normalized prices versus predicted competition intensity; 
+
+(b) Bar graph comparison of win-rates for legacy and TabPFN-baseline prices by prod-uct division. 
+
+The resulting training dynamics are illustrated in Figure 2, which reports the total training loss values along with a 50-iteration moving average to highlight the mean convergence trajectory. The 23 reduction in the revenue loss component and the average price-ordering constraint violation (when the constraint layer is active) during training is shown in figure A1, A2. 
+
+B.7 Detailed discussion of B2B data set results 
+
+The responsiveness of the FMDM (TabPFN-FT baseline) prices to competition is captured in Fig-ure 5a, which shows the normalized legacy and FMDM prices versus the predicted intensity of competition. The results show that the FMDM adjusts its recommendations based on the expected level of competition, with prices dropping sharply as competitive intensity rises. In contrast, legacy prices remain largely unchanged and even slightly higher in some regions. The stochastic optimal policy recommendations (not shown for clarity) trends below the legacy prices but decreases mildly as competition intensity increases. The FMDM’s pricing behavior aligns with auction theory [ 46 ], which predicts that as competition intensifies, the distribution of lowest bids shifts sharply downward, requiring bidders to reduce their prices in a nonlinear fashion to maintain a viable chance of winning. As far as BR, the baseline prices which tend to be on the lower side exhibit the highest booking regret in Table 1, while the optimal policy has a lower but non-zero booking regret. TabPFN-FT’s BR is zero, attesting to its ability to boost both PDR and PIR. Finally, Figure 5b reports the estimated win rates for TabPFN-FT relative to both the baseline TabPFN model and the client’s legacy business - as - usual pricing performance. The results indicate that TabPFN-FT surpasses both benchmarks. By recommending more substantial price reductions on losing bids and avoiding large price increases on winning bids, TabPFN-FT achieves consistently higher estimated win rates across all three divisions analyzed in this study. 24
