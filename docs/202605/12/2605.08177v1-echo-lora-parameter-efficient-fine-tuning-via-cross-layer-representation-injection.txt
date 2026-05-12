@@ -1,0 +1,299 @@
+Title: Echo-LoRA: Parameter-Efficient Fine-Tuning via Cross-Layer Representation Injection
+
+URL Source: https://arxiv.org/pdf/2605.08177v1
+
+Published Time: Tue, 12 May 2026 00:05:39 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Echo-LoRA: Parameter-Efficient Fine-Tuning via Cross-Layer Representation Injection 
+
+## Yihang Peng 1 Peng Jin 2 Jie Gong 1 Xingyuan Chen 2
+
+## Lingjiao Xu 2 Ning Su 2 Yan Ran 11School of Computer Science and Software Engineering, Southwest Petroleum University 
+
+> 2
+
+## School of Electronic Information and Artificial Intelligence, Leshan Normal University 
+
+Abstract 
+
+Parameter-efficient fine-tuning (PEFT) has become a practical route for adapting large language models to downstream tasks, with LoRA-style methods being particularly attractive because they are inexpensive to train and easy to deploy. Most LoRA variants, however, revise the update rule within the weight space of each layer and leave the intermediate representations formed by deeper layers largely unused. We propose Echo-LoRA, a cross-layer representation injection method for parameter-efficient fine-tuning. During training, Echo-LoRA collects boundary hidden states from deeper source layers, aggregates them into a sample-level echo representation, and uses lightweight projection and gating networks to inject the resulting signal into shallow LoRA or DoRA modules. Answer-only masking, masked distillation, and stochastic routing are used to keep this auxiliary path stable and to reduce the gap between training and inference. On eight commonsense reasoning benchmarks, Echo-LoRA exceeds the reported LoRA baselines by 5.7 percentage points on average across LLaMA-7B, LLaMA2-7B, and LLaMA3-8B. Under reproduced LoRA baselines in our unified implementation, the average gain is 3.0 points; when combined with DoRA, the gain is 2.7 points. The Echo path is discarded after training, so the deployed model keeps the original low-rank LoRA/DoRA form and adds neither inference-time parameters nor inference computation. 
+
+# 1 Introduction 
+
+Large language models (LLMs) now serve as a common foundation for natural language understanding, text generation, and complex reasoning [ 15 , 16 , 17 ]. A pretrained model is rarely used unchanged in downstream applications; it usually needs to be adapted to a new task distribution or instruction format [ 2 ]. Full fine-tuning remains costly for contemporary LLMs, both in training memory and in storage for task-specific checkpoints, which keeps efficient adaptation a practical bottleneck [8, 11]. PEFT methods reduce this burden by training only a small set of additional or reparameterized variables. Adapter modules, prompt or prefix tuning, and low-rank updates represent the main families of such methods [ 11 , 19 , 21 , 20 ]. LoRA is often used as a default low-rank baseline: it represents the weight update with two low-rank matrices, trains efficiently, and can be merged into the frozen weights before deployment [ 18 ]. Later variants have mostly refined this weight-update view, for instance through adaptive rank allocation, vector-based random-matrix adaptation, or magnitude-direction decomposition [24, 23, 8]. This view leaves one question underexplored: during adaptation, what information should a trainable layer receive? Probing studies suggest that Transformer layers do not play identical roles. Shallow layers are more closely tied to lexical, syntactic, and local patterns, while deeper layers tend to encode more abstract semantic and task-relevant information [ 1, 22 ]. A shallow LoRA module, by design, updates its layer from the representations available at that point in the forward pass; it has no direct access to semantic states that appear later in the network. We argue that this separation can be limiting for tasks that depend on global judgment, commonsense integration, or structured generation. Echo-LoRA is built around this observation. During training, we extract answer-boundary representations from deeper source layers, aggregate them into a sample-level echo representation, and inject that representation into shallow LoRA/DoRA modules using small projection and gating networks. The design gives shallow adaptation modules access to a compact signal derived from deeper semantic states. Since such a cross-layer path can also introduce spurious dependencies, we use answer-only masking, masked distillation, and stochastic routing to keep the auxiliary signal controlled. 1
+
+> arXiv:2605.08177v1 [cs.LG] 5 May 2026
+
+Our contributions are as follows. We introduce Echo-LoRA, a training-time cross-layer injection mechanism that feeds answer-boundary representations from deeper layers into shallow LoRA/DoRA adaptation modules. We pair this mechanism with answer-only masking, masked distillation, and stochastic routing, so that the auxiliary path helps optimization without being required at inference time. We evaluate Echo-LoRA on LLaMA-7B, LLaMA2-7B, and LLaMA3-8B. On eight commonsense reasoning datasets, it improves the average score by 5.7 points over reported LoRA baselines and by 3.0 points over reproduced LoRA baselines in our unified implementation. Echo-DoRA improves the corresponding DoRA baseline by 2.7 points. Additional experiments on mathematical reasoning, code generation, and multitask knowledge understanding show similar positive trends. 
+
+# 2 Related Work 
+
+## 2.1 Parameter-Efficient Fine-Tuning for LLMs 
+
+Scaling pretrained language models makes full fine-tuning increasingly expensive and harder to maintain in deployment. PEFT methods respond by keeping the backbone mostly frozen and updating a small subset of trainable parameters [ 11 ]. Adapter-based methods insert compact trainable modules into the original network [ 11 , 6], whereas prompt- and prefix-tuning optimize continuous vectors that steer generation [19, 21, 20]. Low-rank updates form another widely used PEFT family. LoRA approximates the full weight update by two low-rank matrices and obtains strong performance at modest training cost [ 18 ]. AdaLoRA adjusts rank budgets according to parameter importance [ 24 ]; VeRA fixes random matrices and trains scaling vectors [ 23 ]; DoRA decomposes pretrained weights into magnitude and direction components to better mimic full fine-tuning [ 8]. These methods mainly refine how local weights are updated. Echo-LoRA instead asks whether hidden states from deeper layers can serve as useful conditioning signals for shallow adaptation modules. 
+
+## 2.2 Intermediate Representations and Cross-Layer Information 
+
+Transformer hidden states vary substantially with depth. Probing and interpretability studies have found that shal-low layers tend to encode local lexical and syntactic patterns, while deeper layers capture more abstract semantic information [1, 22]. This layered structure suggests that depth itself can provide a useful source of training signal. Layer differences have also been used at inference time. DoLa, for example, contrasts output distributions from different layers during decoding to improve factuality and accuracy [ 4 ]. These results motivate treating intermediate states as reusable signals rather than disposable computation traces. Echo-LoRA follows this line of thought in the fine-tuning stage, where we use deeper representations as a training-time auxiliary condition for shallow PEFT modules. 
+
+## 2.3 Training Stability Strategies 
+
+Randomized computation paths and selective supervision are standard tools for improving robustness. Stochastic Depth, for instance, drops layers during training to reduce dependence on a fixed path [ 12 ]. Instruction tuning typically ignores prompt tokens in the loss and backpropagates only through target-answer positions [ 2]. Echo-LoRA uses a related principle: because the Echo branch adds a second, training-only path, we restrict where the injected signal appears and randomize when the path is active. 
+
+# 3 Method 
+
+## 3.1 Problem Definition and LoRA Preliminaries 
+
+Let the input sequence be X = ( x1, . . . , x T ). In instruction tuning, the sequence is usually the concatenation of a prompt and an answer. We denote the answer-token positions by A. The model predicts these answer tokens autoregressively conditioned on the prompt, while prompt positions are typically excluded from the loss. Consider a target linear transformation in a Transformer block with input u ∈ Rdin and output o ∈ Rdout . LoRA keeps the pretrained weight W frozen and learns a low-rank update: 
+
+o = Wu + ∆ Wu , ∆W = αr BA , (1) 2where W ∈ Rdout ×din is the frozen pretrained weight, A ∈ Rr×din and B ∈ Rdout ×r are trainable low-rank matrices, r is the rank, and α is a scaling coefficient. This update remains local to the target layer. It does not condition shallow trainable modules on representations that appear later in the network. If deeper hidden states contain task-relevant semantic information, using them as a training-time signal may improve the adaptation of shallow modules. 
+
+## 3.2 Overall Framework 
+
+Echo-LoRA uses deeper representations as auxiliary conditions for shallow PEFT modules. At routed training steps, we collect hidden states at answer-boundary positions from deeper source layers, aggregate them into a sample-level echo representation, and inject the resulting signal into shallow target LoRA/DoRA modules through projection and gating networks. Let S be the source-layer set and T the target-layer set, with source layers placed deeper than target layers. For sample b, t⋆b denotes the boundary position immediately before the answer region. We extract source-layer hidden states at this position and average them: 
+
+zb = 1
+
+|S| 
+
+X
+
+> l∈S
+
+h(l)
+
+> b,t ⋆b
+
+. (2) Here h(l)
+
+> b,t ⋆b
+
+is the hidden state of layer l at position t⋆b . We use this boundary position because it is expected to summarize the prompt context before answer generation begins. In implementation, the first forward pass produces the source representation, and the second pass uses it as a stop-gradient condition; the injection branch does not backpropagate through the source hidden states obtained in the first pass. Given zb, Echo-LoRA first normalizes it and then computes an injection vector through projection and gating networks. For a target layer l ∈ T and target module m, the computation is: 
+
+¯zb = Norm( zb), (3) 
+
+e(l,m ) 
+
+> b
+
+= W(l,m )2 tanh 
+
+
+
+W(l,m )1 ¯zb
+
+
+
+, (4) 
+
+g(l,m ) 
+
+> b
+
+= σ
+
+
+
+U(l,m )2 tanh 
+
+
+
+U(l,m )1 ¯zb
+
+
+
++ b(l,m )
+
+, (5) 
+
+δ(l,m ) 
+
+> b
+
+= λ(l,m ) 
+
+e(l,m ) 
+
+> b
+
+⊙ g(l,m )
+
+> b
+
+
+
+. (6) The projection parameters W(l,m )1 and W(l,m )2 map the deep representation into the target-module output space through a small bottleneck. The gating parameters U(l,m )1 , U(l,m )2 , and b(l,m ) filter the injected signal in a sample- and module-dependent manner. The scalar λ(l,m ) is a learnable scale, ⊙ denotes element-wise multiplication, and σ(·) is the sigmoid function. We initialize the gate bias negatively, so the Echo branch begins with a weak activation and is less likely to dominate early updates. The final injected target-module output is 
+
+eo(l,m ) 
+
+> b,t
+
+= o(l,m ) 
+
+> b,t
+
++ rkMb,t δ(l,m ) 
+
+> b
+
+, (7) where o(l,m ) 
+
+> b,t
+
+is the original module output, eo(l,m ) 
+
+> b,t
+
+is the injected output, Mb,t ∈ { 0, 1} is the answer-region mask, and 
+
+rk ∈ { 0, 1} is the stochastic routing variable at step k. Since the source layers come after the target layers in the forward computation, training uses two passes: an Echo-off pass that extracts the source boundary representation, followed by an Echo-on pass that injects this representation into shallow target modules and computes the losses. 
+
+## 3.3 Answer-Only Selective Injection 
+
+Applying the echo signal to every token would also perturb prompt positions, which normally do not contribute to the language-modeling loss. We restrict Echo injection to supervised answer positions for this reason. For the b-th sample, the binary mask is constructed from the supervised language-modeling labels: 
+
+Mb,t =
+
+(
+
+1, yb,t ̸ = −100 ,
+
+0, otherwise . (8) 3Figure 1: Overall framework of Echo-LoRA. Boundary hidden states are extracted from deeper layers, aggregated into an echo representation, and injected into shallow LoRA modules during training. Here yb,t is the supervised label at position t. Positions ignored by the language-modeling loss are typically marked as 
+
+−100 , so the mask retains Echo injection only where answer tokens are predicted. 
+
+## 3.4 Stochastic Routing 
+
+Keeping the Echo path active throughout training can make the model rely too heavily on a branch that will be absent at inference time. Echo-LoRA uses stochastic routing to address this mismatch. At training step k, a Bernoulli variable decides whether the Echo path is enabled: 
+
+rk ∼ Bernoulli( pk). (9) All target modules share the same routing state within a training step. The routing probability follows a linear decay: 
+
+pk = pstart + kK − 1 (pend − pstart ) , (10) where K is the total number of training steps and pstart > p end . Early training exposes the target layers more often to the source-layer signal, while later training gradually shifts the model back toward the deployable Echo-off path. 
+
+## 3.5 Training Objective and Deployment 
+
+Training starts from an Echo-off forward pass, which gives the supervised loss Loff . When routing activates the Echo branch, a second Echo-on pass produces Lon and a masked distillation loss Lkd on answer positions. The objective is 
+
+Lt = Loff + rt (Lon + λkd Lkd ) , (11) where rt is the routing variable and λkd is the distillation weight. If rt = 0 , only the base path is optimized; if rt = 1 ,both paths are optimized and their answer-region predictions are constrained to remain close. Let qon  
+
+> b,t
+
+= softmax( pon 
+
+> b,t
+
+/τ ) and qoff  
+
+> b,t
+
+= softmax( poff  
+
+> b,t
+
+/τ ). The distillation loss is 
+
+Lkd = τ 2
+
+|A| 
+
+X
+
+> (b,t )∈A
+
+KL  qon  
+
+> b,t
+
+qoff 
+
+> b,t
+
+ . (12) 4Table 1: Datasets used in the experiments.                                     
+
+> Dataset Task Type Train/Dev Size Test Size BoolQ Yes/no reasoning 9,427 3,270 PIQA Physical commonsense 16,113 1,838 SIQA Social commonsense 33,410 1,954 HellaSwag Situation continuation 39,905 10,042 WinoGrande Coreference reasoning 40,398 1,267 ARC-e Science QA (Easy) 2,251 2,376 ARC-c Science QA (Challenge) 1,119 1,172 OBQA Open-book commonsense QA 4,957 500 GSM8K Mathematical reasoning 7,473 1,319 HumanEval Code generation –164 MMLU Multitask knowledge 285 14,042
+
+The Echo-on branch serves as the teacher and is detached in the distillation term. Following standard knowledge distillation, the factor τ 2 keeps the gradient scale comparable across temperatures. Unless otherwise stated, we set 
+
+λkd = 1 .0 and τ = 2 .0.Echo modules are training-only components. At deployment, we disable the Echo path, so no echo extraction, projection, or injection is executed. The deployable model has the same inference structure as standard LoRA/DoRA; auxiliary Echo parameters may remain in checkpoints for analysis, but they are not used during generation. 
+
+# 4 Experiments 
+
+## 4.1 Experimental Setup 
+
+We use LLaMA-7B, LLaMA2-7B, and LLaMA3-8B as the main backbones, with LLaMA2-13B included in extended experiments. The commonsense reasoning setup follows the benchmark suite used by DoRA [ 8 ]. To make the source of each comparison explicit, we separate main-table comparisons against published baselines from reproduced LoRA comparisons under our unified implementation, which are reported in Appendix A.1. Table 1 summarizes the datasets. The first eight datasets form the commonsense reasoning suite: their training sets are mixed during training, and their evaluation sets are tested separately. GSM8K, HumanEval, and MMLU are used for extended evaluation on mathematical reasoning, code generation, and multitask knowledge understanding. Unless otherwise stated, our experiments use rank r = 16 , scaling coefficient α = 32 , and apply LoRA/DoRA to the attention projections q proj , k proj , v proj , and o proj . The learning rate is 2 × 10 −4, LoRA dropout is 0.05, training lasts for 3 epochs, the maximum sequence length is 256, and bf16 training is used. For four-GPU training, each GPU uses batch size 2, resulting in total batch size 16. For the Echo mechanism, the default source layers are [−8, −7, −6, −5] , the default target layers are [4 , 5, 6, 7] ,and injection is applied to q proj and v proj . The bottleneck dimension is 64. Stochastic routing uses pstart = 1 .0
+
+and pend = 0 .2. Answer-only masking and masked distillation are enabled by default, with λkd = 1 .0 and τ = 2 .0.
+
+## 4.2 Main Commonsense Reasoning Results 
+
+Table 2 reports the LoRA-line results on eight commonsense reasoning datasets. Prefix, Series, Parallel, and LoRA values are taken from the DoRA paper [ 8]; Echo-LoRA values are obtained by our method. All average scores are computed from the eight displayed task scores. Echo-LoRA improves the reported LoRA average on all three backbones. The gains are 5.1, 5.4, and 6.7 points for LLaMA-7B, LLaMA2-7B, and LLaMA3-8B, respectively, giving an average gain of 5.7 points. The largest gain is observed on LLaMA3-8B, suggesting that the Echo signal is not merely compensating for a weak backbone but can also complement a stronger one. 5Table 2: Accuracy comparison on eight commonsense reasoning datasets (%). Prefix, Series, Parallel, and LoRA are reported by DoRA [8]; Echo-LoRA is our method. Model PEFT Method BoolQ PIQA SIQA HellaSwag WinoGrande ARC-e ARC-c OBQA Avg. LLaMA-7B Prefix 64.3 76.8 73.9 42.1 72.1 72.9 54.0 60.6 64.6 Series 63.0 79.2 76.3 67.9 75.7 74.5 57.1 72.4 70.8 Parallel 67.9 76.4 78.8 69.8 78.9 73.7 57.3 75.2 72.2 LoRA 68.9 80.7 77.4 78.1 78.8 77.8 61.3 74.8 74.7 Echo-LoRA 63.6 82.9 77.6 93.7 84.5 85.0 70.1 81.2 79.8                                       
+
+> LLaMA2-7B LoRA 69.8 79.9 79.5 83.6 82.6 79.8 64.7 81.0 77.6 Echo-LoRA 72.7 83.7 80.5 94.0 85.9 87.6 74.7 84.6 83.0
+> LLaMA3-8B LoRA 70.8 85.2 79.9 91.7 84.3 84.2 71.2 79.0 80.8 Echo-LoRA 75.6 90.2 82.5 96.6 89.8 93.6 82.5 89.2 87.5
+
+Table 3: Accuracy comparison on eight commonsense reasoning datasets (%). DoRA values are from DoRA [ 8]; Echo-DoRA is our method. Model PEFT Method BoolQ PIQA SIQA HellaSwag WinoGrande ARC-e ARC-c OBQA Avg. LLaMA-7B DoRA 69.7 83.4 78.6 87.2 81.0 81.9 66.2 79.2 78.4 Echo-DoRA 69.6 82.6 81.2 93.4 83.6 86.1 70.7 83.2 81.3                                       
+
+> LLaMA2-7B DoRA 71.8 83.7 76.0 89.1 82.6 83.7 68.2 82.4 79.7 Echo-DoRA 73.5 84.7 81.6 94.4 85.6 88.1 74.2 87.4 83.7
+> LLaMA3-8B DoRA 74.6 89.3 79.9 95.5 85.6 90.5 80.4 85.8 85.2 Echo-DoRA 75.1 89.0 81.9 97.1 88.5 91.3 81.6 86.8 86.4
+
+## 4.3 Combining Echo with DoRA 
+
+We next apply the same Echo mechanism to DoRA, yielding Echo-DoRA. Table 3 compares DoRA and Echo-DoRA on the same eight commonsense reasoning tasks. DoRA values are from the DoRA paper [ 8 ], while Echo-DoRA values are our results. For numerical consistency, the average scores are recomputed from the displayed task scores. Echo-DoRA improves the DoRA average by 2.9, 4.0, and 1.2 points on the three backbones, respectively, for an average gain of 2.7 points. These gains are smaller than those on the LoRA line, which is consistent with the view that Echo provides a complementary signal when the underlying adaptation method is already stronger. 
+
+## 4.4 Ablation Study 
+
+Ablations are conducted on LLaMA3-8B with the same training configuration. Table 4 reports the average score over the eight commonsense reasoning tasks. The baseline in this table is our reproduced LLaMA3-8B LoRA baseline, which differs from the published LoRA row in Table 2. Appendix A.2 provides the task-level results. The score drops most sharply when stochastic routing is removed, so we regard routing as the most important stabilizing component in this set of ablations. Deep-to-deep and shallow-to-shallow variants underperform the default deep-to-shallow configuration, supporting our hypothesis that deeper semantic states are most useful when they guide shallower adaptation modules. Removing answer-only masking or using a single injected projection remains competitive but is slightly weaker than the default. Injecting all attention projections matches the default average score, yet it touches more modules and increases training cost; we keep the simpler q proj /v proj configuration. 
+
+## 4.5 Extended Task Results 
+
+We also test whether the same mechanism transfers beyond commonsense reasoning. GSM8K and MMLU are evaluated with accuracy, and HumanEval with pass@1. The baseline values in Table 5 are from Flat-LoRA [ 25 ]; Echo-LoRA values are our results. 6Table 4: Ablation results on LLaMA3-8B (average accuracy over eight commonsense reasoning datasets).                    
+
+> Setting Avg. A-0 Reproduced LoRA baseline 84.7 A-1 w/o Stochastic Routing 78.7 A-2 Deep →Deep 84.8 A-3 Shallow →Shallow 86.2 A-4 w/o Answer-Only Masking 87.2 A-5 v proj only 87.2 A-6 w/o Answer-Only Masking + all attention projections 87.3 A-7 q proj only 87.4 A-8 All attention projections 87.5 A-9 Full Echo-LoRA 87.5
+
+Table 5: Extended task results (%). Baselines are from Flat-LoRA [25]; Echo-LoRA is our method.              
+
+> Model Dataset Baseline Echo-LoRA LLaMA2-7B GSM8K 56.25 58.61
+> HumanEval 24.56 25.78
+> LLaMA2-13B MMLU 52.27 53.90
+> HumanEval 13.78 15.85
+
+Echo-LoRA improves over the corresponding baselines in all four extended settings. The gains are modest but consistent, suggesting that Echo is not tied to a single benchmark family and may be useful when tasks require reasoning, code synthesis, or broad knowledge integration. 
+
+## 4.6 Discussion 
+
+The Echo gains are larger on LoRA than on DoRA. We hypothesize that standard LoRA leaves more room for auxiliary semantic guidance, while DoRA has already improved the adaptation dynamics through weight decomposition. From the task side, commonsense reasoning, mathematical reasoning, and code generation all require contextual integration and conditional constraints. Our observations suggest that Echo-LoRA helps by giving shallow adaptation modules access to semantic information that is less local than their native layer states. At deployment, we disable the Echo path. Inference uses the same low-rank update form as LoRA/DoRA and requires no Echo extraction, projection, or injection. The cost is paid during training: whenever routing activates Echo, a second forward pass is needed. With the routing probability decaying from pstart = 1 .0 to pend = 0 .2, Echo-LoRA uses more training computation than standard LoRA while preserving the inference-time efficiency that makes low-rank adaptation attractive. 
+
+# 5 Conclusion 
+
+We introduced Echo-LoRA, a parameter-efficient fine-tuning method that uses cross-layer representation injection during training. The method extracts answer-boundary hidden states from deeper source layers, aggregates them into a sample-level echo representation, and injects this representation into shallow LoRA/DoRA modules. Answer-only masking, masked distillation, and stochastic routing are used to keep the auxiliary path stable and compatible with Echo-off inference. Across three LLaMA backbones and eight commonsense reasoning benchmarks, Echo-LoRA improves the reported LoRA baselines by 5.7 points on average; under our reproduced LoRA implementation, the average gain is 3.0 points. Echo-DoRA improves DoRA by 2.7 points on average, and extended evaluations on GSM8K, HumanEval, and MMLU show additional positive gains. Because the Echo path is removed at inference time, the deployed model retains the standard LoRA/DoRA form and adds no inference parameters or computation. 7Table 6: Full LoRA-line results on commonsense reasoning tasks (%). ∆ denotes the absolute gain of Echo-LoRA over the reproduced LoRA baseline under our unified implementation. Model PEFT Method BoolQ PIQA SIQA HellaSwag WinoGrande ARC-e ARC-c OBQA Avg. LLaMA-7B LoRA (reported) 68.9 80.7 77.4 78.1 78.8 77.8 61.3 74.8 74.7 LoRA (reproduced) 57.1 80.5 78.6 64.4 81.8 82.9 66.1 77.4 73.6 Echo-LoRA 63.6 82.9 77.6 93.7 84.5 85.0 70.1 81.2 79.8 
+
+∆ +6.5 +2.4 -1.0 +29.3 +2.7 +2.1 +4.0 +3.8 +6.2 LLaMA2-7B LoRA (reported) 69.8 79.9 79.5 83.6 82.6 79.8 64.7 81.0 77.6 LoRA (reproduced) 71.3 84.4 80.5 93.7 85.3 87.5 73.1 82.0 82.2 Echo-LoRA 72.7 83.7 80.5 94.0 85.9 87.6 74.7 84.6 83.0 
+
+∆ +1.4 -0.7 +0.0 +0.3 +0.6 +0.1 +1.6 +2.6 +0.8 LLaMA3-8B LoRA (reported) 70.8 85.2 79.9 91.7 84.3 84.2 71.2 79.0 80.8 LoRA (reproduced) 67.6 90.3 82.1 96.5 88.0 92.3 82.7 85.4 85.6 Echo-LoRA 75.6 90.2 82.5 96.6 89.8 93.6 82.5 89.2 87.5 
+
+∆ +8.0 -0.1 +0.4 +0.1 +1.8 +1.3 -0.2 +3.8 +1.9 Table 7: Full task-level ablation results on LLaMA3-8B (%). Setting BoolQ PIQA SIQA HellaSwag WinoGrande ARC-e ARC-c OBQA Avg. A-0 Reproduced LoRA baseline 66.6 89.3 81.8 95.5 87.0 91.3 81.7 84.4 84.7 A-1 Full Echo-LoRA 75.6 90.2 82.5 96.6 89.8 93.6 82.4 89.2 87.5 A-2 w/o Answer-Only Masking 75.0 90.0 81.8 96.7 89.7 93.1 83.7 87.8 87.2 A-3 w/o Stochastic Routing 72.9 81.8 82.7 92.0 34.2 93.2 84.1 88.8 78.7 A-4 Deep → Deep 70.6 89.6 82.8 96.5 75.4 93.0 82.6 88.2 84.8 A-5 Shallow → Shallow 73.4 88.5 83.0 94.5 86.8 93.7 82.3 87.0 86.2 A-6 q proj only 75.7 90.3 83.0 96.5 89.2 92.3 82.9 89.4 87.4 A-7 v proj only 75.3 90.1 82.3 96.5 88.7 93.1 82.4 88.4 87.2 A-8 All attention projections 75.7 90.3 82.0 96.5 89.5 93.1 83.0 90.2 87.5 A-9 w/o Answer-Only Masking + all attention projections 76.0 90.7 82.1 96.4 88.1 93.1 83.6 88.0 87.3 Taken together, the results indicate that deeper representations can be useful not only for inference-time decoding strategies but also as training-time auxiliary signals for shallow PEFT modules. We view cross-layer information use as a promising direction for future PEFT research, especially when the auxiliary path can be removed before deployment. 
+
+# A Additional Results and Discussion 
+
+## A.1 Full Echo-LoRA Results on Commonsense Reasoning 
+
+Table 6 gives the task-level LoRA-line results. Alongside the published LoRA values, we report reproduced LoRA baselines from our unified implementation. The gain ∆ is computed as Echo-LoRA minus the reproduced LoRA baseline. Under this protocol, Echo-LoRA improves the average score by 6.2, 0.8, and 1.9 points on LLaMA-7B, LLaMA2-7B, and LLaMA3-8B, respectively, giving an average gain of 3.0 points. 
+
+## A.2 Full Ablation Results on LLaMA3-8B 
+
+Table 7 reports the full task-level ablation results on LLaMA3-8B. Average scores are computed from the eight displayed task scores. The results point to stochastic routing as the dominant stabilizing factor in this configuration. Answer-only masking contributes more modestly, and deep-to-shallow injection is stronger than the alternative layer-direction choices. 
+
+## A.3 Additional Observations 
+
+Echo gains vary across tasks. Datasets such as HellaSwag, WinoGrande, and OBQA require context integration and candidate discrimination, so the injected semantic signal may be more useful there. When the baseline is already 8strong, the gains are usually smaller. We interpret this pattern as evidence that Echo supplies task-relevant semantic cues beyond the original low-rank path, with the realized benefit depending on task difficulty, backbone capacity, and baseline strength. Echo also yields larger gains on LoRA than on DoRA. When the underlying PEFT method is strengthened by weight decomposition, the cross-layer signal appears to act more as a robust supplement than as a large shift in the adaptation ceiling. This pattern may help guide future combinations of Echo-style training paths with other PEFT frameworks. 
+
+# References 
+
+[1] G. Alain and Y. Bengio. Understanding intermediate layers using linear classifier probes. In International Conference on Learning Representations , 2017. [2] R. Taori, I. Gulrajani, T. Zhang, et al. Stanford Alpaca: An instruction-following LLaMA model. 2023. [3] E. Ben Zaken, Y. Goldberg, and S. Ravfogel. BitFit: Simple parameter-efficient fine-tuning for transformer-based masked language-models. In ACL , 2022. [4] Y.-S. Chuang, S. M. Xie, H. Luo, et al. DoLa: Decoding by contrasting layers improves factuality in large language models. In International Conference on Learning Representations , 2024. [5] K. Cobbe, V. Kosaraju, M. Bavarian, et al. Training verifiers to solve math word problems. arXiv:2110.14168, 2021. [6] R. K. Mahabadi, J. Henderson, and S. Ruder. Compacter: Efficient low-rank hypercomplex adapter layers. In 
+
+Advances in Neural Information Processing Systems , 2021. [7] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer. QLoRA: Efficient finetuning of quantized LLMs. In 
+
+Advances in Neural Information Processing Systems , 2023. [8] S.-Y. Liu, C. Wang, Y. Yin, et al. DoRA: Weight-decomposed low-rank adaptation. In International Conference on Machine Learning , 2024. [9] H. W. Chung, L. Hou, S. Longpre, et al. Scaling instruction-finetuned language models. Journal of Machine Learning Research , 25(70):1–53, 2024. [10] D. Hendrycks, C. Burns, S. Basart, et al. Measuring massive multitask language understanding. In International Conference on Learning Representations , 2021. [11] N. Houlsby, A. Giurgiu, S. Jastrzebski, et al. Parameter-efficient transfer learning for NLP. In International Conference on Machine Learning , pages 2790–2799, 2019. [12] G. Huang, Y. Sun, Z. Liu, et al. Deep networks with stochastic depth. In European Conference on Computer Vision , pages 646–661, 2016. [13] M. Chen, J. Tworek, H. Jun, et al. Evaluating large language models trained on code. arXiv:2107.03374, 2021. [14] H. Liu, D. Tam, M. Muqeeth, et al. Few-shot parameter-efficient fine-tuning is better and cheaper than in-context learning. In Advances in Neural Information Processing Systems , 2022. [15] H. Touvron, T. Lavril, G. Izacard, et al. LLaMA: Open and efficient foundation language models. arXiv:2302.13971, 2023. [16] H. Touvron, L. Martin, K. Stone, et al. Llama 2: Open foundation and fine-tuned chat models. arXiv:2307.09288, 2023. [17] A. Dubey, A. Jauhri, A. Pandey, et al. The Llama 3 herd of models. arXiv:2407.21783, 2024. [18] E. J. Hu, Y. Shen, P. Wallis, et al. LoRA: Low-rank adaptation of large language models. In International Conference on Learning Representations , 2022. 9[19] X. L. Li and P. Liang. Prefix-tuning: Optimizing continuous prompts for generation. In ACL-IJCNLP , pages 4582–4597, 2021. [20] X. Liu, K. Ji, Y. Fu, et al. P-Tuning v2: Prompt tuning can be comparable to fine-tuning universally across scales and tasks. In ACL , pages 61–68, 2022. [21] B. Lester, R. Al-Rfou, and N. Constant. The power of scale for parameter-efficient prompt tuning. In EMNLP ,pages 3045–3059, 2021. [22] I. Tenney, D. Das, and E. Pavlick. BERT rediscovers the classical NLP pipeline. In ACL , pages 4593–4601, 2019. [23] D. J. Kopiczko, T. Blankevoort, and Y. M. Asano. VeRA: Vector-based random matrix adaptation. In International Conference on Learning Representations , 2024. [24] Q. Zhang, M. Chen, A. Bukharin, et al. AdaLoRA: Adaptive budget allocation for parameter-efficient fine-tuning. In International Conference on Learning Representations , 2023. [25] T. Li, Z. He, Y. Li, et al. Flat-LoRA: Low-rank adaptation over a flat loss landscape. In Forty-second International Conference on Machine Learning , 2025. 10
