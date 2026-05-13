@@ -1,0 +1,1390 @@
+Title: SOMA: Efficient Multi-turn LLM Serving via Small Language Model
+
+URL Source: https://arxiv.org/pdf/2605.11317v1
+
+Published Time: Wed, 13 May 2026 00:21:54 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# SOMA: Efficient Multi-turn LLM Serving via Small Language Model 
+
+Xueqi Cheng 1 Qiong Wu 2 Zhengyi Zhou 2 Xugui Zhou 3 Tyler Derr 4 Yushun Dong 11Florida State University 2AT&T Chief Data Office 3Louisiana State University 4Vanderbilt University  
+
+> {xc25,yushun.dong}@fsu.edu; {qw6547,zz547k}@att.com xuguizhou@lsu.edu; tyler.derr@vanderbilt.edu
+
+## Abstract 
+
+Large Language Models (LLMs) are increasingly deployed in multi-turn dia-logue settings where preserving conversational context across turns is essential. A standard serving practice concatenates the full dialogue history at every turn, which reliably maintains coherence but incurs substantial cost in latency, mem-ory, and API expenditure, especially when queries are routed to large proprietary models. Existing approaches often struggle to balance the trade-off between re-sponse quality and efficiency. We propose a framework that exploits the early turns of a session to estimate a local response manifold and then adapt a smaller surrogate model to this local region for the remainder of the conversation. Con-cretely, we learn soft prompts that maximize semantic divergence between the large and surrogate small language models’ responses to surface least-aligned local directions, stabilize training with anti-degeneration control, and distill the mined cases into localized LoRA fine-tuning so the surrogate runs without prompts at inference. A simple gate enables a one-time switch with rollback on drift. We further provide a theoretical analysis for key components in SOMA. Extensive experiments show the effectiveness of SOMA. The source code is provided at: 
+
+https://github.com/LabRAI/SOMA .
+
+## 1 Introduction 
+
+Large language models (LLMs) such as the GPT series [ 39 , 9, 1 ], LLaMA [ 46 ], Claude [ 4], and DeepSeek [ 17 ] have demonstrated strong performance in real-world machine-learning-as-a-service (MLaaS) applications, ranging from chat assistants to code generation [ 38 , 14 , 29 , 27 , 54 ]. As LLMs are increasingly deployed in interactive settings, multi-turn LLM serving , involving extended interactions between humans and LLMs or among multiple LLM agents, has emerged as a key research focus, as it better reflects real-world usage scenarios [ 53 , 28 , 57 ]. Existing research reveals that multi-turn interactions are widespread, underscoring the need for serving systems capable of handling extended conversations in a context-aware manner [ 10 , 16 ]. However, supporting efficient context-dependent multi-turn interaction remains a key challenge, as most LLM serving systems are stateless and require resending the entire conversation history, including all prior queries and responses, with each new query to generate a new response [ 3, 33 ]. This leads to redundant computation, high latency, and rising serving costs as conversations lengthen. Previous work has explored efficient multi-turn LLM serving through two main approaches. One line of work focuses on single-model methods that compress dialogue history [ 48 , 11 , 50 ], retrieve memory from external modules [ 32 , 18 ], or reuse attention computations [ 16 , 24 , 5]. However, these still rely heavily on large LLMs for every turn, leading to high monetary cost, latency, and GPU usage. They also often truncate or overlook extended context, limiting reasoning over long dialogues. Another line adopts multi-model methods , routing simple queries to smaller models while escalating harder ones to larger LLMs [ 7, 41 , 13 , 43 ]. Yet, small models struggle to generalize across dialogue complexity, and model switching introduces additional overhead. Moreover, LLMs are known to rely on early turns [50, 25], compounding the difficulty of maintaining coherence in multi-turn settings. 
+
+> Preprint.
+> arXiv:2605.11317v1 [cs.CL] 11 May 2026
+
+Is it possible to achieve an efficient, context-aware multi-turn LLM serving framework that avoids recomputing the full history at every turn while preserving response quality? 
+
+To achieve this goal, we perform in-depth explorations of real-world multi-turn dialogues across different domains and reveal an interesting long-tail distribution in token counts across turns: early turns are substantially longer, while later turns gradually decrease in length. This phenomenon aligns with the intuition of prior work that early turns typically carry the substantive openings set issues and anchors, including questions, requests, and proposals, while later turns are typically minimal acknowledgments [ 19 , 44 ]. This long-tail trend gives rise to an intuitive idea: since later turns are relatively short, a smaller language model might suffice to generate responses more cost-efficiently. However, the bottleneck lies in the “big head”: if the small model must still process the early, information-dense context, the response quality will be degraded. Specifically, while a small language model may behave reasonably at the start, its responses drift from the large model as the dialogue progresses because most grounding is established early, and later turns remain highly dependent on that context. Therefore, simply handing later turns to a small model without modeling the accumulated context degrades quality. To address this, the small language model must not only process shorter inputs but also approximate the larger model’s behavior within the local manifold of its output or hidden space to capture the contextual dependencies shaped by prior dialogue. This defines a local manifold approximation problem, where the small language model aims to replicate the target model’s behavior induced by the current conversational context. Building on these insights, we propose a novel framework for efficient multi-turn LLM serving that enables a small language model to locally approximate the behavior of a large language model within a constrained region of the reasoning manifold. Specifically, we present SOMA ( Soft-prompts for lOcal Manifold Approximation) to dynamically adapt the small language model to the local behavior of the larger model conditioned on early turn interactions. This is achieved through a three-stage pipeline: (1) Soft prompt tuning , where we efficiently explore the local reasoning manifold induced by the early conversational context to identify directions of maximal behavioral divergence between the small and large language model ; (2) Localized fine-tuning , where we efficiently fine-tune the small language model on a small number of input–output pairs to align it with the larger model within this context-specific region of the manifold; and (3) Efficiency inference , where we incorporate the extractive summary to minimize computational overhead and the rollback mechanism that monitor potential topic shift to maintain service quality. Together, these components allow the small model to effectively approximate the larger model’s reasoning process within the context of a given session, enabling both cost-effective and context-aware multi-turn serving. Extensive experiments show the effectiveness of our proposed method. Overall, our contributions are: • Long-tail pattern in multi-turn dialogues. We first reveal a previously under-explored long-tail pattern in multi-turn dialogues: the first few turns concentrate heavy context, while later turns are shorter yet more dependent on previous turns. This key empirical characterization suggests that substantial computational and monetary savings can be achieved if a smaller and cheaper language model can replace a large one to process the later turns when given the accumulated context. • SOMA: Efficient multi-turn serving. It first learns soft prompts that expose the largest sur-rogate–original response dissimilarity, then adapts the surrogate localized LoRA accordingly, enabling prompt-free inference with a simple cosine gate for switching and rollback. • Theory analysis and empirical evaluation. We provide concentration-based bounds for switching, coverage guarantees for prompt-direction search, and suboptimality limits for selected directions. Guided by these results, empirical studies show the effectiveness of SOMA in real world. 
+
+## 2 Preliminaries 
+
+2.1 Notations 
+
+In this paper, a multi-turn dialogue prefix of length k is Dk = {(q1, a 1), . . . , (qk, a k)} where qt is the user query at turn t, and at is the corresponding model response. F represents the original proprietary black-box LLM, which is a common setting in machine-learning-as-a-service (MLaaS), and G is the surrogate small language model. The textual response at turn t is aMt for M ∈ { F, G }. Let fM (·) be a feature map to the hidden space, and ht = fM (q≤t) ∈ Rd the hidden state at turn t. The first k
+
+2hidden states form Hk = {h1, . . . , hk} and induce a local manifold MMk ⊂ Rd. A length-L soft prompt is P ∈ RL×d. More details are given in Appendix A. 
+
+2.2 Exploring Token–Turn Patterns in Multi-Turn LLM Dialogues 1 4 7 10 13 16 19 22 25 28 31 34 37 
+
+> Turn Number
+> 10 1
+> 10 2
+> Relative Average Tokens (×Turn 1)
+> ShareGPT
+> ReMeDi
+> Craigslist
+> Multi-character
+
+Figure 1: Relative average token count per turn, normalized by Turn 1. Across four dialogue datasets, token usage drops after the early turns and then forms a long tail. Efficient multi-turn serving depends on how the dia-logue state evolves over time. In standard LLM serv-ing, each new request is processed together with the full previous history, so the computational cost grows with the length of the conversation. However, the amount of new information introduced at each turn may follow a different pattern. We therefore first study how token usage changes across dialogue turns. We consider four representative multi-turn set-tings: ShareGPT [10 ] for open-ended human–LLM chat, ReMeDi [52 ] for doctor–patient consultation, 
+
+Craigslist Bargain [19 ] for negotiation, and Multi-Character [2] for multi-party role-play. These datasets cover different speaker roles, task goals, and interac-tion structures. For each dataset, we compute the average token count at turn t and normalize it by the average token count of Turn 1. Figure 1 shows a consistent long-tail pattern. Early turns are token-heavy because they usually introduce the task, topic, constraints, and speaker intent. Later turns are much shorter and stabilize at a lower level. This does not make later turns independent; rather, it suggests that many later turns are interpreted as local updates under an already established dialogue state. As a result, the marginal new input becomes smaller while standard serving still repeatedly processes the full prefix. This mismatch motivates an adaptive serving strategy: use the original large model to establish the early dialogue state, and then use a cheaper surrogate when subsequent turns remain within that local state. 
+
+2.3 Local Manifold Approximation for Multi-Turn Dialogues 
+
+The long-tail pattern suggests an opportunity for surrogate serving, but directly replacing the original model with a smaller model is unreliable. A later turn is often short because much of its meaning is supplied by the previous dialogue. If the surrogate is not aligned with the original model under this prefix, it may produce fluent responses that still drift from the intended context. We describe this challenge through a local manifold view. Let F denote the original large model and 
+
+G denote the small surrogate. Given a dialogue prefix 
+
+Dk = {(q1, a 1), . . . , (qk, a k)},
+
+the prefix induces a local region in the model’s contextual representation space. This region captures the current topic, constraints, style, and task state of the conversation. It adapts G to match the local behavior of F around the current dialogue prefix. 
+
+Problem 2.1 (Local Manifold Approximation for Multi-Turn Interactions) . Given a dialogue prefix 
+
+Dk and an original model F , learn a surrogate model G ∈ G whose local representation region matches that of F under the same prefix: 
+
+min  
+
+> G∈G
+
+dist  MGk (Dk), MFk (Dk) ,
+
+where MFk (Dk) and MGk (Dk) denote the local representation regions induced by the prefix, and 
+
+dist( ·, ·) measures their discrepancy. 
+
+This formulation leads to the design of SOMA. The early turns are used to expose where the surrogate disagrees with the original model within the current dialogue state. These locally informative examples are then used to adapt the surrogate. After adaptation, the surrogate serves later turns only while the dialogue remains close to the learned local region; when the conversation drifts, the system returns to the original model and refreshes the local state. 33 SOMA: Local Manifold Approximation via Soft Prompts 
+
+SOMA combines three components to enable efficient local serving. First, the original model F
+
+handles early turns to establish the dialogue state. Second, soft-prompt mining identifies where the surrogate G is least aligned with F , and these hard local cases are distilled into a lightweight LoRA adapter. Third, a semantic gate switches to G only when local alignment is sufficient, while a drift detector rolls back to F when the dialogue moves away from the learned local state. 
+
+3.1 Initialization 
+
+We initialize a soft prompt matrix P ∈ RLp×d on the surrogate G. Each row is sampled i.i.d. from 
+
+pℓ ∼ N (0, σ 2Id), where σ > 0 is the initialization scale. Let E = [ ev ]v∈V ∈ Rd×|V| be the surrogate embedding matrix and let tok( v) denote the token string associated with index v.Because the original model F cannot accept continuous embedding vectors, the soft prompt is used in two aligned forms. The surrogate receives P directly at the embedding layer, while the original model receives a nearest-neighbor verbalization of the same prompt: 
+
+vℓ = arg max 
+
+> v∈V
+
+⟨pℓ, ev ⟩∥pℓ∥2∥ev ∥2
+
+, V (P) =  tok( v1), . . . , tok( vLp ).
+
+Let Dt−1 denote the text history before turn t and let qt be the user query. During prompt mining, the two models are probed under comparable text conditioning: 
+
+aFt = F (V (P) ⊕ D t−1 ⊕ qt) , aGt = G(P ⊕emb E(tok G(Dt−1 ⊕ qt))) .
+
+Here tok G(·) is the tokenizer of G, E(·) maps text tokens to embeddings, and ⊕emb concatenates along the sequence dimension. This construction lets F and G be compared under the same dialogue state while allowing gradients to flow only through P on G.
+
+3.2 Soft Prompt Tuning for Mining Weak Alignment Directions 
+
+We learn P by minimizing a differentiable objective that makes G move away from F on the local dialogue context. The objective has three components: a token-level semantic divergence loss, an expectation-weighted distribution-level divergence term, and an anti-degeneration regularizer. 
+
+Semantic divergence loss. We use an unlikelihood-style loss [ 49 ] to discourage G from assigning high probability to the tokens produced by F . A purely exact-token penalty is too narrow, since the surrogate could avoid the teacher token while still assigning high probability to close paraphrases. We therefore define a semantic neighborhood in the surrogate embedding space. 
+
+Definition 3.1 (Semantic Neighborhood) . For token u ∈ V , let Nk(u) be the set of the k tokens in 
+
+V \ { u} whose embeddings have the largest cosine similarity to eu.At turn t, the original model produces text aFt . We tokenize this text using the surrogate tokenizer, 
+
+yFt = tok G(aFt ) = ( yFt, 1, . . . , y Ft,T F (t)), so that the teacher output and surrogate distribution are expressed in the same vocabulary. For each teacher token, we assign temperature-weighted mass to the token and its embedding neighbors: 
+
+sτ (v | yFt,i ) = exp(cos( ev , eyFt,i )/τ )
+
+P  
+
+> u∈{ yFt,i }∪N k(yFt,i )
+
+exp(cos( eu, eyFt,i )/τ ) , τ > 0.
+
+Let St = Dt−1 ⊕ qt. With causal masking, a single forward pass of G on the prefix St and the teacher answer prefix gives the next-token distributions {Πt,i (P)}TF (t) 
+
+> i=1
+
+, where Πt,i (P) = πG(· | 
+
+St; P, a Ft,<i ). The semantic divergence loss is 
+
+Lsem (P; Dt−1, q t) = 1
+
+TF (t) 
+
+> TF(t)
+
+X
+
+> i=1
+
+X 
+
+> v∈{ yFt,i }∪N k(yFt,i )
+
+sτ (v | yFt,i )
+
+h
+
+− log  1 − Πt,i (P)[ v]i
+
+. (1) Minimizing Eq. 1 searches for prompts that expose local disagreement between F and G not only on exact tokens but also on nearby semantic alternatives. 4Expectation-weighted semantic divergence. The token-neighborhood loss may still miss distribution-level alignment: G can reduce probability on a teacher token and its nearest neighbors while spreading mass over many other tokens with similar meaning. To detect this case, we compare the expected embedding of the surrogate’s next-token distribution with the embedding of the teacher token. Since E ∈ Rd×|V| stores token embeddings as columns, the expected embedding at position 
+
+i is ¯et,i = EΠt,i (P) = P 
+
+> v∈V
+
+Πt,i (P)[ v]ev . We upweight the neighborhood penalty when this ex-pected embedding still points toward the teacher token wt,i (P) = 1+ λexp clip 
+
+
+
+cos(¯ et,i , eyFt,i ), 0, 1
+
+
+
+,where λexp ≥ 0. The final semantic mining loss is then: 
+
+Lsem _exp (P; Dt−1, q t) = 1
+
+TF (t) 
+
+> TF(t)
+
+X
+
+> i=1
+
+wt,i (P) X 
+
+> v∈{ yFt,i }∪N k(yFt,i )
+
+sτ (v | yFt,i )
+
+h
+
+−log  1−Πt,i (P)[ v]i
+
+.
+
+(2) Thus the loss blocks local copying through the neighborhood term and detects broader semantic shadowing through the expectation weight. 
+
+Theorem 3.2 (Directional Recovery) . Let C = E[J⊤J] be the local discrepancy Fisher matrix of G
+
+over the warm-start window, where J is the Jacobian of G’s log next-token probabilities with respect to the soft prompt P. If the local discrepancy is smooth and approximately rank r, then optimizing Eq. 2 recovers prompt directions whose span covers at least a (1 − ε) fraction of the top-r eigenmass of C, with smaller ε under better warm-start and neighborhood coverage. 
+
+Anti-degeneration regularizer. Soft-prompt mining can collapse if G assigns excessive probability to a few high-frequency tokens, producing repetitive or bland continuations that are uninformative about where F and G differ [ 26 , 22 , 31 ]. We therefore preserve entropy near the prompt-context boundary. Reusing the logits from the same forward pass, define 
+
+Htail (P; t) = 1
+
+K
+
+X
+
+> i∈tail( t,K )
+
+"
+
+− X
+
+> v∈V
+
+Πt,i (P)[ v] log Π t,i (P)[ v]
+
+#
+
+.
+
+The complete prompt-mining objective for a minibatch of warm-start turns B is 
+
+J (P) = 1
+
+|B| 
+
+X
+
+> t∈B
+
+[Lsem _exp (P; Dt−1, q t) − βH tail (P; t)] + λP ∥P∥2 
+
+> F
+
+. (3) We minimize Eq. 3 with AdamW while freezing all weights of G. Gradient clipping stabilizes the prompt scale. For efficiency, semantic neighbors are retrieved using an ANN index over normalized token embeddings, and ¯et,i is computed with a top-m truncation of Πt,i (P) rather than a dense sum over the full vocabulary. The per-step overhead is therefore linear in the number of teacher-prefix positions and scales with k + m rather than |V| .
+
+3.3 Localized Fine-Tuning, Switching, and Rollback 
+
+The learned soft prompts are session-local mining tools. After mining, SOMA converts them into ordinary local supervision for LoRA adaptation. For each warm-start turn, we score its hardness by the largest mined divergence rt = max P∈P cand Lsem _exp (P; Dt−1, q t) and form a local training set 
+
+H from the highest-scoring turns and their original-model responses. This makes the data-mining role of soft prompts explicit: Random-FT trains on randomly selected local turns, whereas SOMA trains on turns selected because prompt mining exposes weak alignment directions. We freeze the base weights of G, attach LoRA [23] to attention and MLP projections, and optimize 
+
+LFT (ΘLoRA ) = 1
+
+|H| 
+
+X 
+
+> (St,a Ft)∈H
+
+ωt NLL  aFt | G(St; ΘLoRA ), ωt ∝ rt. (4) The continuous soft prompts are discarded after this stage. Thus, once SOMA switches, the online serving path uses only the LoRA-adapted surrogate and a compressed text context. Before switching, SOMA verifies that the adapted surrogate G is both output-aligned and context-local: it requires high response similarity to the original model F on a small acceptance batch and 5checks that the current query remains close to the warm-start dialogue centroid. Once accepted, SOMA serves later turns using a compressed input eSt, which keeps a fixed-budget summary of earlier content together with the most recent K turns, avoiding repeated full-history processing. During surrogate serving, SOMA continuously monitors semantic drift; if recent queries move away from the learned local state, it rolls back to F , refreshes the local summary and centroid, and switches back to G only after the acceptance gate passes again. 
+
+## 4 Theoretical Analysis 
+
+This section analyzes three design questions in SOMA: when to accept the session-local surrogate, when warm-start overhead is amortized, and how many soft-prompt candidates are needed. We use the local manifold view only as a first-order approximation around a fixed dialogue state, where small embedding perturbations smoothly change the surrogate’s output behavior. SOMA is effective when later turns remain tied to this warm-start state, not because they are intrinsically easy. 
+
+4.1 Warm-Start Reliability and Switching 
+
+At turn t, let St = Dt−1 ⊕ qt be the shared text context and let aFt , a Gt be the outputs of the original model and the LoRA-adapted surrogate. Here we define a bounded discrepancy score 
+
+Gap Θ(St) = 1 − cos  ϕ(aGt ), ϕ (aFt ) ∈ [0 , 1] ,
+
+where Θ denotes the current surrogate adapter. A lower value means that the surrogate better preserves the original model’s local behavior. 
+
+Lemma 4.1 (Warm-Start Generalization) . Let h(S) ∈ [0 , 1] be any bounded local statistic, such as 
+
+Gap Θ(S) or a query-centroid similarity score. Suppose the warm-start stream has effective sample size Weff , accounting for temporal dependence. Then with probability at least 1 − δ,
+
+1
+
+W
+
+> W
+
+X
+
+> t=1
+
+h(St) − ES∼Q [h(S)] ≤
+
+s
+
+2 log(2 /δ )
+
+Weff 
+
+.
+
+The effective size Weff decreases when the warm-start window is noisy, heterogeneous, or topic-mixed. Thus the bound predicts the desired behavior: SOMA should require a longer warm start or a more conservative gate when early turns do not define a coherent local state. Let Θold and Θnew denote the surrogate before and after localized adaptation. On an acceptance batch B, we define Xj = Gap Θold (Sj ) − Gap Θnew (Sj ), then b∆B = 1
+
+> |B|
+
+P  
+
+> Sj∈B
+
+Xj , where positive 
+
+b∆B means that adaptation reduces the teacher-surrogate gap. 
+
+Theorem 4.2 (Acceptance Bound for Switching) . Assume Xj ∈ [−1, 1] and the acceptance batch has effective size |B|eff . Let γB (δ) = 
+
+q 2 log(1 /δ ) 
+
+> |B|eff
+
+. Then, with probability at least 1 − δ, E[X] ≥
+
+b∆B − γB (δ). Consequently, if b∆B ≥ ε + γB (δ), then the true expected improvement is at least ε
+
+with confidence 1 − δ.
+
+Corollary 4.3 (Switching Rule) . Choose W so that the warm-start uncertainty in Lemma 4.1 is at most η, and choose |B|eff so that γB (δ) ≤ γ. Switching is justified when the adapted surrogate passes both the output-fidelity gate and the locality gate with margins larger than η + γ. The combined decision error is controlled at confidence at least 1 − 2δ by a union bound. 
+
+This result formalizes the intended operating regime. If later turns are short but highly context-dependent, the locality gate can still pass because the turns remain close to the established dialogue state. If the user abruptly changes topic, the locality statistic shifts, the gate fails, and SOMA rolls back to the original model. 
+
+4.2 When Does SOMA Give Net Efficiency Gains? 
+
+SOMA introduces one-time warm-start overhead, so its efficiency should be evaluated at the session level rather than per turn. Let T be the total number of turns and W the switch point. If all turns 6are served by the original model, the total cost is CF (T ) = PTt=1 cF (Dt−1 ⊕ qt), where cF (·) can denote latency, tokens, or monetary cost. Under SOMA, 
+
+CSOMA (T ; W ) = 
+
+> W
+
+X
+
+> t=1
+
+cF (Dt−1 ⊕ qt) + Cprobe (W ) + CLoRA (W )+
+
+> T
+
+X 
+
+> t=W+1
+
+cG( eSt) + Crb (T ; W ),
+
+(5) where Cprobe is the cost of soft-prompt mining, CLoRA is the localized adaptation cost, eSt is the compressed post-switch input, and Crb covers drift checks and occasional rollback. The net gain is 
+
+∆C(T ; W ) = CF (T ) − CSOMA (T ; W )=
+
+> T
+
+X 
+
+> t=W+1
+
+h
+
+cF (Dt−1 ⊕ qt) − cG( eSt)
+
+i
+
+− Cprobe (W ) − CLoRA (W ) − Crb (T ; W ).
+
+(6) Therefore SOMA is beneficial only when the accumulated post-switch savings exceed the one-time warm-start and adaptation overhead. This explains why very short sessions may not benefit, while medium-to-long locally coherent sessions can amortize the initialization cost. 
+
+4.3 How Many Soft-Prompt Candidates per Iteration? 
+
+Assume that, near a reference prompt P0, the prompt-mining objective admits a local quadratic approximation with positive semidefinite curvature HT . Let most of its energy lie in an ract -dimensional active subspace, and let u1 be the dominant unit direction in that subspace. SOMA samples M prompt candidates and keeps the one with largest mining loss. 
+
+Theorem 4.4 (Coverage of the Best Local Direction) . For ract ≥ 2, draw M i.i.d. unit vectors 
+
+{u(c) 
+
+> m
+
+}Mm=1 uniformly on Sract −1. Let pract (θ) = 12 Isin 2 θ
+
+  ract −12 , 12
+
+ be the spherical-cap probability of falling within angle θ ∈ (0 , π/ 2] of a fixed direction, where Ix(·, ·) is the regularized incomplete beta function. Then Pr 
+
+
+
+min 1≤m≤M ∠(u(c) 
+
+> m
+
+, u1) ≤ θ
+
+
+
+= 1 − (1 − pract (θ)) M . Therefore, for 
+
+ract = 1 , one candidate suffices. 
+
+Lemma 4.5 (Directional Suboptimality) . Let HT ⪰ 0 have largest eigenvalue λ1 and top eigenvector 
+
+u1. For any unit bu with ∠(bu, u1) ≤ θ,
+
+bu⊤HT bu ≥ λ1 cos 2 θ, λ1 − bu⊤HT bu ≤ λ1 sin 2 θ. 
+
+Corollary 4.6 (Candidate Budget) . For ract ≥ 2, to obtain coverage probability at least 1 − δ within angle θ, it suffices to choose M ≥
+
+ log δ
+
+> log
+
+(1−pract (θ))
+
+
+
+. Together with Lemma 4.5, this gives an explicit tradeoff between candidate count and local directional quality. 
+
+## 5 Empirical Studies of the Effectiveness of SOMA 
+
+We evaluate SOMA through five questions. RQ1 : Can a small surrogate preserve the original model’s responses? RQ2 : Does higher response similarity also improve task-grounded quality? RQ3 : When does SOMA provide net efficiency gains after warm-start and adaptation overhead? RQ4 : Which components of SOMA are most important? RQ5 : When is session-local serving reliable, and when should SOMA fall back to the large model? 
+
+Datasets. We evaluate SOMA on six multi-turn benchmarks: ShareGPT [ 10 ], ReMeDi [ 52 ], Craigslist [ 19 ], Multi-Char [ 2], MATH [ 20 ], and MT-Bench [ 58 ]. Dataset details are in Appendix C.1. 
+
+Models and baselines. We test two model families: LLaMA, using LLaMA-3.1-70B as F and LLaMA-2-7B as G, and Qwen, using Qwen-3-8B as F and Qwen-3-0.6B as G. We compare with Original, Surrogate, History-Prefix, History-FT, LLMLingua-2 [ 37 ], and RouteLLM [ 35 ]. We also 7Table 1: Response similarity to the original model on the LLaMA family. Higher is better.                                                                                                                                     
+
+> ShareGPT ReMeDi Craigslist Multi-Char MATH MT-Bench Avg.
+> Surrogate 79.2 ±2.18 82.7 ±1.95 74.3 ±2.36 70.8 ±1.73 66.2 ±2.91 77.5 ±2.04 75.1 ±5.98 History-Prefix 86.1 ±1.67 87.9 ±1.55 82.4 ±1.72 84.7 ±1.69 80.3 ±3.83 87.2 ±1.58 84.8 ±2.94 History-FT 93.4 ±2.12 91.8 ±2.09 90.3 ±1.23 89.1 ±2.23 87.6 ±2.26 92.4 ±1.14 90.8 ±2.18 LLMLingua-2 84.6 ±1.72 86.4 ±1.63 80.8 ±1.91 82.9 ±1.58 78.1 ±2.77 85.3 ±1.66 83.0 ±3.03 RouteLLM 95.3 ±1.44 92.5 ±1.07 91.0 ±1.86 91.4 ±1.23 89.6 ±1.95 93.2 ±1.12 92.2 ±1.78
+> SOMA 96.4 ±1.91 93.2 ±0.98 91.9 ±2.49 92.3 ±1.05 90.7 ±1.12 94.1 ±0.91 93.1 ±1.99
+
+Table 2: MATH exact-match accuracy. SOMA improves task-grounded quality over baselines.                                           
+
+> Family Orig. Surr. Hist.-P Hist.-FT Route SOMA
+> LLaMA 48.34 ±0.32 19.20 ±0.78 25.03 ±0.94 31.46 ±0.87 33.88 ±0.79 41.62 ±0.66
+> Qwen 36.48 ±0.41 11.73 ±0.64 16.21 ±0.79 22.57 ±0.83 25.08 ±0.71 31.14 ±0.74
+
+include Random-FT, which uses the same LoRA budget as SOMA but samples local training turns uniformly, to isolate the effect of soft-prompt mining. 
+
+Metrics. We mainly measure teacher-fidelity similarity, i.e., how closely each method preserves the original model’s response, using three LLM judges: GPT-OSS [ 36 ], DeepSeek-V3, and Gemma-2-27B. To complement similarity with task-grounded quality, we report EM accuracy on MATH. Efficiency is measured by token usage, throughput, and end-to-end latency, including warm-start and adaptation overhead. 
+
+Implementation. We set the warm-start window, acceptance batch, prompt candidates, and switch threshold according to the analysis in Section 4. After switching, SOMA discards soft prompts, performs no further LoRA updates, and only keeps the lightweight drift check in Section 3. More details are in Appendix C.2. 
+
+5.1 Experimental Results RQ1: Response similarity to the original model. SOMA is designed as a drop-in replacement for large-model serving. After a warm-start stage, the small surrogate should preserve the original model’s behavior within the current dialogue state. Table 1 reports response similarity on the LLaMA family. SOMA achieves the highest average similarity across all six datasets. The gap over Surrogate shows the behavior loss caused by directly replacing the large model with a smaller model. The gap over History-Prefix shows that simply giving the small model more history is insufficient. The gap over History-FT shows that local adaptation helps, but becomes stronger when SOMA selects training examples from weak-alignment directions. The largest gains appear on MATH and Multi-Char, where later turns depend on accumulated reasoning states, constraints, and roles. Full Qwen-family results show the same trend and are reported in Appendix F.1. 
+
+RQ2: Task-grounded quality. Response similarity is the primary metric for replacing the original model, but similarity alone does not guarantee task quality. We therefore evaluate MATH using exact-match accuracy. Table 2 shows that SOMA remains below the original large model, as expected, but substantially narrows the gap between the surrogate and the original model. SOMA also outperforms History-Prefix, History-FT, and RouteLLM in both model families. This suggests that SOMA’s similarity gains are not only surface-level matching; local adaptation also preserves more of the original model’s reasoning behavior. Table 3: ShareGPT break-even after all overhead. 
+
+Turns Latency Tokens 
+
+1–4 −4.1% −1.2% 
+
+5–8 +4 .7% +8 .5% 
+
+9–12 +16 .3% +23 .8% 
+
+13+ +29 .1% +37 .2% 
+
+RQ3: End-to-end efficiency. SOMA reduces post-switch cost by serving the adapted surrogate with compressed context, but it also introduces one-time costs from soft-prompt probing and LoRA adaptation. Thus, the key question is whether the total session cost decreases after this overhead is included. Figure 2a shows that SOMA reduces average token usage by avoiding repeated full-history serving after switching. Table 3 further shows the amortized operating range: SOMA is slightly unfavorable for very short sessions, starts to help on medium-8RouteLLM 
+
+> Original
+> Surrogate
+> History-Prefix
+> History-FT
+> LLMLingua-2
+> SOMA
+> 10 4
+> 9 × 10 3
+> 2 × 10 4
+> Avg. tokens/ dialogue  LLaMA
+> Qwen
+
+(a) Token usage. ShareGPT  
+
+> ReMeDi
+> Craigslist
+> Multi-Char
+> MATH
+> MT-Bench
+> 85
+> 90
+> 95
+> 100
+> Similarity Precentage
+> SOMA
+> SOMA w/o ADL
+> SOMA w/o ExpW+ADL
+
+(b) LLaMA ablation. 
+
+Figure 2: Efficiency and component analysis. SOMA reduces token usage after switching, and the ablation shows that both anti-degeneration regularization and expectation-weighted divergence improve soft-prompt mining. Table 4: Reliability analysis for session-local serving. Later turns remain strongly context-dependent, and drift-aware rollback recovers most of the loss under abrupt topic shifts. 
+
+(a) MATH context dependency.                         
+
+> Setting 1–3 4–6 7+
+> Full history 46.92 ±0.58 47.18 ±0.51 46.75 ±0.49 No history 43.78 ±0.66 34.92 ±0.76 24.88 ±0.86 Drop 3.14 12.26 21.87
+
+(b) Topic-shift stress test.                                       
+
+> Data Clean No RB SOMA Detect False RB
+> ShareGPT 96.4 ±1.91 88.5 ±2.03 94.1 ±1.47 90.8% 4.3% ReMeDi 93.2 ±0.98 85.7 ±1.92 91.1 ±1.34 89.6% 3.9% Craigslist 91.9 ±2.49 83.1 ±2.11 89.3 ±1.68 88.9% 3.8%
+
+length sessions, and becomes clearly beneficial for longer sessions. This matches SOMA’s intended use case as an amortized serving strategy for conversations where enough later turns remain local to the warm-start state. 
+
+RQ4: Which components of SOMA are most important? We first ablate SOMA on the LLaMA family to identify which components drive the gains. Figure 2b shows that full SOMA performs best across all datasets. Removing the anti-degeneration loss consistently reduces performance, which shows that entropy regularization is important for keeping prompt mining stable and preventing collapsed or low-diversity soft prompts. Removing both the expectation-weighted term and the anti-degeneration loss leads to a larger drop, especially on harder datasets. This result shows that SOMA benefits from both stable prompt search and disagreement-aware mining. In other words, SOMA works not only because it adapts the surrogate locally, but also because it mines more informative weak-alignment directions before adaptation. 
+
+RQ5: When is session-local serving reliable, and when should SOMA fall back? SOMA is intended for dialogue stretches that remain tied to the warm-start state, so we next test when this assumption holds and how rollback helps when it fails. Table 4a shows that full-history MATH performance stays stable across turn buckets, while no-history performance drops sharply in later turns. This means later turns are not simply easier; they remain strongly dependent on the earlier dialogue context. This is exactly the setting SOMA is designed for. Table 4b then evaluates abrupt topic shifts. Without rollback, similarity drops substantially. With SOMA’s drift-aware rollback, most of the loss is recovered while false rollback remains low. These results show that SOMA should be viewed as a local serving strategy with automatic fallback. 
+
+## 6 Conclusion 
+
+We presented SOMA, an efficient multi-turn LLM serving framework that uses early dialogue turns to adapt a small surrogate to the original model’s session-local behavior. SOMA mines informative soft-prompt directions, distills them with lightweight LoRA adaptation, and switches to the surrogate only when semantic alignment is sufficient. Experiments show that SOMA better preserves original-model responses, improves task-grounded quality, and reduces serving cost once warm-start overhead is amortized. These results suggest that session-local surrogate serving is a practical direction for efficient multi-turn LLM deployment. 9References 
+
+[1] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. Gpt-4 technical report. arXiv preprint arXiv:2303.08774 , 2023. [2] agentlans. Multi-character dialogue dataset. Hugging Face Dataset, 2024. CC-BY-4.0 license. [3] Shalini Ananda. Beyond the bubble: How context - aware memory systems are changing the game in 2025. Tribe AI Applied AI Blog, April 2025. [4] Anthropic. Introducing claude. Anthropic Blog, March 2023. https://www.anthropic. com/news/introducing-claude .[5] Anthropic. Prompt caching with claude. https://www.anthropic.com/news/ prompt-caching , August 2024. Accessed 2025-06-12. [6] Ge Bai, Jie Liu, Xingyuan Bu, Yancheng He, Jiaheng Liu, Zhanhui Zhou, Zhuoran Lin, Wenbo Su, Tiezheng Ge, Bo Zheng, et al. Mt-bench-101: A fine-grained benchmark for evaluating large language models in multi-turn dialogues. arXiv preprint arXiv:2402.14762 , 2024. [7] Adarsh Prasad Behera, Jaya Prakash Champati, Roberto Morabito, Sasu Tarkoma, and James Gross. Towards efficient multi-llm inference: Characterization and analysis of llm routing and hierarchical techniques. arXiv preprint arXiv:2506.06579 , 2025. [8] Mikhail Belkin and Partha Niyogi. Laplacian eigenmaps for dimensionality reduction and data representation. Neural computation , 15(6):1373–1396, 2003. [9] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. Advances in neural information processing systems , 33:1877–1901, 2020. [10] Lin Chen, Jinsong Li, Xiaoyi Dong, Pan Zhang, Conghui He, Jiaqi Wang, Feng Zhao, and Dahua Lin. Sharegpt4v: Improving large multi-modal models with better captions. In European Conference on Computer Vision , pages 370–387. Springer, 2024. [11] Nuo Chen, Hongguang Li, Juhua Huang, Baoyuan Wang, and Jia Li. Compress to impress: Unleashing the potential of compressive memory in real-world long-term conversations. arXiv preprint arXiv:2402.11975 , 2024. [12] Ronald R Coifman and Stéphane Lafon. Diffusion maps. Applied and computational harmonic analysis , 21(1):5–30, 2006. [13] Dujian Ding, Ankur Mallick, Chi Wang, Robert Sim, Subhabrata Mukherjee, Victor Ruhle, Laks VS Lakshmanan, and Ahmed Hassan Awadallah. Hybrid llm: Cost-efficient and quality-aware query routing. arXiv preprint arXiv:2404.14618 , 2024. [14] Xin Luna Dong, Seungwhan Moon, Yifan Ethan Xu, Kshitiz Malik, and Zhou Yu. Towards next-generation intelligent assistants leveraging llm techniques. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , pages 5792–5793, 2023. [15] Yao Hui Fang and Xing Ce Wang. Non-uniform point cloud upsampling via local manifold distribution. Proceedings of the ACM on Computer Graphics and Interactive Techniques ,8(1):1–15, 2025. [16] Bin Gao, Zhuomin He, Puru Sharma, Qingxuan Kang, Djordje Jevdjic, Junbo Deng, Xingkun Yang, Zhou Yu, and Pengfei Zuo. {Cost-Efficient } large language model serving for multi-turn conversations with {CachedAttention }. In 2024 USENIX Annual Technical Conference (USENIX ATC 24) , pages 111–126, 2024. [17] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Ruoyu Zhang, Runxin Xu, Qihao Zhu, Shirong Ma, Peiyi Wang, Xiao Bi, et al. Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning. arXiv preprint arXiv:2501.12948 , 2025. 10 [18] Bernal Jiménez Gutiérrez, Yiheng Shu, Yu Gu, Michihiro Yasunaga, and Yu Su. Hipporag: Neurobiologically inspired long-term memory for large language models. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. [19] He He, Derek Chen, Anusha Balakrishnan, and Percy Liang. Decoupling strategy and generation in negotiation dialogues. arXiv preprint arXiv:1808.09637 , 2018. [20] Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and Jacob Steinhardt. Measuring mathematical problem solving with the math dataset. 
+
+arXiv preprint arXiv:2103.03874 , 2021. [21] Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network. 
+
+arXiv preprint arXiv:1503.02531 , 2015. [22] Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and Yejin Choi. The curious case of neural text degeneration. arXiv preprint arXiv:1904.09751 , 2019. [23] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. ICLR ,1(2):3, 2022. [24] Jinwoo Jeong and Jeongseob Ahn. Accelerating llm serving for multi-turn dialogues with efficient resource management. In Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 , pages 1–15, 2025. [25] Philippe Laban, Hiroaki Hayashi, Yingbo Zhou, and Jennifer Neville. Llms get lost in multi-turn conversation. arXiv preprint arXiv:2505.06120 , 2025. [26] Huayang Li, Tian Lan, Zihao Fu, Deng Cai, Lemao Liu, Nigel Collier, Taro Watanabe, and Yixuan Su. Repetition in repetition out: Towards understanding neural text degeneration from the data perspective. Advances in Neural Information Processing Systems , 36:72888–72903, 2023. [27] Lincan Li, Zheng Chen, and Yushun Dong. Llm as clinical graph structure refiner: Enhancing representation learning in eeg seizure diagnosis, 2026. [28] Yubo Li, Xiaobin Shen, Xinyu Yao, Xueying Ding, Yidi Miao, Ramayya Krishnan, and Rema Padman. Beyond single-turn: A survey on multi-turn interactions with large language models. 
+
+arXiv preprint arXiv:2504.04717 , 2025. [29] Fang Liu, Yang Liu, Lin Shi, Houkun Huang, Ruifeng Wang, Zhen Yang, Li Zhang, Zhongqi Li, and Yuchi Ma. Exploring and evaluating hallucinations in llm-powered code generation. 
+
+arXiv preprint arXiv:2404.00971 , 2024. [30] Leland McInnes, John Healy, and James Melville. Umap: Uniform manifold approximation and projection for dimension reduction. arXiv preprint arXiv:1802.03426 , 2018. [31] Clara Meister, Tiago Pimentel, Gian Wiher, and Ryan Cotterell. Locally typical sampling. 
+
+Transactions of the Association for Computational Linguistics , 11:102–121, 2023. [32] Eric Melz. Enhancing llm intelligence with arm-rag: Auxiliary rationale memory for retrieval augmented generation. arXiv preprint arXiv:2311.04177 , 2023. [33] Don Moon. Accelerating multi - turn llm serving with multi -tier caching and smarter scheduling. Medium (Byte-Sized AI), April 2025. [34] Giang Ngo and Nhi NY Vo. Enhancing recommendation systems with hybrid manifold regu-larized knowledge graph. In 2023 IEEE 10th International Conference on Data Science and Advanced Analytics (DSAA) , pages 1–8. IEEE, 2023. [35] Isaac Ong, Amjad Almahairi, Vincent Wu, Wei-Lin Chiang, Tianhao Wu, Joseph E. Gonzalez, M Waleed Kadous, and Ion Stoica. Routellm: Learning to route llms with preference data, 2024. 11 [36] OpenAI. gpt-oss-120b & gpt-oss-20b model card, 2025. [37] Zhuoshi Pan, Qianhui Wu, Huiqiang Jiang, Menglin Xia, Xufang Luo, Jue Zhang, Qingwei Lin, Victor Rühle, Yuqing Yang, Chin-Yew Lin, et al. Llmlingua-2: Data distillation for efficient and faithful task-agnostic prompt compression. arXiv preprint arXiv:2403.12968 , 2024. [38] Soya Park and Chinmay Kulkarni. Thinking assistants: Llm-based conversational assistants that help users think by asking rather than answering. arXiv preprint arXiv:2312.06024 , 2023. [39] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al. Language models are unsupervised multitask learners. OpenAI blog , 1(8):9, 2019. [40] Sam T Roweis and Lawrence K Saul. Nonlinear dimensionality reduction by locally linear embedding. science , 290(5500):2323–2326, 2000. [41] Timo Schick, Jane Dwivedi-Yu, Roberto Dessì, Roberta Raileanu, Maria Lomeli, Eric Hambro, Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom. Toolformer: Language models can teach themselves to use tools. Advances in Neural Information Processing Systems , 36:68539– 68551, 2023. [42] Jay Shah, Ganesh Bikshandi, Ying Zhang, Vijay Thakkar, Pradeep Ramani, and Tri Dao. Flashattention-3: Fast and accurate attention with asynchrony and low-precision. Advances in Neural Information Processing Systems , 37:68658–68685, 2024. [43] Tal Shnitzer, Anthony Ou, Mírian Silva, Kate Soule, Yuekai Sun, Justin Solomon, Neil Thomp-son, and Mikhail Yurochkin. Large language model routing with benchmark datasets. arXiv preprint arXiv:2309.15789 , 2023. [44] Andreas Stolcke, Klaus Ries, Noah Coccaro, Elizabeth Shriberg, Rebecca Bates, Daniel Jurafsky, Paul Taylor, Rachel Martin, Carol Van Ess-Dykema, and Marie Meteer. Dialogue act modeling for automatic tagging and recognition of conversational speech. Computational linguistics ,26(3):339–373, 2000. [45] Zhiyu Sun, Ethan Rooke, Jerome Charton, Yusen He, Jia Lu, and Stephen Baek. Zernet: Convolutional neural networks on arbitrary surfaces via zernike local tangent space estimation. In Computer Graphics Forum , volume 39, pages 204–216. Wiley Online Library, 2020. [46] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timo-thée Lacroix, Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, et al. Llama: Open and efficient foundation language models. arXiv preprint arXiv:2302.13971 , 2023. [47] Laurens Van der Maaten and Geoffrey Hinton. Visualizing data using t-sne. Journal of machine learning research , 9(11), 2008. [48] Qingyue Wang, Yanhe Fu, Yanan Cao, Shuai Wang, Zhiliang Tian, and Liang Ding. Recursively summarizing enables long-term dialogue memory in large language models. Neurocomputing ,639:130193, 2025. [49] Sean Welleck, Ilia Kulikov, Stephen Roller, Emily Dinan, Kyunghyun Cho, and Jason Weston. Neural text generation with unlikelihood training. arXiv preprint arXiv:1908.04319 , 2019. [50] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient streaming language models with attention sinks, 2024. URL https://arxiv. org/abs/2309.17453 , page 1, 2024. [51] Yuwen Xiong, Mengye Ren, and Raquel Urtasun. Loco: Local contrastive representation learning. Advances in neural information processing systems , 33:11142–11153, 2020. [52] Guojun Yan, Jiahuan Pei, Pengjie Ren, Zhaochun Ren, Xin Xin, Huasheng Liang, Maarten De Rijke, and Zhumin Chen. Remedi: Resources for multi-domain, multi-service, medical dialogues. In Proceedings of the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval , pages 3013–3024, 2022. [53] Zihao Yi, Jiarui Ouyang, Yuwen Liu, Tianhao Liao, Zhe Xu, and Ying Shen. A survey on recent advances in llm-based multi-turn dialogue systems. arXiv preprint arXiv:2402.18013 , 2024. 12 [54] Dahai Yu, Lin Jiang, Rongchao Xu, and Guang Wang. Healthmamba: An uncertainty-aware spa-tiotemporal graph state space model for effective and reliable healthcare facility visit prediction, 2026. [55] Zhaoyang Zeng, Daniel McDuff, Yale Song, et al. Contrastive learning of global and local video representations. Advances in Neural Information Processing Systems , 34:7025–7040, 2021. [56] Tianhao Zhang, Jie Yang, Deli Zhao, and Xinliang Ge. Linear local tangent space alignment and application to face recognition. Neurocomputing , 70(7-9):1547–1553, 2007. [57] Yuying Zhao, Yu Wang, Xueqi Cheng, Anne Marie Tumlin, Yunchao Liu, Damin Xia, Meng Jiang, and Tyler Derr. Amplifying your social media presence: Personalized influential content generation with llms. arXiv preprint arXiv:2505.01698 , 2025. [58] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, et al. Judging llm-as-a-judge with mt-bench and chatbot arena. Advances in neural information processing systems , 36:46595–46623, 2023. 13 Technical Appendices and Supplementary Material A Notations 
+
+This section summarizes all notations used throughout this paper. Table 5: Notation summary. Symbol Meaning 
+
+Dk Dialogue prefix {(qt, a t)}kt=1 
+
+q≤t Full history up to turn tF, G Original (large) model; surrogate (small) model 
+
+ht = fM (q≤t) Hidden state at turn t for model M
+
+Hk {h1, . . . , hk}, first-k hidden states 
+
+MMk Local response manifold induced by Dk under M
+
+V, E G’s vocabulary; embedding matrix E ∈ Rd×|V| 
+
+Πt Next-token distribution of G at turn t; entry Πt[v]
+
+ev Embedding of token v (column of E)
+
+P ∈ RL×d Soft prompt (row-wise prompt tokens in embedding space) 
+
+V(P) Verbalization for prompt P
+
+Nk(u) k nearest neighbors of token u by cosine in E
+
+et,i Expected embedding et,i = E⊤Πt,i at position iwt,i Expectation-weighted factor for semantic divergence loss 
+
+|B|eff Effective batch size (accounts for dependence) 
+
+∆ Empirical improvement (old–new) on a post-warm-start batch 
+
+## B Related Work 
+
+Efficient LLM for Multi-turn Dialogues. Recent efforts to improve multi-turn LLM serving efficiency fall into two main paradigms. The first involves single-model approaches that reduce context length or reuse computation. These include summarization and context compression [ 48 , 11 ,50 ], memory augmentation [32 , 18 ], and caching and attention reuse [16 , 24 , 5]. While effective in lowering per-turn cost, these methods still rely on repeated large-model inference, which also leads to high API expenses, latency, and GPU demand. Moreover, they may truncate or underutilize dialogue context, harming performance on complex tasks. The second paradigm adopts multi-model approach , using smaller models for simple queries and escalating difficult ones to larger LLMs [7, 41, 13], typically via model routing [43] and distillation [21]. However, pre-trained small models often generalize poorly on complex multi-turn dialogues, while switching models adds inefficiency. 
+
+Local Manifold Approximation. Local manifold approximation techniques aim to exploit the manifold hypothesis by modeling high-dimensional data as lying on locally low-dimensional sub-spaces, enabling more efficient representation and inference. Classical approaches such as Locally Linear Embedding (LLE) [ 40 ] and Local Tangent Space Alignment (LTSA) [ 56 ] approximate local neighborhoods through linear projections, while kernel-based methods like Laplacian eigenmaps [ 8 ]and diffusion maps [ 12 ] preserve local geometric structure via nonlinear embeddings. Recent work has extended these ideas using deep learning. For instance, neural network–based tangent space estimators [ 45 ] and local contrastive learning methods [ 51 , 55 ] enable the extraction of manifold-aware representations in complex domains. In computer vision, local manifold modeling underpins point cloud upsampling [ 15 ] by fitting Gaussian patches to local regions, while in representation learning, neighbor-preserving mappings such as t-SNE [ 47 ] and UMAP [ 30 ] uncover latent structure by maintaining local proximity. In graph-based learning, manifold-regularized GNNs [ 34 ] exploit smoothness over graph-induced manifolds to enhance generalization. Despite their effectiveness across domains, local manifold approximation remains largely unexplored in the context of efficient multi-turn LLM serving, where dynamically adapting smaller models to the local reasoning manifold conditioned on dialogue history presents a promising and under-investigated direction. 14 C Reproducibility 
+
+In this section, we introduce the details of the experiments in this paper for reproducibility. At the same time, we have uploaded all necessary code to our GitHub repository to reproduce the results presented in this paper: https://github.com/LabRAI/SOMA . All major experiments are encapsulated as shell scripts, which can be conveniently executed. We introduce the details for reproducibility in the subsections below. 
+
+C.1 Real-World Datasets 
+
+In this section, we briefly present the real-world datasets used in this paper, and all these datasets are commonly used datasets in multi-turn conversation tasks. ShareGPT [ 10 ] is a large-scale collection of high-quality image–text conversations and captions. ReMeDi [52 ] is a multi-domain Chinese medical dialogue corpus of doctor–patient conversations. Craigslist [ 19 ] contains multi-turn buyer–seller negotiation chats from Craigslist, enabling study of bargaining strategies and goal-directed dialogue. 
+
+Multi-Char [ 2] provides multi-character conversational scenarios with role specifications to evaluate coordination and role consistency in multi-party dialogue. MATH [ 20 ] is a benchmark of competition-style math problems with step-by-step solutions designed to assess mathematical reasoning in language models. MT-Bench [ 58 ] is a multi-turn benchmark to assess response quality across diverse tasks. In this study, we filter out the non-context-dependent dialogues in these datasets. 
+
+C.2 Implementation of SOMA 
+
+We implement SOMA based on PyTorch with HuggingFace Transformers, serve inference via vLLM with FlashAttention [ 42 ], and run on one node with 4× 80G A100 GPUs. Soft–prompt tuning optimizes only the prompt tensor P ∈ RL×d on the surrogate G using AdamW, cosine decay, gradient clipping, and a KV cache for a single forward pass per turn. The objective combines unlikelihood on a semantic neighborhood, an expectation–weighted penalty using the truncated top– m expectation, and a light anti-degeneration entropy term. The mined prompt–response pairs are then used to adapt 
+
+G with LoRA on attention projections (rank r), keeping the base weights frozen; early stopping is triggered by validation divergence. At inference, a cosine closeness gate with a lightweight sentence encoder decides a one–time switch to the adapted surrogate; the window W and acceptance batch |B| follow the detection bound, the number of parallel candidates M follows the coverage guarantee, and (k, m ) follow the efficiency analysis. Prompt length L ∈ { 4, 8, 16 , 32 , 64 }; learning rate η ∈ [1 × 10 −4, 5 × 10 −3]; AdamW weight decay λwd ∈ [0 , 10 −2]; gradient clip ∈ [0 .5, 1.0] ;neighborhood size k ∈ { 20 , 50 , 100 }; expectation truncation m ∈ { 50 , 100 , 200 }; temperature τ ∈
+
+[0 .4, 1.2] ; expectation weight λ ∈ [0 .5, 2.0] ; anti–degeneration weight β ∈ [0 .02 , 0.15] ; LoRA rank 
+
+r ∈ { 4, 8, 16 , 32 } with scale αlora ∈ { 4, 8, 16 , 32 }; LoRA LR ηlora ∈ [5 ×10 −5, 2×10 −3]; warm–start window W ∈ [3 , 12] turns; acceptance batch |B| ∈ [6 , 24] contexts; parallel candidates M ∈ { 3, 4, 5};switch threshold ε ∈ [0 .05 , 0.12] with mcons ∈ { 2, 3}.
+
+C.3 Implementation of Baselines Original : We query the large model (family-appropriate: LLaMA-3.1-70B or Qwen-3-8B) with the full dialogue history at every turn to get the responses. 
+
+Surrogate : We query the small model (LLaMA-2-7B or Qwen-3-0.6B) with the full dialogue history at every turn to get the responses. 
+
+History-Prefix : The surrogate receives the entire conversation produced by the Original up to t−1
+
+and generates at; no parameter updates are performed. The switching is the same as SOMA. 
+
+History-FT : We fine-tune the surrogate on (St, a Ft ) pairs where St is the Original’s full context up to t and aFt is the next reply, using LoRA on attention projections with early stopping; inference then runs the fine-tuned surrogate without the Original. The switching is the same as SOMA. 
+
+LLMLingua-2 [37 ]: We compress the Original’s history at each turn with LLMLingua-2 and feed the compressed summary to the surrogate; we follow the authors’ recommended settings. 
+
+RouteLLM [ 35 ]: We adopt the released router to choose between the Original and the surrogate per turn (complex vs. simple queries), following the original settings from the paper. 15 You are an expert conversation analyst .
+
+Task – Classification: 
+
+* **context -dependent **: The response of every turn relies on 
+
+information from earlier turns (the conversation is a single chain 
+
+of related reasoning steps). 
+
+* **context -independent **: The response of every turn is 
+
+independent of earlier turns (the conversation is a collection of 
+
+independent questions and answers). 
+
+Conversation (verbatim): 
+
+{dialogue} 
+
+Question: Is the conversation context -dependent or context -
+
+independent ?
+
+Please answer with exactly one word: 
+
+Either **context -dependent** or **context -independent** —
+
+nothing else .Figure 3: Instructions for the LLM to filter context-dependent dialogue. 
+
+C.4 Data Filtering 
+
+To ensure that SOMA is evaluated on context-dependent dialogues, we prompt multiple strong LLMs, including GPT-OSS, DeepSeek-V3, and Gemma-2-27B, with the classification prompt shown in Figure 3, and retain only conversations that all three models recognize as context-dependent. This avoids model-specific biases and yields a high-quality subset of dialogues where later turns meaningfully depend on earlier turns, matching the use cases in this paper. 
+
+C.5 Implementation of LLM Judge 
+
+The prompt for the LLM judge to evaluate the response similarity score is shown in Figure 4 following the recommendation from [6]. 
+
+C.6 Packages Required for Implementation 
+
+We perform all experiments on a server equipped with Nvidia A6000 GPUs. Below we list the key packages and their versions used in our implementation: • Python == 3.10 • pytorch == 2.8.0 + CUDA 12.8 • torchvision == 0.19.0 • torchaudio == 2.8.0 • numpy == 1.26.x • pandas == 2.2.x • scipy == 1.12.x • cmake == 3.28+ • ninja == 1.11+ • ipython == 8.x 16 You are an impartial evaluator. 
+
+You are evaluating the AI assistant’s capabilities in solving a problem posed by ‘Human’. 
+
+Assess the assistant’s performance based on the following criteria: 
+
+1. Accuracy: Verify the correctness of the AI assistant’s answer against the ground truth 
+
+(reference solution). 
+
+2. Reasoning: Assess the completeness, clarity, and logical soundness of the step -by -step 
+
+reasoning process. 
+
+3. Context Integration: Consider whether the assistant integrates relevant prior dialogue or 
+
+context that influences the solution. 
+
+4. Communication: Appraise how clearly and effectively the assistant communicates its 
+
+reasoning to aid understanding. 
+
+Score Guidelines (0.0 to 1.0): 
+
+- 1.0: Completely correct answer and meticulously clear, step -by -step reasoning that is 
+
+logically sound and instructional .
+
+- 0.7 –0.9: Correct answer with a well -articulated reasoning process that includes the necessary 
+
+steps and promotes understanding. 
+
+- 0.4 –0.6: Partially correct answer with some minor reasoning flaws or omissions. 
+
+- 0.0 –0.3: Incorrect answer and/or poor reasoning that lacks clarity or logic. 
+
+Only respond with a single score between 0.0 and 1.0. Do not include any explanation. 
+
+---
+
+Reference Solution: 
+
+{Original Response} 
+
+Candidate Answer: 
+
+{Surrogate Response} 
+
+Score: Figure 4: Instructions for the LLM judge to evaluate the response similarity. • psutil == 5.9+ • vllm == 0.10.2 • transformers == 4.56.1 • accelerate == 1.9.0 • bitsandbytes == 0.46.1 • sentencepiece == 0.2.0 • tiktoken == 0.11.0 • einops == 0.8.1 • datasets == 4.0.0 • huggingface-hub == 0.34.2 • safetensors == 0.5.3 • ray == 2.49.1 • scikit-learn == 1.7.1 • fastapi == 0.116.2 • uvicorn == 0.35.0 
+
+## D Mathematical Concepts 
+
+Here we provide a more comprehensive view of the relevant concepts that can be helpful to understand the idea of stratification as discussed in the main body of the paper. 
+
+Definition D.1 (Preimage) . Let f : X 7 → Y be a function from a set X (domain ) to a set Y
+
+(codomain ). For any subset N ⊆ Y , the preimage of N under f , denoted f −1(N ), is defined as: 
+
+f −1(N ) = {x ∈ X | f (x) ∈ N }.
+
+17 In other words, f −1(N ) consists of all elements in the domain X that are mapped into the subset N
+
+of the codomain Y .
+
+Definition D.2 (Metric Space) . A set X, whose elements are called points, is said to be a metric space if for any two points p, q ∈ X, there is an associated real number d(p, q ), called the distance 
+
+from p to q, such that: 1. d(p, q ) ≥ 0, and d(p, q ) = 0 ⇐⇒ p = q;2. d(p, q ) = d(q, p ) (symmetry); 3. d(p, q ) ≤ d(p, r ) + d(r, q ) for any r ∈ X (triangle inequality). Any function satisfying these properties is called a distance function , or a metric .
+
+Definition D.3 (Neighborhood) . Let X be a metric space. A set Nr (p) ⊂ X is called a neighborhood 
+
+of a point p ∈ X if it consists of all points q ∈ X such that d(p, q ) < r for some radius r > 0. The number r is called the radius of the neighborhood. 
+
+Definition D.4 (Continuous) . Let X and Y be two topological spaces. A function f : X 7 → Y is 
+
+continuous if for each point x ∈ X and each neighborhood N of f (x) in Y , the set f −1(N ) is a neighborhood of x ∈ X.
+
+Definition D.5 (Topological Equivalence or Homeomorphism) . A function h : X 7 → Y is called a 
+
+homeomorphism if it is one-to-one, continuous, and has a continuous inverse function. When such a function exists, X and Y are called homeomorphic (or topologically equivalent ) spaces. 
+
+Definition D.6 (Open Set) . A subset U ⊆ X is called an open set if for every point p ∈ U , there exists a neighborhood Nr (p) ⊆ U . That is, each point in U has some "wiggle room" around it that still lies entirely within U .
+
+Definition D.7 (Countable Base (Second Countability)) . Let X be a topological space. A collection 
+
+B of open subsets of X is called a base (or basis ) for the topology on X if for every open set U ⊆ X
+
+and every point x ∈ U , there exists a set B ∈ B such that 
+
+x ∈ B ⊆ U. 
+
+If there exists a base B that is countable , then the space X is said to be second countable or to have a 
+
+countable base .
+
+Definition D.8 (Hausdorff Space) . A topological space with the property that two distinct points can always be surrounded by disjoint open sets is called a Hausdorff space .Essentially, Hausdorff spaces are the spaces where any two points being “far off” is defined. 
+
+Definition D.9 (Manifold) . A manifold of dimension n is a second-countable Hausdorff topological space in which each point has a neighborhood homeomorphic to Euclidean space Rn.
+
+Definition D.10 (Smooth Manifold) . A smooth manifold is a manifold M equipped with a collection of coordinate charts (i.e., homeomorphisms φ : U → Rn for open sets U ⊆ M ) such that all 
+
+transition maps between overlapping charts, 
+
+φj ◦ φ−1 
+
+> i
+
+: φi(Ui ∩ Uj ) → φj (Ui ∩ Uj ),
+
+are infinitely differentiable (i.e., C∞). This structure is known as a smooth atlas , and it allows calculus to be performed on the manifold. 
+
+## E Theoretical Results and Proofs 
+
+We first model weak dependence in the dialogue stream via an Effective Sample Size . For a bounded, stationary sequence {Zt} with lag-ℓ autocorrelation ρ(ℓ), define 
+
+Neff := N
+
+1 + 2 PN −1
+
+> ℓ=1
+
+
+
+1 − ℓN
+
+
+
+ρ(ℓ)
+
+∈ (0 , N ] .
+
+when ρ(ℓ) ≡ 0, Neff = N ; positive correlation reduces Neff .
+
+Directional Recovery for the Expectation-weighted Loss 
+
+18 Statement: Theorem 3.2. Under local smoothness, bounded expectation weights in Eq. (2) , and a rank– r discrepancy for the discrepancy Fisher C = E[J(P)⊤J(P)] , any minimizer bP of Eq. (2) has row span that captures at least a (1 − ε) fraction of the top-r eigenmass of C, with ε → 0 as the window size growing and neighborhood size k increasing within the local region. 
+
+Proof of Theorem 3.2. Step 1: Per-Event Loss and Local Expansion. Index events by z = ( t, i )
+
+(turn and position). Let the per-event loss be 
+
+ℓ(P; z) = w(z) X
+
+> v∈S (z)
+
+sτ (v | z)
+
+h
+
+− log  1 − πG(v | z; P)i
+
+, S(z) = {yFt,i } ∪ N k(yFt,i ).
+
+Write pv (P; z) = πG(v | z; P) and expand around P = 0. Using the chain rule for the softmax parameterization, 
+
+log(1 −pv ) = log(1 −pv |0)− 11 − pv |0
+
+ ∇pv
+
+⊤vec( P)− 12
+
+pv |0
+
+(1 − pv |0)2
+
+ vec( P)⊤∇ log pv
+
+2+o(∥P∥2),
+
+where ∇ denotes the gradient w.r.t. vec( P) and we used the softmax identity ∇pv = pv ∇ log pv .Summing over v ∈ S (z) with bounded weights w(z)sτ (· | z) cancels the linear term due to local stationarity under aligned-prefix conditioning (the gradient at 0 integrates to zero across the semantic neighborhood; this is the standard property behind Gauss–Newton/Fisher approximations). Thus the second-order term dominates: 
+
+ℓ(P; z) = 12 Jz vec( P) 22 + o(∥P∥2),
+
+where Jz stacks rows pw(z)sτ (v | z) ∇ log pv (0; z)⊤ for v ∈ S (z).
+
+Step 2: Summation over the Window and Fisher Form. Sum over z in the initial window and take expectation (over the empirical distribution of aligned-prefix contexts). We obtain the Gauss–Newton surrogate 
+
+L(P) = 12 vec( P)⊤C vec( P) + o(∥P∥2), C = EJ(0)⊤J(0),
+
+which is a discrepancy Fisher matrix with importance weights folded into J.
+
+Step 3: Row-Span Parametrization and KY Fan. Let P ∈ RL×d. Any P factorizes as P = AU ⊤
+
+with U ∈ Rd×L having orthonormal columns spanning the row space and A ∈ RL×L. Then 
+
+vec( P) = ( U ⊗ IL) vec( A), L(P) = 12 vec( A)⊤ U⊤CU ⊗ IL
+
+vec( A) + o(∥A∥2).
+
+Including the ridge λ∥P∥2 
+
+> F
+
+= λ∥A∥2 
+
+> F
+
+from the main loss, the minimum over A for fixed U is proportional to Tr( U⊤CU ). Maximizing Tr( U⊤CU ) over U⊤U = IL is solved by the top-L
+
+eigenvectors of C (Ky Fan’s variational principle). Hence the optimal row span equals the top-L
+
+eigenspace of C.
+
+Step 4: Empirical Approximation and Eigenspace Stability. We work with an empirical Fisher 
+
+bC formed from finitely many events and finite k. Under bounded weights and local smoothness, 
+
+∥ bC − C∥op → 0 as the window size grows; increasing k within the local isotropy region reduces variance and retains locality. Davis–Kahan perturbation then gives that the top-r eigenspaces of bC
+
+and C are close, with principal angles bounded by O(∥ bC − C∥op /gap) , where gap is the spectral gap below λr (C). Consequently, the row span of any empirical minimizer bP captures at least a 
+
+(1 − ε) fraction of the top-r eigenmass of C with ε → 0 as the window grows and k increases up to the local isotropy scale. □
+
+When to Switch: Warm–Start Generalization and Batch Detection .
+
+Statement: Lemma 4.1. With probability at least 1 − δ,
+
+bFW − F ⋆ ≤
+
+s
+
+2 log(2 /δ )
+
+Weff 
+
+, bFW = 1
+
+W
+
+> W
+
+X
+
+> t=1
+
+Gap (St), F ⋆ = ES∼Q [Gap (S)] .
+
+19 Proof of Lemma 4.1. Step 1 (Centering and boundedness). Let Zt = Gap (St) − F ⋆ ∈ [−1, 1] 
+
+with E[Zt] = 0 . Then bFW − F ⋆ = 1
+
+> W
+
+PWt=1 Zt.
+
+Step 2: Variance Proxy under Dependence. For stationary {Zt} with autocovariance γ(ℓ) = Cov( Zt, Z t+ℓ), we have 
+
+Var 
+
+ 1
+
+W
+
+> W
+
+X
+
+> t=1
+
+Zt
+
+
+
+= 1
+
+W 2
+
+> W
+
+X
+
+> t,s =1
+
+γ(|t − s|) = 1
+
+W
+
+
+
+γ(0) + 2  
+
+> W−1
+
+X
+
+> ℓ=1
+
+
+
+1 − ℓW
+
+
+
+γ(ℓ)
+
+
+
+.
+
+Let σ2 := γ(0) ≤ 1/4 (since Zt ∈ [−1, 1] ) and ρ(ℓ) := γ(ℓ)/γ (0) when γ(0) > 0. Then 
+
+Var 
+
+ 1
+
+W
+
+> W
+
+X
+
+> t=1
+
+Zt
+
+
+
+≤ σ2
+
+W
+
+
+
+1 + 2  
+
+> W−1
+
+X
+
+> ℓ=1
+
+
+
+1 − ℓW
+
+
+
+ρ(ℓ)
+
+
+
+.
+
+Define the effective size Weff as in the preliminaries. Then Var   1
+
+> W
+
+PWt=1 Zt
+
+ ≤ σ2/W eff .
+
+Step 3: Concentration with Effective Size. A Hoeffding/Rio inequality for bounded, weakly dependent sequences yields 
+
+Pr 
+
+ bFW − F ⋆ ≥ u
+
+
+
+≤ 2 exp 
+
+
+
+− 2u2Weff 
+
+(b − a)2
+
+
+
+, a = −1, b = 1 .
+
+Thus Pr( | bFW − F ⋆| ≥ u) ≤ 2 exp( −2u2Weff ). Set the right-hand side to δ and solve for u to obtain 
+
+u = p(2 log(2 /δ )) /W eff . □
+
+Statement: Theorem 4.2. Let ∆ = bF old  
+
+> B
+
+− bF new  
+
+> B
+
+on a batch B of effective size |B|eff . Assume 
+
+∆ − E[∆] is sub–exponential with proxy (ν, b ): E[exp( λ(∆ − E∆))] ≤ exp( λ2ν2 
+
+> 2
+
+) for |λ| ≤ 1/b .Then for any ε > 0 and δ ∈ (0 , 1) ,
+
+|B|eff ≥ 2ν2
+
+ε2 log 1
+
+δ + 2b
+
+3 ε log 1
+
+δ =⇒ Pr(∆ ≥ ε) ≥ 1 − δ. 
+
+Proof of Theorem 4.2. Step 1 (Bernstein tail bound). For sub–exponential X := ∆ − E[∆] with proxy (ν, b ),
+
+Pr( X ≤ − t) ≤ exp 
+
+
+
+− t2
+
+2ν2 + 2 bt/ 3
+
+
+
+, t > 0.
+
+This is the standard one-sided Bernstein inequality derived from the MGF condition. 
+
+Step 2: From Mean Gain to High-Probability Gain. We seek Pr(∆ ≥ ε) ≥ 1 − δ. Write 
+
+Pr(∆ < ε ) = Pr  ∆ − E[∆] < ε − E[∆]  = Pr  X < −t, t := E[∆] − ε. 
+
+If the expected gain satisfies E[∆] ≥ ε then t ≥ 0 and 
+
+Pr(∆ < ε ) ≤ exp 
+
+
+
+− t2
+
+2ν2 + 2 bt/ 3
+
+
+
+≤ exp 
+
+
+
+− ε2
+
+2ν2 + 2 bε/ 3
+
+
+
+,
+
+using monotonicity of t 7 → t2/(2 ν2 + 2 bt/ 3) on t ≥ 0. To make this ≤ δ it suffices that 
+
+ε2
+
+2ν2 + 2 bε/ 3 ≥ log(1 /δ ) ⇐⇒ 2ν2 log(1 /δ ) + 2b
+
+3 ε log(1 /δ ) ≤ ε2.
+
+Rearranging gives the stated sufficient condition on |B|eff once we note that the proxies ν2, b scale as 
+
+1/|B|eff for averages. Equivalently, write ν2 = ˜ ν2/|B|eff and b = ˜b/ |B|eff for single-sample proxies 
+
+(˜ ν2, ˜b), then solve for |B|eff :
+
+|B|eff ≥ 2˜ ν2
+
+ε2 log 1
+
+δ + 2˜b
+
+3 ε log 1
+
+δ .
+
+We re-denote (˜ ν2, ˜b) as (ν2, b ) in the theorem statement. □
+
+Corollary E.1 (Choosing W and |B|). Pick W so that the warm–start generalization error is at most 
+
+η: Weff ≥ 2 log(2 /δ )/η 2. Then choose |B| via Theorem 4.2 for target improvement ε and confidence 
+
+1 − δ. The total decision error (from warm–start approximation and batch detection) is bounded by 
+
+η + ε at confidence 1 − 2δ.
+
+20 Proof of Corollary E.1. Lemma 4.1 ensures | bFW − F ⋆| ≤ η with prob. ≥ 1 − δ when Weff ≥
+
+2 log(2 /δ )/η 2. Theorem 4.2 ensures Pr(∆ ≥ ε) ≥ 1 − δ when the batch bound holds. By a union bound, the probability that both events hold is at least 1 − 2δ. If both hold, the total decision error (warm–start approximation plus detection slack) is at most η + ε. □
+
+Coverage and Suboptimality to Determine the Number of Soft–Prompt Candidates. Statement: Theorem 4.4. Let the active local subspace be ract –dimensional with unit sphere 
+
+Sract −1. Fix v1 and draw i.i.d. u1, . . . , uM ∼ Unif( Sract −1). Then for any θ ∈ (0 , π/ 2] ,
+
+Pr 
+
+
+
+min  
+
+> m≤M
+
+∠(um, v1) ≤ θ
+
+
+
+≥ 1 −
+
+
+
+1 − (sin θ) ract −1M
+
+.
+
+Proof of Theorem 4.4. Step 1: Exact cap probability. WLOG set v1 as the north pole. For 
+
+U ∼ Unif( Sract −1), the random variable T = ⟨U , v1⟩ has density fT (t) ∝ (1 − t2)(ract −3) /2 on 
+
+t ∈ [−1, 1] . Hence Pr( ∠(U , v1) ≤ θ) = Pr( T ≥ cos θ) = Isin 2 θ ( ract −12 , 12 ).
+
+Step 2: Lower Bound For θ ∈ (0 , π/ 2] , sin θ ∈ (0 , 1] and we have the elementary bound 
+
+Isin 2 θ
+
+ ract −12 , 12
+
+
+
+≥ (sin θ) ract −1.
+
+(Proof: Ix(a, b ) = 1B( a,b )
+
+R x 
+
+> 0
+
+ta−1(1 − t)b−1dt ≥ 1B( a,b )
+
+R x 
+
+> 0
+
+ta−1dt = xa  
+
+> aB( a,b )
+
+≥ xa since 
+
+a B( a, b ) ≤ 1 for a ≥ 1/2, b ≥ 1/2; let x = sin 2 θ and a = ( ract − 1) /2.) 
+
+Step 3: Independence across M Samples. Thus, for one sample, pθ := Pr( ∠(U , v1) ≤ θ) ≥
+
+(sin θ)ract −1. The probability none among M falls in the cap is (1 − pθ )M ≤ (1 − (sin θ)ract −1)M .Therefore 
+
+Pr 
+
+
+
+min  
+
+> m≤M
+
+∠(um, v1) ≤ θ
+
+
+
+= 1 − (1 − pθ )M ≥ 1 −
+
+
+
+1 − (sin θ)ract −1M
+
+.
+
+□
+
+Statement: Lemma 4.5. If ∠(ˆu, v1) ≤ θ and HT ⪰ 0 with top eigenpair (λ1, v1), then 
+
+ˆu⊤HT ˆu ≥ λ1 cos 2θ ⇒ λ1 − ˆu⊤HT ˆu ≤ λ1 sin 2θ. 
+
+Proof of Lemma 4.5. Decompose ˆu = cos θ v1 + sin θ w with ∥w∥2 = 1 and w ⊥ v1. Then 
+
+ˆu⊤HT ˆu = λ1 cos 2θ + X
+
+> j≥2
+
+λj ⟨vj , w⟩2 sin 2θ ≥ λ1 cos 2θ, 
+
+since λj ≥ 0. Subtract from λ1 to obtain the residual bound. □
+
+Proof of Corollary 4.6. We require 1 − (1 − (sin θ)ract −1)M ≥ 1 − δ. Equivalently (1 −
+
+(sin θ)ract −1)M ≤ δ, giving 
+
+M ≥ log(1 /δ )log  (1 − (sin θ)ract −1)−1 .
+
+□
+
+## F Additional Experimental Results 
+
+This appendix provides supporting results that complement the main experiments. We organize them around four additional checks: whether SOMA generalizes to another model family, whether its efficiency gains hold across datasets, which components drive the gains, and how warm-start length affects switching and stability. 21 Table 6: Response similarity to the original model across six datasets for the Qwen family. Higher is better. 
+
+ShareGPT ReMeDi Craigslist Multi-Char MATH MT-Bench Avg. 
+
+Surrogate 50.9 ± 1.21 63.5 ± 2.87 48.2 ± 3.40 44.7 ± 3.54 42.6 ± 1.70 40.4 ± 0.81 48.4 ± 8.31 History-Prefix 70.5 ± 1.15 75.7 ± 2.01 63.0 ± 2.23 65.5 ± 0.91 51.3 ± 2.45 53.6 ± 2.32 63.3 ± 9.47 History-FT 76.4 ± 1.68 79.2 ± 2.61 74.5 ± 3.56 63.2 ± 1.74 65.9 ± 1.70 62.7 ± 0.72 70.3 ± 7.23 LLMLingua-2 68.9 ± 1.32 74.1 ± 2.14 61.2 ± 2.67 63.4 ± 1.18 49.8 ± 2.03 51.7 ± 1.45 61.5 ± 7.92 RouteLLM 79.6 ± 1.04 81.9 ± 1.36 75.1 ± 2.91 72.8 ± 1.62 67.3 ± 1.21 68.0 ± 0.96 74.1 ± 5.43 
+
+SOMA 81.0 ± 0.93 83.2 ± 1.21 76.4 ± 3.85 74.2 ± 2.53 68.7 ± 1.28 69.2 ± 1.08 75.5 ± 5.97 ShareGPT 
+
+> ReMeDi
+> Craigslist
+> Multi-char MATH
+> MT-Bench-101
+> 10 3
+> 10 4
+> 10 5
+> Average tokens per dialogue
+> Original
+> Surrogate
+> History-Prefix
+> History-FT
+> SOMA
+
+(a) LLaMA family ShareGPT  
+
+> ReMeDi
+> Craigslist
+> Multi-char MATH
+> MT-Bench-101
+> 10 3
+> 10 4
+> 10 5
+> Average tokens per dialogue
+> Original
+> Surrogate
+> History-Prefix
+> History-FT
+> SOMA
+
+(b) Qwen family 
+
+Figure 5: Average tokens per dialogue across six datasets. SOMA reduces token usage by avoiding repeated full-history serving after switching. 
+
+F.1 Full Qwen Response Similarity Results 
+
+The main text reports the full response-similarity results for the LLaMA family. Table 6 reports the same evaluation on the Qwen family, where the original model is Qwen-3-8B and the surrogate is Qwen-3-0.6B. SOMA achieves the highest similarity on every dataset, showing that the method is not tied to one backbone family. Compared with LLaMA, the absolute similarities are lower because the capacity gap between Qwen-3-8B and Qwen-3-0.6B is larger, making local imitation harder. Nevertheless, SOMA remains consistently better than the baselines, which suggests that local adaptation is especially useful when the small–large model gap is wide. 
+
+F.2 Additional Efficiency Results 
+
+The main text reports the amortized break-even analysis. Here we provide the dataset-level token and throughput results. Figure 5 shows that SOMA consistently uses fewer tokens per dialogue across both model families. The reason is that after switching, SOMA serves later turns with the adapted surrogate and a compressed context rather than repeatedly sending the full growing history. This avoids the large token cost of Original and History-Prefix while retaining stronger response similarity than directly using the surrogate. Figure 6 reports throughput. SOMA matches or exceeds the speed of Surrogate and History-FT, and clearly improves over Original and History-Prefix. The runtime gain comes from the same two design choices: post-switch inference uses the small model, and the input context is shorter. Together, these results show that SOMA provides surrogate-level efficiency while preserving responses closer to the original model. 
+
+F.3 Component and Capability Diagnostics Qwen ablation. Figure 7(a) repeats the component ablation on the Qwen family. The full SOMA variant performs best. Removing the anti-degeneration loss reduces performance because prompt mining becomes less stable and can collapse toward low-diversity outputs. Removing both the expectation-weighted term and anti-degeneration loss causes a larger drop, especially on harder datasets. This confirms that both components are needed to mine useful local disagreement rather than superficial token mismatch. 22 ShareGPT 
+
+> ReMeDi
+> Craigslist
+> Multi-char MATH
+> MT-Bench-101
+> 10 1
+> 10 2
+> Throughput (tokens/sec)  Original
+> Surrogate
+> History-Prefix
+> History-FT
+> SOMA
+
+(a) LLaMA family ShareGPT  
+
+> ReMeDi
+> Craigslist
+> Multi-char MATH
+> MT-Bench-101
+> 10 2
+> 10 3
+> Throughput (tokens/sec)  Original
+> Surrogate
+> History-Prefix
+> History-FT
+> SOMA
+
+(b) Qwen family 
+
+Figure 6: Throughput across six datasets. SOMA keeps the serving path close to the surrogate while maintaining higher similarity to the original model. ShareGPT 
+
+> ReMeDi
+> Craigslist
+> Multi-Char
+> MATH
+> MT-Bench
+> 60
+> 70
+> 80
+> 90
+> 100
+> Similarity Precentage
+> SOMA
+> SOMA w/o ADL
+> SOMA w/o ExpW+ADL
+
+(a) Qwen ablation Surrogate  
+
+> History-Prefix
+> History-FT
+> SOMA
+
+(b) Ability profile on MT-Bench-101 
+
+Figure 7: Component and capability diagnostics. The Qwen ablation confirms the importance of SOMA’s mining objective, while the ability analysis shows broad gains across dialogue skills. 
+
+Ability-level behavior. Figure 7(b) evaluates SOMA on MT-Bench-101 ability dimensions using the LLaMA family. SOMA improves most on harder skills such as reasoning and questioning, where the original model has the largest advantage over the surrogate. It also improves memory, understanding, rephrasing, and interference handling. This indicates that local adaptation does not only help one narrow skill; it produces a more balanced response profile across dialogue abilities. 
+
+F.4 Warm-Start Length and Switching Behavior 
+
+SOMA should switch only after the warm-start window provides enough evidence to adapt the surrogate. To study this, we sweep the warm-start window W ∈ [1 , 15] and measure the final response similarity after switching. Figure 8(a) shows that simpler, goal-anchored dialogues such as ShareGPT, ReMeDi, and Craigslist reach high similarity after only a few turns. In contrast, reasoning-heavy or multi-party datasets such as MATH and Multi-Char require longer warm starts before plateauing. This supports the design choice that the switch should be data-dependent rather than fixed. Figure 8(b) plots the best switching point against final similarity and shows a negative association. Datasets that require later switching tend to have lower final similarity, suggesting that they are intrinsically harder for the surrogate to locally imitate. Practically, this means short warm starts are sufficient for general or goal-anchored chats, while compositional reasoning and multi-agent dialogues need more evidence before switching. Once the curve flattens, adding more warm-start turns brings little quality gain but delays the efficiency benefit. 
+
+F.5 Empirical Variance Concentration 
+
+Finally, we examine how the variance of surrogate–teacher similarity changes with the warm-start window W . For each dataset, we compute the empirical standard deviation across dialogues at each truncation point. Figure 9 shows that variance decreases as W grows: early turns are highly variable, while larger warm-start windows enter a more stable regime. This trend is consistent with the concentration behavior used in Lemma 4.1 and the switching bound in Theorem 4.2. In other 23 1 5 10 15 
+
+Truncation point W (turns) 
+
+> 75
+> 80
+> 85
+> 90
+> 95
+> Similarity Percentage
+> ShareGPT
+> ReMeDi
+> Craigslist
+> Multi-Char
+> MATH
+> MT-Bench
+
+(a) Similarity under different switch points 0 1
+
+## Truncation point W (turns) 
+
+## 80 
+
+## 85 
+
+## 90 
+
+## 95  
+
+> Similarity Precentage
+> ShareGPT
+> ReMeDi
+> Craigslist
+> Multi-Char
+> MATH
+> MT-Bench
+
+(b) Switch point vs. final similarity 
+
+Figure 8: Warm-start and switching behavior. Easier local-dialogue settings switch earlier, while reasoning-heavy or multi-party settings need longer warm starts and achieve lower final similarity. 5 10 15 
+
+# Warm-Start Window W (turns) 
+
+# 2
+
+# 4
+
+> Std of Similarity  ShareGPT
+> ReMeDi
+> Craigslist
+> Multi-Char
+> MATH
+> MT-Bench
+> Theory Upper Bound
+
+Figure 9: Variance of response similarity versus warm-start window W . Larger warm-start windows reduce variance and support more stable switching decisions. words, early turns provide the largest information gain, while later warm-start turns mainly reduce uncertainty until the switching decision becomes stable. 
+
+## G LLM Usage 
+
+Large language models were used only for writing assistance, including grammar checking, wording refinement, formatting suggestions, and readability editing. They were not used to generate the core methodology, design experiments, produce experimental results, create evaluation labels, or make routing decisions. All technical claims, mathematical formulations, experimental settings, and reported results were checked and finalized by the authors. 
+
+## H Broader Impact 
+
+SOMA aims to reduce the cost and latency of multi-turn LLM serving by replacing repeated large-model inference with session-local surrogate serving. This can make interactive LLM systems more efficient, accessible, and environmentally sustainable. At the same time, using a smaller surrogate may introduce quality degradation if the dialogue leaves the learned local state, especially in high-stakes settings such as medical, legal, or financial assistance. SOMA mitigates this risk through semantic 24 acceptance and drift-aware rollback, but deployment should still include monitoring, conservative thresholds, and human oversight where errors may cause harm. Since SOMA uses dialogue history for local adaptation, practical deployments should also apply data minimization, retention limits, and privacy-preserving processing. 
+
+## I Limitations and Future Work 
+
+SOMA has several limitations. First, the surrogate’s capacity limits how closely it can match the original model. When the small–large model gap is very large, some behaviors cannot be recovered by session-local adaptation alone. Second, soft-prompt mining requires access to the surrogate tokenizer and embedding space, which makes SOMA harder to deploy in strict black-box API settings. Third, SOMA is designed for locally coherent dialogues. Abrupt topic changes, noisy warm-start windows, or strong paraphrase shifts can weaken the learned local directions, although the drift gate is designed to reduce persistent degradation. Finally, SOMA introduces a one-time warm-start cost, so it is most suitable for medium-to-long sessions where post-switch savings can amortize the initial adaptation overhead. Future work can improve SOMA along several directions. Better drift detectors could make rollback more reliable under topic shifts. Approximate mining methods could reduce the need for internal surrogate access. Multi-region adaptation could support conversations with multiple topics, and privacy-preserving mining could make the method safer for sensitive dialogue settings. Another promising direction is to amortize soft-prompt search across related sessions and extend SOMA to multimodal serving. 25
