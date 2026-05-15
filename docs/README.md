@@ -6,46 +6,62 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-14
-- 运行时间：2026-05-14 21:32:28 UTC
+- 最新运行日期：2026-05-15
+- 运行时间：2026-05-15 20:53:36 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：2
-- 速读区：6
+- 本次总论文数：14
+- 精读区：6
+- 速读区：8
 
 ### 今日简报（AI）
-今日深度解析 8 篇 AI 论文，聚焦智能体系统优化与延迟反馈下的决策学习突破。
-重点推荐 CANTANTE 提出的对比信用分配机制（9.0分）及 IGT-OMD 解决延迟反馈的隐式梯度方案。
-建议优先探索智能体性能调优路径，并同步关注低秩微调与代码修复等实用工具链的最新进展。
-- 详情：[/202605/14/README](/202605/14/README)
+今日深挖 14 篇 AI 论文，重点攻克多任务双层学习与参数高效提示优化两大核心难题。
+- 详情：[/202605/15/README](/202605/15/README)
 
 ### 精读区论文标签
-1. [CANTANTE: Optimizing Agentic Systems via Contrastive Credit Attribution](/202605/14/2605.13295v1-cantante-optimizing-agentic-systems-via-contrastive-credit-attribution)  
+1. [A Tale of Two Problems: Multi-Task Bilevel Learning Meets Equality Constrained Multi-Objective Optimization](/202605/15/2605.09094v2-a-tale-of-two-problems-multi-task-bilevel-learning-meets-equality-constrained-multi-objective-optimization)  
    标签：评分：9.0/10、query:bopl
-   evidence：将提示词作为可学习参数的自动提示词优化
-2. [IGT-OMD: Implicit Gradient Transport for Decision-Focused Learning under Delayed Feedback](/202605/14/2605.12693v1-igt-omd-implicit-gradient-transport-for-decision-focused-learning-under-delayed-feedback)  
+   evidence：将双层优化扩展到具有松弛凸性假设的多任务设置中
+2. [PEML: Parameter-efficient Multi-Task Learning with Optimized Continuous Prompts](/202605/15/2605.14055v1-peml-parameter-efficient-multi-task-learning-with-optimized-continuous-prompts)  
+   标签：评分：9.0/10、query:bopl
+   evidence：基于优化连续提示的参数高效多任务学习
+3. [Prompting Policies for Multi-step Reasoning and Tool-Use in Black-box LLMs with Iterative Distillation of Experience](/202605/15/2605.14443v1-prompting-policies-for-multi-step-reasoning-and-tool-use-in-black-box-llms-with-iterative-distillation-of-experience)  
+   标签：评分：9.0/10、query:bopl
+   evidence：通过强化学习和迭代蒸馏实现自动化提示词工程
+4. [Efficient Multi-objective Prompt Optimization via Pure-exploration Bandits](/202605/15/2605.14553v1-efficient-multi-objective-prompt-optimization-via-pure-exploration-bandits)  
+   标签：评分：9.0/10、query:bopl
+   evidence：通过多臂老虎机进行多目标提示词选择与优化
+5. [Prompt Segmentation and Annotation Optimisation: Controlling LLM Behaviour via Optimised Segment-Level Annotations](/202605/15/2605.14561v1-prompt-segmentation-and-annotation-optimisation-controlling-llm-behaviour-via-optimised-segment-level-annotations)  
+   标签：评分：9.0/10、query:bopl
+   evidence：结构化提示词优化框架
+6. [On the Nature of Regularity Assumptions in Bilevel Optimization with Constrained Lower-level Problem](/202605/15/2605.14409v1-on-the-nature-of-regularity-assumptions-in-bilevel-optimization-with-constrained-lower-level-problem)  
    标签：评分：8.0/10、query:bopl
-   evidence：延迟反馈下的双层优化
+   evidence：带约束下层问题的双层优化正则性假设
 
 ### 速读区论文标签
-1. [LOFT: Low-Rank Orthogonal Fine-Tuning via Task-Aware Support Selection](/202605/14/2605.11872v1-loft-low-rank-orthogonal-fine-tuning-via-task-aware-support-selection)  
+1. [GFMate: Empowering Graph Foundation Models with Test-time Prompt Tuning](/202605/15/2605.14809v1-gfmate-empowering-graph-foundation-models-with-test-time-prompt-tuning)  
+   标签：评分：8.0/10、query:bopl
+   evidence：图基础模型的测试时提示微调
+2. [Prompt-Activation Duality: Improving Activation Steering via Attention-Level Interventions](/202605/15/2605.10664v2-prompt-activation-duality-improving-activation-steering-via-attention-level-interventions)  
    标签：评分：7.0/10、query:bopl
-   evidence：低秩正交参数高效微调
-2. [SmellBench: Evaluating LLM Agents on Architectural Code Smell Repair](/202605/14/2605.07001v2-smellbench-evaluating-llm-agents-on-architectural-code-smell-repair)  
+   evidence：从系统提示词贡献中提取引导信号
+3. [Learning, Fast and Slow: Towards LLMs That Adapt Continually](/202605/15/2605.12484v2-learning-fast-and-slow-towards-llms-that-adapt-continually)  
+   标签：评分：7.0/10、query:bopl
+   evidence：语境学习与提示优化
+4. [Derivation Prompting: A Logic-Based Method for Improving Retrieval-Augmented Generation](/202605/15/2605.14053v1-derivation-prompting-a-logic-based-method-for-improving-retrieval-augmented-generation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：针对大语言模型生成的创新提示技术
+5. [CLIPer: Tailoring Diverse User Preference via Classifier-Guided Inference-Time Personalization](/202605/15/2605.07162v1-cliper-tailoring-diverse-user-preference-via-classifier-guided-inference-time-personalization)  
    标签：评分：6.0/10、query:bopl
-   evidence：针对LLM智能体的特定异味类型优化提示
-3. [DiffRetriever: Parallel Representative Tokens for Retrieval with Diffusion Language Models](/202605/14/2605.07210v1-diffretriever-parallel-representative-tokens-for-retrieval-with-diffusion-language-models)  
+   evidence：分类器引导的大语言模型推理阶段个性化
+6. [How Useful Is Cross-Domain Generalization for Training LLM Monitors?](/202605/15/2605.12265v1-how-useful-is-cross-domain-generalization-for-training-llm-monitors)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示扩散语言模型进行检索
-4. [Task-Adaptive Embedding Refinement via Test-time LLM Guidance](/202605/14/2605.12487v1-task-adaptive-embedding-refinement-via-test-time-llm-guidance)  
+   evidence：提示语言模型作为分类器
+7. [Active Learners as Efficient PRP Rerankers](/202605/15/2605.14236v1-active-learners-as-efficient-prp-rerankers)  
    标签：评分：6.0/10、query:bopl
-   evidence：大模型引导的嵌入模型查询精炼
-5. [Query-Conditioned Test-Time Self-Training for Large Language Models](/202605/14/2605.13369v1-query-conditioned-test-time-self-training-for-large-language-models)  
+   evidence：用于从LLM中获取偏好判断的成对排序提示 (PRP)
+8. [Teaching Large Language Models When Not to Know: Learning Temporal Critique for Ex-Ante Reasoning](/202605/15/2605.14636v1-teaching-large-language-models-when-not-to-know-learning-temporal-critique-for-ex-ante-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：推理过程中的模型参数测试时优化
-6. [Decoupled and Divergence-Conditioned Prompt for Multi-domain Dynamic Graph Foundation Models](/202605/14/2605.13540v1-decoupled-and-divergence-conditioned-prompt-for-multi-domain-dynamic-graph-foundation-models)  
-   标签：评分：6.0/10、query:bopl
-   evidence：图基础模型的散度条件提示
+   evidence：提示级干预的系统分析
 
 
 <div class="dpr-home-promo-card">
