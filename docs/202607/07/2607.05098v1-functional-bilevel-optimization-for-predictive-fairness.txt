@@ -1,0 +1,534 @@
+Title: Functional Bilevel Optimization for Predictive Fairness
+
+URL Source: https://arxiv.org/pdf/2607.05098v1
+
+Published Time: Tue, 07 Jul 2026 03:46:59 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Functional Bilevel Optimization for Predictive Fairness 
+
+Ieva Petrulionyte, Julien Mairal, Michael Arbel 
+
+Univ. Grenoble Alpes, Inria, CNRS, Grenoble INP, LJK, 38000 Grenoble, France 
+
+firstname.lastname@inria.fr 
+
+# Abstract 
+
+When sensitive attributes are continuous and high-dimensional – demographic score vectors, posteriors over attributes, age or income profiles – enforcing full statistical independence is often too restrictive, and existing relaxations rely on indirect dependence penalties or adversarial schemes that do not directly target the fairness-accuracy trade-off. We instead consider mean demographic parity through DPVar, the variance of the conditional-mean prediction given the sensitive attribute, and show that optimizing it yields a functional bilevel problem . We propose two algorithms for this problem: FBO, which uses a closed-form adjoint we derive for the squared-loss case to obtain an exact hypergradient, and ITD, which differenti-ates through unrolled inner steps and extends beyond squared loss. On synthetic data and a new semi-synthetic benchmark built from 60 tabular regression datasets, both methods achieve the lowest or near-lowest aggregate fairness-accuracy regret, and consistently match or outperform strong HSIC, adversarial, linear-dependence, and generalized-DP baselines. 
+
+# 1 Introduction 
+
+Predictive machine learning models are effective because they exploit statistical signals that reduce prediction error. Unfortunately, standard training does not distinguish between signals we want the model to use and signals tied to attributes deemed “sensitive” in legal, ethical, or policy contexts [ 1, 2 ]. Models are then often required to be “fair” with respect to these attributes, which raises the question of which forms of dependence between prediction and sensitive attribute should be controlled. Fairness is not a single property but a family of criteria, capturing different kinds of disparity [ 2 ]: demographic parity (DP) compares outcomes across sensitive groups [ 3 ], equalized-odds and equal-opportunity notions condition on the true outcome [ 4], and individual or counterfactual notions enforce consistency across similar individuals or hypothetical interventions [ 5, 6 ]. These criteria are generally not equivalent and often cannot be satisfied jointly [ 7 , 8 ]. We focus on the demographic parity family, motivated by settings where the goal is to control systematic differences in predictions across values of the sensitive attribute, and accordingly restrict our related work and empirical comparisons to DP-style methods. We consider supervised learning with non-sensitive features X ∈ RkX , label Y ∈ R, and sensitive attribute A ∈ RkA , with predictor fω : RkX → R. Much of the DP literature formulates fairness as full statistical independence fω (X) ⊥ A [ 9–12 ] and focuses on categorical attributes or predefined groupings. Yet in many applications A is naturally continuous and vector-valued: age, income, demographic score vectors, or posteriors over attributes [ 3, 13 , 14 ]. In this regime, full independence is often too strong. It constrains the entire prediction distribution across every value of A, and the gap between this constraint and the actual fairness concern – systematic shifts in average prediction – grows with the dimension and richness of A. In credit scoring, for instance, fairness may require similar average scores across values of A, even if the score distributions differ in spread or shape. For such applications, a more appropriate requirement is that prediction be balanced on average across values of A. This conditional-mean view of demographic parity asks that a 7 → E[fω (X) | A = a] be      
+
+> Preprint.
+> arXiv:2607.05098v1 [cs.LG] 6 Jul 2026 a
+> E[fω(X)|A=a]
+> higher DPVar / unfair
+> lower DPVar / more fair
+
+Figure 1: Conceptual illustration of DPVar. A predictor with higher DPVar has a conditional-mean profile a 7 → E[fω (X) | A = a] that varies more strongly with the sensitive attribute. Lower DPVar corresponds to a flatter conditional-mean profile. (approximately) constant [3, 13, 15, 16], and is captured by the variance of this conditional mean, DPVar (ω) = Var A (E [fω (X) | A]) .
+
+When A is discrete, DPVar = 0 recovers mean-based weak demographic parity [ 17 , 18 ]; our focus is the continuous and high-dimensional setting , where DPVar provides an estimable scalar violation measure. Figure 1 illustrates this view: DPVar measures variation of the average prediction across values of A, not full distributional dependence. This distinction is natural in applications such as job recommendation [ 19 ], where one may want comparable salary recommendations on average across demographic profiles without requiring identical recommendation distributions (see Section C). Optimizing DPVar is not straightforward: evaluating it requires the conditional-mean function 
+
+h⋆ω (a) = E[fω (X) | A = a], which is unknown for a fixed predictor and must itself be estimated from data. Treating this estimation as an inner optimization problem and the accuracy-fairness trade-off as an outer one yields a bilevel problem; because the inner variable is a function rather than a parameter vector, it is functional bilevel , leading to a non-trivial optimization problem [20]. 
+
+Contributions. 
+
+1. We adopt DPVar( ω) = Var A(E[fω (X) | A]) as a fairness criterion for continuous and high-dimensional sensitive attributes and show that optimizing it yields a functional bilevel problem that integrates naturally with neural-network predictors – a regime that prior conditional-mean approaches [3, 16] do not cover. 2. We derive a closed-form adjoint for the squared-loss case and propose two algorithms for this problem: FBO , which uses the closed-form adjoint to obtain an exact, Hessian-free hypergradient, and ITD , which differentiates through unrolled inner steps. 3. We introduce a semi-synthetic large-scale benchmark built from 60 real tabular regression datasets, providing a standardized evaluation suite for continuous-attribute fairness methods under a unified DPVar diagnostic. 4. Across synthetic and tabular experiments, both FBO and ITD achieve the lowest or near-lowest accuracy regret under DPVar constraints, against HSIC, adversarial debiasing, linear-dependence penalties, and generalized-DP objectives. The remainder of the paper proceeds as follows. Section 2 reviews related work. Section 3 introduces the functional bilevel problem and the two algorithms. Section 4 reports experiments. 
+
+# 2 Related Work 
+
+Most demographic-parity (DP) methods formulate fairness as independence between fω (X) and A, or approximate this independence through dependence penalties, adversarial debiasing, or group-based constraints. DPVar instead targets the weaker conditional-mean requirement. For binary outputs, the two notions coincide; for real-valued predictions, DPVar is a first-order relaxation of DP. Figure 2 provides a schematic map of how DPVar relates to existing demographic-parity methods, optimal-transport approaches to fair regression, continuous-sensitive-attribute methods, and bilevel fairness formulations. Direct DP methods enforce fairness through constraints or reductions [ 21 – 23 ], while approximate methods replace the independence constraint with a dependence penalty optimized 2jointly with the predictive loss: kernel-based dependence measures such as HSIC [ 10 , 24 , 25 ], mutual-information-inspired objectives [ 9 ], and adversarial debiasing [ 11 , 12 ]. A separate line of work characterizes the optimal fair regressor through optimal transport, projecting an unconstrained regressor onto the Wasserstein barycenter of group-conditional output distributions [ 26 –29 ]. These methods provide strong theoretical guarantees but operate as post-processing of a pre-trained regressor, target full distributional matching rather than a moment-based relaxation, and are largely limited to discrete sensitive groups; they do not natively integrate fairness into the training of modern over-parameterized neural networks, and do not directly extend to high-dimensional continuous A.Several methods address continuous A through HGR-based criteria, learned or constructed groups, integral probability metrics, the coefficient-of-determination (CoD) [ 16 ], or Generalized Demographic Parity (GDP) [ 3, 13 , 14 , 30 , 31 ]; among these, CoD and GDP are closest in spirit to DPVar in adopting a conditional-mean viewpoint, but the former is restricted to linear regression and the latter to one- or two-dimensional A, neither covering neural-network predictors with high-dimensional sensitive attributes. Finally, bilevel fairness methods use bilevel formulations for reweighting, training mechanisms, architectures, or Pareto selection [ 15 , 32 – 34 ]; in these methods, the bilevel structure is a training-procedure or architectural choice rather than a fairness criterion. Our contribution is different: we directly optimize DPVar through a functional bilevel formulation that integrates with neural-network predictors and applies natively to continuous, high-dimensional sensitive attributes. A detailed comparison with demographic-parity, dependence-penalty, adversarial debiasing, and bilevel fairness methods is given in Appendix A.                         
+
+> Demographic Parity (DP)
+> f(X)⊥A
+> DPVar
+> Var A(E[f(X)|A])
+> conditional-mean / weak-DP view
+> Direct DP methods
+> constraints, reductions [21 –23 ]
+> Approximate DP methods
+> HSIC, MI, adversarial [9–12 ,24 ,25 ]
+> OT / Wasserstein
+> post-processing, full distribution view [26 –29 ]
+> Continuous-Amethods
+> HGR, grouping, IPM [13 ,14 ,30 ,31 ]
+> Conditional-mean DP summaries
+> GDP [ 3], CoD [ 16 ], absolute-deviation view This work: FBO / ITD
+> bilevel optimization of DPVar
+> Bilevel fairness methods
+> training mechanisms, architectures [ 15 ,32 –34 ]
+> DP ⇒DPVar=0
+> DPVar=0 ⇒DP
+> for binary-valued predictions
+> extensions / penalties
+> shared cond. mean view related bilevel view
+
+Figure 2: Positioning of DPVar relative to demographic parity (DP) and existing fairness methods. The blue arrows show the relation between full distributional DP and conditional-mean DP. Solid method arrows indicate direct optimization of the target object; dashed arrows indicate related relaxations, penalties, or approximate formulations. 
+
+# 3 From DPVar to a Practical Functional Bilevel Algorithm 
+
+We now formalize the DPVar objective and its functional bilevel structure under the notation intro-duced in the introduction, and derive two algorithms that solve the resulting problem. 
+
+DPVar: Conditional-Mean Demographic Parity. For a fixed predictor fω , define the conditional mean prediction function 
+
+h⋆ω (a) = E(X,A )∼Pin [fω (X) | A = a] . (1) Taking H = L2(PA, in ) at the population level, h⋆ω is equivalently the unique L2(PA, in ) solution of 
+
+h⋆ω ∈ arg min  
+
+> h∈H
+
+E(X,A )∼Pin 
+
+h
+
+(fω (X) − h(A)) 2i
+
+. (2) In the algorithms, this population conditional mean is approximated by a parametric regressor hϕ,implemented as an MLP — this parametric inner regressor is what allows the formulation to scale to high-dimensional A and to integrate end-to-end with neural-network predictors. The outer objective trades off prediction accuracy and DPVar: 
+
+F (ω) = E(X,Y )∼Pout 
+
+h
+
+(fω (X) − Y )2i
+
++ α Var A (h⋆ω (A)) , (3) 3with α ≥ 0 controlling the accuracy-fairness trade-off. Because the outer objective depends on ω
+
+through the solution h⋆ω of an inner optimization problem, this is a bilevel problem; because the inner variable h is a function rather than a parameter vector, it is functional bilevel .
+
+Two population laws. We use two population laws, Pin and Pout , to define the inner and outer objectives respectively. This separation prevents the same data from being used to fit h⋆ω and to evaluate the fairness penalty Var A(h⋆ω (A)) , which would otherwise yield an optimistically-biased estimate of DPVar. Throughout the derivation we assume that the marginals on A coincide, PA, in =
+
+PA, out . In finite samples, IN and OUT are random splits of the same training distribution, so this equality is the population idealization of the splitting scheme. 
+
+A closed-form, Hessian-free hypergradient. A bilevel problem in this form is generally solved by implicit differentiation, which requires inverting the Hessian of the inner objective with respect to h
+
+— in finite-dimensional bilevel optimization this typically means Hessian-vector products at every outer step. In our setting the inner problem is a squared-loss regression, and its Hessian with respect to h reduces to a constant scaling on L2(PA, in ). This collapse is what enables the next result: the adjoint admits an explicit closed form, and the resulting hypergradient is Hessian-free. 
+
+Proposition 3.1 (Closed-form hypergradient for squared-loss DPVar) . Define h⋆ω and F as in equations (2) and (3) . Assume that the regularity conditions ensuring differentiability of ω 7 → h⋆ω
+
+hold, and that PA, in = PA, out . Then F is differentiable and 
+
+∇ω F (ω) = 2 Eout 
+
+  fω (X) − Y  ∂ω fω (X) + 2 α Ein 
+
+  h⋆ω (A) − μω
+
+ ∂ω fω (X) ,
+
+where μω = EA∼PA, out [h⋆ω (A)] . Equivalently, the adjoint function is 
+
+a⋆ω (a) = −α h⋆ω (a) − μω
+
+.
+
+The proof, given in Appendix B, applies the functional implicit-differentiation and adjoint-sensitivity framework of Petrulionyte et al. [20] . The novelty here is the consequence: the squared-loss structure of the inner problem reduces the adjoint to a centered residual, and the hypergradient becomes a single expectation involving h⋆ω − μω and ∂ω fω (X). No Hessian-vector products, no inner Jacobians – only one inner regression and two empirical means per outer step. We refer to the resulting algorithm as FBO (Functional Bilevel Optimization). 
+
+Iterative differentiation as a second algorithm. A separate, broadly applicable strategy for hypergradient computation differentiates through a truncated sequence of inner updates (see [ 35 ] and references therein): the inner regressor hϕ is unrolled for K gradient steps from a current iterate, the outer objective is evaluated at the unrolled regressor, and the gradient with respect to ω is taken through the entire unrolled computation graph. We refer to this as ITD (Iterative Differentiation). Unlike the FBO derivation, which exploits the closed-form adjoint specific to squared loss, ITD does not require the inner Hessian to admit a closed-form inverse and extends to settings where the inner problem is not squared-loss – for example, conditional-mean estimation under Huber loss, or alternative inner objectives that capture different fairness criteria. Within this paper, FBO and ITD are two complementary instantiations of the same functional bilevel framework: FBO is exact and Hessian-free at the cost of being tied to the squared-loss inner objective; ITD is approximate and more expensive per outer step (its cost scales linearly in K) but applies more broadly. 
+
+Algorithms. Both methods alternate two operations: first, approximately fitting h⋆ω on the IN 
+
+split by regressing the current predictions onto A (Algorithm 1); second, updating the predictor parameters ω using a hypergradient computed from the OUT objective. The two algorithms differ only in this second step. FBO uses the closed-form empirical hypergradient from Proposition 3.1; ITD differentiates through K unrolled inner updates. Both are summarized in Algorithm 2, and the overall training loop is given in Algorithm 3. 
+
+# 4 Experiments 
+
+We evaluate methods on the trade-off between (i) predictive mean-squared error E[( fω (X) − Y )2]
+
+and (ii) the demographic-parity variance DPVar . Unless stated otherwise, predictors and diagnostic regressors are two-hidden-layer tanh MLPs (width 64 ) trained with full-batch gradient descent. 4Algorithm 1 EstimateConditionalMean  
+
+> 1:
+
+Input: predictor parameters ω; initial inner parameters ϕ0; inner stepsize ηin ; number of inner steps M ; IN split  
+
+> 2:
+
+ϕ ← ϕ0 
+
+> 3:
+
+for m = 1 , . . . , M do  
+
+> 4:
+
+Compute the empirical inner objective 
+
+ˆLin (ω, ϕ ) = 1
+
+|IN |
+
+X
+
+> (xi,a i)∈IN
+
+ fω (xi) − hϕ(ai)2 
+
+> 5:
+
+Update 
+
+ϕ ← ϕ − ηin ∇ϕ ˆLin (ω, ϕ ) 
+
+> 6:
+
+end for  
+
+> 7:
+
+Return: ϕ
+
+Algorithm 2 ComputeHypergradient  
+
+> 1:
+
+Input: predictor parameters ω; inner parameters ϕ; fairness weight α; hypergradient mode HG 
+
+∈ { FBO , ITD }; unrolling length K; inner stepsize ηin ; IN split; OUT split  
+
+> 2:
+
+if HG = FBO then  
+
+> 3:
+
+Compute 
+
+ˆμ ← 1
+
+|OUT |
+
+X
+
+> ai∈OUT
+
+hϕ(ai) 
+
+> 4:
+
+Compute the accuracy gradient 
+
+gacc ← ∇ ω
+
+ 1
+
+|OUT |
+
+X
+
+> (xi,y i)∈OUT
+
+ fω (xi) − yi
+
+2
+
+ 
+
+> 5:
+
+Compute the fairness gradient 
+
+gfair ← ∇ ω
+
+ 2α
+
+|IN |
+
+X
+
+> (xi,a i)∈IN
+
+ hϕ(ai) − ˆμfω (xi)
+
+ 
+
+> 6:
+
+Return: gacc + gfair  
+
+> 7:
+
+else  
+
+> 8:
+
+˜ϕ(0) ← ϕ 
+
+> 9:
+
+for k = 0 , . . . , K − 1 do  
+
+> 10:
+
+˜ϕ(k+1) ← ˜ϕ(k) − ηin ∇ϕ ˆLin (ω, ˜ϕ(k)) 
+
+> 11:
+
+end for  
+
+> 12:
+
+Define the unrolled empirical outer objective 
+
+ˆLITD out (ω) = 1
+
+|OUT |
+
+X
+
+> (xi,y i)∈OUT
+
+ fω (xi) − yi
+
+2 + α dVar ai∈OUT 
+
+ h ˜ϕ(K) (ai) 
+
+> 13:
+
+Return: ∇ω ˆLITD out (ω) 
+
+> 14:
+
+end if Training protocol and evaluation. All methods are trained using the same data partitioning and model-selection protocol. Training algorithms use only the IN and OUT splits; hyperparameters, including the fairness weight and method-specific optimization parameters, are selected on a separate 
+
+VAL split; and final results are reported on TEST . To evaluate demographic-parity style deviations for continuous A in a way that is comparable across methods, we use the same diagnostic pipeline throughout: for every trained predictor fω , we compute DPVar by cross-fitting hϕ(A) ≈ E[fω (X) |
+
+A] within the evaluation split ( VAL for hyperparameter tuning, TEST for final reporting), fitting on one half and evaluating on the other and averaging across the two roles. We use α for the population-level 5Algorithm 3 Bilevel Training for DPVar  
+
+> 1:
+
+Input: initial predictor parameters ω0; initial inner parameters ϕ0; fairness weight α; outer step-size ηout ; inner stepsize ηin ; number of outer steps N ; number of inner-fit steps M ; hypergradient mode HG ∈ { FBO , ITD }; unrolling length K 
+
+> 2:
+
+ω ← ω0, ϕ ← ϕ0 
+
+> 3:
+
+for n = 0 , . . . , N − 1 do  
+
+> 4:
+
+if α > 0 then  
+
+> 5:
+
+ϕ ← ESTIMATE CONDITIONAL MEAN (ω, ϕ, η in , M, IN ) 
+
+> 6:
+
+end if  
+
+> 7:
+
+g ← COMPUTE HYPERGRADIENT (ω, ϕ, α, HG , K, η in , IN , OUT ) 
+
+> 8:
+
+ω ← ω − ηout g 
+
+> 9:
+
+end for  
+
+> 10:
+
+Return: ω
+
+fairness weight in the derivation; in experiments, we distinguish the training penalty weight γ, used to train a model, from the validation weight ζ, used only for model selection along the Pareto frontier. 
+
+Baselines. We compare our two bilevel methods, FBO and ITD, to standard single-level alternatives trained on IN +OUT data: (i) a correlation/ R2 penalty that removes linear predictability of fω (X)
+
+from A, (ii) Generalized Demographic Parity (GDP), (iii) adversarial debiasing, and (iv) an HSIC penalty between predictions and A. For HSIC, we use RBF kernels; the empirical penalty requires pairwise kernel evaluations, computed in blocks to avoid materializing full kernel matrices, but the cost remains quadratic in the number of samples. For adversarial debiasing, the adversary predicts A
+
+from fω (X), and the predictor is trained to minimize prediction loss while degrading this adversarial prediction. For GDP, we use the authors’ KDE-based implementation, which is available only for one- and two-dimensional sensitive attributes; when A has dimension larger than two, we apply a train-only PCA projection to two dimensions before computing the GDP penalty, and denote this adapted baseline by GDP ∗. The PCA projection is used only inside the GDP training penalty; all methods, including GDP ∗, are evaluated with the same DPVar diagnostic on the original sensitive attribute A.
+
+Computational setup. All experiments were run on a heterogeneous GPU cluster with NVIDIA GPUs ranging from older GTX/Titan/P100-class cards to RTX A5000/A6000 and RTX 6000 Ada cards. We did not log the exact GPU model used for each individual run. A full synthetic sweep takes roughly 2 hours, while running the full method and hyperparameter-selection protocol for one tabular dataset takes roughly 20 hours. 
+
+4.1 Synthetic regression with interaction-driven unfairness 
+
+We first run a controlled synthetic study with two purposes: (i) to verify that all DP-style methods recover comparable trade-offs in the easy regime where unfairness is dominated by a first-moment shift, and (ii) to check that DPVar-targeting methods preserve their advantage as the underlying prediction problem becomes harder through interactions between sensitive and non-sensitive com-ponents. The setup uses a multi-dimensional continuous sensitive attribute A = ( S, η ) ∈ RkA ,with a direct first-moment unfairness component (through S) and an interaction-driven component (through products of sensitive and non-sensitive features). The first coordinate S ∼ Unif[ −1, 1] is the primary sensitive variable; η ∼ N (0 , 0.32IkA−1) provides auxiliary nuisance-sensitive coordinates, making A genuinely multi-dimensional while keeping the first sensitive direction dominant. Latent non-sensitive factors are sampled independently as Z ∼ N (0 , I 3). Features and labels are then constructed from separate nonlinear maps: 
+
+XA = gA(A), XZ = gZ (Z), X = cAXA + cZ XZ + ( XA ⊙ XZ ) + εX ,Y = base( X) + δ S + 12 S3 + βint ⟨XA, X Z ⟩ + εY ,
+
+where gA, g Z , base are fixed random two-layer tanh networks, εX and εY ∼ N (0 , 0.12) are Gaussian noise, S = A1, and δ and βint control the magnitudes of the direct and interaction-driven unfairness components. Note that DPVar by design only captures first-moment disparities; the interaction component does not enter DPVar directly, but increasing βint makes the underlying prediction 6problem harder and the conditional-mean structure of fω (X) richer. This gives us a one-dimensional knob to move between an easy regime ( βint = 1 , where DP-style methods should all behave similarly) and a harder regime ( βint = 10 , where targeting the conditional mean directly should matter more). For numerical stability, we standardize X, A, and Y using IN /OUT statistics, and clip the standardized coordinates of X and A to limit the influence of rare extreme values. 
+
+Results. Figure 3 confirms both expectations. At βint = 1 , where the unfairness signal is dominated by the first-moment term, all six methods produce essentially indistinguishable Pareto curves — a sanity check that the methods agree in the easy case. As βint grows, the curves separate: at βint = 10 ,FBO and ITD recover better trade-offs than HSIC, adversarial debiasing, and the linear-dependence baseline, with GDP remaining the closest competitor. This is the expected pattern: DPVar depends only on the conditional expectation h⋆ω (A), so enforcing stronger notions of independence (HSIC, adversarial) is unnecessarily restrictive when the prediction problem becomes more interaction-rich, and linear penalties miss the relevant nonlinear effects. The synthetic study is thus a controlled stress test in which DPVar-targeting methods preserve their advantage, but the more demanding evaluation is the tabular benchmark in Section 4.2. 
+
+Figure 3: Test MSE-DPVar trade-off on synthetic data. Each point corresponds to a different DPVar penalty weight (chosen on VAL ). Lower is better on both axes. Differences across methods become more visible as βint grows. 
+
+4.2 Semisynthetic benchmark on tabular datasets 
+
+To complement the synthetic study with a large-scale evaluation on real data, we build a semi-synthetic tabular benchmark from a curated pool of 60 regression datasets obtained from OpenML 
+
+and UCI [36 , 37 ] after filtering for usable regression tasks and preprocessing them into a common numeric format. For each dataset we automatically construct a continuous sensitive attribute from the training features and remove the selected coordinates from the predictor input (details below). This yields a standardized and fully automated benchmark for fairness-accuracy trade-offs with continuous sensitive attributes, rather than a hand-picked collection. The benchmark is not meant to claim that the selected coordinates are legally or socially sensitive in the original datasets; its purpose is methodological, providing controlled continuous, multi-dimensional sensitive attributes with nontrivial proxy information in the remaining features. We run the protocol on the full pool of 60 datasets, but for the per-dataset Pareto-style analysis we report the 27 datasets where the validation trade-offs are non-degenerate, defined as having a validation range of at least 0.1 on both MSE and DPVar. The remaining 33 datasets are not failures: they are regimes in which all methods collapse to a similar fairness-accuracy point, so the DPVar axis carries no comparative signal. Results are reported in Figure 5 using the 27 informative datasets. 
+
+Sensitive attributes. For each dataset, we standardize the training features and rank all coordinates by their absolute correlation with the training target. We form a predictive candidate pool by keeping at most the 200 most target-informative coordinates, excluding coordinates whose absolute correlation is below 0.02 whenever this still leaves a nonempty pool. We then construct A as a fraction of this predictive pool ( 25% in our experiments), giving priority to coordinates that are both predictive of the target and approximately recoverable from the remaining features. After selecting these coordinates, we remove them from the predictor input. This construction ensures that A carries meaningful signal about the prediction task while the remaining features still contain proxy information about A, so reducing DPVar is nontrivial. Full details are in Appendix D. 7Building a Pareto front. For each method and dataset, we first train a coarse method-specific grid over fairness-penalty values and non-penalty hyperparameters, then adaptively refine the penalty grid while keeping the total number of trained configurations bounded. The grid is method-specific but designed to provide broad coverage of each method’s natural tuning parameters (learning-rate pairs for FBO/ITD, bandwidth pairs for HSIC, ridge values for R2, adversary-update settings for adversarial debiasing, KDE settings for GDP ∗), spanning up to 12 penalty values for each of 
+
+8 method-specific hyperparameter configurations. We then use validation data to decide which trained models are retained: for each scalarization weight ζ, we select the configuration minimizing 
+
+MSE val + ζ DPVar val , and only these validation-selected configurations are evaluated on TEST . In practice several scalarization weights often select the same trained model, which is why only a small number of distinct points may appear on the final test Pareto curve visualized for one seed in Figure 4. Additional Pareto fronts for more datasets or aggregated over 10 seeds can be found in Section E. 
+
+Figure 4: Seed-wise uncertainty of the fairness–accuracy frontier on six datasets. Each panel the final test Pareto front (seed 0) for each method per dataset (first 9 alphabetically). Lower DPVar means more fairness, lower MSE means more accuracy. 
+
+Results. We use a win rate to summarize the results over many datasets and multiple seeds in Figure 5. For each dataset, we define three test-time DPVar budgets from that dataset’s overall Pareto range: Tight at 25%, Mid at 50%, and Loose at 75% of the observed test DPVar range. For a fixed budget τ and a fixed seed, a method is counted as a winner if it achieves the lowest test MSE among all methods with at least one Pareto point satisfying DPVar ≤ τ , with ties split evenly. Within each dataset, these seed-wise wins were averaged across seeds, and the dataset-level winner is then defined as the method with the highest constrained win rate, again splitting ties evenly. The main pattern is a shift along the fairness–accuracy tradeoff: FBO wins most often under tight and mid budgets, whereas GDP wins most often once the DPVar budget is loose. 
+
+# 5 Concluding Remarks 
+
+We introduced DPVar, a conditional-mean notion of demographic parity for continuous and high-dimensional sensitive attributes, and formulated its optimization as a functional bilevel problem in which the inner level estimates a conditional-mean function and the outer level trades off accuracy and fairness. In the squared-loss setting, we derived a closed-form adjoint and used it to build FBO, an exact Hessian-free hypergradient method; and we developed ITD, an unrolled iterative-differentiation algorithm. To benchmark continuous-attribute fairness methods at scale, we also introduced a semi-synthetic suite built from 60 real tabular regression datasets, evaluated under a cross-fitted DPVar diagnostic. Across synthetic and tabular experiments, both FBO and ITD achieve the lowest or near-lowest accuracy regret under DPVar constraints across fairness levels, against HSIC, adversarial debiasing, linear-dependence, and GDP baselines. 8Figure 5: How often each method is the dataset-level winner under constrained fairness budgets (Tight, Mid, Loose), across 27 tabular datasets. Each bar shows the proportion of datasets for which a method was that dataset-level winner at the corresponding budget. Error bars show 95% bootstrap confidence intervals obtained by resampling datasets with replacement. 
+
+Scope and limitations. DPVar is a mean-parity criterion and should not be interpreted as a surrogate for full demographic parity in applications where distributional equality is required: it can leave higher-order conditional disparities – variance, tails, or richer distributional discrepancies – uncontrolled. Both training and evaluation also require estimating a conditional-mean function of A; when A is high-dimensional, this estimation problem can itself be statistically challenging. Finally, our tabular benchmark is semi-synthetic: the selected sensitive coordinates are used to create controlled tasks, not to make application-specific fairness claims about the original datasets. 
+
+Broader impact. This work develops methodology for controlling mean disparities in predictions across continuous, high-dimensional sensitive attributes, with potential applications in domains such as credit scoring, insurance pricing, hiring, and recommendation, where average disparities across demographic profiles are a primary fairness concern. By making such control compatible with neural-network predictors and with sensitive attributes that are themselves continuous or vector-valued, the framework can reduce reliance on coarse demographic groupings that may misrepresent affected populations. At the same time, DPVar is a mean-parity criterion: it does not guarantee distributional fairness, equality of opportunity, or individual fairness, and a low DPVar value should not be interpreted as a certificate of overall fairness, which admits context-dependent definitions. 9References 
+
+[1] Solon Barocas and Andrew D. Selbst. Big data’s disparate impact. California Law Review , 104 (3):671–732, 2016. [2] Ninareh Mehrabi, Fred Morstatter, Nripsuta Saxena, Kristina Lerman, and Aram Galstyan. A survey on bias and fairness in machine learning. ACM Computing Surveys , 54:1–35, 2021. [3] Zhimeng Jiang, Xiaotian Han, Chao Fan, Fan Yang, Ali Mostafavi, and Xia Hu. Generalized demographic parity for group fairness. International Conference on Learning Representations (ICLR) , 2022. [4] Moritz Hardt, Eric Price, and Nati Srebro. Equality of opportunity in supervised learning. 
+
+Advances in Neural Information Processing Systems (NIPS) , 2016. [5] Matt J. Kusner, Joshua Loftus, Chris Russell, and Ricardo Silva. Counterfactual fairness. In 
+
+Advances in Neural Information Processing Systems (NIPS) , 2017. [6] Solon Barocas, Moritz Hardt, and Arvind Narayanan. Fairness and Machine Learning: Limita-tions and Opportunities . MIT Press, 2023. [7] Alexandra Chouldechova. Fair prediction with disparate impact: A study of bias in recidivism prediction instruments. Big Data , 5(2):153–163, 2017. [8] Jon Kleinberg, Sendhil Mullainathan, and Manish Raghavan. Inherent trade-offs in the fair determination of risk scores. In Innovations in Theoretical Computer Science (ITCS 2017) ,volume 67 of Leibniz International Proceedings in Informatics (LIPIcs) , pages 43:1–43:23, 2017. [9] Toshihiro Kamishima, Shotaro Akaho, Hideki Asoh, and Jun Sakuma. Fairness-aware classifier with prejudice remover regularizer. Machine Learning and Knowledge Discovery in Databases ,pages 35–50, 2012. [10] Arthur Gretton, Kenji Fukumizu, Choon H. Teo, Le Song, Bernhard Schölkopf, and Alex J. Smola. A kernel statistical test of independence. Advances in Neural Information Processing Systems (NIPS) , 2008. [11] Brian Hu Zhang, Blake Lemoine, and Margaret Mitchell. Mitigating unwanted biases with adversarial learning. Proceedings of the Conference on AI, Ethics, and Society (AIES) , pages 335–340, 2018. [12] Harrison Edwards and Amos Storkey. Censoring representations with an adversary. International Conference on Learning Representations (ICLR) , 2016. [13] Jeremie Mary, Clément Calauzènes, and Noureddine El Karoui. Fairness-aware learning for continuous attributes and treatments. Proceedings of Machine Learning Research (PMLR) , 97: 4382–4391, 2019. [14] Insung Kong, Kunwoong Kim, and Yongdai Kim. Fair representation learning for continuous sensitive attributes using expectation of integral probability metrics. IEEE Transactions on Pattern Analysis & Machine Intelligence , 47:3784–3795, 2025. [15] Mehdi Yazdani-Jahromi, Ali Khodabandeh Yalabadi, AmirArsalan Rajabi, Aida Tayebi, Ivan Garibay, and Ozlem Garibay. Fair Bilevel Neural Network (FairBiNN): On Balancing Fairness and Accuracy via Stackelberg Equilibrium. Advances in Neural Information Processing Systems (NeurIPS) , 2024. [16] Junpei Komiyama, Akiko Takeda, Junya Honda, and Hajime Shimao. Nonconvex optimization for regression with fairness constraints. In Proc. International Conference on Machine Learning (ICML) , 2018. [17] Arthur Charpentier, François Hu, and Philipp Ratz. Mitigating discrimination in insurance with wasserstein barycenters. PKDD/ECML Workshops , 2023. [18] Paul Glasserman and Mike Li. Should bank stress tests be fair? Management Science , 71(1): 262–278, 2024. doi: 10.1287/mnsc.2022.02060. [19] Mariia Vladimirova, Eustache Diemert, and Federico Pavone. FairJob: A Real-World Dataset for Fairness in Online Systems. Advances in Neural Information Processing Systems (NeurIPS) ,2024. 10 [20] Ieva Petrulionyte, Julien Mairal, and Michael Arbel. Functional bilevel optimization for machine learning. Advances in Neural Information Processing Systems (NeurIPS) , 2024. [21] Muhammad Bilal Zafar, Isabel Valera, Manuel Gomez Rodriguez, and Krishna P. Gummadi. Fairness constraints: Mechanisms for fair classification. Proceedings of Machine Learning Research (PMLR) , 54:962–970, 2017. [22] Alekh Agarwal, Alina Beygelzimer, Miroslav Dudik, John Langford, and Hanna Wallach. A reductions approach to fair classification. Proceedings of Machine Learning Research (PMLR) ,80:60–69, 2018. [23] Cynthia Dwork, Moritz Hardt, Toniann Pitassi, Omer Reingold, and Richard S. Zemel. Fairness through awareness. Proceedings of the Innovations in Theoretical Computer Science Conference (ITCS) , 2012. [24] Adrián Pérez-Suay, Valero Laparra, Gonzalo Mateo-García, Jordi Muñoz-Marí, Luis Gómez-Chova, and Gustau Camps-Valls. Fair kernel learning. In Machine Learning and Knowledge Discovery in Databases - European Conference, ECML PKDD 2017 , volume 10534 of Lecture Notes in Computer Science , pages 339–355. Springer, 2017. [25] Zhu Li, Adrián Pérez-Suay, Gustau Camps-Valls, and Dino Sejdinovic. Kernel dependence reg-ularizers and Gaussian processes with applications to algorithmic fairness. Pattern Recognition ,132:108922, 2022. [26] Evgenii Chzhen, Christophe Denis, Mohamed Hebiri, Luca Oneto, and Massimiliano Pontil. Fair regression with Wasserstein barycenters. In Advances in Neural Information Processing Systems (NIPS) , 2020. [27] Thibaut Le Gouic, Jean-Michel Loubes, and Philippe Rigollet. Projection to fairness in statistical learning. arXiv preprint 2005.11720 , 2020. [28] Evgenii Chzhen and Nicolas Schreuder. A minimax framework for quantifying risk-fairness trade-off in regression. The Annals of Statistics , 50(4):2416–2442, 2022. [29] Solenne Gaucher, Nicolas Schreuder, and Evgenii Chzhen. Fair learning with Wasserstein barycenters for non-decomposable performance measures. International Conference on Artifi-cial Intelligence and Statistics (AISTATS) , 2023. [30] Vincent Grari, Sylvain Lamprier, and Marcin Detyniecki. Fairness-aware neural Rényi min-imization for continuous features. International Joint Conference on Artificial Intelligence (IJCAI) , 2020. [31] Veronika Shilova, Emmanuel Malherbe, Giovanni Palma, Laurent Risser, and Jean-Michel Loubes. Fairness-aware grouping for continuous sensitive variables: Application for debiasing face analysis with respect to skin tone. Proceedings of the 28th European Conference on Artificial Intelligence (ECAI) , 2025. [32] Yuji Roh, Kangwook Lee, Steven Euijong Whang, and Changho Suh. Fairbatch: Batch selection for model fairness. International Conference on Learning Representations (ICLR) , 2021. [33] Mustafa Safa Ozdayi, Murat Kantarcioglu, and Rishabh Iyer. Fair machine learning under limited demographically labeled data. Workshop on Socially Responsible Machine Learning (SRML) , 2022. [34] Sofiane Tanji, Samuel Vaiter, and Yassine Laguel. Fairness-informed pareto optimization : An efficient bilevel framework. arXiv preprint arXiv:2601.13448 , 2026. [35] Fabian Pedregosa. Hyperparameter optimization with approximate gradient. Proceedings of Machine Learning Research (PMLR) , 48:737–746, 2016. [36] Dheeru Dua and Casey Graff. UCI machine learning repository, 2019. [37] Joaquin Vanschoren, Jan N. van Rijn, Bernd Bischl, and Luis Torgo. Openml: Networked science in machine learning. ACM SIGKDD Explorations Newsletter , 15(2):49–60, 2014. [38] Mohamed Ishmael Belghazi, Aristide Baratin, Sai Rajeshwar, Sherjil Ozair, Yoshua Bengio, Aaron Courville, and R Devon Hjelm. Mutual information neural estimation. Proceedings of Machine Learning Research (PMLR) , 80:531–540, 2018. [39] Yaroslav Ganin, Evgeniya Ustinova, Hana Ajakan, Pascal Germain, Hugo Larochelle, François Laviolette, Mario Marchand, and Victor Lempitsky. Domain-adversarial training of neural networks. Journal of Machine Learning Research (JMLR) , 17(59):1–35, 2016. 11 A Additional Related Work 
+
+Demographic parity and dependence penalties. Demographic-parity methods often regularize training by penalizing dependence between the prediction fω (X) and the sensitive attribute A. This includes correlation/covariance penalties (denoted R2) [ 21 ], kernel-based dependence measures such as HSIC [ 10 ], and mutual-information inspired objectives [ 9, 38 ]. These methods are attractive because they are single-level objectives that can be optimized with standard stochastic-gradient tools. Their limitation, in our setting, is that the optimized dependence penalty is not the same object as the demographic-parity criterion we care about. More specifically, the existing methods do not directly target the variance of the conditional mean a 7 → E[fω (X) | A = a] [ 3, 13 ] and act on the joint distribution of (fω (X), A ) instead. 
+
+Adversarial debiasing. Adversarial training enforces invariance by training a predictor jointly with an adversary that attempts to recover A from intermediate representations or from fω (X) [11 , 12 , 39 ]. This approach can target a rich family of dependence notions (depending on the adversary class) and has been successful empirically. At the same time, it can be sensitive to optimization hyperparameters and to the choice of adversary’s architecture. Additionally, similarly to dependence penalties, adversarial debiasing does not directly estimate the conditional mean that defines DPVar [3, 13]. 
+
+Bilevel fairness methods. Our use of bilevel optimization differs from recent bilevel approaches to fair learning [ 15 , 32 – 34 ]. Earlier bilevel fairness methods use the outer problem to adapt training mechanisms such as minibatch composition or sample weights: FairBatch [ 32 ] adjusts group-dependent batch-selection parameters to improve standard group-fairness metrics, while BiFair [ 33 ]uses bilevel optimization for fair learning when demographic labels are available only for a small subset of the data. These methods are bilevel in the training procedure, but their inner problems do not estimate the conditional-mean function defining a fairness criterion. FairBiNN [ 15 ] takes an architecture-centered view: the model is split into accuracy-responsible and fairness-responsible components, and the bilevel structure comes from optimizing these two sets of layers separately. In this sense, FairBiNN is related to our work as a bilevel fairness method, which is why it appears in Figure 2. However, it differs in two key ways: (i) it targets standard group-fairness losses for discrete sensitive groups rather than the conditional-mean DPVar criterion, and (ii) its accuracy-fairness trade-off is controlled through architectural and optimization choices, such as the placement of fairness layers and the relative learning rates of the two players, rather than by a penalty parameter weighting the DPVar criterion. The bilevel Pareto framework of Tanji et al. [34] is also distinct. Their BADR method is motivated by the observation that standard fairness regularization can produce models that are Pareto-inefficient across predefined groups. In contrast to our approach, the bilevel structure in BADR is not induced by an unknown conditional-mean function. Instead, it is used to select a Pareto-efficient fair model among predefined groups. Thus, existing bilevel fairness methods use bilevel optimization to adapt the training procedure, structure the architecture, or select a point on a group-risk Pareto frontier; in our work, the bilevel structure is induced by the DPVar objective itself, through the estimation of h⋆ω (a) = E[fω (X) | A = a].
+
+# B Total-Gradient Derivation for the Squared-Loss Bilevel Objective 
+
+Proof of Theorem 3.1. Let Pout be the law on (X, Y ) and PAout the marginal on A. The outer objective can be written as: 
+
+Lout (ω, h ) = E(X,Y )∼Pout 
+
+(fω (X) − Y )2| {z }
+
+> accuracy
+
++α EA∼PAout 
+
+(h(A) − μ)2| {z }
+
+> DP variance penalty
+
+, μ = EA∼PAout [h(A)] .
+
+1) Functional gradient in h. We note h(A), φ(A), and EA∼PAout as h, φ, and E for readability. We work in L2(PAout ) the space of square integrable functions wrt. the measure PAout equipped with the inner product ⟨u, v ⟩L2(PAout ) := EA∼PAout [u(A)v(A)] . For any direction φ ∈ L2(PAout ), consider the perturbation h + εφ and define: 
+
+με := E[h + εφ ] = E [h] + εE[φ] = μ + εE[φ].
+
+12 Then consider the perturbed DP variance penalty: 
+
+E (h + εφ − με)2 = E (h + εφ − (μ + εE[φ])) 2
+
+= E (h − μ + ε (φ − E[φ])) 2
+
+= E (h − μ)2 + 2 εE [( h − μ) ( φ − E[φ])] + ε2E
+
+h
+
+(φ − E[φ]) 2i
+
+.
+
+Keeping only the first-order term in ε gives the differential 
+
+∂hE (h − μ)2 [φ] = 2 E [( h − μ) ( φ − E[φ])] = 2 E [( h − μ)φ] ,
+
+since E[h − μ] = E[h] − μ = μ − μ = 0 . Assuming the IN and OUT splits are drawn i.i.d. from the same population, we have PAin = PAout , so for any φ ∈ L2(PAin ),
+
+∂hLout (ω, h )[ φ] = 2 αEA∼PAout [( h(A) − μ)φ(A)] = 2 αEA∼PAin [( h(A) − μ)φ(A)] .
+
+2) Adjoint. The inner objective is Lin (ω, h ) = E(X,A )∼Pin 
+
+(fω (X) − h(A)) 2, whose Hessian w.r.t. h is ∂2
+
+> hh
+
+Lin = 2 I on L2(PAin ). The adjoint a⋆ω ∈ L2(PAin ) solves 
+
+∂2
+
+> hh
+
+Lin (ω, h ⋆ω )a⋆ω = −∂hLout (ω, h ⋆ω ),
+
+hence 
+
+2a⋆ω (a) = −2α(h⋆ω (a) − μω )
+
+a⋆ω (a) = −α(h⋆ω (a) − μω ), μω := EA∼PAout [h⋆ω (A)] .
+
+3) Total gradient By the functional adjoint identity, 
+
+∇ω F (ω) = ∂ω Lout (ω, h ⋆ω ) + ∂2
+
+> ωh
+
+Lin (ω, h ⋆ω )[ a⋆ω ].
+
+Compute each term • Direct outer term: 
+
+∂ω Lout (ω, h ⋆ω ) = 2 Eout [( fω (X) − Y )∂ω fω (X)] .
+
+• Implicit (adjoint) term: 
+
+∂hLin (ω, h )[ φ] = −2Ein [( fω (X) − h(A)) φ(A)] ,
+
+differentiating w.r.t. ω:
+
+∂2
+
+> ωh
+
+Lin (ω, h )[ a] = −2Ein [a(A)∂ω fω (X)] ,
+
+writing the full implicit term: 
+
+∂2
+
+> ωh
+
+Lin (ω, h ⋆ω )[ a⋆ω ] = −2Ein [a⋆ω (A)∂ω fω (X)] = 2 αEin 
+
+  h⋆ω (A) − μω
+
+∂ω fω (X) .
+
+Putting it together, 
+
+∇ω F (ω) = 2 EX,Y ∼Pout [( fω (X) − Y )∂ω fω (X)] + 2 αEA,X ∼Pin 
+
+  h⋆ω (A) − μω
+
+∂ω fω (X) ,μω = EA∼PAout [h⋆ω (A)] .
+
+13 C Example: Job Recommendation. 
+
+Consider job recommendation in online advertising, where some demographic profiles should not systematically receive lower-salary recommendations on average. This is the setting considered in the FairJob benchmark [ 19 ]. In this benchmark, the protected attribute A is not directly observed; instead, the released dataset provides a binary gender proxy inferred from users’ behavioral interactions. This binary proxy makes the dataset compatible with standard demographic-parity methods, which are usually designed for discrete sensitive groups and do not directly apply to high-dimensional continuous sensitive attributes. At the same time, it highlights a limitation of this approach: a richer behavioral signal must be reduced to a hard demographic label before these methods can be used. Our method avoids this reduction when the richer sensitive representation is available. Rather than collapsing the sensitive signal to a binary class and enforcing independence from that class, it can work directly with a richer representation and control whether predicted salaries or recommendation scores are systematically higher or lower on average across demographic profiles. Moreover, because our approach controls the conditional expectation rather than enforcing full independence, it does not require the entire distribution of recommendations to be identical across all demographic profiles. This is important in job recommendation, where different groups may legitimately differ in preferences or constraints, such as desired flexibility, remote-work options, commuting tolerance, or schedule compatibility. Enforcing full independence risks washing out this structure and producing recommendations that are less useful to everyone. By contrast, controlling the conditional expectation means that demographic profiles receive comparable salary levels on average, while still allowing recommendations to reflect heterogeneous needs. 
+
+# D Constructing the Sensitive Attribute in Tabular Data 
+
+For each dataset, we construct the sensitive attribute automatically from the standardized training features. 1. Rank coordinates by target informativeness. Let Xj denote the jth standardized feature coordinate and let y be the standardized training target. We compute 
+
+cj = |corr( Xj , y )|
+
+for every coordinate and rank coordinates in decreasing order of cj .2. Form a predictive candidate pool. We retain the top 200 ranked coordinates, after discard-ing coordinates with cj < 0.02 . If this threshold leaves the pool empty, we fall back to the top-ranked coordinates without thresholding. 3. Prefer coordinates that are also proxy-like. For each candidate coordinate Xj , we compute a simple proxy score that measures how predictable it is from the remaining features. Concretely, we sample up to 128 other coordinates and define 
+
+pj = max  
+
+> c̸=j
+
+|corr( Xc, X j )|2,
+
+where the maximum is taken over the sampled coordinates. We then rank candidate coordi-nates by the score 
+
+sj = cj (1 + pj ),
+
+so that selected sensitive coordinates are both predictive of the target and recoverable, at least approximately, from the remaining features. 4. Define the sensitive attribute and remove it from the predictor input. The sensitive attribute A is formed by taking the top 25% of this candidate pool according to sj , clipped so that at least one predictive coordinate remains in the predictor input. These selected coordinates are removed from X before training the predictor. This procedure yields a continuous, potentially high-dimensional sensitive representation that is informative for prediction while preserving nontrivial proxy information in the remaining covariates. 
+
+# E Additional Results 
+
+14 Figure 6: Additional Pareto fronts on tabular regression datasets with semisynthetic continuous sensitive attributes. Each panel shows the test trade-off between prediction error (MSE; lower is better) and demographic-parity variance (DPVar; lower is better) for seed 0. Each curve corresponds to one method. 15 Figure 7: Seed-wise uncertainty of the fairness–accuracy frontier on five datasets. Each panel corresponds to one dataset and summarizes 10 runs (seeds 0–9) of the final test Pareto front for each method. Lower DPVar budget means more fairness, lower MSE means more accuracy. For each allowed DPVar level τ on the horizontal axis, each run is first converted into a best-feasible value, 
+
+min {MSE test : DPVar test ≤ τ } computed over that run’s final Pareto points. For each method, the solid step curve is the median of this quantity across seeds, and the shaded band spans the 25th to 75th percentile interquartile range (central half of the seed results). The band is shown only where at least 5 of the 10 seeds provide a feasible point, which avoids over-interpreting the extreme low-budget regime where very few runs satisfy the constraint. This construction aligns all seeds on a common fairness-budget axis, so uncertainty can be compared even when different seeds select different raw Pareto points. Across panels, wide bands indicate stronger seed sensitivity at that fairness budget, while narrow bands indicate that the method’s achievable test MSE is stable across reruns. In all cases, the most pronounced variability appears in the tight-fairness regime, whereas the curves and bands become more stable once the DPVar budget is relaxed. 16
