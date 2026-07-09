@@ -6,70 +6,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-08
-- 运行时间：2026-07-08 20:55:07 UTC
+- 最新运行日期：2026-07-09
+- 运行时间：2026-07-09 21:54:29 UTC
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：5
+- 本次总论文数：12
+- 精读区：1
 - 速读区：11
 
 ### 今日简报（AI）
-今日精选 16 篇前沿成果，深度聚焦黑盒 VLA 模型优化与 AI 负责任发布的博弈论框架。
-重点推荐 VLA Grounder 带来的语言空间定位突破，以及针对模型安全发布的“先知博弈”策略研究。
-建议关注具身智能与 AI 治理的读者优先研读今日两篇 8.0 分的高质量精读论文。
-- 详情：[/202607/08/README](/202607/08/README)
+今日精选 12 篇前沿论文，深度探索思维树（ToT）推理如何赋能文生图上下文学习。
+核心突破在于利用思维树提升视觉生成的逻辑一致性，并同步关注多模态模型的持续适配与概念擦除技术。
+建议重点关注复杂推理框架与图像生成的结合，这或是解决多对象、长指令视觉创作的关键路径。
+- 详情：[/202607/09/README](/202607/09/README)
 
 ### 精读区论文标签
-1. [VLA Grounder: Language-Conditioning Space Optimization for Black-Box VLA Models](/202607/08/2607.04517v1-vla-grounder-language-conditioning-space-optimization-for-black-box-vla-models)  
+1. [Tree-of-Thoughts Reasoning for Text-to-Image In-Context Learning](/202607/09/2607.07117v1-tree-of-thoughts-reasoning-for-text-to-image-in-context-learning)  
    标签：评分：8.0/10、query:bopl
-   evidence：优化语言空间作为条件输入
-2. [The Oracle's Gambit: A Game-Theoretic Framework for Responsible AI Release](/202607/08/2607.05442v1-the-oracles-gambit-a-game-theoretic-framework-for-responsible-ai-release)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于AI发布策略的双层Stackelberg博弈
-3. [Prompt engineering using order-of-addition experiments: An application to generating two-level fractional factorial designs](/202607/08/2607.05537v1-prompt-engineering-using-order-of-addition-experiments-an-application-to-generating-two-level-fractional-factorial-designs)  
-   标签：评分：8.0/10、query:bopl
-   evidence：提示词工程与位置优化的系统方法
-4. [SAMPLe: SAM-based Optimizer for Prompt Learning in VLMs](/202607/08/2607.05727v1-sample-sam-based-optimizer-for-prompt-learning-in-vlms)  
-   标签：评分：8.0/10、query:bopl
-   evidence：视觉语言模型提示学习的优化器
-5. [Structured-Condensed Prompt Tuning in Vision-Language Models for Fine-grained Image Recognition](/202607/08/2607.06185v1-structured-condensed-prompt-tuning-in-vision-language-models-for-fine-grained-image-recognition)  
-   标签：评分：8.0/10、query:bopl
-   evidence：视觉语言模型中的提示微调
+   evidence：生成并评估提示候选假设的选择层
 
 ### 速读区论文标签
-1. [When the Database Fails: Prompting LLM Dialogue Agents for Safe Recovery in Task-Oriented Dialogue](/202607/08/2606.31307v1-when-the-database-fails-prompting-llm-dialogue-agents-for-safe-recovery-in-task-oriented-dialogue)  
+1. [InduceKV: Fixed-Footprint Continual Adaptation of Multimodal LLMs via Inducing KV Memories](/202607/09/2607.02010v1-inducekv-fixed-footprint-continual-adaptation-of-multimodal-llms-via-inducing-kv-memories)  
    标签：评分：7.0/10、query:bopl
-   evidence：针对大语言模型对话智能体的轻量级提示词恢复方法
-2. [ZO-Act: Efficient Zeroth-Order Fine-Tuning via One-Shot Activation-Informed Low-Rank Subspaces](/202607/08/2607.01125v1-zo-act-efficient-zeroth-order-fine-tuning-via-one-shot-activation-informed-low-rank-subspaces)  
+   evidence：通过KV有效载荷进行参数高效适配
+2. [MPSelectTune: Prompt-type Selection for Fine-tuning improves Concept Unlearning in LLMs](/202607/09/2607.03932v1-mpselecttune-prompt-type-selection-for-fine-tuning-improves-concept-unlearning-in-llms)  
    标签：评分：7.0/10、query:bopl
-   evidence：大语言模型低秩子空间的零阶微调
-3. [Dynamic Congestion Pricing in Distribution Networks via a Convex-Analytic Bilevel Reformulation](/202607/08/2607.03359v1-dynamic-congestion-pricing-in-distribution-networks-via-a-convex-analytic-bilevel-reformulation)  
+   evidence：采用对抗方法选择最差提示类型进行优化
+3. [Efficient Long-Horizon Learning for Learned Optimization](/202607/09/2607.06772v1-efficient-long-horizon-learning-for-learned-optimization)  
    标签：评分：7.0/10、query:bopl
-   evidence：凸分析双层重构
-4. [LLM-as-a-Tutor: Policy-Aware Prompt Adaptation for Non-Verifiable RL](/202607/08/2607.04412v1-llm-as-a-tutor-policy-aware-prompt-adaptation-for-non-verifiable-rl)  
+   evidence：在任务分布上元学习神经网络优化器
+4. [When Prompts Ignore Structure: Graph-Based Attribute Reasoning for Calibrated VLMs](/202607/09/2607.07395v1-when-prompts-ignore-structure-graph-based-attribute-reasoning-for-calibrated-vlms)  
    标签：评分：7.0/10、query:bopl
-   evidence：针对强化学习的策略感知提示词自适应
-5. [Listen, Think, Transcribe: Continuous Latent Test-Time Scaling for ASR](/202607/08/2607.05051v1-listen-think-transcribe-continuous-latent-test-time-scaling-for-asr)  
-   标签：评分：7.0/10、query:bopl
-   evidence：参数高效的潜变量适配器与提示微调对比
-6. [Prompt Coach: An Empirical Evaluation of an Agentic Tutor for Learning Prompt Engineering in Software Development](/202607/08/2607.06074v1-prompt-coach-an-empirical-evaluation-of-an-agentic-tutor-for-learning-prompt-engineering-in-software-development)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于学习和优化提示工程的智能体导师
-7. [AutoMem: Automated Learning of Memory as a Cognitive Skill](/202607/08/2607.01224v1-automem-automated-learning-of-memory-as-a-cognitive-skill)  
+   evidence：视觉语言模型的提示词微调
+5. [StochasT: Learning with Stochastic Turn Depth for Visual Instruction Tuning](/202607/09/2607.00465v1-stochast-learning-with-stochastic-turn-depth-for-visual-instruction-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：自动学习包括提示在内的记忆结构
-8. [Grounded Optimization: A Layered Engineering Framework for Reducing LLM Hallucination in Automated Personal Document Rewriting](/202607/08/2607.01457v1-grounded-optimization-a-layered-engineering-framework-for-reducing-llm-hallucination-in-automated-personal-document-rewriting)  
+   evidence：多模态推理的视觉指令微调
+6. [Reinforcement Learning for Data-Efficient Code-Switched ASR](/202607/09/2607.02757v1-reinforcement-learning-for-data-efficient-code-switched-asr)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于自动文档重写的提示词级接地和评估代理
-9. [Program-as-Weights: A Programming Paradigm for Fuzzy Functions](/202607/08/2607.02512v1-program-as-weights-a-programming-paradigm-for-fuzzy-functions)  
+   evidence：为代码切换语音识别提示音频语言模型
+7. [Best-of-Better-$N$: Generating Pre-Aligned Responses with In-Context Learning](/202607/09/2607.03453v1-best-of-better-n-generating-pre-aligned-responses-with-in-context-learning)  
    标签：评分：6.0/10、query:bopl
-   evidence：参数高效适配器作为直接提示的替代方案
-10. [STELLA: Efficient Sensor-to-LLM Translation for On-Device Human Activity Recognition](/202607/08/2607.03089v1-stella-efficient-sensor-to-llm-translation-for-on-device-human-activity-recognition)  
+   evidence：基于上下文学习的生成框架
+8. [Probe, Don't Prompt: A Hidden-State Probe for Metadata Filtering in Multi-Meta-RAG](/202607/09/2607.03929v1-probe-dont-prompt-a-hidden-state-probe-for-metadata-filtering-in-multi-meta-rag)  
    标签：评分：6.0/10、query:bopl
-   evidence：将传感器标记化并投影到带有提示词的冻结大模型嵌入空间
-11. [Heterogeneous Graph Condensation via Role-Aware Clustering](/202607/08/2607.03097v1-heterogeneous-graph-condensation-via-role-aware-clustering)  
+   evidence：用训练好的探针代替提示词
+9. [PORTS: Preference-Optimized Retrievers for Tool Selection with Large Language Models](/202607/09/2607.05441v1-ports-preference-optimized-retrievers-for-tool-selection-with-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：提到图压缩中的双层优化范式
+   evidence：工具选择的偏好优化
+10. [Prompting Complexity: Shortest Prompts for Texts and Behaviors in LLMs](/202607/09/2607.06145v1-prompting-complexity-shortest-prompts-for-texts-and-behaviors-in-llms)  
+   标签：评分：6.0/10、query:bopl
+   evidence：目标行为的最短提示词
+11. [POPS: Recovering Unlearned Multi-Modality Knowledge in MLLMs with Prompt-Optimized Parameter Shaking](/202607/09/2607.06649v1-pops-recovering-unlearned-multi-modality-knowledge-in-mllms-with-prompt-optimized-parameter-shaking)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于知识恢复的提示词优化参数抖动
 
 
 <div class="dpr-home-promo-card">
