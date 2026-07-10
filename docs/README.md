@@ -6,58 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-09
-- 运行时间：2026-07-09 21:54:29 UTC
+- 最新运行日期：2026-07-10
+- 运行时间：2026-07-10 20:14:04 UTC
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：1
-- 速读区：11
+- 本次总论文数：9
+- 精读区：2
+- 速读区：7
 
 ### 今日简报（AI）
-今日精选 12 篇前沿论文，深度探索思维树（ToT）推理如何赋能文生图上下文学习。
-核心突破在于利用思维树提升视觉生成的逻辑一致性，并同步关注多模态模型的持续适配与概念擦除技术。
-建议重点关注复杂推理框架与图像生成的结合，这或是解决多对象、长指令视觉创作的关键路径。
-- 详情：[/202607/09/README](/202607/09/README)
+今日深挖 9 篇前沿成果，重点聚焦电力系统可靠性准则优化与大模型 Prompt 压缩技术。
+核心突破在于利用激活聚合大幅提升提示词效率，并同步探索了单次联邦学习与安全强化学习的新路径。
+建议优先关注 Prompt 压缩与自动化算法发现，这是在资源受限下提升模型实战性能的关键。
+- 详情：[/202607/10/README](/202607/10/README)
 
 ### 精读区论文标签
-1. [Tree-of-Thoughts Reasoning for Text-to-Image In-Context Learning](/202607/09/2607.07117v1-tree-of-thoughts-reasoning-for-text-to-image-in-context-learning)  
+1. [Refinement of Reliability Grid Codes in the Provision of Ancillary Services](/202607/10/2607.02319v1-refinement-of-reliability-grid-codes-in-the-provision-of-ancillary-services)  
    标签：评分：8.0/10、query:bopl
-   evidence：生成并评估提示候选假设的选择层
+   evidence：开发了一个双层优化框架
+2. [Prompt Compression via Activation Aggregation](/202607/10/2607.08399v1-prompt-compression-via-activation-aggregation)  
+   标签：评分：8.0/10、query:bopl
+   evidence：将指令提示压缩为单个激活向量以实现高效处理
 
 ### 速读区论文标签
-1. [InduceKV: Fixed-Footprint Continual Adaptation of Multimodal LLMs via Inducing KV Memories](/202607/09/2607.02010v1-inducekv-fixed-footprint-continual-adaptation-of-multimodal-llms-via-inducing-kv-memories)  
+1. [FedOPAL: One-Shot Federated Learning via Analytic Visual Prompt Tuning](/202607/10/2607.08368v1-fedopal-one-shot-federated-learning-via-analytic-visual-prompt-tuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过KV有效载荷进行参数高效适配
-2. [MPSelectTune: Prompt-type Selection for Fine-tuning improves Concept Unlearning in LLMs](/202607/09/2607.03932v1-mpselecttune-prompt-type-selection-for-fine-tuning-improves-concept-unlearning-in-llms)  
-   标签：评分：7.0/10、query:bopl
-   evidence：采用对抗方法选择最差提示类型进行优化
-3. [Efficient Long-Horizon Learning for Learned Optimization](/202607/09/2607.06772v1-efficient-long-horizon-learning-for-learned-optimization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：在任务分布上元学习神经网络优化器
-4. [When Prompts Ignore Structure: Graph-Based Attribute Reasoning for Calibrated VLMs](/202607/09/2607.07395v1-when-prompts-ignore-structure-graph-based-attribute-reasoning-for-calibrated-vlms)  
-   标签：评分：7.0/10、query:bopl
-   evidence：视觉语言模型的提示词微调
-5. [StochasT: Learning with Stochastic Turn Depth for Visual Instruction Tuning](/202607/09/2607.00465v1-stochast-learning-with-stochastic-turn-depth-for-visual-instruction-tuning)  
+   evidence：用于参数高效学习的解析视觉提示微调
+2. [Symbolic Discovery of Iterative Algorithms: A Continuous Latent Space Bayesian Optimization Framework](/202607/10/2607.01552v1-symbolic-discovery-of-iterative-algorithms-a-continuous-latent-space-bayesian-optimization-framework)  
    标签：评分：6.0/10、query:bopl
-   evidence：多模态推理的视觉指令微调
-6. [Reinforcement Learning for Data-Efficient Code-Switched ASR](/202607/09/2607.02757v1-reinforcement-learning-for-data-efficient-code-switched-asr)  
+   evidence：自动发现迭代优化算法
+3. [CDCP: Conditional Diffusion Model with Contextual Prompts for Multi-task Offline Safe Reinforcement Learning](/202607/10/2607.03903v1-cdcp-conditional-diffusion-model-with-contextual-prompts-for-multi-task-offline-safe-reinforcement-learning)  
    标签：评分：6.0/10、query:bopl
-   evidence：为代码切换语音识别提示音频语言模型
-7. [Best-of-Better-$N$: Generating Pre-Aligned Responses with In-Context Learning](/202607/09/2607.03453v1-best-of-better-n-generating-pre-aligned-responses-with-in-context-learning)  
+   evidence：用于多任务强化学习的上下文提示词
+4. [Prompt Robustness Is Task-Dependent: Comparing Objective and Belief-Style Questions in LLM Evaluation](/202607/10/2607.05554v1-prompt-robustness-is-task-dependent-comparing-objective-and-belief-style-questions-in-llm-evaluation)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于上下文学习的生成框架
-8. [Probe, Don't Prompt: A Hidden-State Probe for Metadata Filtering in Multi-Meta-RAG](/202607/09/2607.03929v1-probe-dont-prompt-a-hidden-state-probe-for-metadata-filtering-in-multi-meta-rag)  
+   evidence：评估不同问题类型下的提示词鲁棒性
+5. [Prompting Beats Fine-Tuning: Generative Expected Value Scoring for Statutory Term Retrieval](/202607/10/2607.05582v1-prompting-beats-fine-tuning-generative-expected-value-scoring-for-statutory-term-retrieval)  
    标签：评分：6.0/10、query:bopl
-   evidence：用训练好的探针代替提示词
-9. [PORTS: Preference-Optimized Retrievers for Tool Selection with Large Language Models](/202607/09/2607.05441v1-ports-preference-optimized-retrievers-for-tool-selection-with-large-language-models)  
+   evidence：比较了仅解码器模型的零样本提示与微调的效果
+6. [Efficient Long-Horizon Learning for Learned Optimization](/202607/10/2607.06772v2-efficient-long-horizon-learning-for-learned-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：工具选择的偏好优化
-10. [Prompting Complexity: Shortest Prompts for Texts and Behaviors in LLMs](/202607/09/2607.06145v1-prompting-complexity-shortest-prompts-for-texts-and-behaviors-in-llms)  
+   evidence：元学习神经网络优化器
+7. [MILES: Modular Instruction Memory with Learnable Selection for Self-Improving LLM Reasoning](/202607/10/2607.06974v1-miles-modular-instruction-memory-with-learnable-selection-for-self-improving-llm-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：目标行为的最短提示词
-11. [POPS: Recovering Unlearned Multi-Modality Knowledge in MLLMs with Prompt-Optimized Parameter Shaking](/202607/09/2607.06649v1-pops-recovering-unlearned-multi-modality-knowledge-in-mllms-with-prompt-optimized-parameter-shaking)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于知识恢复的提示词优化参数抖动
+   evidence：模块化指令记忆的可学习选择
 
 
 <div class="dpr-home-promo-card">
