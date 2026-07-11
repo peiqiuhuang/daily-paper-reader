@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-07-11 <!--dpr-date:20260711-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202607/11/2607.04690v1-past-tide-prototype-anchored-statement-tuning-with-topic-invariant-normalization-for-stance-detection" data-sidebar-item="{&quot;title&quot;: &quot;PAST-TIDE: Prototype-Anchored Statement Tuning with Topic-Invariant Normalization for Stance Detection&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2607.04690v1-past-tide-prototype-anchored-statement-tuning-with-topic-invariant-normalization-for-stance-detection&quot;, &quot;score&quot;: &quot;7.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;用于立场检测的陈述微调和动词化映射&quot;}">PAST-TIDE: Prototype-Anchored Statement Tuning with Topic-Invariant Normalization for Stance Detection</a>
   * 2026-07-10 <!--dpr-date:20260710-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202607/10/2607.02319v1-refinement-of-reliability-grid-codes-in-the-provision-of-ancillary-services" data-sidebar-item="{&quot;title&quot;: &quot;Refinement of Reliability Grid Codes in the Provision of Ancillary Services&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2607.02319v1-refinement-of-reliability-grid-codes-in-the-provision-of-ancillary-services&quot;, &quot;score&quot;: &quot;8.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;开发了一个双层优化框架&quot;}">Refinement of Reliability Grid Codes in the Provision of Ancillary Services</a>
