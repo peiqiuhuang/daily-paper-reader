@@ -6,35 +6,39 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-12
-- 运行时间：2026-07-12 20:16:07 UTC
+- 最新运行日期：2026-07-13
+- 运行时间：2026-07-13 21:05:52 UTC
 - 运行状态：成功
-- 本次总论文数：4
+- 本次总论文数：6
 - 精读区：0
-- 速读区：4
+- 速读区：6
 
 ### 今日简报（AI）
-今日速读 4 篇前沿论文，深度探索大模型在推荐蒸馏、持续微调与多任务推理中的效率优化。
-亮点在于 SCOReD 提出的学生感知 CoT 蒸馏，以及 Switch-Reasoner 通过强化学习实现“按需思考”的智能决策。
-推荐开发者关注 ReCoLoRA 方案，通过频谱感知递归整合有效应对 LLM 持续学习中的遗忘挑战。
-- 详情：[/202607/12/README](/202607/12/README)
+今日聚焦提示学习在强化学习与材料科学中的跨界应用，并探索了模型剪枝与微调的高效新范
+- 详情：[/202607/13/README](/202607/13/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [SCOReD: Student-Aware CoT Optimization for Recommendation Distillation](/202607/12/2607.05734v1-scored-student-aware-cot-optimization-for-recommendation-distillation)  
+1. [Prompt-Driven Exploration](/202607/13/2607.08837v1-prompt-driven-exploration)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于蒸馏的思维链轨迹优化
-2. [ReCoLoRA: Spectrum-Aware Recursive Consolidation for Continual LLM Fine-Tuning](/202607/12/2607.07719v1-recolora-spectrum-aware-recursive-consolidation-for-continual-llm-fine-tuning)  
+   evidence：利用VLM推理从rollout中优化提示词
+2. [Model Agnostic Graph Prompt Learning for Crystal Property Prediction](/202607/13/2607.08996v1-model-agnostic-graph-prompt-learning-for-crystal-property-prediction)  
    标签：评分：7.0/10、query:bopl
-   evidence：大语言模型持续适配的参数高效微调
-3. [Switch-Reasoner: Learn When to Think in Multitask Mixtures via Reinforcement Learning](/202607/12/2607.08572v1-switch-reasoner-learn-when-to-think-in-multitask-mixtures-via-reinforcement-learning)  
+   evidence：图神经网络的软提示学习框架
+3. [Super-Tuning: From Activation-Aware Pruning to Sparse Fine-Tuning](/202607/13/2607.09287v1-super-tuning-from-activation-aware-pruning-to-sparse-fine-tuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过强化学习自适应选择推理模式
-4. [MASTE: A Multi-Agent Pipeline for Zero-Shot Aspect Sentiment Triplet Extraction](/202607/12/2607.08080v1-maste-a-multi-agent-pipeline-for-zero-shot-aspect-sentiment-triplet-extraction)  
+   evidence：大语言模型的稀疏参数高效微调
+4. [Simon-SR: Spatially Adaptive Modulation and Visual Prompt Adaptation for Text-Reinforced Super-Resolution](/202607/13/2607.09351v1-simon-sr-spatially-adaptive-modulation-and-visual-prompt-adaptation-for-text-reinforced-super-resolution)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于多模态对齐的对比提示学习
+5. [Robustifying Vision-Language Models via Test-Time Prompt Adaptation](/202607/13/2607.09450v1-robustifying-vision-language-models-via-test-time-prompt-adaptation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：视觉语言模型的测试时提示词自适应
+6. [Geometric--Nongeometric Optimizer Calculus: A Modular Language for Reachable Gradient Methods](/202607/13/2607.07206v1-geometric--nongeometric-optimizer-calculus-a-modular-language-for-reachable-gradient-methods)  
    标签：评分：6.0/10、query:bopl
-   evidence：思维链提示与零样本部署
+   evidence：用于审计可达梯度方法的模块化语言
 
 
 <div class="dpr-home-promo-card">
