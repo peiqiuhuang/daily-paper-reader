@@ -6,50 +6,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-14
-- 运行时间：2026-07-14 21:18:42 UTC
+- 最新运行日期：2026-07-15
+- 运行时间：2026-07-15 20:28:09 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：5
-- 速读区：4
+- 本次总论文数：10
+- 精读区：2
+- 速读区：8
 
 ### 今日简报（AI）
-- 今日共生成 9 篇推荐（精读 5 篇，速读 4 篇）
-- 精读：《Metadata-Free Meta-Reweighted Direct Preference Optimization under Noisy Preference Labels》（9.0/10）, 《Sharper Analysis of Single-Loop Methods for Bilevel Optimization》（9.0/10）
-- 速读：《Complexity of partitioned-items response problems: matchings and perfect matchings》（7.0/10）, 《OS-Pruner: Pruning Chains-of-Thought of Reasoning Models via Optimal Stopping》（7.0/10）, 《Efficient Long-Horizon Learning for Learned Optimization》（6.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202607/14/README](/202607/14/README)
+今日聚焦 10 篇前沿进展，深度拆解多组件提示词优化策略与免微调的临床多智能体诊断系统。
+核心结论指出 MAGE 框架能有效平衡提示词的稳定性与性能，而多智能体协作已在医疗症状检测中展现出极高的自主验证潜力。
+建议关注如何利用结构化提示词和智能体架构，在不进行昂贵微调的前提下提升大模型在垂直领域的专业表现。
+- 详情：[/202607/15/README](/202607/15/README)
 
 ### 精读区论文标签
-1. [Metadata-Free Meta-Reweighted Direct Preference Optimization under Noisy Preference Labels](/202607/14/2607.09796v1-metadata-free-meta-reweighted-direct-preference-optimization-under-noisy-preference-labels)  
+1. [MAGE: Understanding Stability-Performance Trade-offs in Multi-component Prompt Optimization](/202607/15/2607.11944v1-mage-understanding-stability-performance-trade-offs-in-multi-component-prompt-optimization)  
    标签：评分：9.0/10、query:bopl
-   evidence：用于大语言模型偏好对齐的双层优化
-2. [Sharper Analysis of Single-Loop Methods for Bilevel Optimization](/202607/14/2607.10263v1-sharper-analysis-of-single-loop-methods-for-bilevel-optimization)  
+   evidence：迭代提示词优化与演化
+2. [A Multi-Agent System for Autonomous, Fine-Tuning-Free Clinical Symptom Detection: Development and Validation Study](/202607/15/2607.12886v1-a-multi-agent-system-for-autonomous-fine-tuning-free-clinical-symptom-detection-development-and-validation-study)  
    标签：评分：9.0/10、query:bopl
-   evidence：单圈双层优化算法分析
-3. [Stochastic Dynamic Barrier Perturbed Gradient Methods for Nonconvex Simple Bilevel Optimization](/202607/14/2607.10957v1-stochastic-dynamic-barrier-perturbed-gradient-methods-for-nonconvex-simple-bilevel-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：具有非凸目标的随机简单双层优化
-4. [Implicit Fine-tuning via Context Engineering: A Curriculum Learning Framework for Multimodal Entity Alignment](/202607/14/2607.10532v1-implicit-fine-tuning-via-context-engineering-a-curriculum-learning-framework-for-multimodal-entity-alignment)  
-   标签：评分：8.0/10、query:bopl
-   evidence：上下文工程与自动化提示优化
-5. [Prompt Generation Technical Report](/202607/14/2607.11326v1-prompt-generation-technical-report)  
-   标签：评分：8.0/10、query:bopl
-   evidence：自动化提示生成框架
+   evidence：自主编写并优化提取提示词
 
 ### 速读区论文标签
-1. [Complexity of partitioned-items response problems: matchings and perfect matchings](/202607/14/2607.09953v1-complexity-of-partitioned-items-response-problems-matchings-and-perfect-matchings)  
+1. [PromptGraph: Graph-Guided Prompt Sanitization for Balancing Privacy and Utility in LLM Inference](/202607/15/2607.10709v1-promptgraph-graph-guided-prompt-sanitization-for-balancing-privacy-and-utility-in-llm-inference)  
    标签：评分：7.0/10、query:bopl
-   evidence：双层优化问题与组合优化
-2. [OS-Pruner: Pruning Chains-of-Thought of Reasoning Models via Optimal Stopping](/202607/14/2607.11089v1-os-pruner-pruning-chains-of-thought-of-reasoning-models-via-optimal-stopping)  
-   标签：评分：7.0/10、query:bopl
-   evidence：思维链提示优化
-3. [Efficient Long-Horizon Learning for Learned Optimization](/202607/14/2607.06772v3-efficient-long-horizon-learning-for-learned-optimization)  
+   evidence：图引导的提示净化与优化
+2. [Distributionally Robust Optimization via Targeted Integral Probability Metrics for General Data Processes](/202607/15/2607.05731v1-distributionally-robust-optimization-via-targeted-integral-probability-metrics-for-general-data-processes)  
    标签：评分：6.0/10、query:bopl
-   evidence：元学习神经网络优化器
-4. [Demographic Prompting at Scale: When More Attributes Hurt LLM--Human Agreement](/202607/14/2607.10590v1-demographic-prompting-at-scale-when-more-attributes-hurt-llm--human-agreement)  
+   evidence：分布鲁棒优化框架
+3. [What to Keep, What to Forget: A Rate--Distortion View of Memory Compaction in LLMs and Agents](/202607/15/2607.08032v1-what-to-keep-what-to-forget-a-rate--distortion-view-of-memory-compaction-in-llms-and-agents)  
    标签：评分：6.0/10、query:bopl
-   evidence：将人口统计属性作为提示词线索
+   evidence：为内存压缩进行提示词剪枝与蒸馏
+4. [From Direction to Magnitude: How Multimodal Instruction-Tuning Reorganizes the Geometric Encoding of Identity-Specifying Prompts in Transformer Hidden States](/202607/15/2607.09842v1-from-direction-to-magnitude-how-multimodal-instruction-tuning-reorganizes-the-geometric-encoding-of-identity-specifying-prompts-in-transformer-hidden-states)  
+   标签：评分：6.0/10、query:bopl
+   evidence：身份指定提示词的几何编码
+5. [Privacy-Aware Collaborative and Distributed Bayesian Optimization](/202607/15/2607.11600v1-privacy-aware-collaborative-and-distributed-bayesian-optimization)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于贝叶斯优化的协作元学习框架
+6. [Scenario-Free Uncertainty-Aware DLMP-Based Bilevel Coordination of EV Charging and Reactive Power Support in Distribution Networks](/202607/15/2607.12481v1-scenario-free-uncertainty-aware-dlmp-based-bilevel-coordination-of-ev-charging-and-reactive-power-support-in-distribution-networks)  
+   标签：评分：6.0/10、query:bopl
+   evidence：协同充电的双层优化框架
+7. [UniMedSeg: Unified In-Context Learning for Multi-Paradigm 2D/3D Medical Image Segmentation](/202607/15/2607.12896v1-unimedseg-unified-in-context-learning-for-multi-paradigm-2d3d-medical-image-segmentation)  
+   标签：评分：6.0/10、query:bopl
+   evidence：统一的上下文学习与提示范式
+8. [Form, Not Content? A Preregistered, Placebo-Controlled Evaluation of Learned Error-Conditioned Self-Repair Through Prompts and Weights in Frozen Small Code Models](/202607/15/2607.12962v1-form-not-content-a-preregistered-placebo-controlled-evaluation-of-learned-error-conditioned-self-repair-through-prompts-and-weights-in-frozen-small-code-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：代码模型中通过提示进行自我修复
 
 
 <div class="dpr-home-promo-card">
