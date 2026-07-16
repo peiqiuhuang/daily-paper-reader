@@ -6,52 +6,29 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-15
-- 运行时间：2026-07-15 20:28:09 UTC
+- 最新运行日期：2026-07-16
+- 运行时间：2026-07-16 21:24:21 UTC
 - 运行状态：成功
-- 本次总论文数：10
+- 本次总论文数：2
 - 精读区：2
-- 速读区：8
+- 速读区：0
 
 ### 今日简报（AI）
-今日聚焦 10 篇前沿进展，深度拆解多组件提示词优化策略与免微调的临床多智能体诊断系统。
-核心结论指出 MAGE 框架能有效平衡提示词的稳定性与性能，而多智能体协作已在医疗症状检测中展现出极高的自主验证潜力。
-建议关注如何利用结构化提示词和智能体架构，在不进行昂贵微调的前提下提升大模型在垂直领域的专业表现。
-- 详情：[/202607/15/README](/202607/15/README)
+今日聚焦大模型的高效适配与智能体的自我演化，深度解读两篇 8.0 分前沿论文。
+重点关注通过注意力头重构实现的数据高效微调，以及利用门控语义质量多样性驱动的智能体自主进化。
+建议关注低资源模型调优与自主进化框架，以提升复杂任务下的模型表现与系统鲁棒性。
+- 详情：[/202607/16/README](/202607/16/README)
 
 ### 精读区论文标签
-1. [MAGE: Understanding Stability-Performance Trade-offs in Multi-component Prompt Optimization](/202607/15/2607.11944v1-mage-understanding-stability-performance-trade-offs-in-multi-component-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：迭代提示词优化与演化
-2. [A Multi-Agent System for Autonomous, Fine-Tuning-Free Clinical Symptom Detection: Development and Validation Study](/202607/15/2607.12886v1-a-multi-agent-system-for-autonomous-fine-tuning-free-clinical-symptom-detection-development-and-validation-study)  
-   标签：评分：9.0/10、query:bopl
-   evidence：自主编写并优化提取提示词
+1. [Data-Efficient Adaptation of LLMs via Attention Head Reweighting](/202607/16/2607.13425v1-data-efficient-adaptation-of-llms-via-attention-head-reweighting)  
+   标签：评分：8.0/10、query:bopl
+   evidence：通过注意力头重构实现参数高效适配
+2. [Self-Evolving Agent Harnesses via Gated Semantic Quality-Diversity](/202607/16/2607.13683v1-self-evolving-agent-harnesses-via-gated-semantic-quality-diversity)  
+   标签：评分：8.0/10、query:bopl
+   evidence：自动改进智能体提示词与配置
 
 ### 速读区论文标签
-1. [PromptGraph: Graph-Guided Prompt Sanitization for Balancing Privacy and Utility in LLM Inference](/202607/15/2607.10709v1-promptgraph-graph-guided-prompt-sanitization-for-balancing-privacy-and-utility-in-llm-inference)  
-   标签：评分：7.0/10、query:bopl
-   evidence：图引导的提示净化与优化
-2. [Distributionally Robust Optimization via Targeted Integral Probability Metrics for General Data Processes](/202607/15/2607.05731v1-distributionally-robust-optimization-via-targeted-integral-probability-metrics-for-general-data-processes)  
-   标签：评分：6.0/10、query:bopl
-   evidence：分布鲁棒优化框架
-3. [What to Keep, What to Forget: A Rate--Distortion View of Memory Compaction in LLMs and Agents](/202607/15/2607.08032v1-what-to-keep-what-to-forget-a-rate--distortion-view-of-memory-compaction-in-llms-and-agents)  
-   标签：评分：6.0/10、query:bopl
-   evidence：为内存压缩进行提示词剪枝与蒸馏
-4. [From Direction to Magnitude: How Multimodal Instruction-Tuning Reorganizes the Geometric Encoding of Identity-Specifying Prompts in Transformer Hidden States](/202607/15/2607.09842v1-from-direction-to-magnitude-how-multimodal-instruction-tuning-reorganizes-the-geometric-encoding-of-identity-specifying-prompts-in-transformer-hidden-states)  
-   标签：评分：6.0/10、query:bopl
-   evidence：身份指定提示词的几何编码
-5. [Privacy-Aware Collaborative and Distributed Bayesian Optimization](/202607/15/2607.11600v1-privacy-aware-collaborative-and-distributed-bayesian-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于贝叶斯优化的协作元学习框架
-6. [Scenario-Free Uncertainty-Aware DLMP-Based Bilevel Coordination of EV Charging and Reactive Power Support in Distribution Networks](/202607/15/2607.12481v1-scenario-free-uncertainty-aware-dlmp-based-bilevel-coordination-of-ev-charging-and-reactive-power-support-in-distribution-networks)  
-   标签：评分：6.0/10、query:bopl
-   evidence：协同充电的双层优化框架
-7. [UniMedSeg: Unified In-Context Learning for Multi-Paradigm 2D/3D Medical Image Segmentation](/202607/15/2607.12896v1-unimedseg-unified-in-context-learning-for-multi-paradigm-2d3d-medical-image-segmentation)  
-   标签：评分：6.0/10、query:bopl
-   evidence：统一的上下文学习与提示范式
-8. [Form, Not Content? A Preregistered, Placebo-Controlled Evaluation of Learned Error-Conditioned Self-Repair Through Prompts and Weights in Frozen Small Code Models](/202607/15/2607.12962v1-form-not-content-a-preregistered-placebo-controlled-evaluation-of-learned-error-conditioned-self-repair-through-prompts-and-weights-in-frozen-small-code-models)  
-   标签：评分：6.0/10、query:bopl
-   evidence：代码模型中通过提示进行自我修复
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
