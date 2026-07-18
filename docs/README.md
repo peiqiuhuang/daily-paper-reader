@@ -6,43 +6,26 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-17
-- 运行时间：2026-07-17 21:04:41 UTC
+- 最新运行日期：2026-07-18
+- 运行时间：2026-07-18 19:50:34 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：4
-- 速读区：3
+- 本次总论文数：1
+- 精读区：0
+- 速读区：1
 
 ### 今日简报（AI）
-今日聚焦 7 篇 AI 前沿进展，重点攻克超轻量视频生成微调与多粒度视觉语言模型。
-MagicPrompt 实现了极低成本的视频生成优化，而 U 型多粒度学习显著增强了 VLM 的跨模态理解深度。
-推荐优先研读视频生成效率提升方案，并关注 Agent 如何通过经验学习实现自我进化。
-- 详情：[/202607/17/README](/202607/17/README)
+今日聚焦大模型微调中的“顿悟”现象，探索模型能力的非线性跨越。
+研究揭示了大规模模型在自我改进过程中，往往呈现出突发性而非渐进式的性能飞跃。
+建议开发者在微调时保持耐心，关注模型可能出现的关键拐点，而非仅看初期的线性增长。
+- 详情：[/202607/18/README](/202607/18/README)
 
 ### 精读区论文标签
-1. [MagicPrompt: Ultra-Lightweight Prompt Tuning for Video Generation](/202607/17/2607.14595v1-magicprompt-ultra-lightweight-prompt-tuning-for-video-generation)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于参数高效的注意力嵌入式提示微调
-2. [U-shaped Multi-granularity Learning for Vision-Language Models](/202607/17/2607.14966v1-u-shaped-multi-granularity-learning-for-vision-language-models)  
-   标签：评分：9.0/10、query:bopl
-   evidence：U型多粒度提示学习框架
-3. [Parameter-efficient Prompt Tuning of Vision Foundation Model With Adaptive Focal Loss for Interpretable MCI Screening](/202607/17/2607.15047v1-parameter-efficient-prompt-tuning-of-vision-foundation-model-with-adaptive-focal-loss-for-interpretable-mci-screening)  
-   标签：评分：9.0/10、query:bopl
-   evidence：利用可学习提示词令牌的参数高效框架
-4. [Advanced Image Generation: Negative Prompt Optimization and Latent Classifier Guidance](/202607/17/2607.14580v1-advanced-image-generation-negative-prompt-optimization-and-latent-classifier-guidance)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过微调的LLM进行负向提示词优化
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [How to Guide LLM Generation: Dual-Surrogate Guided Search for Automated Heuristic Design](/202607/17/2607.13911v1-how-to-guide-llm-generation-dual-surrogate-guided-search-for-automated-heuristic-design)  
-   标签：评分：7.0/10、query:bopl
-   evidence：通过LLM生成和代理引导进行自动化启发式设计
-2. [MemoHarness: Agent Harnesses That Learn from Experience](/202607/17/2607.14159v1-memoharness-agent-harnesses-that-learn-from-experience)  
-   标签：评分：7.0/10、query:bopl
-   evidence：从执行中学习的自适应控制层优化框架
-3. [Meta-Learning Preferences for Multilingual LLM Alignment](/202607/17/2607.13315v1-meta-learning-preferences-for-multilingual-llm-alignment)  
+1. [Self-Improving is Often Sudden: Enlightenment-style Finetuning for Large-Scale Models](/202607/18/2607.13395v1-self-improving-is-often-sudden-enlightenment-style-finetuning-for-large-scale-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于大语言模型偏好优化的元学习框架
+   evidence：无需权重更新、修改快捷连接的免训练后调优范式
 
 
 <div class="dpr-home-promo-card">

@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-07-18 <!--dpr-date:20260718-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202607/18/2607.13395v1-self-improving-is-often-sudden-enlightenment-style-finetuning-for-large-scale-models" data-sidebar-item="{&quot;title&quot;: &quot;Self-Improving is Often Sudden: Enlightenment-style Finetuning for Large-Scale Models&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2607.13395v1-self-improving-is-often-sudden-enlightenment-style-finetuning-for-large-scale-models&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;无需权重更新、修改快捷连接的免训练后调优范式&quot;}">Self-Improving is Often Sudden: Enlightenment-style Finetuning for Large-Scale Models</a>
   * 2026-07-17 <!--dpr-date:20260717-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202607/17/2607.14595v1-magicprompt-ultra-lightweight-prompt-tuning-for-video-generation" data-sidebar-item="{&quot;title&quot;: &quot;MagicPrompt: Ultra-Lightweight Prompt Tuning for Video Generation&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2607.14595v1-magicprompt-ultra-lightweight-prompt-tuning-for-video-generation&quot;, &quot;score&quot;: &quot;9.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;用于参数高效的注意力嵌入式提示微调&quot;}">MagicPrompt: Ultra-Lightweight Prompt Tuning for Video Generation</a>
