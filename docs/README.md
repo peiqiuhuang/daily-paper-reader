@@ -6,41 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-21
-- 运行时间：2026-07-21 21:14:20 UTC
+- 最新运行日期：2026-07-23
+- 运行时间：2026-07-23 20:43:39 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：2
-- 速读区：5
+- 本次总论文数：17
+- 精读区：6
+- 速读区：11
 
 ### 今日简报（AI）
-今日深度解析双层优化理论突破与模型递归自我提升，涵盖从数学底层逻辑到跨领域自动化的 7 项前沿进展。
-- 详情：[/202607/21/README](/202607/21/README)
+今日精选 17 篇前沿论文，重点突破超轻量化视频生成 Prompt 调优与无需反向传播的模型行为引导技术。
+MagicPrompt 实现了极简的视频生成优化，而通过潜空间后验分布控制模型行为的新范式，为精准引导提供了高效路径。
+建议关注参数高效微调（PEFT）在文档抽取与文生图修复中的落地实践，以低成本提升特定任务的生成质量。
+- 详情：[/202607/23/README](/202607/23/README)
 
 ### 精读区论文标签
-1. [Limiting Stationarity of Regularized Gap-Function Reformulations for Bilevel Optimization with Unbounded Multipliers](/202607/21/2607.17772v1-limiting-stationarity-of-regularized-gap-function-reformulations-for-bilevel-optimization-with-unbounded-multipliers)  
+1. [MagicPrompt: Ultra-Lightweight Prompt Tuning for Video Generation](/202607/23/2607.14595v2-magicprompt-ultra-lightweight-prompt-tuning-for-video-generation)  
    标签：评分：9.0/10、query:bopl
-   evidence：双层优化的正则化间隙函数重构
-2. [Recursive Harness Self-Improvement](/202607/21/2607.15524v1-recursive-harness-self-improvement)  
+   evidence：用于参数高效的注意力嵌入提示微调
+2. [Elicitation without Backpropagation: Steering Model Behavior by Optimizing the Latent Posterior](/202607/23/2607.18804v1-elicitation-without-backpropagation-steering-model-behavior-by-optimizing-the-latent-posterior)  
+   标签：评分：9.0/10、query:bopl
+   evidence：用于引导行为的后验前缀微调
+3. [On the Computational Complexity of Bilevel Integer Linear Programming](/202607/23/2607.15369v1-on-the-computational-complexity-of-bilevel-integer-linear-programming)  
    标签：评分：8.0/10、query:bopl
-   evidence：将用户构建的测试框架优化为提示级规范
+   evidence：双层整数线性规划的计算复杂度
+4. [Stochastic Meta-Unlearning: Bridging Language Backbone and Multimodal Unlearning](/202607/23/2607.18615v1-stochastic-meta-unlearning-bridging-language-backbone-and-multimodal-unlearning)  
+   标签：评分：8.0/10、query:bopl
+   evidence：元脱退学习的双层优化框架
+5. [CPInj: Uncovering Prompt Injection Risks in Textual Collaborative Prompt Optimization](/202607/23/2607.18622v1-cpinj-uncovering-prompt-injection-risks-in-textual-collaborative-prompt-optimization)  
+   标签：评分：8.0/10、query:bopl
+   evidence：文本协作提示词优化针对优化循环
+6. [Point-Selection Fine-Tuning Framework for Robust Point Cloud Classification](/202607/23/2607.19711v1-point-selection-fine-tuning-framework-for-robust-point-cloud-classification)  
+   标签：评分：8.0/10、query:bopl
+   evidence：参数高效提示词生成
 
 ### 速读区论文标签
-1. [LLM-Driven AutoML for Cross-Lingual Handwritten OCR: Closed-Loop Neural Architecture Search with GPT-5, GPT-4o, and Claude Sonnet 4](/202607/21/2607.15509v1-llm-driven-automl-for-cross-lingual-handwritten-ocr-closed-loop-neural-architecture-search-with-gpt-5-gpt-4o-and-claude-sonnet-4)  
+1. [Schema-Constrained Document-Level Event Argument Extraction with Lightweight LLM Fine-Tuning](/202607/23/2607.16808v1-schema-constrained-document-level-event-argument-extraction-with-lightweight-llm-fine-tuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：大模型驱动的自动神经架构搜索与优化
-2. [CoEvoP&R: Co-Evolving Placement Objectives with Routing Feedback via Large Language Models](/202607/21/2607.17398v1-coevopr-co-evolving-placement-objectives-with-routing-feedback-via-large-language-models)  
+   evidence：参数高效微调与提示中的角色集注入
+2. [Manifold-Constrained Hyper-Connections for Parameter-Efficient Finetuning](/202607/23/2607.18130v1-manifold-constrained-hyper-connections-for-parameter-efficient-finetuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：基于LLM的自动演化分析布局目标框架
-3. [TopoTuner: Topological Finetuning of Large Language Models](/202607/21/2607.16637v1-topotuner-topological-finetuning-of-large-language-models)  
+   evidence：针对冻结主干网络的参数高效微调 (PEFT)
+3. [One Rewrite to Fix Them All? Type-Aware Repair Allocation for Text-to-Image Prompt Optimization](/202607/23/2607.18724v1-one-rewrite-to-fix-them-all-type-aware-repair-allocation-for-text-to-image-prompt-optimization)  
+   标签：评分：7.0/10、query:bopl
+   evidence：针对文本生成图像提示词优化的类型感知修复分配
+4. [From Trajectories to Instructions: Language-Conditioned Meta-Reinforcement Learning](/202607/23/2607.18830v1-from-trajectories-to-instructions-language-conditioned-meta-reinforcement-learning)  
+   标签：评分：7.0/10、query:bopl
+   evidence：等同于双层优化的双循环元学习框架
+5. [Prompt Design at Scale: How Format, Instruction Count, and Context Length Shape Instruction Adherence and Hallucination in Large Language Models](/202607/23/2607.19257v1-prompt-design-at-scale-how-format-instruction-count-and-context-length-shape-instruction-adherence-and-hallucination-in-large-language-models)  
+   标签：评分：7.0/10、query:bopl
+   evidence：关于提示词设计决策的受控实验
+6. [OPIUM: Mitigating Steering Externalities and Over-Refusal via Dual Objective Latent Optimization](/202607/23/2607.19806v1-opium-mitigating-steering-externalities-and-over-refusal-via-dual-objective-latent-optimization)  
+   标签：评分：7.0/10、query:bopl
+   evidence：通过转向向量控制大语言模型的潜空间优化
+7. [Meta-Learning Preferences for Multilingual LLM Alignment](/202607/23/2607.13315v2-meta-learning-preferences-for-multilingual-llm-alignment)  
    标签：评分：6.0/10、query:bopl
-   evidence：大模型适配中的参数高效选择性冻结
-4. [LenGuard-GPC: Length Guarding with Guided-Prompt Consistency for Spatial Reasoning Reinforce Learning](/202607/21/2607.17243v1-lenguard-gpc-length-guarding-with-guided-prompt-consistency-for-spatial-reasoning-reinforce-learning)  
+   evidence：偏好优化的元学习
+8. [RIMS: Preference Optimization via Smoothed Multi-pair Aggregation for Small-Scale LLM Retrieval-Augmented Generation](/202607/23/2607.16431v1-rims-preference-optimization-via-smoothed-multi-pair-aggregation-for-small-scale-llm-retrieval-augmented-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：强化学习中的引导提示一致性
-5. [DA-MergeLoRA: Hypernetwork-Based LoRA Merging for Few-Shot Test-Time Domain Adaptation](/202607/21/2607.17467v1-da-mergelora-hypernetwork-based-lora-merging-for-few-shot-test-time-domain-adaptation)  
+   evidence：针对小型LLM的可微偏好优化框架
+9. [SALT: Salience-Aware Lexical Trie for Long-Context Compression](/202607/23/2607.17486v1-salt-salience-aware-lexical-trie-for-long-context-compression)  
    标签：评分：6.0/10、query:bopl
-   evidence：结合LoRA微调与模型合并进行领域自适应
+   evidence：输入级提示词压缩框架
+10. [A Better Start for Language Models: Domain-Conditional Position Offsets](/202607/23/2607.18302v1-a-better-start-for-language-models-domain-conditional-position-offsets)  
+   标签：评分：6.0/10、query:bopl
+   evidence：在冻结权重的情况下向嵌入添加学习向量
+11. [Selective State-Space Adaptation and Retrieval for Language Model Reasoning](/202607/23/2607.19326v1-selective-state-space-adaptation-and-retrieval-for-language-model-reasoning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：参数高效自适应
 
 
 <div class="dpr-home-promo-card">
