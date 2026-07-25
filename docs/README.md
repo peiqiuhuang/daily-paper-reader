@@ -6,46 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-24
-- 运行时间：2026-07-24 21:26:33 UTC
+- 最新运行日期：2026-07-25
+- 运行时间：2026-07-25 21:16:11 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：2
-- 速读区：6
+- 本次总论文数：5
+- 精读区：1
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦多智能体 RAG 协同优化与联邦学习隐私保护，深度解析 8 篇大模型前沿进展。
-重点关注 GRADRAG 提出的跨组件提示词自适应技术，以及通过子空间分解专家模型解决联邦微调中数据异构与隐私难题的新方案。
-建议开发者关注多智能体系统的协同效率及隐私敏感场景下的部署策略，探索
-- 详情：[/202607/24/README](/202607/24/README)
+今日深度解析人脸防伪新范式，并同步覆盖多模态解耦、对话自进化及在线优化等前沿领域。
+核心推荐 DINO-VPT 方案，其通过层级视觉提示微调，实现了物理与数字双重欺诈攻击的高效统一防御。
+建议关注生物识别安全防护的最新进展，并留意低秩表示微调在多模态任务中的提效潜力。
+- 详情：[/202607/25/README](/202607/25/README)
 
 ### 精读区论文标签
-1. [GRADRAG: Cross-Component Prompt Adaptation for Coordinated Multi-Agent RAG](/202607/24/2607.21324v1-gradrag-cross-component-prompt-adaptation-for-coordinated-multi-agent-rag)  
-   标签：评分：9.0/10、query:bopl
-   evidence：多智能体RAG的迭代提示词自适应与优化
-2. [Towards Privacy-Preserving Federated Prompt Tuning under Data Heterogeneity: A Subspace-Decomposed Expert Approach](/202607/24/2607.21417v1-towards-privacy-preserving-federated-prompt-tuning-under-data-heterogeneity-a-subspace-decomposed-expert-approach)  
+1. [DINO-VPT: Hierarchical Visual Prompt Tuning for Joint Physical-Digital Face Anti-Spoofing](/202607/25/2607.20900v1-dino-vpt-hierarchical-visual-prompt-tuning-for-joint-physical-digital-face-anti-spoofing)  
    标签：评分：8.0/10、query:bopl
-   evidence：视觉语言模型的联邦提示微调
+   evidence：用于高效模型适配的分层视觉提示微调
 
 ### 速读区论文标签
-1. [The Maskability Index: Predicting Task-Objective Alignment in Pretrained Language Models](/202607/24/2607.20265v1-the-maskability-index-predicting-task-objective-alignment-in-pretrained-language-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：预测语言模型提示策略的任务目标对齐情况
-2. [From Agent Failures to Text Policies: What Works and What Breaks](/202607/24/2607.20668v1-from-agent-failures-to-text-policies-what-works-and-what-breaks)  
-   标签：评分：7.0/10、query:bopl
-   evidence：在不改变模型权重的情况下优化文本组件
-3. [EmoAgent-R1: Towards Multimodal Emotion Understanding with Reinforcement Learning-based Dynamic Agent Specialization](/202607/24/2607.21013v1-emoagent-r1-towards-multimodal-emotion-understanding-with-reinforcement-learning-based-dynamic-agent-specialization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：基于强化学习的动态代理专业化以优化提示词
-4. [Gradient-Energy Guided Block-Wise Perturbations for Sharpness-Aware Minimization](/202607/24/2607.18306v1-gradient-energy-guided-block-wise-perturbations-for-sharpness-aware-minimization)  
+1. [MultiLoReFT: Decoupling Shared and Modality-Specific Subspaces in Multimodal Learning via Low-Rank Representation Fine-Tuning](/202607/25/2607.16789v1-multiloreft-decoupling-shared-and-modality-specific-subspaces-in-multimodal-learning-via-low-rank-representation-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：预算分配的约束优化
-5. [OPIUM: Mitigating Steering Externalities and Over-Refusal via Dual Objective Latent Optimization](/202607/24/2607.19806v2-opium-mitigating-steering-externalities-and-over-refusal-via-dual-objective-latent-optimization)  
+   evidence：多模态学习中的低秩表示微调
+2. [Verifiable Self-Evolution for Open-Ended Dialogue Skills via Future-Feedback Prediction](/202607/25/2607.18973v1-verifiable-self-evolution-for-open-ended-dialogue-skills-via-future-feedback-prediction)  
    标签：评分：6.0/10、query:bopl
-   evidence：控制向量的双目标潜在优化
-6. [Test-Time Training for Modality Order Consistency in Vision-Language Models](/202607/24/2607.20351v1-test-time-training-for-modality-order-consistency-in-vision-language-models)  
+   evidence：通过反馈预测实现对话技能的自我演进
+3. [Online Optimization of Difference-of-Convex Compositions with Smooth Mappings](/202607/25/2607.19553v1-online-optimization-of-difference-of-convex-compositions-with-smooth-mappings)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉语言模型提示中模态顺序一致性的测试时训练
+   evidence：结构化非凸问题的在线优化
+4. [PyroDash: Cost-Efficient Token-Level Small-Large Language Model Collaborative Inference](/202607/25/2607.20327v1-pyrodash-cost-efficient-token-level-small-large-language-model-collaborative-inference)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于大语言模型协作推理的控制标记嵌入学习
 
 
 <div class="dpr-home-promo-card">
