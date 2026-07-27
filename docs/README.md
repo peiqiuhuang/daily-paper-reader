@@ -6,41 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-26
-- 运行时间：2026-07-26 20:59:12 UTC
+- 最新运行日期：2026-07-27
+- 运行时间：2026-07-27 20:15:45 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：0
+- 本次总论文数：7
+- 精读区：1
 - 速读区：6
 
 ### 今日简报（AI）
-今日速览 6 篇前沿论文，涵盖数据集蒸馏优化、Transformer 任务适配机制及高表现力语音合成。
-重点关注通过影响匹配（Influence Matching）提升数据压缩效率，以及 Harness 层如何显著增强 TTS 的上下文感知能力。
-建议对高效模型训练和多模态生成感兴趣的读者，深入了解这些针对架构与数据效率的改进方案。
-- 详情：[/202607/26/README](/202607/26/README)
+今日聚焦视觉大模型适配与经验抽象，深度解析了层级信息分配对模型性能的关键影响。
+重点推荐探索视觉基础模型的层级优化策略，以及利用“自我笔记”提升LLM抽象能力的创新实验。
+建议优先研读高分视觉适配论文，并关注PoLoRA等轻量化微调工具在实际场景中的效率提升。
+- 详情：[/202607/27/README](/202607/27/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Rethinking Layer-Wise Information Allocation for Vision Foundation Model Adaptation](/202607/27/2607.21973v1-rethinking-layer-wise-information-allocation-for-vision-foundation-model-adaptation)  
+   标签：评分：8.0/10、query:bopl
+   evidence：通过视觉提示微调（VPT）进行参数高效适配
 
 ### 速读区论文标签
-1. [Dataset Distillation by Influence Matching](/202607/26/2607.16859v1-dataset-distillation-by-influence-matching)  
+1. [Notes to Self: Can LLMs Benefit from Experiential Abstractions?](/202607/27/2607.20372v1-notes-to-self-can-llms-benefit-from-experiential-abstractions)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于优化的可微影响匹配
-2. [First-Order Predictable but Pairwise Fragile: Local Task Adaptation in Trained Transformers](/202607/26/2607.16821v1-first-order-predictable-but-pairwise-fragile-local-task-adaptation-in-trained-transformers)  
+   evidence：抽象增强的训练提示词
+2. [PoLoRA: A Preconditioned Orthogonalized LoRA Optimizer](/202607/27/2607.17620v1-polora-a-preconditioned-orthogonalized-lora-optimizer)  
    标签：评分：6.0/10、query:bopl
-   evidence：局部任务适配与LoRA运行点分析
-3. [Harness TTS: Towards Context-Aware Expressive Speech Synthesis with Harness Layer](/202607/26/2607.17900v2-harness-tts-towards-context-aware-expressive-speech-synthesis-with-harness-layer)  
+   evidence：预条件正交化LoRA优化器
+3. [Evidence-in-the-Loop: Trace-Driven Optimization for Customer-Service LLM Agents](/202607/27/2607.18039v1-evidence-in-the-loop-trace-driven-optimization-for-customer-service-llm-agents)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于表现力语音合成的自动化提示工具路由
-4. [Co-Evolving LLM Evaluators and Policies via DynamicRubric](/202607/26/2607.20083v2-co-evolving-llm-evaluators-and-policies-via-dynamicrubric)  
+   evidence：大模型智能体的追踪驱动优化
+4. [Model-Agnostic Meta Learning for Differentiable MPC](/202607/27/2607.19271v1-model-agnostic-meta-learning-for-differentiable-mpc)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过反馈协同演化评估器和策略
-5. [SoftReason: A Fully Differentiable Neuro-Soft-Symbolic Deductive Reasoning Architecture over High-Dimensional Perceptual Data](/202607/26/2607.20402v1-softreason-a-fully-differentiable-neuro-soft-symbolic-deductive-reasoning-architecture-over-high-dimensional-perceptual-data)  
+   evidence：通过元学习优化 MPC 超参数
+5. [Prompt as a Data Type: In-Database LLM Prompt Management and Rewriting](/202607/27/2607.21756v1-prompt-as-a-data-type-in-database-llm-prompt-management-and-rewriting)  
    标签：评分：6.0/10、query:bopl
-   evidence：全可微推理架构
-6. [Memory-Computation Tradeoffs in Semi Amortized Parametric Optimization](/202607/26/2607.20769v1-memory-computation-tradeoffs-in-semi-amortized-parametric-optimization)  
+   evidence：数据库内提示词管理与优化
+6. [IFCLoRA: Topology-Aware Rank Allocation for Parameter-Efficient Fine-Tuning](/202607/27/2607.22251v1-ifclora-topology-aware-rank-allocation-for-parameter-efficient-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：摊销参数优化与梯度下降
+   evidence：参数高效微调的拓扑感知秩分配
 
 
 <div class="dpr-home-promo-card">
