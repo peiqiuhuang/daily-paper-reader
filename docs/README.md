@@ -6,73 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-29
-- 运行时间：2026-07-29 21:01:37 UTC
+- 最新运行日期：2026-07-30
+- 运行时间：2026-07-30 20:28:29 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
-- 速读区：11
+- 本次总论文数：11
+- 精读区：2
+- 速读区：9
 
 ### 今日简报（AI）
-今日精选 17 篇前沿论文，重点突破大规模路径规划的自动化启发式设计与文生图提示词优化。
-SpecAHD 通过局部化策略提升复杂调度效率，PRISM 则利用图像反馈机制显著增强了生成内容的精准度。
-建议关注大模型在组合优化与多模态自我进化领域的交叉应用。
-- 详情：[/202607/29/README](/202607/29/README)
+今日聚焦 11 篇 AI 前沿进展，深度拆解上下文学习机制与大模型评估意识的抑制策略。
+核心结论指出 ICL 本质是隐式策略梯度，并证明了仅通过输入端即可有效抑制模型在评估时的特定潜变量激活。
+建议优先研读 ICL 的数学本质，并关注 MoE 与 LoRA 结合带来的模型微调与推理效率提升。
+- 详情：[/202607/30/README](/202607/30/README)
 
 ### 精读区论文标签
-1. [SpecAHD: Localize to Specialize for Automated Heuristic Design in Large-Scale Routing Problems](/202607/29/2607.23676v1-specahd-localize-to-specialize-for-automated-heuristic-design-in-large-scale-routing-problems)  
-   标签：评分：9.0/10、query:bopl
-   evidence：基于大模型的双层框架自动化启发式设计
-2. [PRISM: Prompt Refinement via Image-grounded Self-rewarding Mechanism for Text-to-Image Generation](/202607/29/2607.24353v1-prism-prompt-refinement-via-image-grounded-self-rewarding-mechanism-for-text-to-image-generation)  
-   标签：评分：9.0/10、query:bopl
-   evidence：通过图像引导的自奖励机制进行自动提示词优化
-3. [Are Prompt Optimizers Blind? Cross-Modal Visual Feedback for Automatic Prompt Optimization](/202607/29/2607.24354v1-are-prompt-optimizers-blind-cross-modal-visual-feedback-for-automatic-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：具有跨模态视觉反馈的自动提示词优化
-4. [Verbalized Particle Posterior: Bayesian Inference over Natural Language Hypotheses](/202607/29/2607.22961v1-verbalized-particle-posterior-bayesian-inference-over-natural-language-hypotheses)  
+1. [In-Context Learning as Implicit Policy Gradient](/202607/30/2607.23153v1-in-context-learning-as-implicit-policy-gradient)  
    标签：评分：8.0/10、query:bopl
-   evidence：通过对假设进行贝叶斯推理实现自动提示词优化
-5. [When Does Few-Shot Prompting Help? A Systematic Empirical Study of Shot-Count Effects Across Model Scale, Architecture, and Output Parsing Robustness](/202607/29/2607.22969v1-when-does-few-shot-prompting-help-a-systematic-empirical-study-of-shot-count-effects-across-model-scale-architecture-and-output-parsing-robustness)  
+   evidence：将上下文学习视为策略梯度优化
+2. [Minimizing Targeted Activations: Input-Only Suppression of Evaluation-Awareness Latents in Large Language Models](/202607/30/2607.25907v1-minimizing-targeted-activations-input-only-suppression-of-evaluation-awareness-latents-in-large-language-models)  
    标签：评分：8.0/10、query:bopl
-   evidence：大语言模型少样本提示技术的系统性研究
-6. [EviBack: Search-Agent Reinforcement Learning via Evidence-Constrained Teacher Backoff](/202607/29/2607.23955v1-eviback-search-agent-reinforcement-learning-via-evidence-constrained-teacher-backoff)  
-   标签：评分：8.0/10、query:bopl
-   evidence：自动化的APE管道用于提示词优化
+   evidence：通过令牌优化和正则化器优化流畅的提示词
 
 ### 速读区论文标签
-1. [EviBack: Search-Agent Reinforcement Learning via Evidence-Constrained Teacher Backoff](/202607/29/2607.23955v2-eviback-search-agent-reinforcement-learning-via-evidence-constrained-teacher-backoff)  
-   标签：评分：8.0/10、query:bopl
-   evidence：自动化的APE管道用于提示词优化
-2. [On computing Goldstein approximate second-order stationary points of structured nonsmooth nonconvex programs](/202607/29/2607.24122v1-on-computing-goldstein-approximate-second-order-stationary-points-of-structured-nonsmooth-nonconvex-programs)  
-   标签：评分：8.0/10、query:bopl
-   evidence：双层优化的应用
-3. [Rethinking Expert Training for Model Merging with Prompt Learning](/202607/29/2607.24465v1-rethinking-expert-training-for-model-merging-with-prompt-learning)  
-   标签：评分：8.0/10、query:bopl
-   evidence：基于提示的模型合并适配
-4. [Optimization under Persistent State-Dependent Bias: Gradient-based Method and Complexity Analysis](/202607/29/2607.26032v1-optimization-under-persistent-state-dependent-bias-gradient-based-method-and-complexity-analysis)  
-   标签：评分：8.0/10、query:bopl
-   evidence：等效的双层优化问题
-5. [TopoFE: topology-aware LLM-guided Automated Feature Engineering](/202607/29/2607.23286v1-topofe-topology-aware-llm-guided-automated-feature-engineering)  
+1. [MoE$^2$-LoRA: When MoE Models Meet MoE-style Low-Rank Adaptation](/202607/30/2607.21978v1-moe2-lora-when-moe-models-meet-moe-style-low-rank-adaptation)  
    标签：评分：7.0/10、query:bopl
-   evidence：大模型引导的提示词自动化特征工程
-6. [Multi-level Code Optimization via Mixture of Prompts](/202607/29/2607.23665v1-multi-level-code-optimization-via-mixture-of-prompts)  
+   evidence：MoE 模型的高效参数微调
+2. [Training Language Models to Cooperate with Inference-Time Controllers](/202607/30/2607.23771v1-training-language-models-to-cooperate-with-inference-time-controllers)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过混合提示进行基于LLM的代码优化
-7. [Parameter-Efficient Adaptation of SAM3 for Prompt-Driven Surgical Concept Segmentation](/202607/29/2607.23694v1-parameter-efficient-adaptation-of-sam3-for-prompt-driven-surgical-concept-segmentation)  
+   evidence：优化大语言模型以配合推理时控制器
+3. [Smooth Learning with Hard Constraints via Legendre-Regularized Policies](/202607/30/2607.24007v1-smooth-learning-with-hard-constraints-via-legendre-regularized-policies)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用LoRA对提示驱动模型进行参数高效适配
-8. [SyRuP: Enhancing System-Prompt Following via Reward-Guided Prediction in LLM Decoding](/202607/29/2607.23991v1-syrup-enhancing-system-prompt-following-via-reward-guided-prediction-in-llm-decoding)  
+   evidence：在优化中对学习的潜在参数可微
+4. [Every Time I Hire a Linguist, Inference Costs Go Down: On Linguistic Rules as Effective Prompt Compressors](/202607/30/2607.25335v2-every-time-i-hire-a-linguist-inference-costs-go-down-on-linguistic-rules-as-effective-prompt-compressors)  
    标签：评分：7.0/10、query:bopl
-   evidence：在保持基础语言模型冻结的情况下提高系统提示遵循度
-9. [How Meta-Learning Shapes LoRA Adapter Geometry in Speech Deepfake Detection](/202607/29/2607.22010v1-how-meta-learning-shapes-lora-adapter-geometry-in-speech-deepfake-detection)  
+   evidence：通过进化搜索寻找有效的提示词压缩器
+5. [Verification-Notebook Learning for Source-Aware Multimodal Misinformation Detection](/202607/30/2607.23581v1-verification-notebook-learning-for-source-aware-multimodal-misinformation-detection)  
    标签：评分：6.0/10、query:bopl
-   evidence：低秩适配器(LoRA)的元学习
-10. [Frustratingly Simple Black-Box Adaptation of Language Models via Logit Bias](/202607/29/2607.22837v1-frustratingly-simple-black-box-adaptation-of-language-models-via-logit-bias)  
+   evidence：为冻结的LVLM学习外部验证程序
+6. [Understanding Tone-Dependent Inference Cost in Large Language Models](/202607/30/2607.23915v1-understanding-tone-dependent-inference-cost-in-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：作为提示优化替代方案的黑盒适配
-11. [Learning Sampling Parameters for Diffusion Models](/202607/29/2607.23488v1-learning-sampling-parameters-for-diffusion-models)  
+   evidence：提示词语气对大模型准确率与成本的影响
+7. [Every Time I Hire a Linguist, Inference Costs Go Down: On Linguistic Rules as Effective Prompt Compressors](/202607/30/2607.25335v1-every-time-i-hire-a-linguist-inference-costs-go-down-on-linguistic-rules-as-effective-prompt-compressors)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过强化学习学习提示调节的采样参数
+   evidence：提示压缩规则的进化搜索
+8. [Meta-Learned Reward Shaping for Reinforcement Learning from Human Feedback](/202607/30/2607.26094v1-meta-learned-reward-shaping-for-reinforcement-learning-from-human-feedback)  
+   标签：评分：6.0/10、query:bopl
+   evidence：跨任务元学习任务感知塑造函数
+9. [Adaptive Gradient-Based Methods for a Broader Class of Optimization Problems under Performative Prediction](/202607/30/2607.26562v1-adaptive-gradient-based-methods-for-a-broader-class-of-optimization-problems-under-performative-prediction)  
+   标签：评分：6.0/10、query:bopl
+   evidence：具有收敛保证的基于梯度的优化方法
 
 
 <div class="dpr-home-promo-card">
