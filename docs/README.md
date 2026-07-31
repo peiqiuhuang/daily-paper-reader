@@ -6,55 +6,50 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-30
-- 运行时间：2026-07-30 20:28:29 UTC
+- 最新运行日期：2026-07-31
+- 运行时间：2026-07-31 21:21:03 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：2
+- 本次总论文数：9
+- 精读区：0
 - 速读区：9
 
 ### 今日简报（AI）
-今日聚焦 11 篇 AI 前沿进展，深度拆解上下文学习机制与大模型评估意识的抑制策略。
-核心结论指出 ICL 本质是隐式策略梯度，并证明了仅通过输入端即可有效抑制模型在评估时的特定潜变量激活。
-建议优先研读 ICL 的数学本质，并关注 MoE 与 LoRA 结合带来的模型微调与推理效率提升。
-- 详情：[/202607/30/README](/202607/30/README)
+今日速览 9 篇 AI 前沿进展，深度解析本地大模型翻译优化与提示词图工程的底层逻辑。
+核心结论指出 LLM 引导的特征设计（FunL2O）能显著提升优化效率，并明确了提示词图工程化的关键触发条件。
+建议开发者尝试将提示词结构化为图模型，以突破本地小模型在复杂任务中的性能瓶颈。
+- 详情：[/202607/31/README](/202607/31/README)
 
 ### 精读区论文标签
-1. [In-Context Learning as Implicit Policy Gradient](/202607/30/2607.23153v1-in-context-learning-as-implicit-policy-gradient)  
-   标签：评分：8.0/10、query:bopl
-   evidence：将上下文学习视为策略梯度优化
-2. [Minimizing Targeted Activations: Input-Only Suppression of Evaluation-Awareness Latents in Large Language Models](/202607/30/2607.25907v1-minimizing-targeted-activations-input-only-suppression-of-evaluation-awareness-latents-in-large-language-models)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过令牌优化和正则化器优化流畅的提示词
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [MoE$^2$-LoRA: When MoE Models Meet MoE-style Low-Rank Adaptation](/202607/30/2607.21978v1-moe2-lora-when-moe-models-meet-moe-style-low-rank-adaptation)  
+1. [Evaluating Prompt Scope and Demonstration Similarity in Local LLM Machine Translation](/202607/31/2607.26286v1-evaluating-prompt-scope-and-demonstration-similarity-in-local-llm-machine-translation)  
    标签：评分：7.0/10、query:bopl
-   evidence：MoE 模型的高效参数微调
-2. [Training Language Models to Cooperate with Inference-Time Controllers](/202607/30/2607.23771v1-training-language-models-to-cooperate-with-inference-time-controllers)  
+   evidence：评估提示范围和示例选择
+2. [FunL2O: LLM-Guided Feature Function Design for Learning to Optimize](/202607/31/2607.27389v1-funl2o-llm-guided-feature-function-design-for-learning-to-optimize)  
    标签：评分：7.0/10、query:bopl
-   evidence：优化大语言模型以配合推理时控制器
-3. [Smooth Learning with Hard Constraints via Legendre-Regularized Policies](/202607/30/2607.24007v1-smooth-learning-with-hard-constraints-via-legendre-regularized-policies)  
+   evidence：大模型驱动的优化程序演化
+3. [What makes prompts a graph: necessary and sufficient conditions for prompt graph engineering](/202607/31/2607.27578v1-what-makes-prompts-a-graph-necessary-and-sufficient-conditions-for-prompt-graph-engineering)  
    标签：评分：7.0/10、query:bopl
-   evidence：在优化中对学习的潜在参数可微
-4. [Every Time I Hire a Linguist, Inference Costs Go Down: On Linguistic Rules as Effective Prompt Compressors](/202607/30/2607.25335v2-every-time-i-hire-a-linguist-inference-costs-go-down-on-linguistic-rules-as-effective-prompt-compressors)  
+   evidence：提示图的自动优化与工程化
+4. [Kalman Meets Curriculum: Efficient Dynamic Prompt Selection for Adaptive RL Finetuning](/202607/31/2607.27610v1-kalman-meets-curriculum-efficient-dynamic-prompt-selection-for-adaptive-rl-finetuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过进化搜索寻找有效的提示词压缩器
-5. [Verification-Notebook Learning for Source-Aware Multimodal Misinformation Detection](/202607/30/2607.23581v1-verification-notebook-learning-for-source-aware-multimodal-misinformation-detection)  
+   evidence：大语言模型微调中的动态提示选择
+5. [LEEPS: Latent-Guided Explore-Exploit Prompt Sampling for Efficient RLVR in Large Language Models](/202607/31/2607.28077v1-leeps-latent-guided-explore-exploit-prompt-sampling-for-efficient-rlvr-in-large-language-models)  
+   标签：评分：7.0/10、query:bopl
+   evidence：大语言模型中用于高效学习的自适应提示采样
+6. [Latent-LoRA: Compact Latent-Space Adapters with Gradient-Free Routing for Continual Learning](/202607/31/2607.23837v1-latent-lora-compact-latent-space-adapters-with-gradient-free-routing-for-continual-learning)  
    标签：评分：6.0/10、query:bopl
-   evidence：为冻结的LVLM学习外部验证程序
-6. [Understanding Tone-Dependent Inference Cost in Large Language Models](/202607/30/2607.23915v1-understanding-tone-dependent-inference-cost-in-large-language-models)  
+   evidence：大语言模型的参数高效适配器与路由
+7. [Steering Instruction Hierarchies at Inference Time](/202607/31/2607.26228v1-steering-instruction-hierarchies-at-inference-time)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示词语气对大模型准确率与成本的影响
-7. [Every Time I Hire a Linguist, Inference Costs Go Down: On Linguistic Rules as Effective Prompt Compressors](/202607/30/2607.25335v1-every-time-i-hire-a-linguist-inference-costs-go-down-on-linguistic-rules-as-effective-prompt-compressors)  
+   evidence：在提示位置编辑缓存的数值向量
+8. [AutoPref: Automatic Discovery of Task-Specific Preference Objectives for Neural Combinatorial Optimization](/202607/31/2607.27953v1-autopref-automatic-discovery-of-task-specific-preference-objectives-for-neural-combinatorial-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示压缩规则的进化搜索
-8. [Meta-Learned Reward Shaping for Reinforcement Learning from Human Feedback](/202607/30/2607.26094v1-meta-learned-reward-shaping-for-reinforcement-learning-from-human-feedback)  
+   evidence：大模型引导的自动目标发现框架
+9. [SKILL-KD: Contrastive Skill Distillation for LLM Agents](/202607/31/2607.28048v1-skill-kd-contrastive-skill-distillation-for-llm-agents)  
    标签：评分：6.0/10、query:bopl
-   evidence：跨任务元学习任务感知塑造函数
-9. [Adaptive Gradient-Based Methods for a Broader Class of Optimization Problems under Performative Prediction](/202607/30/2607.26562v1-adaptive-gradient-based-methods-for-a-broader-class-of-optimization-problems-under-performative-prediction)  
-   标签：评分：6.0/10、query:bopl
-   evidence：具有收敛保证的基于梯度的优化方法
+   evidence：大模型智能体的技能提示与显式蒸馏
 
 
 <div class="dpr-home-promo-card">
