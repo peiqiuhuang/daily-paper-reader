@@ -6,50 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-31
-- 运行时间：2026-07-31 21:21:03 UTC
+- 最新运行日期：2026-08-01
+- 运行时间：2026-08-01 21:21:09 UTC
 - 运行状态：成功
 - 本次总论文数：9
-- 精读区：0
-- 速读区：9
+- 精读区：1
+- 速读区：8
 
 ### 今日简报（AI）
-今日速览 9 篇 AI 前沿进展，深度解析本地大模型翻译优化与提示词图工程的底层逻辑。
-核心结论指出 LLM 引导的特征设计（FunL2O）能显著提升优化效率，并明确了提示词图工程化的关键触发条件。
-建议开发者尝试将提示词结构化为图模型，以突破本地小模型在复杂任务中的性能瓶颈。
-- 详情：[/202607/31/README](/202607/31/README)
+今日精选 9 篇前沿论文，重点解析了贪婪动态元学习（Greedy dynamical meta-learning）在模型自适应上的突破。
+值得关注归纳逻辑编程（ILP）对大模型推理能力的修复，以及通过自进化准则优化强化学习的新范式。
+建议深入探索逻辑编程与大模型的结合，以提升复杂推理场景下的逻辑严密性与鲁棒性。
+- 详情：[/202608/01/README](/202608/01/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Greedy dynamical meta-learning](/202608/01/2607.23925v1-greedy-dynamical-meta-learning)  
+   标签：评分：8.0/10、query:bopl
+   evidence：具有内外循环优化的元学习算法
 
 ### 速读区论文标签
-1. [Evaluating Prompt Scope and Demonstration Similarity in Local LLM Machine Translation](/202607/31/2607.26286v1-evaluating-prompt-scope-and-demonstration-similarity-in-local-llm-machine-translation)  
+1. [Reason Popper-ly: Patching In-Context Reasoning with Inductive Logic Programming](/202608/01/2607.23019v1-reason-popper-ly-patching-in-context-reasoning-with-inductive-logic-programming)  
    标签：评分：7.0/10、query:bopl
-   evidence：评估提示范围和示例选择
-2. [FunL2O: LLM-Guided Feature Function Design for Learning to Optimize](/202607/31/2607.27389v1-funl2o-llm-guided-feature-function-design-for-learning-to-optimize)  
+   evidence：上下文推理轨迹的自动修复
+2. [SERPO: Self-Evolving Rubric Policy Optimization for Open-Ended Test-Time Reinforcement Learning](/202608/01/2607.26873v1-serpo-self-evolving-rubric-policy-optimization-for-open-ended-test-time-reinforcement-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：大模型驱动的优化程序演化
-3. [What makes prompts a graph: necessary and sufficient conditions for prompt graph engineering](/202607/31/2607.27578v1-what-makes-prompts-a-graph-necessary-and-sufficient-conditions-for-prompt-graph-engineering)  
-   标签：评分：7.0/10、query:bopl
-   evidence：提示图的自动优化与工程化
-4. [Kalman Meets Curriculum: Efficient Dynamic Prompt Selection for Adaptive RL Finetuning](/202607/31/2607.27610v1-kalman-meets-curriculum-efficient-dynamic-prompt-selection-for-adaptive-rl-finetuning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：大语言模型微调中的动态提示选择
-5. [LEEPS: Latent-Guided Explore-Exploit Prompt Sampling for Efficient RLVR in Large Language Models](/202607/31/2607.28077v1-leeps-latent-guided-explore-exploit-prompt-sampling-for-efficient-rlvr-in-large-language-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：大语言模型中用于高效学习的自适应提示采样
-6. [Latent-LoRA: Compact Latent-Space Adapters with Gradient-Free Routing for Continual Learning](/202607/31/2607.23837v1-latent-lora-compact-latent-space-adapters-with-gradient-free-routing-for-continual-learning)  
+   evidence：共同演化评估准则和策略参数
+3. [Auditing Alignment Controllability in LLMs via Political Axes](/202608/01/2607.23519v1-auditing-alignment-controllability-in-llms-via-political-axes)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型的参数高效适配器与路由
-7. [Steering Instruction Hierarchies at Inference Time](/202607/31/2607.26228v1-steering-instruction-hierarchies-at-inference-time)  
+   evidence：基于提示词的可控性与系统提示词
+4. [Retraction-Free Optimization over the Stiefel Manifold for the LoRA Fine-Tuning](/202608/01/2607.25299v1-retraction-free-optimization-over-the-stiefel-manifold-for-the-lora-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：在提示位置编辑缓存的数值向量
-8. [AutoPref: Automatic Discovery of Task-Specific Preference Objectives for Neural Combinatorial Optimization](/202607/31/2607.27953v1-autopref-automatic-discovery-of-task-specific-preference-objectives-for-neural-combinatorial-optimization)  
+   evidence：LoRA微调中Stiefel流形上的优化
+5. [Extracting Voice Styles from Frozen TTS Models via Gradient-Based Inverse Optimization](/202608/01/2607.25351v1-extracting-voice-styles-from-frozen-tts-models-via-gradient-based-inverse-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：大模型引导的自动目标发现框架
-9. [SKILL-KD: Contrastive Skill Distillation for LLM Agents](/202607/31/2607.28048v1-skill-kd-contrastive-skill-distillation-for-llm-agents)  
+   evidence：基于梯度的风格向量优化
+6. [Decoupled Visual Processing: Efficient Multimodal Adaptation via Modality-Specific Transformer Substitution](/202608/01/2607.26596v1-decoupled-visual-processing-efficient-multimodal-adaptation-via-modality-specific-transformer-substitution)  
    标签：评分：6.0/10、query:bopl
-   evidence：大模型智能体的技能提示与显式蒸馏
+   evidence：通过特定模态Transformer替换实现高效多模态适配
+7. [On-Policy Distillation for LLM Safety: A Routing Approach to Template-Robust Realignment](/202608/01/2607.27081v1-on-policy-distillation-for-llm-safety-a-routing-approach-to-template-robust-realignment)  
+   标签：评分：6.0/10、query:bopl
+   evidence：模板鲁棒的重对齐与系统提示词安全
+8. [Gradient-free Task-Conditioned Retrieval for On-Device In-Context Learning](/202608/01/2607.27766v1-gradient-free-task-conditioned-retrieval-for-on-device-in-context-learning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：语境学习的无梯度检索
 
 
 <div class="dpr-home-promo-card">
