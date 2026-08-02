@@ -6,49 +6,29 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-01
-- 运行时间：2026-08-01 21:21:09 UTC
+- 最新运行日期：2026-08-02
+- 运行时间：2026-08-02 20:27:15 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
-- 速读区：8
+- 本次总论文数：2
+- 精读区：0
+- 速读区：2
 
 ### 今日简报（AI）
-今日精选 9 篇前沿论文，重点解析了贪婪动态元学习（Greedy dynamical meta-learning）在模型自适应上的突破。
-值得关注归纳逻辑编程（ILP）对大模型推理能力的修复，以及通过自进化准则优化强化学习的新范式。
-建议深入探索逻辑编程与大模型的结合，以提升复杂推理场景下的逻辑严密性与鲁棒性。
-- 详情：[/202608/01/README](/202608/01/README)
+今日聚焦大模型参数化技能与外部知识的深度融合，并探讨了面向用户的系统提示词安全审计方案。
+重点关注 SkillSmith 如何实现技能与知识的高效协同，以及 AISPA 为 LLM 应用透明度提供的审计新框架。
+建议开发者在优化模型知识组合的同时，同步加强应用端提示词的合规性与安全性审查。
+- 详情：[/202608/02/README](/202608/02/README)
 
 ### 精读区论文标签
-1. [Greedy dynamical meta-learning](/202608/01/2607.23925v1-greedy-dynamical-meta-learning)  
-   标签：评分：8.0/10、query:bopl
-   evidence：具有内外循环优化的元学习算法
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Reason Popper-ly: Patching In-Context Reasoning with Inductive Logic Programming](/202608/01/2607.23019v1-reason-popper-ly-patching-in-context-reasoning-with-inductive-logic-programming)  
-   标签：评分：7.0/10、query:bopl
-   evidence：上下文推理轨迹的自动修复
-2. [SERPO: Self-Evolving Rubric Policy Optimization for Open-Ended Test-Time Reinforcement Learning](/202608/01/2607.26873v1-serpo-self-evolving-rubric-policy-optimization-for-open-ended-test-time-reinforcement-learning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：共同演化评估准则和策略参数
-3. [Auditing Alignment Controllability in LLMs via Political Axes](/202608/01/2607.23519v1-auditing-alignment-controllability-in-llms-via-political-axes)  
+1. [SkillSmith: Learning to Compose Parametric Skills and Textual Knowledge](/202608/02/2607.27497v1-skillsmith-learning-to-compose-parametric-skills-and-textual-knowledge)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于提示词的可控性与系统提示词
-4. [Retraction-Free Optimization over the Stiefel Manifold for the LoRA Fine-Tuning](/202608/01/2607.25299v1-retraction-free-optimization-over-the-stiefel-manifold-for-the-lora-fine-tuning)  
+   evidence：组合参数化技能和文本知识
+2. [AISPA: User-Centric System Prompt Auditing for Large Language Model Applications](/202608/02/2607.28617v1-aispa-user-centric-system-prompt-auditing-for-large-language-model-applications)  
    标签：评分：6.0/10、query:bopl
-   evidence：LoRA微调中Stiefel流形上的优化
-5. [Extracting Voice Styles from Frozen TTS Models via Gradient-Based Inverse Optimization](/202608/01/2607.25351v1-extracting-voice-styles-from-frozen-tts-models-via-gradient-based-inverse-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：基于梯度的风格向量优化
-6. [Decoupled Visual Processing: Efficient Multimodal Adaptation via Modality-Specific Transformer Substitution](/202608/01/2607.26596v1-decoupled-visual-processing-efficient-multimodal-adaptation-via-modality-specific-transformer-substitution)  
-   标签：评分：6.0/10、query:bopl
-   evidence：通过特定模态Transformer替换实现高效多模态适配
-7. [On-Policy Distillation for LLM Safety: A Routing Approach to Template-Robust Realignment](/202608/01/2607.27081v1-on-policy-distillation-for-llm-safety-a-routing-approach-to-template-robust-realignment)  
-   标签：评分：6.0/10、query:bopl
-   evidence：模板鲁棒的重对齐与系统提示词安全
-8. [Gradient-free Task-Conditioned Retrieval for On-Device In-Context Learning](/202608/01/2607.27766v1-gradient-free-task-conditioned-retrieval-for-on-device-in-context-learning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：语境学习的无梯度检索
+   evidence：审计AI应用中的系统提示词
 
 
 <div class="dpr-home-promo-card">
