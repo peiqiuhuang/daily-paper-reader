@@ -6,50 +6,61 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-05
-- 运行时间：2026-08-05 21:30:11 UTC
+- 最新运行日期：2026-08-07
+- 运行时间：2026-08-07 02:04:14 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：5
-- 速读区：5
+- 本次总论文数：13
+- 精读区：3
+- 速读区：10
 
 ### 今日简报（AI）
-今日深度复盘10篇前沿论文，重点攻克了自适应反射引擎与多尺度贝叶斯优化两大高分
-- 详情：[/202608/05/README](/202608/05/README)
+今日聚焦大模型智能体优化与代码生成，重点攻克系统提示词的公平性选择难题。
+推荐关注基于 GroupDRO 的公平提示词筛选机制，以及能显著提升代码生成质量的难度感知联合搜索技术。
+建议开发者在提升 Agent 性能的同时，同步关注提示词效率优化与自动化红队对抗安全。
+- 详情：[/202608/07/README](/202608/07/README)
 
 ### 精读区论文标签
-1. [FLARE: Few-shot Learning-based Adaptive Reflective Engine](/202608/05/2608.02919v1-flare-few-shot-learning-based-adaptive-reflective-engine)  
+1. [Equitable System-Prompt Selection via Constrained Mixed-Strategy GroupDRO](/202608/07/2608.04339v1-equitable-system-prompt-selection-via-constrained-mixed-strategy-groupdro)  
    标签：评分：9.0/10、query:bopl
-   evidence：利用反思机制优化指令的框架
-2. [Exploiting Separability in Multi-Scale Grey-Box Bayesian Optimization](/202608/05/2608.03045v1-exploiting-separability-in-multi-scale-grey-box-bayesian-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：灰盒贝叶斯优化的双层重构
-3. [SeCo-SBIR: Semantically Consistent Prompt Learning for Zero-Shot Sketch-Based Image Retrieval](/202608/05/2608.03120v1-seco-sbir-semantically-consistent-prompt-learning-for-zero-shot-sketch-based-image-retrieval)  
-   标签：评分：9.0/10、query:bopl
-   evidence：可微多模态提示学习框架
-4. [Partially-Observable Transmission Control for UAV-Enabled Federated Learning in IoT Networks](/202608/05/2608.00855v1-partially-observable-transmission-control-for-uav-enabled-federated-learning-in-iot-networks)  
+   evidence：自动系统提示词选择与优化
+2. [COMPAS: Difficulty-Aware Joint Search for Optimizing Code Generation](/202608/07/2608.04336v1-compas-difficulty-aware-joint-search-for-optimizing-code-generation)  
    标签：评分：8.0/10、query:bopl
-   evidence：公平共识双层优化 (FCB)
-5. [Asking Questions the Right Way: A Multi-Agent Conversational System for Prompt Formulation in Complex Task Resolution](/202608/05/2608.01366v2-asking-questions-the-right-way-a-multi-agent-conversational-system-for-prompt-formulation-in-complex-task-resolution)  
+   evidence：联合搜索优化提示和配置
+3. [UBLLIE: Unified Backlight and Low-Light Image Enhancement](/202608/07/2608.04429v1-ubllie-unified-backlight-and-low-light-image-enhancement)  
    标签：评分：8.0/10、query:bopl
-   evidence：将非结构化查询转换为结构化提示词
+   evidence：CLIP引导的提示学习用于语义监督增强
 
 ### 速读区论文标签
-1. [Distilling Reasoning Traces into Advisory Prompts for Software Engineering Tasks](/202608/05/2608.00437v1-distilling-reasoning-traces-into-advisory-prompts-for-software-engineering-tasks)  
+1. [SKILL-KD: Contrastive Skill Distillation for LLM Agents](/202608/07/2607.28048v2-skill-kd-contrastive-skill-distillation-for-llm-agents)  
    标签：评分：7.0/10、query:bopl
-   evidence：将推理过程蒸馏为建议性提示词
-2. [CAPE-T2V: Captioner-Anchored Prompt Enhancement toward Two-Sided Conditioning Alignment in Text-to-Video Generation](/202608/05/2608.03046v1-cape-t2v-captioner-anchored-prompt-enhancement-toward-two-sided-conditioning-alignment-in-text-to-video-generation)  
+   evidence：用于改进大语言模型智能体的基于技能的提示机制
+2. [Prompt-Induced Waste in Large Reasoning Models: A Preregistered Two-Harness Benchmark of Coding Agents](/202608/07/2608.01347v1-prompt-induced-waste-in-large-reasoning-models-a-preregistered-two-harness-benchmark-of-coding-agents)  
    标签：评分：7.0/10、query:bopl
-   evidence：优化文本生成视频的提示词增强器
-3. [MoEGen: Mixture-of-Experts for Instance-Adaptive LoRA Generation](/202608/05/2608.03275v1-moegen-mixture-of-experts-for-instance-adaptive-lora-generation)  
+   evidence：提示词表述对推理成本的因果影响
+3. [Agent Against Agent: An Agentic System for Automatic Prompt Injection Red Teaming](/202608/07/2608.05108v1-agent-against-agent-an-agentic-system-for-automatic-prompt-injection-red-teaming)  
    标签：评分：7.0/10、query:bopl
-   evidence：参数高效微调与实例自适应LoRA生成
-4. [Route-Align-Verify for Functional Correctness in Code Generation](/202608/05/2608.03341v1-route-align-verify-for-functional-correctness-in-code-generation)  
-   标签：评分：7.0/10、query:bopl
-   evidence：任务感知提示词路由与对齐的LoRA适配
-5. [Element-Aware Group Learning for E-Commerce Image Generation](/202608/05/2608.00584v1-element-aware-group-learning-for-e-commerce-image-generation)  
+   evidence：自动提示注入红队测试系统
+4. [PTP: Previous-Token Prediction based LLM Inversion for Near-Exact Prompt Reconstruction](/202608/07/2607.29378v1-ptp-previous-token-prediction-based-llm-inversion-for-near-exact-prompt-reconstruction)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过结果级奖励优化提升提示词编写能力
+   evidence：用于提示重构的大语言模型反转
+5. [Instruction Stacking Collapse: A Benchmark and the Capability-Dependent Value of Prompt Compilation](/202608/07/2608.02639v1-instruction-stacking-collapse-a-benchmark-and-the-capability-dependent-value-of-prompt-compilation)  
+   标签：评分：6.0/10、query:bopl
+   evidence：提示词编译的能力依赖价值
+6. [Safety in Batches? Understanding and Mitigating Safety Failures in Batch Prompting](/202608/07/2608.02681v1-safety-in-batches-understanding-and-mitigating-safety-failures-in-batch-prompting)  
+   标签：评分：6.0/10、query:bopl
+   evidence：大模型批量提示的安全性影响
+7. [Interpreting Black-Box Large Language Models with Sentence-Level Energy Landscapes](/202608/07/2608.02879v1-interpreting-black-box-large-language-models-with-sentence-level-energy-landscapes)  
+   标签：评分：6.0/10、query:bopl
+   evidence：使用基于能量的模型解释提示词与回复之间的一致性
+8. [TaskPress: Query-Agnostic KV Cache Compression via Task-Guided Pruning](/202608/07/2608.03276v1-taskpress-query-agnostic-kv-cache-compression-via-task-guided-pruning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：使用元查询引导的任务导向型 KV 缓存压缩剪枝
+9. [Noise-Aware Shrinkage for Differentially Private Zeroth-Order Fine-Tuning of Large Language Models](/202608/07/2608.03277v1-noise-aware-shrinkage-for-differentially-private-zeroth-order-fine-tuning-of-large-language-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：大语言模型的高显存效率零阶微调
+10. [When Prompts Become Pixels: Prompt-Region Grounding for Multimodal Reasoning](/202608/07/2608.04726v1-when-prompts-become-pixels-prompt-region-grounding-for-multimodal-reasoning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：多模态推理中的提示区域对齐
 
 
 <div class="dpr-home-promo-card">
