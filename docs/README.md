@@ -7,60 +7,44 @@
 
 ## 每次日报
 - 最新运行日期：2026-08-07
-- 运行时间：2026-08-07 02:04:14 UTC
+- 运行时间：2026-08-07 20:53:03 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：3
-- 速读区：10
+- 本次总论文数：8
+- 精读区：4
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦大模型智能体优化与代码生成，重点攻克系统提示词的公平性选择难题。
-推荐关注基于 GroupDRO 的公平提示词筛选机制，以及能显著提升代码生成质量的难度感知联合搜索技术。
-建议开发者在提升 Agent 性能的同时，同步关注提示词效率优化与自动化红队对抗安全。
+今日深度解析 8 篇 AI 论文，重点攻克代码生成优化与公平性提示词选择两大核心课题。
+COMPAS 提出的难度感知联合搜索显著提升了代码质量，而约束混合策略则为系统提示词的公平筛选提供了
 - 详情：[/202608/07/README](/202608/07/README)
 
 ### 精读区论文标签
-1. [Equitable System-Prompt Selection via Constrained Mixed-Strategy GroupDRO](/202608/07/2608.04339v1-equitable-system-prompt-selection-via-constrained-mixed-strategy-groupdro)  
-   标签：评分：9.0/10、query:bopl
+1. [COMPAS: Difficulty-Aware Joint Search for Optimizing Code Generation](/202608/07/2608.04336v1-compas-difficulty-aware-joint-search-for-optimizing-code-generation)  
+   标签：评分：8.0/10、query:bopl
+   evidence：优化提示词与模型配置的联合搜索
+2. [Equitable System-Prompt Selection via Constrained Mixed-Strategy GroupDRO](/202608/07/2608.04339v1-equitable-system-prompt-selection-via-constrained-mixed-strategy-groupdro)  
+   标签：评分：8.0/10、query:bopl
    evidence：自动系统提示词选择与优化
-2. [COMPAS: Difficulty-Aware Joint Search for Optimizing Code Generation](/202608/07/2608.04336v1-compas-difficulty-aware-joint-search-for-optimizing-code-generation)  
+3. [Adapting Vision Foundation Models with Cascaded Semantics](/202608/07/2608.05393v1-adapting-vision-foundation-models-with-cascaded-semantics)  
    标签：评分：8.0/10、query:bopl
-   evidence：联合搜索优化提示和配置
-3. [UBLLIE: Unified Backlight and Low-Light Image Enhancement](/202608/07/2608.04429v1-ubllie-unified-backlight-and-low-light-image-enhancement)  
+   evidence：通过视觉提示微调进行参数高效适配
+4. [KV-Skill: Forging Expertise in the Model's Native Language](/202608/07/2608.05475v1-kv-skill-forging-expertise-in-the-models-native-language)  
    标签：评分：8.0/10、query:bopl
-   evidence：CLIP引导的提示学习用于语义监督增强
+   evidence：冻结语言模型的参数高效外部算子
 
 ### 速读区论文标签
-1. [SKILL-KD: Contrastive Skill Distillation for LLM Agents](/202608/07/2607.28048v2-skill-kd-contrastive-skill-distillation-for-llm-agents)  
+1. [Example-Guided Prompting for Document-Level Text Simplification](/202608/07/2608.05447v1-example-guided-prompting-for-document-level-text-simplification)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于改进大语言模型智能体的基于技能的提示机制
-2. [Prompt-Induced Waste in Large Reasoning Models: A Preregistered Two-Harness Benchmark of Coding Agents](/202608/07/2608.01347v1-prompt-induced-waste-in-large-reasoning-models-a-preregistered-two-harness-benchmark-of-coding-agents)  
-   标签：评分：7.0/10、query:bopl
-   evidence：提示词表述对推理成本的因果影响
-3. [Agent Against Agent: An Agentic System for Automatic Prompt Injection Red Teaming](/202608/07/2608.05108v1-agent-against-agent-an-agentic-system-for-automatic-prompt-injection-red-teaming)  
-   标签：评分：7.0/10、query:bopl
-   evidence：自动提示注入红队测试系统
-4. [PTP: Previous-Token Prediction based LLM Inversion for Near-Exact Prompt Reconstruction](/202608/07/2607.29378v1-ptp-previous-token-prediction-based-llm-inversion-for-near-exact-prompt-reconstruction)  
+   evidence：无需微调的LLM示例引导提示
+2. [Interpreting Black-Box Large Language Models with Sentence-Level Energy Landscapes](/202608/07/2608.02879v1-interpreting-black-box-large-language-models-with-sentence-level-energy-landscapes)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于提示重构的大语言模型反转
-5. [Instruction Stacking Collapse: A Benchmark and the Capability-Dependent Value of Prompt Compilation](/202608/07/2608.02639v1-instruction-stacking-collapse-a-benchmark-and-the-capability-dependent-value-of-prompt-compilation)  
+   evidence：基于提示句影响解释LLM响应
+3. [Noise-Aware Shrinkage for Differentially Private Zeroth-Order Fine-Tuning of Large Language Models](/202608/07/2608.03277v1-noise-aware-shrinkage-for-differentially-private-zeroth-order-fine-tuning-of-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示词编译的能力依赖价值
-6. [Safety in Batches? Understanding and Mitigating Safety Failures in Batch Prompting](/202608/07/2608.02681v1-safety-in-batches-understanding-and-mitigating-safety-failures-in-batch-prompting)  
+   evidence：用于大语言模型微调的零阶优化
+4. [Cautious Context Steering for Language Model Personalization](/202608/07/2608.05813v1-cautious-context-steering-for-language-model-personalization)  
    标签：评分：6.0/10、query:bopl
-   evidence：大模型批量提示的安全性影响
-7. [Interpreting Black-Box Large Language Models with Sentence-Level Energy Landscapes](/202608/07/2608.02879v1-interpreting-black-box-large-language-models-with-sentence-level-energy-landscapes)  
-   标签：评分：6.0/10、query:bopl
-   evidence：使用基于能量的模型解释提示词与回复之间的一致性
-8. [TaskPress: Query-Agnostic KV Cache Compression via Task-Guided Pruning](/202608/07/2608.03276v1-taskpress-query-agnostic-kv-cache-compression-via-task-guided-pruning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：使用元查询引导的任务导向型 KV 缓存压缩剪枝
-9. [Noise-Aware Shrinkage for Differentially Private Zeroth-Order Fine-Tuning of Large Language Models](/202608/07/2608.03277v1-noise-aware-shrinkage-for-differentially-private-zeroth-order-fine-tuning-of-large-language-models)  
-   标签：评分：6.0/10、query:bopl
-   evidence：大语言模型的高显存效率零阶微调
-10. [When Prompts Become Pixels: Prompt-Region Grounding for Multimodal Reasoning](/202608/07/2608.04726v1-when-prompts-become-pixels-prompt-region-grounding-for-multimodal-reasoning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：多模态推理中的提示区域对齐
+   evidence：用于语言模型个性化的上下文学习
 
 
 <div class="dpr-home-promo-card">
