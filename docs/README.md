@@ -6,45 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-07
-- 运行时间：2026-08-07 20:53:03 UTC
+- 最新运行日期：2026-08-08
+- 运行时间：2026-08-08 20:46:16 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：4
-- 速读区：4
+- 本次总论文数：11
+- 精读区：1
+- 速读区：10
 
 ### 今日简报（AI）
-今日深度解析 8 篇 AI 论文，重点攻克代码生成优化与公平性提示词选择两大核心课题。
-COMPAS 提出的难度感知联合搜索显著提升了代码质量，而约束混合策略则为系统提示词的公平筛选提供了
-- 详情：[/202608/07/README](/202608/07/README)
+今日聚焦LLM效能提升，深度解析多模型迭代摘要框架MIDAS及指令堆叠失效等11项前沿进展。
+核心结论指出MIDAS能显著优化数据自适应摘要质量，同时PolicyGuard为编程智能体构建了更严密的语义安全防线。
+建议开发者重点关注多模型协作逻辑以提升长文本处理能力，并警惕复杂指令组合下的模型性能塌陷风险。
+- 详情：[/202608/08/README](/202608/08/README)
 
 ### 精读区论文标签
-1. [COMPAS: Difficulty-Aware Joint Search for Optimizing Code Generation](/202608/07/2608.04336v1-compas-difficulty-aware-joint-search-for-optimizing-code-generation)  
+1. [MIDAS: Multi-LLM Iterative Data-Adaptive Summarization](/202608/08/2608.04307v1-midas-multi-llm-iterative-data-adaptive-summarization)  
    标签：评分：8.0/10、query:bopl
-   evidence：优化提示词与模型配置的联合搜索
-2. [Equitable System-Prompt Selection via Constrained Mixed-Strategy GroupDRO](/202608/07/2608.04339v1-equitable-system-prompt-selection-via-constrained-mixed-strategy-groupdro)  
-   标签：评分：8.0/10、query:bopl
-   evidence：自动系统提示词选择与优化
-3. [Adapting Vision Foundation Models with Cascaded Semantics](/202608/07/2608.05393v1-adapting-vision-foundation-models-with-cascaded-semantics)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过视觉提示微调进行参数高效适配
-4. [KV-Skill: Forging Expertise in the Model's Native Language](/202608/07/2608.05475v1-kv-skill-forging-expertise-in-the-models-native-language)  
-   标签：评分：8.0/10、query:bopl
-   evidence：冻结语言模型的参数高效外部算子
+   evidence：用于摘要任务的自动提示词优化方法
 
 ### 速读区论文标签
-1. [Example-Guided Prompting for Document-Level Text Simplification](/202608/07/2608.05447v1-example-guided-prompting-for-document-level-text-simplification)  
+1. [Instruction Stacking Collapse: A Benchmark and the Capability-Dependent Value of Prompt Compilation](/202608/08/2608.02639v1-instruction-stacking-collapse-a-benchmark-and-the-capability-dependent-value-of-prompt-compilation)  
    标签：评分：7.0/10、query:bopl
-   evidence：无需微调的LLM示例引导提示
-2. [Interpreting Black-Box Large Language Models with Sentence-Level Energy Landscapes](/202608/07/2608.02879v1-interpreting-black-box-large-language-models-with-sentence-level-energy-landscapes)  
+   evidence：评估生产级大模型的提示词编译和指令遵循能力
+2. [PolicyGuard: Prompt-Configurable Semantic DLP for LLM Coding Agents](/202608/08/2608.02687v1-policyguard-prompt-configurable-semantic-dlp-for-llm-coding-agents)  
+   标签：评分：7.0/10、query:bopl
+   evidence：大语言模型的提示可配置分类
+3. [PARALLEL: A Prefrontal-Aligned Reinforcement inspired Approach for Language-Model Learning under Explicit Limits](/202608/08/2607.28982v1-parallel-a-prefrontal-aligned-reinforcement-inspired-approach-for-language-model-learning-under-explicit-limits)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于提示句影响解释LLM响应
-3. [Noise-Aware Shrinkage for Differentially Private Zeroth-Order Fine-Tuning of Large Language Models](/202608/07/2608.03277v1-noise-aware-shrinkage-for-differentially-private-zeroth-order-fine-tuning-of-large-language-models)  
+   evidence：受强化学习启发的语言模型自适应
+4. [PTP: Previous-Token Prediction based LLM Inversion for Near-Exact Prompt Reconstruction](/202608/08/2607.29378v1-ptp-previous-token-prediction-based-llm-inversion-for-near-exact-prompt-reconstruction)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于大语言模型微调的零阶优化
-4. [Cautious Context Steering for Language Model Personalization](/202608/07/2608.05813v1-cautious-context-steering-for-language-model-personalization)  
+   evidence：黑盒提示词重构与反演
+5. [Personalizing Large Language Model Agents with Small Policy Models](/202608/08/2608.00215v1-personalizing-large-language-model-agents-with-small-policy-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于语言模型个性化的上下文学习
+   evidence：通过执行策略学习实现冻结智能体的个性化
+6. [Prompt-Induced Waste in Large Reasoning Models: A Preregistered Two-Harness Benchmark of Coding Agents](/202608/08/2608.01347v1-prompt-induced-waste-in-large-reasoning-models-a-preregistered-two-harness-benchmark-of-coding-agents)  
+   标签：评分：6.0/10、query:bopl
+   evidence：提示词表述对推理成本的因果影响
+7. [Variable Smoothing for Weakly Convex Problems with Non-Euclidean Directions](/202608/08/2608.04584v1-variable-smoothing-for-weakly-convex-problems-with-non-euclidean-directions)  
+   标签：评分：6.0/10、query:bopl
+   evidence：包含非光滑组件的复合问题优化
+8. [Teaching MLLMs to Say No: Generalized Referring Expression Comprehension via Refusal Calibrated GRPO](/202608/08/2608.04698v1-teaching-mllms-to-say-no-generalized-referring-expression-comprehension-via-refusal-calibrated-grpo)  
+   标签：评分：6.0/10、query:bopl
+   evidence：基于梯度的强化学习用于校准多模态大模型响应
+9. [When Prompts Become Pixels: Prompt-Region Grounding for Multimodal Reasoning](/202608/08/2608.04726v1-when-prompts-become-pixels-prompt-region-grounding-for-multimodal-reasoning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：多模态大语言模型推理中的提示区域对齐
+10. [Once a Response, Always a Response: Detecting LLM-generated Text via Latent Prompt Restoration](/202608/08/2608.05741v1-once-a-response-always-a-response-detecting-llm-generated-text-via-latent-prompt-restoration)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于大模型检测的潜在提示词恢复
 
 
 <div class="dpr-home-promo-card">

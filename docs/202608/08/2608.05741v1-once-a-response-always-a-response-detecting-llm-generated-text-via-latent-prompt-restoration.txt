@@ -1,0 +1,788 @@
+Title: Once a Response, Always a Response: Detecting LLM-generated Text via Latent Prompt Restoration
+
+URL Source: https://arxiv.org/pdf/2608.05741v1
+
+Published Time: Fri, 07 Aug 2026 00:40:11 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Once a Response, Always a Response: Detecting LLM-generated Text via Latent Prompt Restoration 
+
+Hongrui Bao 1,2, Yubing Ren 1,2, Yanan Cao 1,2,Jinhan You 3, Fang Fang 1,2, Shi Wang 4
+
+> 1
+
+Institute of Information Engineering, Chinese Academy of Sciences 
+
+> 2
+
+School of Cyber Security, University of Chinese Academy of Sciences 
+
+> 3
+
+College of Computer Science and Technology, Zhejiang University 
+
+> 4
+
+Institute of Computing Technology, Chinese Academy of Sciences 
+
+Abstract 
+
+Large language models (LLMs) can generate fluent and convincing text at scale, creating growing risks for misinformation dissemination, educational misuse, and platform governance. These concerns make robust detection of machine-generated text increasingly necessary. Recent zero-shot detectors mainly exploit probability-based statistical discrepancies, but they do not explicitly account for the training process of LLMs, which leaves a distinct generation mechanism insufficiently modeled and limits detection robustness. To address this issue, we propose EchoPrompt, a training-free detector based on latent prompt restoration. Our key intuition is that machine-generated text is typically produced conditioned on an upstream prompt, and this hidden dependency can be partially reactivated by prepending a unified generic prefix. Specifically, EchoPrompt restores a generic assistant-response context, measures the induced likelihood gain with an instruction-tuned model, calibrates it against the corresponding base model, and aggregates the resulting differences into a score that quantifies latent prompt dependency. Extensive experiments show that EchoPrompt achieves state-of-the-art performance among zero-shot detectors while maintaining strong robustness across challenging evaluation settings. 
+
+## 1 Introduction 
+
+Large language models (LLMs) have made it possible to generate high-quality text at scale, substantially narrowing the observable gap between machine-generated and human-written content. Modern systems can produce fluent and convincing text across diverse domains, making it increasingly difficult to distinguish machine-generated content from human writing. While these capabilities enable many useful applications in content creation, question answering, and writing assistance, they also raise growing concerns in high-stakes scenarios such as misinformation dissemination, spam and fraud generation, educational misuse, authorship ambiguity, and intellectual property protection [1, 2]. Prior work [8] has further shown that humans themselves often struggle to reliably distinguish model-generated text from human writing. These developments make robust detection of machine-generated text increasingly essential for the safe and trustworthy deployment of LLM systems. Theoretical analyses [7] suggest that AI-generated text detection remains feasible when sufficient textual evidence is available. Existing detectors are commonly divided into training-based and training-free methods. Training-based methods require large-scale labeled data and supervised deep models to learn implicit textual representations, which limits their scalability and cross-domain generalization [20, 31], whereas training-free methods convert token-level statistical signals extracted from the generation distributions of proxy language models into detection scores. Among these, recent work on IRM [21] shows that machine-generated text can be identified by discrepancies between a base model and its instruction-tuned counterpart, suggesting that instruction tuning leaves detectable traces in generated text. This observation, however, raises a natural question: beyond changing token-level probabilities, does instruction tuning leave behind a more persistent signal that fundamentally distinguishes machine-generated text from human writing? 1arXiv:2608.05741v1 [cs.CL] 6 Aug 2026 We hypothesize that this persistent signal comes from the latent assistant-response context introduced by instruction tuning. Unlike human-written text, machine-generated text is typically produced as a response under a system prompt, a user request, or an assistant role. Although this original prompt is removed, its influence is not fully erased: the generated text still implicitly “remembers” that it was written as a response. Surprisingly, we find that this hidden dependency can be reactivated without knowing the true prompt. In particular, simply prepending a unified generic assistant-style prefix makes machine-generated text align more naturally with the induced conditioning context, whereas human-written text exhibits a much weaker response to the same prefix. Based on this observation, we propose EchoPrompt, a training-free detector that measures latent prompt dependency through restored assistant-context scoring. EchoPrompt first prepends a unified assistant-style prefix to the input text to restore a generic assistant-response context. It then computes token-level likelihoods using an instruction-tuned proxy model and calibrates the context-induced gain with the corresponding base model, thereby reducing the effect of ordinary linguistic regularities. Finally, these calibrated likelihood differences are aggregated into a sequence-level detection score, where a larger score indicates stronger compatibility with the restored assistant context and thus a higher likelihood of machine generation. To evaluate the effectiveness of EchoPrompt, we compare it against representative training-based and training-free baselines across three benchmark datasets. Experimental results demonstrate that EchoPrompt consistently achieves stronger overall performance and exhibits favorable robustness across diverse evaluation settings. 
+
+Contributions. This study makes three main contributions: • Inspired by the finding of IRM [21] that post-training leaves detectable traces in large language models, we further observe that machine-generated text exhibits stronger latent dependency on restored assistant-style context than human-written text. • We propose EchoPrompt, a training-free detector that restores a generic assistant-response context and measures context-conditioned likelihood gain through calibrated comparison between a base model and an instruction-tuned proxy model. • Extensive experiments show that EchoPrompt provides a robust, efficient, and broadly generalizable solution for AI-generated text detection, achieving consistent performance gains across three public benchmarks, various adversarial attacks, different input lengths, and proxy model choices, while maintaining an inference latency of less than 0.26 seconds per sample. 
+
+## 2 Related Work 
+
+Training-based detectors. Training-based methods require large-scale labeled examples and supervised models to learn discriminative representations for separating human-written and AI-generated text. Early systems such as OpenAI’s GPT-2 output detector [28] fine-tune pretrained encoders such as RoBERTa to distinguish generated and human text in representation space. Subsequent work improves this paradigm through stronger learning objectives and more structured representation learning. RADAR [18] adopts adversarial learning to improve robustness against paraphrased inputs; BiScope [13] introduces bidirectional cross-entropy statistics to capture both forward token prediction and preceding-token memorization; DeTeC-tive [14] uses multi-level contrastive learning to separate writing styles from different sources; and DETree [17] models human–AI collaborative writing processes with tree-structured hierarchical representation learning. Beyond classifier-based designs, R-Detect [29] introduces a deep kernel relative test to reduce false positives under distributional mismatch. However, supervised or reference-set-based detectors can still be sensitive to domain, style, generator, and attack shifts, as shown in prior studies on neural text attribution and robustness-oriented detection benchmarks [6, 31]. These limitations motivate more scalable and generalizable training-free alternatives. 
+
+Training-free (zero-shot) detectors. Training-free methods avoid fitting a task-specific classifier and instead convert token-level statistical signals extracted from the generation distributions of proxy language 2models into detection scores. Early zero-shot approaches, including LogRank [10], Likelihood [16], and En-tropy [19], use uncertainty- or rank-based statistics to capture regularities of generated text. DetectLLM [30] further leverages log-rank information to improve zero-shot detection of machine-generated text. Another line studies the likelihood landscape: DetectGPT [25] estimates probability curvature through random per-turbations, while Fast-DetectGPT [4] replaces expensive perturbation with conditional probability curvature approximation for substantially improved efficiency. More recent methods exploit cross-model, alignment-aware, or sequence-level signals. Binoculars [15] compares paired observer and performer models through perplexity-based ratios; IRM [21] derives an implicit reward signal from base and instruction-tuned model pairs without preference collection or additional training; LastDE and LastDE++ [34] mine token probability sequences for local and global diversity-entropy statistics; and DNA-DetectLLM [37] models the repair effort required to transform a text toward an ideal machine-generated sequence. 
+
+## 3 Method 
+
+3.1 Preliminary 
+
+Pre-training workflow of LLM. Modern LLMs typically undergo a multi-stage optimization pipeline. LLMs are first pre-trained as autoregressive language models over open-domain corpora. Given a token sequence X = ( x1, . . . , x n), a base model factorizes its likelihood as 
+
+Pbase (X) = 
+
+> n
+
+Y
+
+> t=1
+
+Pbase (xt | x<t ). (1) The corresponding pre-training objective minimizes the negative log-likelihood: 
+
+θ∗ 
+
+> base
+
+= arg min 
+
+> θ
+
+"
+
+−EX∼D pre 
+
+> n
+
+X
+
+> t=1
+
+log Pθ (xt | x<t )
+
+#
+
+. (2) This stage mainly captures general linguistic regularities, without explicitly optimizing the model to generate responses under user instructions [5]. 
+
+Post-training workflow of LLM. Subsequently, the model undergoes post-training, typically including supervised fine-tuning (SFT) and preference-based optimization such as RLHF [26] or DPO [27]. Here, the optimization objective shifts from unsupervised continuation to conditional generation under a global instruction cg :
+
+Pinst (X | cg ) = 
+
+> n
+
+Y
+
+> t=1
+
+Pinst (xt | cg , x <t ). (3) The shared effect of SFT and preference-based post-training can be schematically summarized by the following unified objective: 
+
+θ∗ 
+
+> inst
+
+= arg min 
+
+> θ
+
+h
+
+LSFT (θ) + α Lpref (θ) + λ KL( πθ ∥ πbase )
+
+i
+
+, (4) where          
+
+> LSFT (θ) = −E(cg,X )∼D SFT
+> "nX
+> t=1
+> log Pθ(xt|cg, x <t )
+> #
+> ,(5)
+
+and Lpref denotes a preference-based objective, and the above formulation provides a schematic abstraction of common post-training procedures. From the perspective of the Transformer architecture [32], once the instruction prefix cg is prepended to the sequence, it becomes part of the causal context. Its token representations can be attended to by subsequent tokens and propagated through the network, thereby influencing downstream hidden states and decoding decisions. 3IRM. Implicit Reward Models (IRM) [21] provide a zero-shot framework for LLM-generated text detection. The key idea is that, under the formulation of preference optimization, the discrepancy between a policy model and its reference model can be interpreted as an implicit reward. In IRM, the instruction-tuned model serves as the policy model, while the corresponding base model serves as the reference model. Accordingly, IRM constructs a detection score without requiring additional detector training. For a text sequence 
+
+X = ( x1, . . . , x n), the score is defined as: 
+
+r(X) = 
+
+> n
+
+X
+
+> t=1
+
+log Pinst (xt | x<t )
+
+Pbase (xt | x<t ) . (6) 
+
+3.2 EchoPrompt 
+
+EchoPrompt is a training-free detector that probes whether a target passage exhibits an unusually strong dependency on a restored assistant-style context. Figure 1 provides an overview of EchoPrompt. The detection process consists of three steps: 
+
+Step 1: Assistant-context restoration. Given an input text X, EchoPrompt prepends a unified task-agnostic assistant-style prefix cg to construct a restored sequence [cg ; X], which approximates the generic response condition under which AI-generated text is commonly produced. 
+
+Step 2: Context-calibrated comparative scoring. EchoPrompt computes token-level log-likelihoods under two asymmetric conditions: the instruction-tuned proxy model evaluates the restored sequence [cg ; X],while the corresponding base model evaluates the original text X to calibrate ordinary linguistic predictability. Their difference defines a context-calibrated token-level gap, and the average gap forms the sequence-level EchoPrompt score. 
+
+Step 3: Threshold-based detection. The final prediction is made by comparing the EchoPrompt score with a threshold τ : passages with scores above the threshold are classified as AI-generated, while the remaining passages are classified as human-written. 
+
+3.2.1 Assistant-Context Restoration 
+
+EchoPrompt is motivated by a simple hypothesis: machine-generated text is typically produced under an implicit assistant-style directive, even when the original prompt is unavailable at detection time. Therefore, if we restore a generic assistant-response context before evaluating the text, machine-generated passages should align with that condition more naturally than human-written passages. To operationalize this idea, we prepend a global prefix cg to each evaluated passage to restore a generic assistant-response context. The choice of cg is determined by preliminary empirical evaluation, with detailed settings and results reported in Appendix C. Based on these results, we instantiate cg as: 
+
+> “You are a helpful, versatile, and intelligent AI assistant. Below is the content you generated in response to a user’s request, which acts as either a coherent continuation, a topic-specific article, or a detailed answer to a question:\n\n”
+
+This prefix is intentionally task-agnostic. Rather than introducing specific entities or task instructions, it restores only the coarse global condition that the following sequence should be interpreted as an assistant-style response. In this way, the detector does not rely on access to the original prompt, but instead probes whether the target text is inherently compatible with a generic assistant-response context. 
+
+3.2.2 Context-Calibrated Comparative Scoring 
+
+After restoring the assistant-style context, a natural option is to directly measure the conditional likelihood under the instruction-tuned model, i.e., log Pinst (xt | cg , x <t ). However, this quantity alone is not sufficiently discriminative: high-frequency tokens, common phrases, and the intrinsic fluency of the text can all increase token probabilities, making it difficult to separate true context dependency from ordinary local smoothness. To reduce this confounding effect, EchoPrompt introduces a calibrated comparison against a base model. The base model primarily captures the marginal regularities of open-domain text, and thus serves as a 4EchoPrompt Detection 
+
+Observation & Motivation 
+
+Open corpus 
+
+…
+
+Next-token generation 
+
+𝑷 𝒃𝒂𝒔𝒆  𝑿 = ෑ 𝑷 𝒃𝒂𝒔𝒆  𝒙 𝒕 𝒙 <𝒕 
+
+Instruction  𝒄 𝒈 
+
+Latent Assistant-Response Dependency 
+
+During Generation 
+
+(visible context) 
+
+Assistant instruction  𝒄 𝒈 
+
++
+
+Model generates 
+
+…x₁ x₂ x₃ xₙ 
+
+Generated response 
+
+X
+
+Prompt removed 
+
+Detection with a Proxy Model 
+
+Latent Influence (persists) 
+
+Machine text implicitly “remembers ” it was written as a response. 
+
+Human text shows weaker compatibility with restored assistant-style context. 
+
+Step 1: Assistant-Context Restoration 1
+
+Unified Assistant Prefix 
+
+cg
+
+Input Text 
+
+X
+
+Baby baby baby oh I like,baby baby baby no I like …… 
+
+Tokenize 
+
+x₁ x₂ x₃ xₙ 
+
++
+
+Restored Sequence [ 
+
+cg ;X ]
+
+Concatenate the target text with the prefix 
+
+cg
+
+(prefix) 
+
+X
+
+(target text) 
+
+Prefix tokens ( 
+
+cg) Response tokens ( 
+
+X)
+
+2 Step 2: Asymmetric Dual-Model Scoring 
+
+Inputs 
+
+Restored Sequence [
+
+cg ;
+
+X ]
+
+Original 
+
+Text 
+
+X only 
+
+Dual-Model Scoring 
+
+(Token-level Log-Likelihoods) 
+
+Instruction-tuned Proxy Model 
+
+Pinst 
+
+Compute the conditional log-likelihood of the 
+
+restored sequence 
+
+𝑐 𝑔 𝑋  under the instruction-tuned model. 
+
+log P inst (x t | c g , x<t) 
+
+token position 
+
+Base Proxy 
+
+Model 
+
+Pbase 
+
+Use the base model to compute the log-likelihood of the original text  𝑋  as calibration. 
+
+log P base (x t | x<t) 
+
+3 Step 3: EchoPrompt Score-based Detection 
+
+Compute EchoPrompt Score 
+
+𝑆𝑐𝑜𝑟𝑒 𝐸𝑐ℎ𝑜𝑃𝑟𝑜𝑚𝑝𝑡  𝑋; 𝑐 𝑔 = 1𝑛 − 1 ෍
+
+𝑡=2 𝑛 
+
+Δt = 1𝑛 − 1 ෍
+
+𝑡=2 
+
+𝑛 
+
+𝑙𝑜𝑔𝑃 𝑖𝑛𝑠𝑡  𝑥 𝑡 𝑐 𝑔 , 𝑥 <𝑡 − 𝑙𝑜𝑔𝑃 𝑏𝑎𝑠𝑒  𝑥 𝑡 𝑥 <𝑡 
+
+Threshold-based Judgment 
+
+Score(X; c g) > Threshold τ Machine-generated 
+
+Score(X; c g) ≤ Threshold  τ Human-written 
+
+Score Interpretation 
+
+low Score (human-like) 
+
+high Score (machine-like) 
+
+τ
+
+EchoPrompt Score 
+
+Higher 
+
+Score EchoPrompt indicates stronger latent prompt dependency. 
+
+Pre-training workflow of LLM 
+
+Post-training workflow of LLM 
+
+Context  Predict next 
+
+x₁  x2 x3 xₜ₋₁  xₜ …
+
+You are a helpful and intelligent AI assistant...... 
+
+Response context  Predict next 
+
+cg x1 x2 xₜ₋₁  xₜ …
+
+Response token generation 
+
+Instruction 
+
+𝑷 inst  𝑿 𝒄 𝒈 = ෑ 𝑷 inst  𝒙 𝒕 𝒄 𝒈 , 𝒙 <𝒕 
+
+You are a helpful and intelligent AI assistant,please answer the following questions: …… 
+
+xn
+
+Input token sequence 
+
+x₁ x₂ x₃  x4 xn-1 
+
+…
+
+Proxy model Input  Predict 
+
+“You are a helpful, versatile, and intelligent AI assistant. 
+
+Below is the content you generated in response to a user's request, which acts as either a coherent continuation, a topic-specific article, or a detailed answer to a question:\n\n ”
+
+> HWT
+> MGT
+
+I’m ChatGPT —
+
+an AI created by OpenAI …… 
+
+…
+
+cg1 cgn x₁ x₂ x₃  … xₙ cg2 … … 
+
+> “You are a helpful, versatile, and intelligent AI
+> assistant. Below is the content you generated in response to a user's request, which acts as either a coherent continuation, a topic-specific article, or a detailed answer to a question:\n\n ”+“Baby baby baby oh I like,baby baby baby no I like ……”
+
+cg +X
+
+(prefix+target text) 
+
+X
+
+(target text) 
+
+token position 
+
+> likelihood
+> likelihood
+
+Comparison 
+
+Token-level Gap 
+
+(Context-Calibrated Difference) 
+
+−
+
+Δt =log P inst (x t |c g , x<t) 
+
+− log Pbase (x t | x<t)   
+
+> restored-context instruct
+> VS
+> original-text base
+> Original Text Xonly
+> Calculate
+
+ΔtFigure 1: Overview of EchoPrompt. reference for local linguistic predictability without the restored assistant-style conditioning. Based on this contrast, we define the EchoPrompt score as: 
+
+Score EchoPrompt (X; cg ) = 1
+
+n − 1
+
+nX
+
+t=2 
+
+h
+
+log Pinst (xt | cg , x <t ) − log Pbase (xt | x<t )
+
+i
+
+, (7) where X denotes the evaluated sequence and cg denotes the restored assistant-style prefix. The first term measures how naturally the passage is supported under assistant-style contextual conditioning, while the second term provides a calibration baseline for its local linguistic predictability. Their difference suppresses fluency effects shared by both human and machine text, and highlights the additional advantage that machine-generated passages receive when evaluated under the restored assistant-style condition. Averaging across token positions yields a stable sequence-level statistic for zero-shot detection. 
+
+3.2.3 Threshold-based Detection 
+
+EchoPrompt classifies the evaluated sequence by comparing its score with a threshold τ :
+
+D(X) = 
+
+(
+
+AI-generated Text , Score EchoPrompt (X; cg ) > τ, 
+
+Human-written Text , Score EchoPrompt (X; cg ) ≤ τ. (8) A higher EchoPrompt score indicates stronger latent dependency on the restored assistant-style context, and therefore a higher likelihood of machine generation. 5Qwen2.5-1.5B MD Qwen2.5-1.5B MLLM Qwen2.5-3B MD Qwen2.5-3B MLLM Llama-3.2-1B MD Llama-3.2-1B MLLM Llama-3.2-3B MD Llama-3.2-3B MLLM                  
+
+> Model / Dataset
+> Human Machine
+> Text Split  +0.021 +0.004 +0.006 -0.006 -0.045 -0.048 -0.038 -0.042 +0.049 +0.046 +0.038 +0.036 +0.026 +0.026 +0.038 +0.038
+> Base Prompt Gain g(X;cg)
+> 0.04
+> 0.02
+> 0.00 0.02 0.04
+
+Figure 2: Prompt-induced contextual gain under a restored assistant-style prefix for the base models of four small proxy families. 
+
+3.3 Empirical Evidence of Latent Prompt Dependency 
+
+To empirically validate the role of the restored prefix itself, we directly examine the likelihood gain induced by prompt injection within the same model. For a fixed model P , we define 
+
+g(X; cg ) = 1
+
+n − 1
+
+> n
+
+X
+
+> t=2
+
+h
+
+log P (xt | cg , x <t ) − log P (xt | x<t )
+
+i
+
+, (9) which measures how much the target sequence benefits from the restored assistant-style context. Figure 2 reports the average gain for human and machine text under the base models of four small proxy families, and Appendix D provides the detailed settings and values. A consistent pattern emerges: after the same generic prefix is injected, machine-generated text receives a larger likelihood gain than human-written text. This result indicates that machine text is more naturally compatible with the restored assistant-style condition. Therefore, the useful signal captured by EchoPrompt is not merely raw fluency, but the extra advantage a passage obtains when evaluated under an assistant-style contextual prompt. 
+
+## 4 Experiments 
+
+4.1 Experimental Setup 
+
+Datasets. We evaluate EchoPrompt on three public detection benchmarks: DetectRL [33], RealDet [36], and RAID [9]. For DetectRL, we follow the standard test setting and use three deduplicated splits: Multi-Domain with 3,975 human/machine pairs, Multi-LLM with 3,991 pairs, and Multi-Attack with 4,967 pairs aggregated from all attack categories. To ensure fair and accurate auxiliary evaluation beyond DetectRL, we further use balanced subsets of 1,000 human and 1,000 machine samples from RealDet and RAID. 
+
+Baselines. We compare EchoPrompt with representative recent training-based and training-free baselines. The training-based baselines include OpenAI-D [28], BiScope [13], and R-Detect [29], while the training-free baselines include Likelihood [16], LogRank [10], Entropy [19], Fast-DetectGPT [4], Binoculars [15], LastDE++ [34], DNA-DetectLLM [37], and IRM [21]. These methods cover supervised detectors and major zero-shot detection strategies based on confidence, curvature, cross-model discrepancy, and alignment-aware signals. 
+
+Models. To examine the effects of proxy family and model scale, we evaluate paired base/instruct models from Qwen2.5 [35], Llama-3.2 [23], Llama-3.1 [22], Llama-3 [11, 24], and Falcon [3], including Qwen2.5-1.5B/3B, Llama-3.2-1B/3B, Llama-3.1-8B, Meta-Llama-3-8B, and Falcon-7B. For dual-model detectors, the base and instruct models are used as the observer/performer pair; for single-model detectors, the instruct model is used as the observer model. 6Table 1: Performance comparison (%) across different benchmarks. Bold and underlines mark the best and second-best results within each training-free proxy-model block.                                                                                                                                                               
+
+> Detectors
+> DetectRL Multi-Domain DetectRL Multi-LLM DetectRL Multi-Attack RealDet RAID Avg
+> AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1
+> Training-based Methods
+> OpenAI-D 82.64 76.00 82.58 75.61 83.91 78.02 90.06 77.15 73.03 67.19 82.44 74.80 BiScope 76.81 70.75 76.91 70.37 79.10 74.07 88.90 72.08 79.42 73.93 80.23 72.24 R-Detect 77.83 73.29 78.22 73.52 78.54 74.18 87.84 72.73 70.75 68.39 78.64 72.42
+> Training-free Methods
+> Llama-3-8B family
+> Entropy 64.31 66.71 64.14 66.68 67.64 71.06 77.08 73.04 67.73 66.69 68.18 68.84 Likelihood 79.54 73.57 79.24 72.75 81.71 76.12 85.53 81.18 75.89 73.11 80.38 75.34 LogRank 76.83 70.70 76.39 69.63 79.17 74.63 85.34 80.81 75.80 72.49 78.71 73.65 Fast-DetectGPT 91.40 84.02 91.45 83.61 92.63 85.83 88.90 82.96 83.68 83.01 89.61 83.89 Binoculars 91.93 84.98 92.01 84.57 93.10 86.61 89.58 84.46 83.73 82.49 90.07 84.62 LastDE++ 84.26 76.72 84.26 76.74 86.69 80.43 89.10 81.74 87.81 83.94 86.42 79.91 DNA-DetectLLM 90.41 83.28 90.55 82.99 91.86 85.05 87.75 82.42 80.94 80.55 88.30 82.86 IRM 98.47 94.06 98.50 93.89 98.36 93.92 91.51 83.43 87.52 81.42 94.87 89.34
+> EchoPrompt 98.82 95.26 98.62 95.25 98.60 95.28 92.33 88.79 89.45 85.32 95.56 91.98
+
+Metrics. We use AUROC and F1 score as the primary evaluation metrics. AUROC measures the overall separability between human-written and machine-generated text, while F1 score summarizes the balance between precision and recall in binary detection. 
+
+Implementation details. For a fair comparison, all training-based detectors are trained on HC3 [12], which is disjoint from the evaluation benchmarks. Experiments are conducted on Tesla V100-PCIE-32GB GPUs with a maximum input length of 1024 tokens. The prompt setting follows Section 3.2.1, and all other parameters use default values unless otherwise specified. 
+
+4.2 Main Results 
+
+Table 1 shows that EchoPrompt achieves the strongest overall performance under the Llama-3-8B proxy family. The full results are provided in Appendix E. Across three benchmarks, EchoPrompt ranks first on both AUROC and F1, improving over the strongest training-free baseline, IRM, by 0.69% AUROC and 2.64% F1 on average. Compared with the best training-based detector, OpenAI-D, the gains are much larger, reaching 
+
+13.12% AUROC and 17.18% F1 on average. The advantage is also clear on the more distributionally different RealDet and RAID benchmarks: EchoPrompt improves over the second-best method by 4.33% F1 on RealDet and by 1.64% AUROC / 1.38% F1 on RAID. These results indicate that EchoPrompt provides a more effective and transferable detection signal than the strongest existing training-free competitors. This advantage stems from the motivation of EchoPrompt. Machine-generated text is usually written as an assistant-style response, but conventional zero-shot detectors evaluate it without this missing context, so their signals are easily mixed with generic fluency and token-level regularities. By restoring a task-agnostic assistant-response context, EchoPrompt exposes this latent generation dependency. The base-model comparison further filters out ordinary linguistic predictability, leaving a cleaner signal of assistant-style contextual compatibility. This explains why EchoPrompt generalizes better than strong training-free baselines: it detects not only whether a passage is statistically fluent, but whether it behaves like text generated under an implicit assistant-response condition. 
+
+4.3 Robustness Against Various Attacks 
+
+Table 2 further shows that EchoPrompt remains robust across different attack settings. The complete attack results are provided in Appendix F. It obtains the best AUROC and F1 in four out of five attack groups and achieves the strongest average attack performance, improving over IRM by 0.24% AUROC and 1.37% F1 on average. The gains are particularly clear under direct prompting and perturbation, where EchoPrompt improves F1 over the second-best method by 2.74% and 2.20% , respectively. It also remains strongest under 7Table 2: Per-attack results (%) including EchoPrompt and other baselines using the Llama-3-8B family as proxy models across different attack types. Bold and underlines mark the best and second-best results within each training-free proxy-model block. Detectors Direct Prompt Prompt Attacks Paraphrase Perturbation Data Mixing                                                                                                                                  
+
+> AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1
+> Training-based Methods
+> OpenAI-D 93.12 83.65 88.08 78.71 87.48 79.12 71.00 72.01 79.85 76.62 BiScope 93.61 86.43 91.02 83.06 71.68 66.67 67.96 67.54 71.24 66.67 R-Detect 90.09 80.34 85.31 76.96 86.76 78.16 62.09 68.76 68.46 66.69
+> Training-free Methods
+> Llama-3-8B family
+> Entropy 86.37 78.37 84.39 76.73 56.00 66.67 52.02 66.87 59.43 66.67 Likelihood 95.64 89.39 92.33 85.35 73.31 68.66 71.77 67.60 75.48 69.59 LogRank 94.86 88.26 91.09 83.94 70.75 66.67 66.79 67.20 72.36 67.08 Fast-DetectGPT 97.45 92.52 95.32 89.43 90.84 83.68 88.22 80.16 91.31 83.36 Binoculars 97.89 93.30 95.91 90.88 91.15 84.11 88.81 80.78 91.72 83.96 LastDE++ 96.72 90.50 93.91 87.95 88.59 81.03 70.35 66.75 83.87 75.92 DNA-DetectLLM 97.40 92.35 95.84 90.40 87.24 79.60 88.36 79.96 90.48 82.93 IRM 98.70 94.59 97.73 92.76 99.15 95.63 98.90 94.84 97.31 91.76
+> EchoPrompt 99.62 97.33 98.13 94.81 98.28 94.53 99.24 97.04 97.74 92.70
+
+prompt attacks and data mixing, with F1 gains of 2.05% and 0.94% . Under paraphrasing, EchoPrompt ranks second but remains very close to IRM, trailing by only 0.87% AUROC and 1.10% F1 while still achieving a high F1 score of 94.53% . This robustness pattern is consistent with the design of EchoPrompt. Prompt attacks can alter superficial prompting cues, data mixing can dilute local token statistics, and perturbation can directly corrupt lexical-level regularities. Methods that rely mainly on unconditional likelihood, entropy, rank, or local model discrepancy are therefore more easily affected by these transformations. In contrast, EchoPrompt focuses on whether the text retains generation-style dependency rather than on isolated token statistics. This makes the context-calibrated signal both discriminative and stable under diverse adversarial transformations. 
+
+4.4 Ablation Study 
+
+Impact of Prompt Choice. We conduct a prompt-component ablation to study the effect of the generic prefix on detection performance. Detailed settings are provided in Appendix G. As shown in Figure 3, the full prefix consistently outperforms the empty-prompt setting, improving AUROC by 14.73% and 12.57% 
+
+on Qwen2.5-3B, and by 5.63% and 5.33% on Llama-3.1-8B. These gains verify the key motivation of EchoPrompt: even without access to the original user prompt, machine-generated text is more naturally compatible with a restored assistant-response condition than human-written text. The component-level results further show that the gain does not simply come from assigning an assistant identity to the proxy model. The role sentence alone brings only limited gains, especially on Llama-3.1-8B, where the improvements are about 1.60% and 1.44% . In contrast, context clause A, which frames the passage as content generated in response to a user’s request, provides the strongest individual contribution, improving AUROC by 12.63% , 9.28% , 3.84% , and 3.41% across the four settings. The leave-one-out results lead to the same conclusion: removing context clause A causes the largest drops on Qwen2.5-3B, with AUROC decreasing by 11.59% and 11.88% . This indicates that the core signal of EchoPrompt comes from restoring the missing prompt–response relation, while the role sentence and context clause B mainly help stabilize and broaden this generic assistant-style condition. 
+
+Impact of Proxy Models. Figure 5 shows that EchoPrompt remains strong across different proxy model families and scales. Averaged over all proxy settings, EchoPrompt achieves 87.06% AUROC and 83.03% F1, outperforming the strongest competing average baseline, DNA-DetectLLM, by 2.70% AUROC and 3.23% 
+
+F1. The advantage is more evident on Llama-family proxies, where EchoPrompt reaches 93.50% AUROC 82.5 0.0 2.5 5.0 7.5 10.0 12.5 15.0 
+
+AUROC Change (pp) 
+
+> Full-Empty Only Leave-One-Out
+
+Qwen2.5-3B / DetectRL Multi-Domain        
+
+> 2.5 0.0 2.5 5.0 7.5 10.0 12.5 15.0
+
+AUROC Change (pp) 
+
+> Full-Empty Only Leave-One-Out
+
+Qwen2.5-3B / DetectRL Multi-LLM        
+
+> 2.5 0.0 2.5 5.0 7.5 10.0 12.5 15.0
+
+AUROC Change (pp) 
+
+> Full-Empty Only Leave-One-Out
+
+Llama-3.1-8B / DetectRL Multi-Domain        
+
+> 2.5 0.0 2.5 5.0 7.5 10.0 12.5 15.0
+
+AUROC Change (pp) 
+
+> Full-Empty Only Leave-One-Out
+
+Llama-3.1-8B / DetectRL Multi-LLM     
+
+> Role Sentence Context Clause A Context Clause B Full-Empty Leave-One-Out
+
+Figure 3: Prompt-component ablation results. 1-40 41-80 81-120 121-160 161-200 201-240 241-280 281-320 321-360 
+
+Length Bin (Words) 
+
+> 0.70 0.75 0.80 0.85 0.90 0.95 1.00
+> AUROC
+
+Llama-3.2-1B 
+
+> 1-40 41-80 81-120 121-160 161-200 201-240 241-280 281-320 321-360
+
+Length Bin (Words) 
+
+Llama-3.2-3B 
+
+> 1-40 41-80 81-120 121-160 161-200 201-240 241-280 281-320 321-360
+
+Length Bin (Words) 
+
+Llama-3-8B     
+
+> EchoPrompt DNA-DetectLLM IRM Binoculars Fast-DetectGPT
+
+Figure 4: Length-binned AUROC variation of different zero-shot detectors on DetectRL Length. Qwen2.5-1.5B Qwen2.5-3B Llama-3.2-1B Llama-3.2-3B Falcon-7B Llama-3.1-8B Llama-3-8B Entropy Likelihood LogRank Fast-DetectGPT Binoculars LastDE++ DNA-DetectLLM IRM EchoPrompt                                                       
+
+> Method
+> 76.5 76.5 78.3 77.0 72.8 71.5 68.2 75.4 74.6 81.5 80.9 74.0 76.9 80.4 76.8 76.4 81.8 81.4 74.5 77.2 78.7 70.8 71.2 89.2 88.8 85.0 85.2 89.6 69.9 70.1 90.2 89.8 85.7 85.9 90.1 65.5 66.5 82.1 82.1 81.8 80.7 86.4 71.9 73.6 90.8 90.3 89.4 86.2 88.3 71.4 59.9 93.6 92.7 82.0 85.6 94.9 76.8 71.7 93.3 93.1 86.9 92.0 95.6
+
+Average AUROC (%)                                                       
+
+> Qwen2.5-1.5B Qwen2.5-3B Llama-3.2-1B Llama-3.2-3B Falcon-7B Llama-3.1-8B Llama-3-8B Entropy Likelihood LogRank Fast-DetectGPT Binoculars LastDE++ DNA-DetectLLM IRM EchoPrompt
+> 71.7 71.8 73.7 72.5 71.1 69.4 68.8 72.2 71.6 76.7 76.0 71.9 72.2 75.3 72.5 72.0 76.8 76.1 72.1 72.3 73.7 69.9 69.6 83.9 82.8 80.6 79.0 83.9 70.3 69.5 85.6 84.5 82.1 80.1 84.6 69.1 68.8 75.9 75.6 76.8 74.7 79.9 69.8 69.6 86.1 84.9 85.0 80.3 82.9 69.7 66.7 87.5 86.6 75.4 79.1 89.3 74.9 71.6 87.5 87.6 81.7 85.9 92.0
+
+Average Best-F1 (%) 
+
+> 60 65 70 75 80 85 90 95
+> 70 75 80 85 90
+
+Figure 5: Proxy-model analysis with representative detector families. and 88.25% F1 on average, exceeding IRM by 1.80% AUROC and 2.63% F1. These results indicate that EchoPrompt achieves strong cross-proxy robustness, while its performance is still influenced by the specific proxy family selected. 
+
+Impact of Text Lengths. Figure 4 analyzes AUROC across different length bins on DetectRL Length. Short texts are challenging for all detectors because they provide fewer tokens for estimating reliable detection signals. Even in the shortest 1–40 word bin, EchoPrompt remains competitive, with an average AUROC of 
+
+75.8% across the three Llama-family proxies. As length increases, its performance rises rapidly to 93.1% in the 81–120 bin and 98.9% in the 321–360 bin. These results highlight that EchoPrompt is able to capture stable discriminative signals across texts of different lengths, thereby achieving strong detection robustness under varying length conditions. 
+
+4.5 Hyperparameter Analysis 
+
+Threshold Stability. In practical deployment, a stable decision threshold is important across different proxy models and text lengths. We therefore analyze the normalized threshold ˆτ = τ ∗/σ pool , where τ ∗ is the F1-optimal threshold and σpool is the pooled within-class score standard deviation. The sign of ˆτ is method-dependent, so we focus on whether the trajectories remain smooth and compact after normalization. As shown in Figure 6, EchoPrompt exhibits one of the most stable profiles across both proxy and length regimes, indicating better threshold stability and easier deployment under changing evaluation conditions. 
+
+4.6 Efficiency Analysis 
+
+Figure 7 reports the average runtime per sample for each detector. Likelihood, Entropy, and LogRank are the fastest methods, while LastDE++ and DNA-DetectLLM are substantially more expensive. EchoPrompt falls in the middle range: although it requires additional computation for context-conditioned scoring, it remains efficient relative to heavier baselines and provides a favorable efficiency–accuracy trade-off. 9Qwen 1.5B Qwen 3B Llama 3.2-1B Llama 3.2-3B Falcon 7B Llama 3.1-8B Llama 3-8B     
+
+> Proxy Model
+> 14
+> 12
+> 10
+> 8
+> 6
+> 4
+> 2
+> 0
+> Normalized Best Threshold
+> Across Proxy Models
+> 1-40 41-80 81-120 121-160 161-200 201-240 241-280 281-320 321-360
+> Length Bin
+> 8
+> 6
+> 4
+> 2
+> 0
+> Across Length Bins
+> EchoPrompt DNA-DetectLLM IRM Binoculars Fast-DetectGPT
+
+Figure 6: Normalized threshold trajectories across proxy models and text-length bins. 0.00 0.25 0.50 1.00 1.50  
+
+> Seconds per sample (lower is faster)
+> LastDE++ DNA-DetectLLM Fast-DetectGPT EchoPrompt IRM Binoculars LogRank Entropy Likelihood
+> EchoPrompt baseline
+> 1.529s 6.03x 0.444s 1.75x 0.321s 1.27x 0.254s 1.00x 0.165s 0.65x 0.157s 0.62x 0.092s 0.36x 0.086s 0.34x 0.085s 0.34x
+
+Figure 7: Average runtime per sample. 
+
+## 5 Conclusion 
+
+In this paper, we proposed EchoPrompt, a training-free detector that identifies machine-generated text by measuring its dependency on restored assistant-style context. By combining generic prefix restoration with calibrated likelihood comparison between base and instruction-tuned models, EchoPrompt captures contextual traces left by the generation process. Experiments on three benchmarks show that EchoPrompt achieves strong overall performance and robustness across domains, proxy models, text lengths, and adversarial attacks. These results highlight latent prompt dependency as an effective signal for zero-shot machine-generated text detection. 
+
+## References 
+
+[1] David Ifeoluwa Adelani, Haotian Mai, Fuming Fang, Huy H Nguyen, Junichi Yamagishi, and Isao Echizen. Generating sentiment-preserving fake online reviews using neural language models and their human-and machine-based detection. In International Conference on Advanced Information Networking and Applications , pages 1341–1354. Springer, 2020. [2] Alim Al Ayub Ahmed, Ayman Aljabouh, Praveen Kumar Donepudi, and Myung Suh Choi. Detecting fake news using machine learning: A systematic literature review. arXiv preprint arXiv:2102.04458 ,2021. [3] Ebtesam Almazrouei, Hamza Alobeidli, Abdulaziz Alshamsi, Alessandro Cappelli, Ruxandra Cojocaru, Mérouane Debbah, Étienne Goffinet, Daniel Hesslow, Julien Launay, Quentin Malartic, et al. The falcon series of open language models. arXiv preprint arXiv:2311.16867 , 2023. [4] Guangsheng Bao, Yanbin Zhao, Zhiyang Teng, Linyi Yang, and Yue Zhang. Fast-detectgpt: Efficient zero-shot detection of machine-generated text via conditional probability curvature. arXiv preprint arXiv:2310.05130 , 2023. [5] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. 
+
+Advances in neural information processing systems , 33:1877–1901, 2020. [6] Megha Chakraborty, S. M. Towhidul Islam Tonmoy, S. M. Mehedi Zaman, Krish Sharma, Niyar R. Barman, Chandan Gupta, Shreya Gautam, Tanay Kumar, Vinija Jain, Aman Chadha, Amit P. Sheth, and Amitava Das. Counter Turing test CT 2: AI-generated text detection is not as easy as you may think—introducing AI detectability index. arXiv preprint arXiv:2310.05030 , 2023. [7] Souradip Chakraborty, Amrit Singh Bedi, Sicheng Zhu, Bang An, Dinesh Manocha, and Furong Huang. On the possibilities of ai-generated text detection. arXiv preprint arXiv:2304.04736 , 2023. 10 [8] Elizabeth Clark, Tal August, Sofia Serrano, Nikita Haduong, Suchin Gururangan, and Noah A Smith. All that’s ‘human’is not gold: Evaluating human evaluation of generated text. In Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers) , pages 7282–7296, 2021. [9] Liam Dugan, Alyssa Hwang, Filip Trhlík, Andrew Zhu, Josh Magnus Ludan, Hainiu Xu, Daphne Ippolito, and Chris Callison-Burch. Raid: A shared benchmark for robust evaluation of machine-generated text detectors. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 12463–12492, 2024. [10] Sebastian Gehrmann, Hendrik Strobelt, and Alexander M Rush. Gltr: Statistical detection and visualization of generated text. In Proceedings of the 57th annual meeting of the association for computational linguistics: system demonstrations , pages 111–116, 2019. [11] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 , 2024. [12] Biyang Guo, Xin Zhang, Ziyuan Wang, Minqi Jiang, Jinran Nie, Yuxuan Ding, Jianwei Yue, and Yupeng Wu. How close is chatgpt to human experts? comparison corpus, evaluation, and detection. arXiv preprint arXiv:2301.07597 , 2023. [13] Hanxi Guo, Siyuan Cheng, Xiaolong Jin, Zhuo Zhang, Kaiyuan Zhang, Guanhong Tao, Guangyu Shen, and Xiangyu Zhang. Biscope: Ai-generated text detection by checking memorization of preceding tokens. 
+
+Advances in Neural Information Processing Systems , 37:104065–104090, 2024. [14] Xun Guo, Shan Zhang, Yongxin He, Ting Zhang, Wanquan Feng, Haibin Huang, and Chongyang Ma. Detective: Detecting ai-generated text via multi-level contrastive learning. Advances in Neural Information Processing Systems , 37:88320–88347, 2024. [15] Abhimanyu Hans, Avi Schwarzschild, Valeriia Cherepanova, Hamid Kazemi, Aniruddha Saha, Micah Goldblum, Jonas Geiping, and Tom Goldstein. Spotting LLMs with binoculars: Zero-shot detection of machine-generated text. In Ruslan Salakhutdinov, Zico Kolter, Katherine Heller, Adrian Weller, Nuria Oliver, Jonathan Scarlett, and Felix Berkenkamp, editors, Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pages 17519–17537. PMLR, 21–27 Jul 2024. URL https://proceedings.mlr.press/v235/hans24a.html .[16] Tatsunori B Hashimoto, Hugh Zhang, and Percy Liang. Unifying human and statistical evaluation for natural language generation. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers) , pages 1689–1701, 2019. [17] Yongxin He, Shan Zhang, Yixuan Cao, Lei Ma, and Ping Luo. DETree: Detecting human–ai collaborative texts via tree-structured hierarchical representation learning. In Advances in Neural Information Processing Systems , volume 38, 2025. [18] Xiaomeng Hu, Pin-Yu Chen, and Tsung-Yi Ho. Radar: Robust ai-text detection via adversarial learning. 
+
+Advances in neural information processing systems , 36:15077–15095, 2023. [19] Daphne Ippolito, Daniel Duckworth, Chris Callison-Burch, and Douglas Eck. Automatic detection of generated text is easiest when humans are fooled. In Proceedings of the 58th annual meeting of the association for computational linguistics , pages 1808–1822, 2020. [20] Yafu Li, Qintong Li, Leyang Cui, Wei Bi, Zhilin Wang, Longyue Wang, Linyi Yang, Shuming Shi, and Yue Zhang. Mage: Machine-generated text detection in the wild. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 36–53, 2024. [21] Runheng Liu, Heyan Huang, Xingchen Xiao, and Zhijing Wu. Zero-shot detection of llm-generated text via implicit reward model. arXiv preprint arXiv:2604.21223 , 2026. 11 [22] Meta. Meta Llama 3.1 model card. https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct ,2024. Official model card. [23] Meta. Meta Llama 3.2 model card. https://github.com/meta-llama/llama-models/blob/main/models/ llama3_2/MODEL_CARD.md , 2024. Official model card. [24] Meta. Meta Llama 3 model card. https://github.com/meta-llama/llama-models/blob/main/models/ llama3/MODEL_CARD.md , 2024. Official model card. [25] Eric Mitchell, Yoonho Lee, Alexander Khazatsky, Christopher D Manning, and Chelsea Finn. Detectgpt: Zero-shot machine-generated text detection using probability curvature. In International conference on machine learning , pages 24950–24962. PMLR, 2023. [26] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to follow instructions with human feedback. Advances in neural information processing systems , 35:27730–27744, 2022. [27] Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D Manning, Stefano Ermon, and Chelsea Finn. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36:53728–53741, 2023. [28] Irene Solaiman, Miles Brundage, Jack Clark, Amanda Askell, Ariel Herbert-Voss, Jeff Wu, Alec Radford, Gretchen Krueger, Jong Wook Kim, Sarah Kreps, et al. Release strategies and the social impacts of language models. arXiv preprint arXiv:1908.09203 , 2019. [29] Yiliao Song, Zhenqiao Yuan, Shuhai Zhang, Zhen Fang, Jun Yu, and Feng Liu. Deep kernel relative test for machine-generated text detection. In The Thirteenth International Conference on Learning Representations , 2025. [30] Jinyan Su, Terry Zhuo, Di Wang, and Preslav Nakov. Detectllm: Leveraging log rank information for zero-shot detection of machine-generated text. In Findings of the Association for Computational Linguistics: EMNLP 2023 , pages 12395–12412, 2023. [31] Adaku Uchendu, Thai Le, Kai Shu, and Dongwon Lee. Authorship attribution for neural text generation. In Proceedings of the 2020 conference on empirical methods in natural language processing (EMNLP) ,pages 8384–8395, 2020. [32] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. [33] Junchao Wu, Runzhe Zhan, Derek F Wong, Shu Yang, Xinyi Yang, Yulin Yuan, and Lidia S Chao. Detectrl: Benchmarking llm-generated text detection in real-world scenarios. Advances in Neural Information Processing Systems , 37:100369–100401, 2024. [34] Yihuai Xu, Yongwei Wang, Yifei Bi, Huangsen Cao, Zhouhan Lin, Yu Zhao, and Fei Wu. Training-free llm-generated text detection by mining token probability sequences. arXiv preprint arXiv:2410.06072 ,2024. [35] An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, Huan Lin, Jian Yang, Jianhong Tu, Jianwei Zhang, Jianxin Yang, Jiaxi Yang, Jingren Zhou, Junyang Lin, Kai Dang, Keming Lu, Keqin Bao, Kexin Yang, Le Yu, Mei Li, Mingfeng Xue, Pei Zhang, Qin Zhu, Rui Men, Runji Lin, Tianhao Li, Tingyu Xia, Xingzhang Ren, Xuancheng Ren, Yang Fan, Yang Su, Yichang Zhang, Yu Wan, Yuqiong Liu, Zeyu Cui, Zhenru Zhang, and Zihan Qiu. Qwen2.5 technical report. arXiv preprint arXiv:2412.15115 , 2024. [36] Xiaowei Zhu, Yubing Ren, Yanan Cao, Xixun Lin, Fang Fang, and Yangxi Li. Reliably bounding false positives: A zero-shot machine-generated text detection framework via multiscaled conformal prediction. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 12298–12319, 2025. 12 [37] Xiaowei Zhu, Yubing Ren, Fang Fang, Qingfeng Tan, Shi Wang, and Yanan Cao. Dna-detectllm: Unveiling ai-generated text via a dna-inspired mutation-repair paradigm. arXiv preprint arXiv:2509.15550 , 2025. 
+
+## A Limitations 
+
+Like other zero-shot detectors, EchoPrompt still depends on the choice of proxy family. In addition, the present prompt study shows that adding semantic context is useful, but it does not establish that the current prompt is globally optimal. 
+
+## B Broader Impacts 
+
+EchoPrompt may help with misinformation mitigation, educational integrity, authorship transparency, and platform governance by providing a training-free signal for detecting LLM-generated text. However, automated detection can also cause harm. False positives may wrongly label human-written text as machine-generated, and false negatives may miss generated content. These risks are more serious in high-stakes settings such as education, employment, publishing, and content moderation. Therefore, EchoPrompt should be used as an auxiliary signal, not as definitive evidence of authorship. 
+
+## C Empirical Study of Global Prefix Design 
+
+We determine the global prefix cg through preliminary empirical studies under a fixed EchoPrompt setting. Specifically, we compare different prompt types and semantically related prompt families using Qwen2.5-3B / Qwen2.5-3B-Instruct on 500 human and 500 machine samples from DetectRL Multi-Domain. This subset is used only for lightweight preliminary prompt selection rather than for reporting main detection performance. Although it is sampled from the same benchmark pool, it contains only a small random subset of examples, the selected prefix is fixed before all subsequent evaluations, and the proxy pair used in this prompt study is different from the proxy models emphasized in the main results. All samples are truncated to at most 1024 tokens, and the remaining scoring configuration follows the main experimental setup. Table 4 and Table 5 list the candidate prefixes considered in the prompt-type study and the semantic-family study, respectively. Table 6 and Table 7 then summarize the corresponding comparison results used to select the final global prefix. Table 4: Candidate prefixes in the prompt-type study. 
+
+Prompt type Prompt ID Prefix text system_prompt system_helpful “You are a helpful and reliable AI assistant. Answer clearly and avoid unsupported claims.” system_prompt system_precise “You are a precise technical writing assistant. Use concise wording and keep factual consistency.” role_prefix role_journalist “[Role: Investigative journalist writing for a global newspaper]” role_prefix role_professor “[Role: University professor preparing lecture notes]” random_prefix random_noise_a “zxqv n11 4rpt k2lm w0a9 nnn pqr ttt” random_prefix random_noise_b “m5 m5 m5 uuu 9x 9x 9x qlmn zz y7” irrelevant_prefix irrelevant_cooking “Recipe context: preheat oven to 180C, whisk eggs, fold flour, and bake for 25 minutes.” irrelevant_prefix irrelevant_travel “Travel memo: train departs at platform 4, weather is rainy, carry a light umbrella and check hotel check-in time.” 
+
+13 Table 5: Candidate prefixes in the semantic-family study. 
+
+Prompt family Prompt ID Prefix text helpful_assistant family_helpful_v1 “You are a helpful AI assistant. Provide clear, factual, and coherent answers.” helpful_assistant family_helpful_v2 “Act as a reliable assistant and answer with clear structure and factual consistency.” helpful_assistant family_helpful_v3 “Serve as a trustworthy assistant: be concise, accurate, and logically organized.” analytical_style family_analytical_v1 “Respond in an analytical style: state claims, then support each claim with evidence.” analytical_style family_analytical_v2 “Answer with explicit reasoning steps, emphasizing precision and evidence-backed statements.” analytical_style family_analytical_v3 “Use a structured analytical tone with concise argumentation and factual grounding.” neutral_response family_neutral_v1 “Produce a neutral and well-formed response to the request.” neutral_response family_neutral_v2 “Generate a balanced response that stays on topic and avoids unsup-ported assumptions.” neutral_response family_neutral_v3 “Write a coherent, topic-focused answer with stable tone and objective wording.” 
+
+Table 6: Prompt-type comparison among candidate global prefixes. 
+
+Prompt type Count Mean AUROC Std Best prompt Best AUROC / F1 system_prompt 2 0.7206 0.0665 system_precise 0.7871 / 0.7442 
+
+role_prefix 2 0.6745 0.0217 role_journalist 0.6962 / 0.6674 random_prefix 2 0.6646 0.0157 random_noise_b 0.6803 / 0.6667 irrelevant_prefix 2 0.5493 0.0025 irrelevant_cooking 0.5518 / 0.6667 
+
+## D Context-Conditioned Gain Under Assistant-Style Context 
+
+Table 8 reports the base-model context-conditioned gains for the four proxy families used in the contextual restoration validation. 
+
+## E Full Main Results Across Proxy Pairs 
+
+Table 9 reports the complete main-results table, with the proxy-independent training-based block followed by all evaluated training-free proxy pairs. 
+
+## F Full Per-Attack Results 
+
+Table 10 reports the complete per-attack AUROC and F1 score results, with the proxy-independent training-based block followed by all training-free proxy pairs. 
+
+## G Prompt-Component Ablation 
+
+To analyze the contribution of each part of the generic prefix, we decompose it into three interpretable components. The role sentence is “You are a helpful, versatile, and intelligent AI assistant.” The context clause A is “Below is the content you generated in response to a user’s request,” and context clause B specifies that the continuation may take the form of “a coherent continuation, topic-specific article, or detailed answer to a question.” We conduct the ablation using two proxy families, Qwen2.5-3B and Llama-3.1-8B. For both 14 Table 7: Semantic-family comparison among candidate global prefixes. 
+
+Prompt family Count Mean AUROC Std Best prompt Best AUROC / F1 Worst AUROC helpful_assistant 3 0.7133 0.0109 family_helpful_v2 0.7242 / 0.6909 0.6985 neutral_response 3 0.6667 0.0076 family_neutral_v3 0.6772 / 0.6667 0.6594 analytical_style 3 0.6554 0.0672 family_analytical_v2 0.7491 / 0.7065 0.5945 
+
+Table 8: Context-conditioned gain under an assistant-style prefix for the base models of four proxy families on 1,000 randomly sampled pairs from DetectRL Multi-Domain and DetectRL Multi-LLM. For each dataset and proxy family, the table reports the human-side and machine-side mean gain g(X; cg ).
+
+Model Dataset Human Gain Machine Gain Qwen2.5-1.5B DetectRL Multi-Domain +0.0209 +0.0486 Qwen2.5-1.5B DetectRL Multi-LLM +0.0040 +0.0461 Qwen2.5-3B DetectRL Multi-Domain +0.0056 +0.0377 Qwen2.5-3B DetectRL Multi-LLM -0.0062 +0.0362 Llama-3.2-1B DetectRL Multi-Domain -0.0451 +0.0261 Llama-3.2-1B DetectRL Multi-LLM -0.0483 +0.0257 Llama-3.2-3B DetectRL Multi-Domain -0.0381 +0.0385 Llama-3.2-3B DetectRL Multi-LLM -0.0417 +0.0381 
+
+DetectRL Multi-Domain and DetectRL Multi-LLM, we randomly sample 1,000 paired examples from each dataset. Table 9: Full main results (%) across all proxy pairs and benchmarks. Bold and underlines mark the best and second-best results within each training-free proxy block. 
+
+Detectors 
+
+DetectRL Multi-Domain DetectRL Multi-LLM DetectRL Multi-Attack RealDet RAID Avg 
+
+AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 
+
+Training-based Methods 
+
+OpenAI-D 82.64 76.00 82.58 75.61 83.91 78.02 90.06 77.15 73.03 67.19 82.44 74.80 BiScope 76.81 70.75 76.91 70.37 79.10 74.07 88.90 72.08 79.42 73.93 80.23 72.24 R-Detect 77.83 73.29 78.22 73.52 78.54 74.18 87.84 72.73 70.75 68.39 78.64 72.42 
+
+Training-free Methods 
+
+Qwen2.5-1.5B family 
+
+Entropy 73.33 67.80 73.33 67.99 76.67 74.20 86.34 80.23 72.79 68.34 76.49 71.71 Likelihood 70.65 66.67 70.34 66.67 74.10 73.60 86.03 81.75 75.79 72.29 75.38 72.20 LogRank 72.08 66.67 71.75 66.68 75.33 73.80 87.53 82.23 77.23 72.89 76.78 72.45 Fast-DetectGPT 65.95 66.77 65.00 66.74 67.26 67.23 78.23 73.26 77.52 75.34 70.79 69.87 Binoculars 64.95 66.70 63.90 66.68 66.21 67.24 77.02 73.92 77.31 76.77 69.88 70.26 LastDE++ 53.43 66.68 52.16 66.68 68.79 68.22 74.23 69.39 78.65 74.57 65.45 69.11 DNA-DetectLLM 69.25 66.71 68.22 66.68 69.49 67.12 76.42 73.30 76.29 75.08 71.93 69.78 IRM 75.23 71.78 74.56 71.27 74.47 71.10 67.04 67.92 65.69 66.67 71.40 69.75 EchoPrompt 82.44 78.87 81.74 78.52 83.71 80.20 67.77 69.43 68.23 67.52 76.78 74.91 
+
+Qwen2.5-3B family 
+
+Entropy 74.42 69.17 74.06 68.55 77.80 74.56 84.79 79.62 71.56 67.01 76.53 71.78 Likelihood 70.38 66.68 69.93 66.67 73.52 73.36 83.86 79.56 75.27 71.79 74.59 71.61 LogRank 72.25 66.86 71.77 66.68 75.12 73.81 86.01 80.60 76.69 72.26 76.37 72.04 
+
+Fast-DetectGPT 67.84 67.38 67.47 67.38 69.67 69.19 74.67 69.94 76.30 74.07 71.19 69.59 Binoculars 66.29 66.94 66.04 66.98 69.22 68.83 72.96 69.76 76.11 74.76 70.12 69.45 LastDE++ 56.64 66.83 56.55 66.78 71.79 69.89 70.01 67.26 77.72 73.33 66.54 68.82 DNA-DetectLLM 73.10 67.40 72.65 67.13 74.07 69.81 73.18 69.47 75.15 74.09 73.63 69.58 IRM 62.25 66.67 61.39 66.68 61.56 66.75 55.13 66.82 59.22 66.67 59.91 66.72 EchoPrompt 76.02 74.22 75.11 73.69 77.38 74.95 63.24 67.55 66.94 67.50 71.74 71.58 
+
+Llama-3.2-1B family 
+
+Entropy 75.34 69.88 74.87 69.06 78.48 76.74 86.88 80.77 76.15 72.15 78.34 73.72 Likelihood 79.71 73.91 79.36 73.51 82.61 78.19 87.74 83.85 77.89 74.21 81.46 76.73 LogRank 79.89 73.83 79.45 73.55 82.50 78.12 88.40 84.01 78.69 74.49 81.79 76.80 
+
+15 Table 9 (continued) Detectors 
+
+DetectRL Multi-Domain DetectRL Multi-LLM DetectRL Multi-Attack RealDet RAID Avg 
+
+AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 Fast-DetectGPT 90.76 83.25 90.43 82.85 91.66 84.64 89.43 85.14 83.69 83.82 89.19 83.94 Binoculars 91.91 85.31 91.64 84.95 92.77 86.77 90.70 87.11 83.97 83.94 90.20 85.61 LastDE++ 79.99 72.48 79.33 71.62 82.27 77.07 83.81 77.07 84.92 81.10 82.06 75.87 DNA-DetectLLM 93.07 87.01 92.76 86.15 93.73 88.01 91.05 86.76 83.51 82.45 90.82 86.08 IRM 97.39 91.74 97.23 91.42 97.23 91.99 91.32 82.71 84.65 79.53 93.56 87.48 
+
+EchoPrompt 96.07 89.71 95.43 88.74 95.78 90.54 92.48 86.62 86.98 81.73 93.35 87.47 
+
+Llama-3.2-3B family 
+
+Entropy 74.93 69.31 74.36 67.81 77.25 75.44 83.97 79.09 74.61 70.81 77.03 72.49 Likelihood 79.55 73.88 79.20 73.22 82.18 77.29 86.84 82.51 76.78 73.30 80.91 76.04 LogRank 79.84 73.76 79.41 73.06 82.24 77.38 87.65 82.60 77.82 73.92 81.39 76.15 Fast-DetectGPT 90.03 82.17 89.75 81.88 90.71 83.51 89.47 83.31 84.02 83.09 88.80 82.79 Binoculars 91.19 84.42 90.88 83.91 91.73 85.43 90.66 85.77 84.36 83.20 89.76 84.55 LastDE++ 79.89 72.61 79.52 71.95 81.91 76.58 83.39 75.87 85.94 80.94 82.13 75.59 DNA-DetectLLM 92.55 85.86 92.15 85.55 92.82 86.93 90.50 85.34 83.27 81.04 90.26 84.94 IRM 97.27 91.80 97.23 91.49 97.25 91.74 88.94 81.11 82.75 76.96 92.69 86.62 EchoPrompt 97.01 91.24 96.55 90.93 96.87 91.91 90.84 85.33 84.41 78.36 93.14 87.55 
+
+Falcon-7B family 
+
+Entropy 66.29 66.68 66.10 66.69 72.45 72.89 87.08 81.23 72.28 68.06 72.84 71.11 Likelihood 68.09 66.68 67.88 66.69 72.39 72.44 86.25 81.47 75.16 72.11 73.95 71.88 LogRank 68.63 66.68 68.29 66.69 72.20 72.66 87.35 81.77 76.28 72.59 74.55 72.08 Fast-DetectGPT 82.80 76.15 82.33 75.92 84.04 77.30 90.81 86.98 84.84 86.53 84.96 80.58 Binoculars 83.87 78.28 83.29 78.25 85.13 79.42 91.40 88.31 84.95 86.40 85.73 82.13 LastDE++ 75.81 69.71 75.38 69.06 78.67 74.97 90.33 84.12 89.05 86.28 81.85 76.83 DNA-DetectLLM 89.27 83.01 88.87 82.45 90.02 83.81 92.45 88.64 86.48 86.98 89.42 84.98 
+
+IRM 82.83 76.27 82.62 75.85 84.54 78.02 81.59 74.32 78.31 72.51 81.98 75.39 EchoPrompt 87.82 81.62 87.36 80.96 88.64 82.68 86.89 83.52 83.84 79.80 86.91 81.72 
+
+Llama-3.1-8B family 
+
+Entropy 68.45 66.68 68.01 66.68 71.32 72.60 80.16 74.53 69.74 66.69 71.54 69.44 Likelihood 74.88 69.17 74.59 68.19 77.51 74.11 83.51 79.19 73.91 70.33 76.88 72.20 LogRank 74.94 69.05 74.58 68.21 77.40 74.02 84.26 79.37 74.89 70.96 77.22 72.32 Fast-DetectGPT 85.19 77.14 84.99 76.97 86.71 79.82 86.59 79.32 82.69 81.71 85.24 78.99 Binoculars 85.93 78.39 85.81 78.10 87.38 80.88 87.33 81.81 82.91 81.35 85.87 80.11 LastDE++ 77.22 70.15 76.77 69.95 80.02 76.24 83.16 75.95 86.50 81.44 80.73 74.75 DNA-DetectLLM 87.16 79.92 86.94 79.56 88.56 81.46 87.41 81.64 81.01 79.12 86.22 80.34 IRM 88.83 82.53 88.96 82.35 88.83 82.87 82.23 75.90 79.37 72.10 85.65 79.15 EchoPrompt 95.10 89.13 95.37 89.50 95.61 89.90 88.88 82.67 85.21 78.10 92.03 85.86 
+
+Llama-3-8B family 
+
+Entropy 64.31 66.71 64.14 66.68 67.64 71.06 77.08 73.04 67.73 66.69 68.18 68.84 Likelihood 79.54 73.57 79.24 72.75 81.71 76.12 85.53 81.18 75.89 73.11 80.38 75.34 LogRank 76.83 70.70 76.39 69.63 79.17 74.63 85.34 80.81 75.80 72.49 78.71 73.65 Fast-DetectGPT 91.40 84.02 91.45 83.61 92.63 85.83 88.90 82.96 83.68 83.01 89.61 83.89 Binoculars 91.93 84.98 92.01 84.57 93.10 86.61 89.58 84.46 83.73 82.49 90.07 84.62 LastDE++ 84.26 76.72 84.26 76.74 86.69 80.43 89.10 81.74 87.81 83.94 86.42 79.91 DNA-DetectLLM 90.41 83.28 90.55 82.99 91.86 85.05 87.75 82.42 80.94 80.55 88.30 82.86 IRM 98.47 94.06 98.50 93.89 98.36 93.92 91.51 83.43 87.52 81.42 94.87 89.34 EchoPrompt 98.82 95.26 98.62 95.25 98.60 95.28 92.33 88.79 89.45 85.32 95.56 91.98 
+
+Table 10: Per-attack results (%) on DetectRL attack subsets. Bold and underlines mark the best and second-best results within each training-free proxy block. 
+
+Detectors Direct Prompt Prompt Attacks Paraphrase Perturbation Data Mixing 
+
+AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 
+
+Training-based Methods 
+
+OpenAI-D 93.12 83.65 88.08 78.71 87.48 79.12 71.00 72.01 79.85 76.62 BiScope 93.61 86.43 91.02 83.06 71.68 66.67 67.96 67.54 71.24 66.67 R-Detect 90.09 80.34 85.31 76.96 86.76 78.16 62.09 68.76 68.46 66.69 
+
+Training-free Methods 
+
+Qwen2.5-1.5B family 
+
+Entropy 93.40 86.43 91.08 83.80 67.44 66.69 61.51 67.30 69.92 66.76 Likelihood 92.82 86.03 88.52 81.96 69.79 66.67 51.93 66.67 67.41 66.67 LogRank 93.50 86.62 89.16 82.37 70.41 66.67 54.28 66.67 69.27 66.67 Fast-DetectGPT 75.37 69.13 70.43 66.73 70.46 66.84 54.11 66.78 65.94 66.67 Binoculars 74.30 69.42 69.54 66.69 69.55 66.73 52.33 66.69 65.35 66.67 LastDE++ 74.29 68.40 69.41 66.71 66.55 66.84 78.53 72.48 55.19 66.67 DNA-DetectLLM 73.61 68.44 68.94 66.69 71.98 67.05 63.45 66.75 69.46 66.67 IRM 71.07 68.94 69.69 68.13 76.20 72.49 77.60 73.90 77.80 72.05 
+
+16 Table 10 (continued) Detectors Direct Prompt Prompt Attacks Paraphrase Perturbation Data Mixing 
+
+AUROC F1 AUROC F1 AUROC F1 AUROC F1 AUROC F1 EchoPrompt 81.19 78.60 81.60 78.75 80.34 78.55 84.91 82.10 90.49 83.00 
+
+Qwen2.5-3B family 
+
+Entropy 92.78 85.94 90.17 82.98 65.42 66.69 67.05 68.87 73.60 68.31 Likelihood 92.32 84.86 88.72 81.96 68.30 66.67 51.95 66.67 66.31 66.67 LogRank 93.47 86.41 89.38 82.63 69.08 66.67 55.10 66.69 68.55 66.67 Fast-DetectGPT 81.22 73.68 77.03 70.63 71.87 67.71 50.43 67.25 67.79 66.67 Binoculars 80.50 73.47 76.14 70.09 70.74 67.25 52.29 66.67 66.41 66.67 LastDE++ 80.25 72.96 75.83 69.75 69.10 67.75 76.34 72.30 57.43 66.67 DNA-DetectLLM 81.61 74.63 77.06 70.25 74.42 68.55 62.65 67.04 74.60 68.60 IRM 63.80 66.67 61.72 66.94 67.99 66.83 53.16 66.67 61.12 66.67 EchoPrompt 79.24 76.85 79.68 77.44 75.09 73.71 70.31 70.96 82.55 75.79 
+
+Llama-3.2-1B family 
+
+Entropy 97.20 92.32 95.04 89.50 71.88 68.55 57.37 66.69 70.88 66.67 Likelihood 96.99 91.69 93.57 87.34 76.10 71.69 67.49 66.69 78.90 73.56 LogRank 97.02 92.03 93.21 87.49 76.43 71.84 67.16 66.69 78.69 72.53 Fast-DetectGPT 98.26 93.12 94.92 88.52 88.86 81.09 86.82 79.06 89.44 81.43 Binoculars 99.07 95.67 96.13 91.17 90.21 83.33 88.18 81.06 90.24 82.59 LastDE++ 94.88 87.92 90.50 83.52 82.88 75.12 63.89 66.69 79.19 72.07 DNA-DetectLLM 99.51 96.63 97.38 93.14 90.14 83.63 90.95 83.86 90.65 82.77 IRM 98.94 95.48 97.62 92.83 98.00 92.51 95.65 88.62 95.95 90.48 EchoPrompt 97.52 94.70 96.49 91.90 96.96 91.80 95.04 87.78 96.47 91.17 
+
+Llama-3.2-3B family 
+
+Entropy 97.26 92.56 95.05 89.50 72.03 68.57 56.84 66.69 71.32 66.67 Likelihood 97.14 91.85 93.65 87.87 76.28 71.50 67.50 66.68 79.04 72.69 LogRank 97.16 91.88 93.29 87.39 76.50 71.34 67.11 66.69 78.78 72.55 Fast-DetectGPT 98.27 93.43 94.95 88.75 88.57 80.93 85.41 77.86 88.84 80.68 Binoculars 98.77 94.61 95.80 90.40 89.41 81.91 87.06 79.11 89.83 81.61 LastDE++ 95.09 88.12 90.37 83.34 82.53 74.95 64.90 66.67 79.76 72.86 DNA-DetectLLM 98.22 93.67 96.79 91.72 91.61 84.72 93.24 85.76 92.02 84.15 IRM 99.22 95.73 97.76 93.09 98.34 93.41 98.24 93.78 96.57 90.81 
+
+EchoPrompt 98.58 94.79 96.61 91.30 96.08 89.79 96.38 90.47 94.43 87.87 
+
+Falcon-7B family 
+
+Entropy 87.58 80.60 85.69 79.15 69.85 67.31 71.67 68.09 77.45 71.81 Likelihood 84.99 78.33 83.42 76.72 71.77 67.76 71.78 67.65 79.98 72.68 LogRank 84.79 77.91 83.31 76.58 71.67 67.70 72.26 67.78 80.23 72.82 Fast-DetectGPT 95.34 89.88 92.91 86.97 81.95 74.31 80.64 74.26 89.34 81.27 Binoculars 95.87 90.89 93.35 87.73 82.40 75.07 81.27 74.98 89.76 81.80 LastDE++ 91.58 84.43 88.23 80.39 76.57 69.21 72.34 67.51 83.35 76.18 DNA-DetectLLM 96.53 91.73 94.40 88.89 83.66 75.94 84.27 76.84 91.21 82.99 IRM 85.94 78.80 84.26 77.13 72.74 68.26 72.66 68.03 80.53 73.02 EchoPrompt 96.65 92.28 94.51 89.26 85.87 79.64 88.80 83.19 92.55 85.17 
+
+Llama-3.1-8B family 
+
+Entropy 91.20 82.72 88.56 80.04 59.22 66.67 55.86 66.91 61.74 66.67 Likelihood 94.11 87.19 90.70 83.17 68.32 66.67 63.88 66.85 70.53 66.67 LogRank 93.97 87.01 90.16 82.77 68.28 66.67 64.24 66.94 70.37 66.69 Fast-DetectGPT 94.45 87.96 91.96 85.50 84.39 76.87 77.37 71.35 85.36 77.41 Binoculars 95.14 89.61 92.71 87.14 84.93 77.59 78.24 72.47 85.91 77.60 LastDE++ 92.48 85.41 89.50 82.15 82.18 75.33 58.31 66.69 77.60 71.62 DNA-DetectLLM 95.76 89.74 93.52 87.59 82.49 74.73 83.67 76.46 87.35 78.78 IRM 85.81 80.42 86.46 80.45 90.78 84.54 90.47 84.30 90.62 84.65 EchoPrompt 96.01 90.56 95.21 89.06 94.85 88.89 97.32 92.52 94.66 88.46 
+
+Llama-3-8B family 
+
+Entropy 86.37 78.37 84.39 76.73 56.00 66.67 52.02 66.87 59.43 66.67 Likelihood 95.64 89.39 92.33 85.35 73.31 68.66 71.77 67.60 75.48 69.59 LogRank 94.86 88.26 91.09 83.94 70.75 66.67 66.79 67.20 72.36 67.08 Fast-DetectGPT 97.45 92.52 95.32 89.43 90.84 83.68 88.22 80.16 91.31 83.36 Binoculars 97.89 93.30 95.91 90.88 91.15 84.11 88.81 80.78 91.72 83.96 LastDE++ 96.72 90.50 93.91 87.95 88.59 81.03 70.35 66.75 83.87 75.92 DNA-DetectLLM 97.40 92.35 95.84 90.40 87.24 79.60 88.36 79.96 90.48 82.93 IRM 98.70 94.59 97.73 92.76 99.15 95.63 98.90 94.84 97.31 91.76 EchoPrompt 99.62 97.33 98.13 94.81 98.28 94.53 99.24 97.04 97.74 92.70 
+
+17
