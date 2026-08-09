@@ -6,55 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-08
-- 运行时间：2026-08-08 20:46:16 UTC
+- 最新运行日期：2026-08-09
+- 运行时间：2026-08-09 20:47:55 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：1
-- 速读区：10
+- 本次总论文数：6
+- 精读区：0
+- 速读区：6
 
 ### 今日简报（AI）
-今日聚焦LLM效能提升，深度解析多模型迭代摘要框架MIDAS及指令堆叠失效等11项前沿进展。
-核心结论指出MIDAS能显著优化数据自适应摘要质量，同时PolicyGuard为编程智能体构建了更严密的语义安全防线。
-建议开发者重点关注多模型协作逻辑以提升长文本处理能力，并警惕复杂指令组合下的模型性能塌陷风险。
-- 详情：[/202608/08/README](/202608/08/README)
+今日速览 6 篇前沿论文，聚焦强化学习探索、意图识别对比及代码智能体的安全防护。
+重点关注 LLM 意图分类在训练与非训练模式下的鲁棒性差异，以及 PolicyGuard 如何通过语义 DLP 保护代码智能体隐私。
+建议开发者在构建智能体时，兼顾复杂指令下的探索效率与敏感数据的安全边界。
+- 详情：[/202608/09/README](/202608/09/README)
 
 ### 精读区论文标签
-1. [MIDAS: Multi-LLM Iterative Data-Adaptive Summarization](/202608/08/2608.04307v1-midas-multi-llm-iterative-data-adaptive-summarization)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于摘要任务的自动提示词优化方法
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Instruction Stacking Collapse: A Benchmark and the Capability-Dependent Value of Prompt Compilation](/202608/08/2608.02639v1-instruction-stacking-collapse-a-benchmark-and-the-capability-dependent-value-of-prompt-compilation)  
-   标签：评分：7.0/10、query:bopl
-   evidence：评估生产级大模型的提示词编译和指令遵循能力
-2. [PolicyGuard: Prompt-Configurable Semantic DLP for LLM Coding Agents](/202608/08/2608.02687v1-policyguard-prompt-configurable-semantic-dlp-for-llm-coding-agents)  
-   标签：评分：7.0/10、query:bopl
-   evidence：大语言模型的提示可配置分类
-3. [PARALLEL: A Prefrontal-Aligned Reinforcement inspired Approach for Language-Model Learning under Explicit Limits](/202608/08/2607.28982v1-parallel-a-prefrontal-aligned-reinforcement-inspired-approach-for-language-model-learning-under-explicit-limits)  
+1. [Instruction-Conditioned Exploration with Asymmetric Reinforcement Learning and Self-Distillation](/202608/09/2608.02087v1-instruction-conditioned-exploration-with-asymmetric-reinforcement-learning-and-self-distillation)  
    标签：评分：6.0/10、query:bopl
-   evidence：受强化学习启发的语言模型自适应
-4. [PTP: Previous-Token Prediction based LLM Inversion for Near-Exact Prompt Reconstruction](/202608/08/2607.29378v1-ptp-previous-token-prediction-based-llm-inversion-for-near-exact-prompt-reconstruction)  
+   evidence：在强化学习训练期间补充任务提示
+2. [Training-Free versus Training-Based Intent Classification in LLMs: Accuracy, Robustness, and Failure Modes](/202608/09/2608.02415v1-training-free-versus-training-based-intent-classification-in-llms-accuracy-robustness-and-failure-modes)  
    标签：评分：6.0/10、query:bopl
-   evidence：黑盒提示词重构与反演
-5. [Personalizing Large Language Model Agents with Small Policy Models](/202608/08/2608.00215v1-personalizing-large-language-model-agents-with-small-policy-models)  
+   evidence：大语言模型中的用户提示分类
+3. [PolicyGuard: Prompt-Configurable Semantic DLP for LLM Coding Agents](/202608/09/2608.02687v2-policyguard-prompt-configurable-semantic-dlp-for-llm-coding-agents)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过执行策略学习实现冻结智能体的个性化
-6. [Prompt-Induced Waste in Large Reasoning Models: A Preregistered Two-Harness Benchmark of Coding Agents](/202608/08/2608.01347v1-prompt-induced-waste-in-large-reasoning-models-a-preregistered-two-harness-benchmark-of-coding-agents)  
+   evidence：自动化提示分类的策略即提示范式
+4. [Beyond Full-Model Rollback: AuroSFT for Adapter-State Multi-Task Fine-Tuning](/202608/09/2608.05250v1-beyond-full-model-rollback-aurosft-for-adapter-state-multi-task-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示词表述对推理成本的因果影响
-7. [Variable Smoothing for Weakly Convex Problems with Non-Euclidean Directions](/202608/08/2608.04584v1-variable-smoothing-for-weakly-convex-problems-with-non-euclidean-directions)  
+   evidence：参数高效的适配器状态多任务微调
+5. [CircuitSteer: Geometrically Aligned Multi-Layer Steering via Sparse Autoencoder Circuits](/202608/09/2608.05732v1-circuitsteer-geometrically-aligned-multi-layer-steering-via-sparse-autoencoder-circuits)  
    标签：评分：6.0/10、query:bopl
-   evidence：包含非光滑组件的复合问题优化
-8. [Teaching MLLMs to Say No: Generalized Referring Expression Comprehension via Refusal Calibrated GRPO](/202608/08/2608.04698v1-teaching-mllms-to-say-no-generalized-referring-expression-comprehension-via-refusal-calibrated-grpo)  
+   evidence：通过转向控制大语言模型行为
+6. [Training-Free Token-Level Steering for LLM Personalized Co-Writing](/202608/09/2608.06069v1-training-free-token-level-steering-for-llm-personalized-co-writing)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于梯度的强化学习用于校准多模态大模型响应
-9. [When Prompts Become Pixels: Prompt-Region Grounding for Multimodal Reasoning](/202608/08/2608.04726v1-when-prompts-become-pixels-prompt-region-grounding-for-multimodal-reasoning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：多模态大语言模型推理中的提示区域对齐
-10. [Once a Response, Always a Response: Detecting LLM-generated Text via Latent Prompt Restoration](/202608/08/2608.05741v1-once-a-response-always-a-response-detecting-llm-generated-text-via-latent-prompt-restoration)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于大模型检测的潜在提示词恢复
+   evidence：无需训练的标记级个性化引导
 
 
 <div class="dpr-home-promo-card">
