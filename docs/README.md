@@ -6,40 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-12
-- 运行时间：2026-08-12 21:04:35 UTC
+- 最新运行日期：2026-08-13
+- 运行时间：2026-08-13 21:21:42 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：2
-- 速读区：4
+- 本次总论文数：8
+- 精读区：3
+- 速读区：5
 
 ### 今日简报（AI）
-今日深度解析大模型提示词的递归自适应优化与低成本进化算法迁移，涵盖 6 篇前沿进展。
-满分力作 RLMOpt 展现了递归语言模型在提示词优化上的卓越性能，而跨层级迁移技术则实现了“低成本优化、高性能部署”的突破。
-建议优先研读 RLMOpt 的递归优化思路，并关注如何通过图像描述强化学习提升多模态模型的安全性。
-- 详情：[/202608/12/README](/202608/12/README)
+今日精选 8 篇论文，深度解析如何通过低成本优化实现强力部署，并攻克迁移攻击与多模态推理难题。
+核心突破在于跨层迁移的成本感知策略，以及利用双层极小极大优化显著提升攻击的可靠性与效率。
+建议重点关注 LLM 的“无权重”个性化微调技术，以及 VLA 模型在测试时的可靠性训练方案。
+- 详情：[/202608/13/README](/202608/13/README)
 
 ### 精读区论文标签
-1. [RLMOpt: Adaptive Prompt Optimization via Recursive Language Models](/202608/12/2608.10471v1-rlmopt-adaptive-prompt-optimization-via-recursive-language-models)  
-   标签：评分：10.0/10、query:bopl
-   evidence：通过递归语言模型实现自动提示优化
-2. [Optimize Cheap, Deploy Strong: Cost-Aware Cross-Tier Transfer for Evolutionary Optimization](/202608/12/2608.10694v1-optimize-cheap-deploy-strong-cost-aware-cross-tier-transfer-for-evolutionary-optimization)  
+1. [Optimize Cheap, Deploy Strong: Cost-Aware Cross-Tier Transfer for Evolutionary Optimization](/202608/13/2608.10694v2-optimize-cheap-deploy-strong-cost-aware-cross-tier-transfer-for-evolutionary-optimization)  
+   标签：评分：9.0/10、query:bopl
+   evidence：大语言模型提示词的进化优化
+2. [Learning with Bilevel-Minimax Optimization for Efficient and Reliable Transfer Attacks](/202608/13/2608.11815v1-learning-with-bilevel-minimax-optimization-for-efficient-and-reliable-transfer-attacks)  
    标签：评分：8.0/10、query:bopl
-   evidence：大模型提示词和智能体程序的进化优化
+   evidence：用于对抗迁移攻击的双层极大极小优化
+3. [Beyond Trial-and-Error: Agentic Optimization for Image-to-Video Adherence](/202608/13/2608.12290v1-beyond-trial-and-error-agentic-optimization-for-image-to-video-adherence)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于目标导向优化的迭代提示词优化循环
 
 ### 速读区论文标签
-1. [SafeCap: Improving LVLM Safety with Image Captioning Reinforcement Learning](/202608/12/2608.10513v1-safecap-improving-lvlm-safety-with-image-captioning-reinforcement-learning)  
+1. [VANE: Reliable Test-Time Training for Vision-Language-Action Models via Future Visual Representation Prediction](/202608/13/2608.09448v2-vane-reliable-test-time-training-for-vision-language-action-models-via-future-visual-representation-prediction)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于LLM安全对齐的学习型自我描述
-2. [Can Bayesian Optimization Efficiently Find a Strong Single Expert in Neural Thickets?](/202608/12/2608.10867v1-can-bayesian-optimization-efficiently-find-a-strong-single-expert-in-neural-thickets)  
+   evidence：基于上下文的提示适配
+2. [Weightless Fine-Tuning: Personalizing LLMs via Logit-Space Transport](/202608/13/2608.11342v1-weightless-fine-tuning-personalizing-llms-via-logit-space-transport)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于无梯度后训练的贝叶斯优化
-3. [Toward Mask Annotation-Free Surgical Instrument Segmentation from Endoscopic Images Using Text-Prompted Segment Anything Model 3 (SAM3)](/202608/12/2608.08844v1-toward-mask-annotation-free-surgical-instrument-segmentation-from-endoscopic-images-using-text-prompted-segment-anything-model-3-sam3)  
+   evidence：通过跨前缀传输到当前提示词来近似微调
+3. [Motion-as-Prompt: Enhancing Motion Reasoning in Multimodal Large Language Models via Motion-Guided Cross-Frame Visual Prompting](/202608/13/2608.11655v1-motion-as-prompt-enhancing-motion-reasoning-in-multimodal-large-language-models-via-motion-guided-cross-frame-visual-prompting)  
+   标签：评分：7.0/10、query:bopl
+   evidence：运动引导的跨帧视觉提示
+4. [ReOrder-OPD:Reliability-Aware Prompt Ordering for On-Policy Distillation](/202608/13/2608.10905v1-reorder-opdreliability-aware-prompt-ordering-for-on-policy-distillation)  
    标签：评分：6.0/10、query:bopl
-   evidence：文本提示的Segment Anything模型
-4. [TACTICL: Task-Aware Compression of Tabular ICL Models](/202608/12/2608.10837v1-tacticl-task-aware-compression-of-tabular-icl-models)  
+   evidence：在线策略蒸馏中的提示词级可靠性
+5. [DexterSQL: Deep Schema Exploration and Rule-based Correction for Text-to-SQL Generation](/202608/13/2608.11889v1-dextersql-deep-schema-exploration-and-rule-based-correction-for-text-to-sql-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过适配器将上下文学习与权重学习结合
+   evidence：基于提示词的Text-to-SQL方法
 
 
 <div class="dpr-home-promo-card">
