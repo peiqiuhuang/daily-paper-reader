@@ -6,46 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-13
-- 运行时间：2026-08-13 21:21:42 UTC
+- 最新运行日期：2026-08-14
+- 运行时间：2026-08-14 21:13:20 UTC
 - 运行状态：成功
-- 本次总论文数：8
+- 本次总论文数：7
 - 精读区：3
-- 速读区：5
+- 速读区：4
 
 ### 今日简报（AI）
-今日精选 8 篇论文，深度解析如何通过低成本优化实现强力部署，并攻克迁移攻击与多模态推理难题。
-核心突破在于跨层迁移的成本感知策略，以及利用双层极小极大优化显著提升攻击的可靠性与效率。
-建议重点关注 LLM 的“无权重”个性化微调技术，以及 VLA 模型在测试时的可靠性训练方案。
-- 详情：[/202608/13/README](/202608/13/README)
+今日精选 7 篇前沿论文，深度攻克逆强化学习与非凸双层优化的高效计算难题。
+核心突破在于利用超梯度与无 Hessian 技术大幅提升复杂决策效率，并同步探索了多模态上下文学习的演进机制。
+建议重点研读两篇 9 分高分优化论文，同时关注大模型如何通过多样化驱动实现自我进化。
+- 详情：[/202608/14/README](/202608/14/README)
 
 ### 精读区论文标签
-1. [Optimize Cheap, Deploy Strong: Cost-Aware Cross-Tier Transfer for Evolutionary Optimization](/202608/13/2608.10694v2-optimize-cheap-deploy-strong-cost-aware-cross-tier-transfer-for-evolutionary-optimization)  
+1. [Efficient Hypergradient Descent for Inverse Reinforcement Learning](/202608/14/2608.11052v1-efficient-hypergradient-descent-for-inverse-reinforcement-learning)  
    标签：评分：9.0/10、query:bopl
-   evidence：大语言模型提示词的进化优化
-2. [Learning with Bilevel-Minimax Optimization for Efficient and Reliable Transfer Attacks](/202608/13/2608.11815v1-learning-with-bilevel-minimax-optimization-for-efficient-and-reliable-transfer-attacks)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于对抗迁移攻击的双层极大极小优化
-3. [Beyond Trial-and-Error: Agentic Optimization for Image-to-Video Adherence](/202608/13/2608.12290v1-beyond-trial-and-error-agentic-optimization-for-image-to-video-adherence)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于目标导向优化的迭代提示词优化循环
+   evidence：将逆强化学习建模为双层优化问题
+2. [Efficient Hessian-Free Methods for Multi-Objective Bilevel Optimization with Nonconvex Lower Level](/202608/14/2608.12704v1-efficient-hessian-free-methods-for-multi-objective-bilevel-optimization-with-nonconvex-lower-level)  
+   标签：评分：9.0/10、query:bopl
+   evidence：非凸下层问题的多目标双层优化
+3. [HiRoute: Hierarchical Routed Prompt Tuning for Safety Alignment of Large Language Models](/202608/14/2608.12821v1-hiroute-hierarchical-routed-prompt-tuning-for-safety-alignment-of-large-language-models)  
+   标签：评分：9.0/10、query:bopl
+   evidence：输入自适应的分层提示词微调框架
 
 ### 速读区论文标签
-1. [VANE: Reliable Test-Time Training for Vision-Language-Action Models via Future Visual Representation Prediction](/202608/13/2608.09448v2-vane-reliable-test-time-training-for-vision-language-action-models-via-future-visual-representation-prediction)  
+1. [DIVE: Unlocking Self-Improvement in Frozen Language Models Through Diversity-Driven Skill Evolution](/202608/14/2608.12486v1-dive-unlocking-self-improvement-in-frozen-language-models-through-diversity-driven-skill-evolution)  
    标签：评分：7.0/10、query:bopl
-   evidence：基于上下文的提示适配
-2. [Weightless Fine-Tuning: Personalizing LLMs via Logit-Space Transport](/202608/13/2608.11342v1-weightless-fine-tuning-personalizing-llms-via-logit-space-transport)  
+   evidence：从经验中演化持久的自然语言技能
+2. [MAG: MAnifold Guided Semi-Supervised Multi-modal In-Context Learning](/202608/14/2608.12724v1-mag-manifold-guided-semi-supervised-multi-modal-in-context-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过跨前缀传输到当前提示词来近似微调
-3. [Motion-as-Prompt: Enhancing Motion Reasoning in Multimodal Large Language Models via Motion-Guided Cross-Frame Visual Prompting](/202608/13/2608.11655v1-motion-as-prompt-enhancing-motion-reasoning-in-multimodal-large-language-models-via-motion-guided-cross-frame-visual-prompting)  
+   evidence：上下文学习示例选择
+3. [When Is a Task Vector Enough? An Empirical Theory of Implicit Multimodal ICL](/202608/14/2608.13385v1-when-is-a-task-vector-enough-an-empirical-theory-of-implicit-multimodal-icl)  
    标签：评分：7.0/10、query:bopl
-   evidence：运动引导的跨帧视觉提示
-4. [ReOrder-OPD:Reliability-Aware Prompt Ordering for On-Policy Distillation](/202608/13/2608.10905v1-reorder-opdreliability-aware-prompt-ordering-for-on-policy-distillation)  
+   evidence：多模态上下文学习与任务向量
+4. [Test-Time Optimization of Query Embeddings with Ranking Aware Reward Maximization](/202608/14/2608.12569v1-test-time-optimization-of-query-embeddings-with-ranking-aware-reward-maximization)  
    标签：评分：6.0/10、query:bopl
-   evidence：在线策略蒸馏中的提示词级可靠性
-5. [DexterSQL: Deep Schema Exploration and Rule-based Correction for Text-to-SQL Generation](/202608/13/2608.11889v1-dextersql-deep-schema-exploration-and-rule-based-correction-for-text-to-sql-generation)  
-   标签：评分：6.0/10、query:bopl
-   evidence：基于提示词的Text-to-SQL方法
+   evidence：将嵌入的测试时微调作为轻量级学习向量
 
 
 <div class="dpr-home-promo-card">
