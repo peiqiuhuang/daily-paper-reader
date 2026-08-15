@@ -6,43 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-14
-- 运行时间：2026-08-14 21:13:20 UTC
+- 最新运行日期：2026-08-15
+- 运行时间：2026-08-15 20:19:43 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：3
-- 速读区：4
+- 本次总论文数：3
+- 精读区：0
+- 速读区：3
 
 ### 今日简报（AI）
-今日精选 7 篇前沿论文，深度攻克逆强化学习与非凸双层优化的高效计算难题。
-核心突破在于利用超梯度与无 Hessian 技术大幅提升复杂决策效率，并同步探索了多模态上下文学习的演进机制。
-建议重点研读两篇 9 分高分优化论文，同时关注大模型如何通过多样化驱动实现自我进化。
-- 详情：[/202608/14/README](/202608/14/README)
+今日聚焦模型优化与对齐边界，深入探讨了从排列优化诊断到多模态模型能力保持的前沿进展。
+重点推荐 PRISM 协议通过景观诊断提升优化效率，以及 NeuPAT 在多模态微调中实现神经元级别的语言能力保留。
+建议关注开源模型在重编程下的认知可塑性限制，以理性评估大模型的安全对齐边界。
+- 详情：[/202608/15/README](/202608/15/README)
 
 ### 精读区论文标签
-1. [Efficient Hypergradient Descent for Inverse Reinforcement Learning](/202608/14/2608.11052v1-efficient-hypergradient-descent-for-inverse-reinforcement-learning)  
-   标签：评分：9.0/10、query:bopl
-   evidence：将逆强化学习建模为双层优化问题
-2. [Efficient Hessian-Free Methods for Multi-Objective Bilevel Optimization with Nonconvex Lower Level](/202608/14/2608.12704v1-efficient-hessian-free-methods-for-multi-objective-bilevel-optimization-with-nonconvex-lower-level)  
-   标签：评分：9.0/10、query:bopl
-   evidence：非凸下层问题的多目标双层优化
-3. [HiRoute: Hierarchical Routed Prompt Tuning for Safety Alignment of Large Language Models](/202608/14/2608.12821v1-hiroute-hierarchical-routed-prompt-tuning-for-safety-alignment-of-large-language-models)  
-   标签：评分：9.0/10、query:bopl
-   evidence：输入自适应的分层提示词微调框架
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [DIVE: Unlocking Self-Improvement in Frozen Language Models Through Diversity-Driven Skill Evolution](/202608/14/2608.12486v1-dive-unlocking-self-improvement-in-frozen-language-models-through-diversity-driven-skill-evolution)  
+1. [PRISM: A Predictive Protocol for Permutation Optimization via Landscape Diagnostics](/202608/15/2608.08344v1-prism-a-predictive-protocol-for-permutation-optimization-via-landscape-diagnostics)  
    标签：评分：7.0/10、query:bopl
-   evidence：从经验中演化持久的自然语言技能
-2. [MAG: MAnifold Guided Semi-Supervised Multi-modal In-Context Learning](/202608/14/2608.12724v1-mag-manifold-guided-semi-supervised-multi-modal-in-context-learning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：上下文学习示例选择
-3. [When Is a Task Vector Enough? An Empirical Theory of Implicit Multimodal ICL](/202608/14/2608.13385v1-when-is-a-task-vector-enough-an-empirical-theory-of-implicit-multimodal-icl)  
-   标签：评分：7.0/10、query:bopl
-   evidence：多模态上下文学习与任务向量
-4. [Test-Time Optimization of Query Embeddings with Ranking Aware Reward Maximization](/202608/14/2608.12569v1-test-time-optimization-of-query-embeddings-with-ranking-aware-reward-maximization)  
+   evidence：大模型指令排序的排列优化
+2. [NeuPAT: Neuron-aware Plasticity Allocation Tuning for Language-Preserving MLLMs](/202608/15/2608.08107v1-neupat-neuron-aware-plasticity-allocation-tuning-for-language-preserving-mllms)  
    标签：评分：6.0/10、query:bopl
-   evidence：将嵌入的测试时微调作为轻量级学习向量
+   evidence：通过神经元级更新约束进行参数高效微调
+3. [Behavioral Reprogramming of Open-Weights Models: Cognitive Plasticity and Alignment Bounds](/202608/15/2608.13069v1-behavioral-reprogramming-of-open-weights-models-cognitive-plasticity-and-alignment-bounds)  
+   标签：评分：6.0/10、query:bopl
+   evidence：针对参数高效微调的大规模并行超参数搜索
 
 
 <div class="dpr-home-promo-card">
