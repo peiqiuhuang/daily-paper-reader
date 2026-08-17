@@ -6,29 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-16
-- 运行时间：2026-08-16 19:59:32 UTC
+- 最新运行日期：2026-08-17
+- 运行时间：2026-08-17 20:40:39 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：0
-- 速读区：2
+- 本次总论文数：6
+- 精读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦 LLM 在高性能代码优化与个性化偏好适配两大前沿领域的效能探索。
-研究揭示了抽象策略对代码优化的关键影响，并提出通过语言强化学习实现更精准的用户个性化适配。
-建议关注提示词工程与反馈机制如何协同提升模型在特定任务中的专业性与交互体验。
-- 详情：[/202608/16/README](/202608/16/README)
+深度探索联邦提示学习与高效架构设计，今日精选 6 篇 AI 前沿进展。
+重点推荐联邦提示学习的统一框架及基于神经元门控的紧凑架构，攻克模型性能与部署效率双重难题。
+建议从两篇 9 分佳作入手，快速掌握大模型在隐私保护与轻量化领域的最新实战方案。
+- 详情：[/202608/17/README](/202608/17/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Federated Prompt Learning: A Unified Framework, Empirical Analysis, and Future Directions](/202608/17/2608.13844v1-federated-prompt-learning-a-unified-framework-empirical-analysis-and-future-directions)  
+   标签：评分：9.0/10、query:bopl
+   evidence：联邦提示学习 (FPL) 的全面综述
+2. [Designing Compact Neural Architectures via Neuron Gating and Mixed Activation](/202608/17/2608.14443v1-designing-compact-neural-architectures-via-neuron-gating-and-mixed-activation)  
+   标签：评分：9.0/10、query:bopl
+   evidence：神经架构搜索被公式化为双层优化问题
 
 ### 速读区论文标签
-1. [Effect of Abstractions and Prompting Strategies on LLM-Guided High-Performance Optimizations](/202608/16/2608.08085v1-effect-of-abstractions-and-prompting-strategies-on-llm-guided-high-performance-optimizations)  
+1. [PPOM: Marginalizing Patch-Grid Phase for CLIP-Based Generalizable Vision-Language Prompt Tuning](/202608/17/2608.13969v1-ppom-marginalizing-patch-grid-phase-for-clip-based-generalizable-vision-language-prompt-tuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：探讨了用于LLM引导代码优化的提示策略
-2. [Learning Preference Adaptation for Large Language Model Personalization via Verbal Reinforcement Learning](/202608/16/2608.09507v2-learning-preference-adaptation-for-large-language-model-personalization-via-verbal-reinforcement-learning)  
+   evidence：参数高效的视觉语言提示微调
+2. [MMDynOpt-Agent: Dynamic Optimization for Multimodal Large Language Model Reasoning via Reinforcement Learning](/202608/17/2608.14026v1-mmdynopt-agent-dynamic-optimization-for-multimodal-large-language-model-reasoning-via-reinforcement-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：大语言模型个性化的任务特定偏好自适应
+   evidence：通过强化学习对多模态大模型推理进行动态优化
+3. [P2Skill: Privacy Preserving Skill Distillation for Cloud-Local LLM Inference Systems](/202608/17/2608.14094v1-p2skill-privacy-preserving-skill-distillation-for-cloud-local-llm-inference-systems)  
+   标签：评分：7.0/10、query:bopl
+   evidence：基于提示的技能蒸馏与迭代优化
+4. [Improving Generalization Robustness of Multimodal RLVR](/202608/17/2608.08802v2-improving-generalization-robustness-of-multimodal-rlvr)  
+   标签：评分：6.0/10、query:bopl
+   evidence：多模态大模型在不同提示模板下的鲁棒性
 
 
 <div class="dpr-home-promo-card">
