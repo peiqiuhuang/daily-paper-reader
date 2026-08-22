@@ -6,32 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-21
-- 运行时间：2026-08-21 20:47:58 UTC
+- 最新运行日期：2026-08-22
+- 运行时间：2026-08-22 20:14:59 UTC
 - 运行状态：成功
-- 本次总论文数：3
+- 本次总论文数：4
 - 精读区：0
-- 速读区：3
+- 速读区：4
 
 ### 今日简报（AI）
-今日聚焦多模态情感分析、优化器自动选择及大模型在表格异常检测中的前沿应用。
-重点推荐通过对比混合提示应对模态缺失的情感分析方案，以及利用 LLM 上下文学习识别表格异常的新思路。
-建议关注大模型在垂直领域及不完整数据场景下的落地潜力，尝试用提示工程优化传统检测任务。
-- 详情：[/202608/21/README](/202608/21/README)
+今日速览大规模 MoE 模型的高效扩展方案与机器人视觉语言动作策略的最新优化。
+重点推荐 MoE 超参数的高效迁移技术，以及利用 PhaseLoRA 增强连续动作策略在不同控制阶段的适应性。
+追求训练效率的读者可深挖 MoE 扩展论文，关注机器人领域的则不容错过 PhaseLoRA 的应用实践。
+- 详情：[/202608/22/README](/202608/22/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Contrastive Mixed Prompt Learning for Incomplete Multimodal Sentiment Analysis with Unseen Modality Combination](/202608/21/2608.20019v1-contrastive-mixed-prompt-learning-for-incomplete-multimodal-sentiment-analysis-with-unseen-modality-combination)  
+1. [Let's Scale Step by Step: Compute-Efficient Hyperparameter Transfer for Large-Scale Mixture-of-Experts](/202608/22/2608.20061v1-lets-scale-step-by-step-compute-efficient-hyperparameter-transfer-for-large-scale-mixture-of-experts)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于多模态情感分析的对比混合提示学习
-2. [Many Optimizers But Only One Training Path: Repeated Resampling for Adaptive Optimizer Selection](/202608/21/2608.18810v1-many-optimizers-but-only-one-training-path-repeated-resampling-for-adaptive-optimizer-selection)  
+   evidence：大规模模型的超参数迁移与优化
+2. [Quantifying over Optimal MSO-Definable Sets on Graphs of Bounded Clique-Width](/202608/22/2608.20175v1-quantifying-over-optimal-mso-definable-sets-on-graphs-of-bounded-clique-width)  
+   标签：评分：7.0/10、query:bopl
+   evidence：双层图优化问题
+3. [PhaseLoRA: Control-Regime-Conditioned Low-Rank Adaptation for Continuous-Action Vision-Language-Action Policies](/202608/22/2608.15285v1-phaselora-control-regime-conditioned-low-rank-adaptation-for-continuous-action-vision-language-action-policies)  
    标签：评分：6.0/10、query:bopl
-   evidence：将优化器选择视为超参数并在训练期间进行搜索
-3. [LLM as Detector: An In-context Learning Approach for Tabular Anomaly Detection](/202608/21/2608.19463v1-llm-as-detector-an-in-context-learning-approach-for-tabular-anomaly-detection)  
+   evidence：用于参数高效微调的轻量级LoRA参数化方法
+4. [COPA: Continual Preference Optimization for Adaptive Prompt Injection Defense](/202608/22/2608.19982v1-copa-continual-preference-optimization-for-adaptive-prompt-injection-defense)  
    标签：评分：6.0/10、query:bopl
-   evidence：大语言模型的提示词条件评分合成
+   evidence：自适应提示注入防御
 
 
 <div class="dpr-home-promo-card">
