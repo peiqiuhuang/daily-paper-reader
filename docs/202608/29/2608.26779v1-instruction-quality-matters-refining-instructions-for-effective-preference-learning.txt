@@ -1,0 +1,610 @@
+Title: Instruction Quality Matters: Refining Instructions for Effective Preference Learning
+
+URL Source: https://arxiv.org/pdf/2608.26779v1
+
+Published Time: Fri, 28 Aug 2026 00:41:42 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Instruction Quality Matters: Refining Instructions for Effective Preference Learning 
+
+Seohyeong Lee 1 Hwaran Lee 1,* Buru Chang 2,*1Sogang University 2Korea University 
+
+{seohyeong, hwaranlee}@sogang.ac.kr buru_chang@korea.ac.kr 
+
+Abstract 
+
+Preference learning optimizes models using re-sponse pairs, yet the informativeness of these pairs is fundamentally shaped by the instruc-tions from which they are generated. We identify instruction quality as a hidden bot-tleneck in preference learning: low-quality or ambiguous instructions restrict the response-quality distribution, limiting strong chosen responses and weakening preference signals. Through Best- and Worst-of-N analyses, we show that instruction quality constrains both the ceiling and floor of sampled response qual-ity. Motivated by this observation, we intro-duce an instruction-refinement pipeline that se-lects weak instructions using reward signals and revises them with rubric-guided LLM feed-back, improving preference data without dis-carding examples. Across offline and online preference learning settings, experiments on multiple models and benchmarks show broad alignment improvements over original data and alternative data-improvement strategies. Fur-ther analyses indicate that instruction refine-ment raises achievable response quality and complements response-centric preference data curation. Overall, instruction quality emerges as a key factor governing how informative pref-erence signals are formed for LLM alignment. Code is available at: https://github.com/ 01choco/instruction-refinement/ 
+
+1 Introduction 
+
+Preference learning (Christiano et al., 2017) is a central paradigm for aligning Large Language Mod-els (LLMs) with human preferences. Despite ad-vances in optimization methods (Meng et al., 2024; Liu et al., 2024), its effectiveness remains highly dependent on the quality of preference data (Zhou et al., 2023a). Existing work has primarily exam-ined preference data quality through response qual-ity and annotation reliability, showing that weak  
+
+> *
+
+Corresponding author I do not have access to current events or news… (Invalid Ans.)            
+
+> Refine
+> High
+> Response Space R
+> Low Statues do not have organs for breathing, as they… (Valid Ans.)
+> What are the breath organs of statues?
+> (NOT Answerable)
+> Instruction
+> Explain if statues have organs for breathing.
+> (Answerable)
+> Instruction
+> No, statues don’t have organs for breathing…
+> (Valid Ans.)
+> Ido not have any info about statues…
+> (Invalid Ans.)
+> y!"# -y!"# %y&'(& -y&'(& %
+> y!"# %
+> y!"# -
+> y&'(& %
+> y&'(& -
+
+Figure 1: Data example from the UltraFeedback (Cui et al., 2024). Ambiguous instructions can produce in-valid responses, leading to weak preference learning signals. Refining such instructions yields high-quality outputs that provide stronger signals. 
+
+responses or noisy labels can substantially degrade alignment (Pan et al., 2025; Lee et al., 2025b; Chowdhury et al.; Gao et al., 2024). This view, however, treats the instruction as a fixed input, over-looking its role in shaping preference signals. Preference pairs are sampled from a response distribution induced by the instruction. When an instruction is ambiguous, incomplete, or underspec-ified, this distribution may contain few high-quality responses and many trivial failures, making the resulting preference data less informative. As illus-trated in Figure 1, such cases appear in preference datasets and can induce invalid or low-quality re-sponses. Because this candidate response pool is constrained upstream, response refinement or filter-ing can only partially mitigate the problem. We first test this upstream effect by analyzing the response distribution from which preference pairs are constructed. Using Best-of-N and Worst-of-N
+
+analyses, which approximate the response-quality ceiling and floor under a fixed sampling budget, we 1arXiv:2608.26779v1 [cs.CL] 27 Aug 2026 examine how instruction quality shapes sampled responses. We find clear gaps between low- and high-quality instructions: high-quality instructions improve not only the best sampled responses but also the worst sampled responses. These gaps in-dicate that low-quality instructions restrict useful candidate coverage, reducing both strong positive examples and informative preference contrasts for DPO-style optimization (see Section 3.1 and Fig-ure 2). Thus, while preference learning depends on response quality (Pan et al., 2025), the response quality available for learning can itself be con-strained by instruction quality. To mitigate these upstream effects on preference-pair construction, we refine instructions before generating candidate responses. Our pipeline se-lects weak instructions using reward signals and revises them with rubric-guided LLM feedback, improving preference data without discarding ex-amples. Rather than treating refinement as generic rewriting, the rubrics provide structured diagnos-tic feedback that guides revisions toward instruc-tions that elicit reliable and comparable candidate responses. Unlike inference-time prompt engineer-ing, our approach targets the training data from which preference-learning signals are derived. We evaluate instruction refinement on UltraFeed-back (Cui et al., 2024) across offline and online preference learning. In offline experiments, re-finement improves alignment across multiple back-bones, objectives, and benchmarks, including MT-Bench (Zheng et al., 2023), Evol-Instruct (Xu et al., 2023), and AlpacaEval (Li et al., 2023). In online experiments, even one refinement step per data-generation round improves iterative preference-learning pipelines such as SPA (Kim et al., 2025). Across settings, refinement yields broad alignment gains of up to 8%p, indicating that instruction qual-ity remains a limiting factor even as models and preference data co-evolve. Further analyses show that refinement improves instruction-quality scores and response rewards, raises the Best-of-N response-quality ceiling, and remains robust across threshold choices. A rubric ablation further shows that rubric-guided feedback outperforms generic instruction rewriting, indicat-ing that structured diagnostic feedback is important for effective refinement. These results support the view that instruction refinement improves prefer-ence learning by making the candidate response pool more informative. Our contributions are summarized as follows: • We identify instruction quality as an up-stream factor in preference-signal formation and show that it shapes response-quality ceil-ings and floors, affecting the informativeness of pairwise preference data. • We introduce an instruction refinement pipeline that improves weak instructions us-ing reward signals and rubric-guided LLM feedback, without discarding data. • We validate the approach across offline and on-line preference learning, showing broad align-ment gains and analyses that support its effect on response-quality distributions. 
+
+2 Related Work 
+
+2.1 Preference Data Curation 
+
+Prior work has recognized the importance of data quality in preference learning and proposed meth-ods for improving preference pairs in both offline and online settings. In offline preference learning, existing approaches typically identify informative or reliable preference pairs based on response-level or pair-level signals, such as reward margins (Deng et al., 2025), response quality (Lee et al., 2025b), or annotation consistency (Lee et al., 2025a). In online preference learning, prior work improves alignment by iteratively generating responses, con-structing preference pairs, and updating the model while reducing noise in preference labels or refin-ing response quality (Kim et al., 2025; Pan et al., 2025; Dong et al., 2025). In contrast, these methods largely treat instructions as fixed inputs, whereas we study instruction quality as an upstream factor in preference data informativeness. 
+
+2.2 Preference Data Refinement 
+
+Our work is methodologically related to self-refinement and broader data-improvement methods. Self-Refine (Madaan et al., 2023), Reflexion (Shinn et al., 2023), and recent refinement pipelines (Cayir et al., 2025) use natural language feedback, reflec-tion, or LLM-based judges to improve responses, agent behavior, or dataset quality. However, these methods primarily refine responses while leaving instructions fixed. Regarding instruction-based selection meth-ods, R.I.P. (Yu et al., 2025) shows that prompt quality affects model training by selecting high-quality prompts for instruction tuning. Li et al. (2024) select instruction-tuning examples based 2(a) Best-of-N Reward Plot (b) Worst-of-N Reward Plot               
+
+> High-Quality Instruction 𝑥 !"#!
+> Reward Space R
+> R*(y -|𝑥 #$%# )R*(y &|𝑥 #$%# )
+> Low-Quality Instruction 𝑥 $%&
+> ✅Our Goal : ⇧Chosen Response Reward & ⇩Chosen-Rejected Reward Gap
+> R*(y -|𝑥 '() )
+> Reward Space R
+> R*(y &|𝑥 '() )
+> High-Reward Region
+> (c) x!"# Response Distribution (d) x$%&$ Response Distribution
+
+Figure 2: Instruction quality shapes response distributions and preference-pair informativeness. Left : (a) Best-of-N
+
+reward shows that high-quality instructions raise the response-quality ceiling. (b) Worst-of-N reward shows that they also raise the response-quality floor. Right : (c): Reward score distributions of chosen y+ and rejected y−
+
+responses paired with low-quality instructions xlow . (d): Those of high-quality instructions xhigh .
+
+on instruction-following difficulty. In contrast, we focus on preference data curation by refining in-structions for preference learning to elicit clearer preference signals. This perspective is also related to recent work showing that reward models and instruction-tuned models can be sensitive to input or instruction variations (Wu et al., 2025; Yan et al., 2024). While these studies target model robustness, we refine low-quality instructions to construct more informative preference data. 
+
+3 Instruction Quality and Refinement 
+
+3.1 Motivating Analysis: Instruction Quality Shapes Response Distributions 
+
+Preference pairs are constructed from instruction-conditioned candidate responses. Ambiguous or underspecified instructions may yield few high-quality candidates and many trivial failures, weak-ening preference data before optimization begins. To examine this effect, we first conduct Best-of-
+
+N and Worst-of-N analyses on 1.5K UltraFeed-back (Cui et al., 2024) instructions, partitioned into High, Mid, and Low quality groups using rubric-based instruction scores. For each instruction, we generate multiple responses with LLaMA3-8B and score them with a reward model. Best-of-N ap-proximates the response-quality ceiling under a fixed sampling budget, while Worst-of-N approxi-mates the response-quality floor. We use reward-model scores as explicit prox-ies for response quality, rather than as the re-wards directly optimized by DPO. DPO instead in-duces an implicit reward rθ(x, y ) = β log πθ (y|x)  
+
+> πref (y|x)
+
+.Therefore, our interpretation assumes that explicit reward-model scores preserve the relevant order-ing and margin trends of the implicit rewards that emerge during preference optimization. As shown in Figure 2, high-quality instruc-tions consistently achieve higher Best-of-N and Worst-of-N rewards than low-quality instructions. This indicates that low-quality instructions both lower the response-quality ceiling and weaken the response-quality floor; they reduce access to strong candidate responses while increasing the preva-lence of trivial low-quality responses. We next connect these ceiling and floor effects to preference-gradient informativeness. For a pref-erence tuple (x, y +, y −), the DPO gradient can be written using the preference margin uθ and likeli-hood contrast dθ:
+
+∇θLDPO = −β E [σ(−uθ) dθ] ,dθ = ∇θ log πθ(y+|x) − ∇ θ log πθ(y−|x),uθ = β
+
+
+
+log πθ(y+|x)
+
+πref (y+|x) − log πθ(y−|x)
+
+πref (y−|x)
+
+
+
+.
+
+Here, dθ encodes the gradient direction favoring 
+
+y+ over y−, while σ(−uθ) decays as the current policy πθ already separates the pair (i.e., as uθ
+
+grows during training). A higher response-quality ceiling increases the chance that y+ provides a high-quality target for optimization, enabling the positive term in dθ to learn from stronger targets. A higher response-quality floor makes rejected re-sponses less degenerate. When y− is trivially poor, the chosen–rejected contrast can become overly easy: as training progresses, such pairs are likely to attain a large implicit margin uθ, leading to a small DPO gradient weight σ(−uθ). By reducing degenerate negatives, a higher floor helps preserve nontrivial preference contrasts, making preference pairs informative for optimization (Houliston et al., 2024). Thus, ceiling and floor improvements are 3Algorithm 1 Instruction Refinement Loop                                                               
+
+> Require: Instruction Set {X } , Reward model R(·), Thresh-old τ, Max iterations T
+> Ensure: Refined On-Policy Dataset D= ( X′, Y +, Y −)
+> 1: Initialize D′← ∅
+> 2: for Each instruction X∈ {X } do
+> 3: Generate (Y1, Y 2)from the target model given X
+> 4: Compute rewards R1←R(X, Y 1),R2←R(X, Y 2)
+> 5: t←0
+> 6: while min( R1, R 2)< τ and t < T do
+> 7: Generate rubric-based feedback for X
+> 8: Refine instruction X←X′
+> 9: Regenerate (Y1, Y 2)and recompute (R1, R 2)
+> 10: t←t+ 1
+> 11: end while
+> 12: Add refined tuple (X, Y +, Y −)to D
+> 13: end for
+> 14: return D
+
+complementary: the former provides stronger posi-tive examples, while the latter reduces degenerate negatives without eliminating meaningful chosen– rejected gaps. This motivates instruction refine-ment before candidate generation; Appendix A pro-vides a DPO-based interpretation. 
+
+3.2 Refining Instructions for Preference Data 
+
+We view a preference dataset as tuples 
+
+(X, Y +, Y −), where X is an instruction and 
+
+Y +, Y − are chosen and rejected responses. Instead of refining responses after generation, we refine X before constructing preference pairs, aiming to improve the candidate response pool from which preference signals are formed. Algorithm 1 summarizes the refinement proce-dure. For each instruction X, we generate on-policy responses (Y1, Y 2) with the target model and compute reward scores Ri = R(X, Y i). If 
+
+min( R1, R 2) < τ , where τ is a minimum-reward threshold, we select X for refinement, treating the low minimum reward as a proxy for lower-tail fail-ures induced by the instruction. Selected instruc-tions are revised using rubric-based feedback; after each revision, responses and rewards are regener-ated. The loop repeats until min( R1, R 2) ≥ τ or the maximum number of iterations is reached 1.This feedback–refinement loop follows the spirit of Self-Refine (Madaan et al., 2023), but applies refinement to instructions in preference data rather than to generated responses, improving training data without discarding examples.  
+
+> 1API call cost. Instruction refinement adds two API calls per sample for feedback and revision, costing about $0.0026 per sample in our setup. While manageable in our experiments, this overhead may become substantial at larger scales.
+
+3.3 Evaluation and Refinement Criteria 
+
+We use rubric-based evaluation as structured diag-nostic feedback for instruction refinement in pref-erence data. Reward scores identify instructions that induce weak candidates, while rubrics diag-nose why they fail and how they should be re-vised. Specifically, the rubrics assess whether an instruction is likely to elicit reliable and compa-rable candidate responses for preference learning, covering clarity, specificity, completeness, safety, answerability, conciseness, and format consistency. Detailed definitions, motivations, and supporting studies are provided in Appendix B.1. 
+
+Scoring and Feedback Generation. For each instruction X, an LLM-as-a-judge (Zheng et al., 2023) evaluates all rubrics and produces structured feedback F. For each rubric, the evaluator outputs a 1–5 score and a short natural-language explana-tion. The scores provide a quantitative estimate of instruction quality, while the explanations identify the instruction-level deficiencies that should be re-vised. We average the rubric scores to obtain an overall instruction-quality score. 
+
+Refinement. The refiner takes the original instruc-tion X and feedback F as input, and outputs a revised instruction X′ that addresses the diagnosed deficiencies. The full feedback and refinement prompts are provided in Appendix B.2 
+
+4 Experiments 
+
+To test whether improving instruction quality im-proves preference learning, we evaluate instruction refinement in both offline and online settings. The offline setting refines a fixed preference dataset, whereas the online setting refines instructions dur-ing iterative on-policy data generation. 
+
+4.1 Offline Preference Learning Experimental Setup. We conduct offline experi-ments on 32K instructions randomly sampled from UltraFeedback (Cui et al., 2024). For each in-struction, we generate on-policy responses with the target model, apply three iterations of instruc-tion refinement, and then construct the final pref-erence dataset. We evaluate two target backbones, LLaMA3-8B (Grattafiori et al., 2024) and Mistral-7B (Jiang et al., 2023b), initialized from SFT check-points, and train them with DPO (Rafailov et al., 2023) and SimPO (Meng et al., 2024). We use GPT-4o for feedback and refinement. ArmoRM (Wang et al., 2024) is used both to score 4Method DPO SimPO                                                                                             
+
+> Backbone Data Type MT-Bench Evol-Instruct AlpacaEval 2.0 MT-Bench Evol-Instruct AlpacaEval 2.0 WR Score WR Score WR LC WR WR Score WR Score WR LC WR
+> Llama3-8b SFT 27.8 4.61 23.4 5.80 3.95 7.49 27.8 4.61 23.4 5.80 3.95 7.49 Original 39.7 4.91 33.3 6.15 5.91 11.90 47.5 5.26 40.8 6.53 8.65 15.90 Refined 47.8 5.38 35.8 6.39 8.86 18.78 48.1 5.56 44.5 6.62 9.19 20.30
+> Mistral-7b SFT 21.6 4.04 16.3 4.87 4.30 8.25 21.6 4.04 16.3 4.87 4.30 8.25 Original 35.6 5.03 31.0 6.35 7.80 12.95 24.1 4.18 12.4 5.56 8.09 16.83 Refined 43.4 4.96 33.3 6.24 8.21 14.60 28.8 4.43 19.5 5.72 9.18 17.40
+
+Table 1: Evaluation results on MT-Bench, Evol-Instruct, and AlpacaEval. For MT-Bench and Evol-Instruct, each cell reports the pairwise win rate and single-answer score; for AlpacaEval, each cell reports the win rate and length-controlled win rate. The highest values for each backbone are highlighted in bold .                                                                   
+
+> Method MT-Bench Evol-Instruct AlpacaEval
+> WR Score WR Score WR LC WR SFT 27.8 4.61 23.4 5.80 3.55 7.15
+> DPO (Original Dataset) 39.7 4.91 33.3 6.15 5.91 11.90
+> Prompt Engineering
+> CoT Prompting (Wei et al., 2022) 30.6 4.68 28.2 5.98 4.82 9.42
+> Paraphrasing (Zhou et al., 2022) 33.8 4.80 30.3 5.95 4.82 9.75
+> Response Refinement
+> Self-Refine (Madaan et al., 2023) 38.1 4.82 31.2 5.94 7.32 11.81
+> Data Selection
+> Filtering (Original) 34.1 4.76 28.0 5.90 4.70 9.00
+> Filtering (Refined) 31.6 4.57 31.2 6.03 4.93 10.09
+> R.I.P (Yu et al., 2025) 29.7 4.71 23.9 6.03 4.55 8.63
+> Refined Dataset 47.8 5.38 35.8 6.39 8.86 18.78
+
+Table 2: Results on MT-Bench, Evol-Instruct, and Al-pacaEval across dataset improvement strategies. WR: win rate; Score: average score. 
+
+responses during refinement and to assign final preference labels. The refinement threshold is set to τ = 0 .13 , corresponding to approximately the top 30% of the initial on-policy reward distribution. We evaluate on MT-Bench (Zheng et al., 2023), Evol-Instruct (Xu et al., 2023), and AlpacaEval (Li et al., 2023); implementation details are provided in Appendix C. 
+
+Experimental Results. Table 1 reports offline results for DPO and SimPO on both backbones. Refined datasets yield broad gains over original datasets across objectives, backbones, and bench-marks, with especially clear improvements on Al-pacaEval LC win rate. These results indicate that improving instruction quality can strengthen prefer-ence data without changing the preference-learning objective. We further demonstrate on Llama-3-8B feedback and refiner and a different reward model 2
+
+setting in Appendices D.1 and D.2, respectively. 
+
+Baseline Comparisons. We compare our meth-ods to other baseline methods: Prompt rewriting includes CoT prompting (Wei et al., 2022) and generic paraphrasing (Zhou et al., 2022); response refinement uses Self-Refine (Madaan et al., 2023); and data selection includes reward-based filtering 
+
+> 2
+
+OpenAssistant/reward-model-deberta-v3large-v2 
+
+and R.I.P. (Yu et al., 2025), which select examples using response-level signals such as reward, length, and reward gap. These baselines modify the in-struction surface, generated responses, or dataset composition, whereas our method refines weak in-structions to improve preference data without dis-carding examples. As shown in Table 2, instruction refinement achieves the strongest overall performance among all compared interventions. The gains over CoT prompting and paraphrasing indicate that generic rewriting is not sufficient, while gains over Self-Refine and data selection show that repairing weak instructions provides benefits beyond response-level refinement or filtering. These results support instruction quality as a distinct axis of preference data improvement. 
+
+Refined Dataset Analysis. We examine whether refinement changes task intent or reduces task dif-ficulty. Human evaluation shows that 88.4% of refined instructions preserve the core task intent (see Appendix F.1). We also compare Instruction-Following Difficulty (IFD) scores (Li et al., 2024) and find only a small change, with a slight increase after refinement. This suggests that the gains are unlikely to come simply from making instructions easier to follow (Appendix E.4). 
+
+4.2 Online Preference Learning Experimental Setups. In online preference learn-ing, the model generates preference data and is then updated on those data, allowing the policy and data distribution to co-evolve. This setting tests whether instruction quality continues to limit newly gener-ated data as the model improves over iterations. We follow online preference learning pipelines from SPA (Kim et al., 2025) and iterative DPO, where labels are obtained from model-generated responses using either implicit rewards or an ex-5Method MT-Bench Evol-Instruct AlpacaEval 2.0                                                                                       
+
+> Win Rate Score Win Rate Score Win Rate LC Win Rate SFT 27.8 4.61 23.4 5.8 3.95 7.49 DPO 39.4 5.12 37.4 6.05 7.73 12.33 SPA (iter 3) 50.6 5.48 55.0 6.91 22.89 21.52 +w/ instruction refinement 55.9 (↑5.3%p) 5.49 (↑0.01) 55.0 (–) 7.24 (↑0.33) 23.60 (↑0.71%p) 21.81 (↑0.29%p) Reward Model (iter 3) 47.8 5.40 47.0 6.39 11.78 19.92 +w/ instruction refinement 47.8 (–) 5.33 ( ↓0.07) 44.3 ( ↓2.7%p) 6.61 (↑0.22) 11.51 ( ↓0.26%p) 20.62 (↑0.69%p) Implicit Reward (iter 3) 51.9 5.68 52.3 6.78 18.40 24.62 + w/ instruction refinement 54.4 (↑2.5%p) 5.49 ( ↓0.19) 57.6 (↑5.3%p) 6.91 (↑0.13) 25.53 (↑7.14%p) 25.03 (↑0.41%p)
+
+Table 3: Evaluation results on MT-Bench, Evol-Instruct, and AlpacaEval 2.0 for LLaMA-3-8B models trained with SPA (iter 3), reward model annotation, and implicit reward annotation. Bold indicates the better result within each method, and arrows indicate the change compared to the non-refined counterpart.                                                       
+
+> Model DPO SimPO
+> MT-Bench Evol-Instruct AlpacaEval MT-Bench Evol-Instruct AlpacaEval Pairwise Single Pairwise Single WR LC WR Pairwise Single Pairwise Single WR LC WR
+> SFT 27.8% 4.61 23.4% 5.80 3.55 7.15 27.8% 4.61 23.4% 5.80 3.55 7.15 Original-OSSAT 41.9% 5.11 29.8% 6.32 7.90 11.71 37.5% 5.26 26.4% 6.41 8.75 12.32 Refined-OSSAT 40.9% 5.24 36.5% 6.26 7.99 13.86 44.7% 5.07 32.3% 6.48 8.37 13.31
+
+Table 4: Cross-reward-model evaluation results on MT-Bench, Evol-Instruct, and AlpacaEval. For MT-Bench and Evol-Instruct, each cell reports the pairwise win rate and single-answer score, while for AlpacaEval, it reports the win rate and length-controlled win rate. The highest values in each column are highlighted in bold .
+
+ternal reward model; SPA further smooths small-gap preference signals. We integrate instruction refinement by applying one refinement step to all instructions before each response-generation round, without threshold-based selection. The underlying online preference-learning algorithm is otherwise unchanged, isolating the effect of improving in-struction quality during iterative data generation. Following the SPA setup, we use UltraFeedback and initialize the policy from a LLaMA3-8B SFT checkpoint. Training starts with DPO on 3.3% gold-labeled data, followed by three online itera-tions with 8K, 20K, and 30K on-policy samples. PairRM (Jiang et al., 2023a) is used for reward-model preference annotation. 
+
+Experimental Results. Table 3 shows that instruc-tion refinement improves most online preference learning variants relative to training with original instructions. The gains are strongest for SPA at iteration 3, where all benchmarks improve, and Al-pacaEval LC win rate improves consistently across SPA, reward-model, and implicit-reward variants. These gains are notable because online learning continually updates the policy that generates new data; nevertheless, weak instructions remain a bot-tleneck in the evolving data-generation process. The gains are broad but not uniform across all metrics. MT-Bench score slightly decreases for reward-model and implicit-reward variants despite improved or maintained win rates. A case study in Appendix G.2 suggests that such drops often occur in tasks requiring strict output formats, indi-cating that online instruction refinement remains task-dependent. Additional intermediate-iteration results are provided in Appendix E.2. 
+
+5 Discussion 
+
+5.1 Cross-Reward Model Experiment 
+
+In Section 4.1, we use ArmoRM both to select instructions for refinement and to construct pref-erence labels. To examine whether the observed gains are specific to this reward model, we conduct a cross-reward-model experiment. Specifically, we use ArmoRM to select instructions for refinement, while using OSSAT Reward Model (OpenAssistant, 2023) as reward model to assign preference labels. Using the resulting datasets, we train models with the same DPO and SimPO pipelines and compare 
+
+Original-OSSAT with Refined-OSSAT .The results in Table 4 show that Refined-OSSAT generally performs better than Original-OSSAT un-der the OSSAT-RM annotation setting. While the gains are not uniform across all metrics, the overall trend suggests that refined-instruction data remains effective even when preference labels are assigned by a different reward model. This suggests that the benefit of our method is not specific to the bias of a single reward model. 
+
+Reward Model Human Evaluation. To further examine reward-model dependency, we conducted 6(a) Best-of-N Reward Plot (b) Worst-of-N Reward Plot Figure 3: Best-of-N and Worst-of-N analysis showing that instruction refinement raises the response quality ceiling across high and low instruction quality groups, with more pronounced improvements for lower-quality instructions. 0.05 0.08 0.10 0.13 0.15 12 14 16 18 20        
+
+> LC Win Rate (%)  (a) DPO
+> 0.05 0.08 0.10 0.13 0.15 12 14 16 18 20 (b) SimPO
+> Threshold
+> Baseline (w/o Refine)
+> Figure 4: Sensitivity analysis of the minimum-reward threshold τfor instruction refinement. Refinement con-sistently improves over the non-refined baseline, with optimal performance at moderate thresholds.
+
+a small-scale human evaluation on 30 instruction– response-pair tuples, evenly split between exam-ples selected and not selected for refinement. Each tuple was annotated by three evaluators, with the final decision determined by majority vote. The reward-model-based refinement decision agreed with the human majority judgment in 76.7% of cases. For preference labeling, the reward-model label agreed with the human majority choice in 71.4% of cases. These results suggest that the reward-model signals used for both instruction se-lection and preference-label construction are rea-sonably aligned with human judgments. Nev-ertheless, the imperfect agreement with human judgments may be attributed in part to known reward-model biases toward factors such as re-sponse length, style, or surface-level fluency (Bu et al., 2025). Therefore, in our pipeline, the reward-model objective should be interpreted as a proxy for human preference rather than a direct substitute. Details of the annotation protocol and prompt are provided in Appendix F.2. 
+
+5.2 Bo N & Wo N Analysis 
+
+Figure 3 shows how response quality changes af-ter instruction refinement under a fixed sampling budget using Best-of-N (Bo N ) and Worst-of-N
+
+(Wo N ) evaluation. Across two instruction qual-ity groups ( High-X, Low-X ), instruction refinement consistently shifts both Bo N and Wo N curves up-ward, indicating a higher achievable reward ceiling as well as an improved reward floor. The effect is most pronounced for the Low-X group. Before refinement, low-quality instructions exhibit a lower average reward even with increased sampling, re-flecting a tight upper bound imposed by poor in-struction quality. After refinement, the Bo N and Wo N curves for Low-X rise significantly, suggest-ing that instruction improvement can alleviate limi-tations induced by low-quality instructions. Over-all, these results suggest that improving instruc-tion quality can raise achievable response quality while also improving the lower tail of the response-quality distribution under a fixed sampling budget. 
+
+5.3 Threshold Analysis 
+
+In the offline setting, we select instructions for refinement by thresholding the minimum response reward. A higher threshold makes refinement stricter, filtering more low-quality instructions but increasing risk of over-constrained data. To an-alyze sensitivity to the threshold τ , we vary τ ∈{0.05 , 0.08 , 0.10 , 0.13 , 0.15 } under the same setup as Section 4.1. Figure 4 reports AlpacaEval LC win rates for DPO and SimPO across thresholds. Across most values of τ , instruction refine-ment consistently outperforms the baseline with-out refinement, indicating robust improvements in alignment performance. Performance generally in-creases as the threshold becomes more selective, suggesting that refining lower-reward instructions 7Method MT-Bench Evol-Instruct AlpacaEval                               
+
+> WR Score WR Score WR LC WR SFT 27.8 4.61 23.4 5.80 3.55 7.15
+> DPO (Original Dataset) 39.7 4.91 33.3 6.15 5.91 11.90
+> Refined Dataset
+> w/o Rubric-Based Prompt 47.8 5.52 36.2 6.54 8.60 16.23
+> w/ Rubric-Based Prompt 47.5 5.60 41.7 6.70 9.92 19.54
+
+Table 5: Rubric ablation results across evaluation bench-marks. WR: win rate; Score: average score.                                       
+
+> ∆Rubric Score w/o Rubric w/ Rubric
+> ∆Avg. ∆Min. ∆Avg. ∆Min.
+> Clarity 0.048 0.047 0.064 0.077
+> Specificity -0.041 -0.029 -0.008 0.015
+> Completeness -0.028 -0.017 -0.032 -0.005
+> Safety 0.062 0.057 0.091 0.091
+> Answerability -0.002 0.009 0.056 0.078
+> Conciseness 0.097 0.087 0.089 0.086 Format Consistency 0.016 0.018 0.003 0.014
+
+Table 6: Pearson correlation between rubric score gains and average/minimum reward score gains, with and without rubric-based feedback. 
+
+yields more informative preference data. DPO per-forms best around τ = 0 .13 (refining ∼30% of instructions) and remains robust at higher thresh-olds. In contrast, SimPO degrades at higher thresh-olds, likely due to overly aggressive refinement that reduces response diversity and weakens pref-erence signals. Overall, instruction refinement is broadly robust, with moderate thresholds yielding the most consistent gains. However, the degra-dation of SimPO at higher thresholds highlights a practical limitation, as overly aggressive refine-ment can reduce response diversity and weaken preference signals. Additional sensitivity analyses are provided in Appendix E.3. 
+
+5.4 Rubric Effect Analysis Rubric Ablation. Although our method uses GPT-4o to refine instructions, the observed gains may partly come from general rewriting by a strong foundation model. To disentangle these effects, we conduct a rubric ablation in which GPT-4o refines the instructions without access to rubric-based feed-back. Both settings refine the entire dataset once for a controlled comparison. In this setting, GPT-4o rewrites the instructions using the same guidance but without access to rubric-based feedback. This design isolates the contribution of rubrics while controlling for the refine model and prompt. As shown in Table 5, rubric-based feedback yields improvements over rubric-free refinement on all metrics except the MT-Bench win rate. This indi-cates that rubric-guided refinement provides robust gains beyond general instruction rewriting by GPT-4o, suggesting that our seven rubric dimensions help produce instructions that are more beneficial for preference learning. 
+
+Rubric-Reward Correlation. We further exam-ine whether rubric-based feedback better aligns instruction-level improvements with downstream reward gains than rubric-free feedback. For each rubric dimension, we compute the correlation be-tween rubric score gains and response reward gains from the original to the refined instruction. We consider two reward gain metrics: average reward gain and minimum reward gain. Since each in-struction has two responses, average reward is their mean score, while minimum reward is the lower score. This dimension-level analysis identi-fies which rubric improvements are most closely associated with downstream reward gains. Table 6 presents the results. Rubric-based refine-ment shows stronger positive correlations for safety, answerability, and clarity than rubric-free refine-ment, suggesting that rubric-based feedback makes improvements in these dimensions more aligned with downstream reward gains. By contrast, speci-ficity and completeness show near-zero or negative correlations with reward gains. This suggests that these dimensions are less directly associated with reward increases, although they may capture qual-ity aspects not fully reflected by the reward model. Overall, the results indicate that rubric-based feed-back better aligns instruction improvements with response reward gains. 
+
+Additional Analyses. We provide additional anal-yses to further examine the validity and generality of instruction refinement. First, we conduct a hu-man evaluation to assess whether refinement pre-serves the original task intent. The results show that most refined instructions retain the core task, suggesting that the observed gains are not primarily driven by task drift or distributional replacement (Appendix F.1). We also evaluate refinement on a medical-domain preference dataset and observe improvements on the QA-style medical benchmark (UltraMedical-Preference (Zhang et al., 2024)), in-dicating that instruction refinement can also bene-fit preference learning in domain-specific settings (Appendix D.3). 86 Conclusion 
+
+We show that instruction quality can limit achiev-able response quality and, consequently, preference learning performance. Through Best-of-N analy-sis, we provide evidence that low-quality instruc-tions impose a ceiling on response quality under a fixed sampling budget. We further show that im-proving instruction quality strengthens preference signals without discarding data, in both offline and online settings. Across multiple algorithms and benchmarks, instruction refinement consistently improves preference data quality and alignment performance. Overall, these results suggest that in-struction quality is an important factor in determin-ing the effectiveness of preference learning, beyond response quality and optimization objectives. 
+
+Limitation 
+
+Our study has several limitations. First, our ap-proach relies on a reward model to identify and refine low-quality instructions, and its effective-ness may depend on the model’s calibration and biases. Second, aggressive refinement can degrade performance in some settings, indicating sensitiv-ity to threshold selection. Third, instruction refine-ment introduces additional computational cost due to iterative feedback and rewriting, although it is generally more cost-efficient than collecting new preference data. Finally, our study is limited to text-only language models, and extending this ap-proach to multimodal settings remains an important direction for future work. 
+
+References 
+
+Yuntao Bai, Saurav Kadavath, Sandipan Kundu, Amanda Askell, Jackson Kernion, Andy Jones, Anna Chen, Anna Goldie, Azalia Mirhoseini, Cameron McKinnon, and 1 others. 2022. Constitutional ai: Harmlessness from ai feedback. arXiv preprint arXiv:2212.08073 .Yuyan Bu, Liangyu Huo, Yi Jing, and Qing Yang. 2025. Beyond excess and deficiency: Adaptive length bias mitigation in reward models for rlhf. In 
+
+Findings of the association for computational linguis-tics: NAACL 2025 , pages 3091–3098. Derin Cayir, Renjie Tao, Rashi Rungta, Kai Sun, Sean Chen, Haidar Khan, Minseok Kim, Julia Reinspach, and Yue Liu. 2025. Refine-n-judge: Curating high-quality preference chains for llm-fine-tuning. arXiv preprint arXiv:2508.01543 .Sayak Ray Chowdhury, Anush Kini, and Nagarajan Natarajan. Provably robust dpo: Aligning language models with noisy feedback. In Forty-first Interna-tional Conference on Machine Learning .Paul F Christiano, Jan Leike, Tom Brown, Miljan Mar-tic, Shane Legg, and Dario Amodei. 2017. Deep reinforcement learning from human preferences. Ad-vances in neural information processing systems , 30. Ganqu Cui, Lifan Yuan, Ning Ding, Guanming Yao, Bingxiang He, Wei Zhu, Yuan Ni, Guotong Xie, Ruobing Xie, Yankai Lin, Zhiyuan Liu, and Maosong Sun. 2024. ULTRAFEEDBACK: Boosting language models with scaled AI feedback. In Forty-first Inter-national Conference on Machine Learning .Xun Deng, Han Zhong, Rui Ai, Fuli Feng, Zheng Wang, and Xiangnan He. 2025. Less is more: Improving llm alignment via preference data selection. arXiv preprint arXiv:2502.14560 .Qingxiu Dong, Li Dong, Xingxing Zhang, Zhifang Sui, and Furu Wei. 2025. Self-boosting large language models with synthetic preference data. In The Thir-teenth International Conference on Learning Repre-sentations .Yang Gao, Dana Alon, and Donald Metzler. 2024. Im-pact of preference noise on the alignment perfor-mance of generative language models. arXiv preprint arXiv:2404.09824 .Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, and 1 others. 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 .Sam Houliston, Alizée Pace, Alexander Immer, and Gunnar Rätsch. 2024. Uncertainty-penalized di-rect preference optimization. arXiv preprint arXiv:2410.20187 .Dongfu Jiang, Xiang Ren, and Bill Yuchen Lin. 2023a. Llm-blender: Ensembling large language models with pairwise ranking and generative fusion. In Pro-ceedings of the 61st Annual Meeting of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 14165–14178. Dongsheng Jiang, Yuchen Liu, Songlin Liu, Jin’e Zhao, Hao Zhang, Zhen Gao, Xiaopeng Zhang, Jin Li, and Hongkai Xiong. 2023b. From clip to dino: Visual encoders shout in multi-modal large language models. 
+
+arXiv preprint arXiv:2310.08825 .Dongyoung Kim, Kimin Lee, Jinwoo Shin, and Jae-hyung Kim. 2025. Spread preference annotation: Direct preference judgment for efficient LLM align-ment. In The Thirteenth International Conference on Learning Representations .Olivia Kim. 2025. Detail matters: Measuring the impact of prompt specificity on reasoning in large language models. arXiv preprint arXiv:2512.02246 .
+
+9JoonHo Lee, JuYoun Son, Juree Seok, Wooseok Jang, and Yeong-Dae Kwon. 2025a. Preference consis-tency matters: Enhancing preference learning in lan-guage models with automated self-curation of train-ing corpora. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Asso-ciation for Computational Linguistics: Human Lan-guage Technologies (Volume 1: Long Papers) , pages 12150–12169. Seohyeong Lee, Eunwon Kim, Hwaran Lee, and Buru Chang. 2025b. Dataset cartography for large lan-guage model alignment: Mapping and diagnosing preference data. arXiv preprint arXiv:2505.23114 .Ming Li, Yong Zhang, Zhitao Li, Jiuhai Chen, Lichang Chen, Ning Cheng, Jianzong Wang, Tianyi Zhou, and Jing Xiao. 2024. From quantity to quality: Boost-ing llm performance with self-guided data selection for instruction tuning. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) ,pages 7602–7635. Xuechen Li, Tianyi Zhang, Yann Dubois, Rohan Taori, Ishaan Gulrajani, Carlos Guestrin, Percy Liang, and Tatsunori B. Hashimoto. 2023. Alpacaeval: An au-tomatic evaluator of instruction-following models. 
+
+https://github.com/tatsu-lab/alpaca_eval .Percy Liang, Rishi Bommasani, Tony Lee, Dimitris Tsipras, Dilara Soylu, Michihiro Yasunaga, Yian Zhang, Deepak Narayanan, Yuhuai Wu, Ananya Ku-mar, and 1 others. 2022. Holistic evaluation of lan-guage models. arXiv preprint arXiv:2211.09110 .Aixin Liu, Bei Feng, Bin Wang, Bingxuan Wang, Bo Liu, Chenggang Zhao, Chengqi Dengr, Chong Ruan, Damai Dai, Daya Guo, and 1 others. 2024. Deepseek-v2: A strong, economical, and efficient mixture-of-experts language model. arXiv preprint arXiv:2405.04434 .Yang Liu, Dan Iter, Yichong Xu, Shuohang Wang, Ruochen Xu, and Chenguang Zhu. 2023. G-eval: Nlg evaluation using gpt-4 with better human align-ment. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing ,pages 2511–2522. Yixin Liu, Kejian Shi, Alexander Richard Fabbri, Yilun Zhao, Peifeng Wang, Chien-Sheng Wu, Shafiq Joty, and Arman Cohan. 2025. Reife: Re-evaluating instruction-following evaluation. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Lin-guistics: Human Language Technologies (Volume 1: Long Papers) , pages 12247–12287. Aman Madaan, Niket Tandon, Prakhar Gupta, Skyler Hallinan, Luyu Gao, Sarah Wiegreffe, Uri Alon, Nouha Dziri, Shrimai Prabhumoye, Yiming Yang, and 1 others. 2023. Self-refine: Iterative refinement with self-feedback. Advances in Neural Information Processing Systems , 36:46534–46594. Saaduddin Mahmud, Mason Nakamura, and Shlomo Zilberstein. 2025. Maple: A framework for active preference learning guided by large language models. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 27518–27528. Yu Meng, Mengzhou Xia, and Danqi Chen. 2024. Simpo: Simple preference optimization with a reference-free reward. Advances in Neural Infor-mation Processing Systems , 37:124198–124235. OpenAssistant. 2023. OpenAssistant/reward-model-deberta-v3-base. Hugging Face Model Card. Yu Pan, Zhongze Cai, Huaiyang Zhong, Guanting Chen, and Chonghuan Wang. 2025. What matters in data for DPO? In The Thirty-ninth Annual Conference on Neural Information Processing Systems .Ethan Perez, Saffron Huang, Francis Song, Trevor Cai, Roman Ring, John Aslanides, Amelia Glaese, Nat McAleese, and Geoffrey Irving. 2022. Red team-ing language models with language models. arXiv preprint arXiv:2202.03286 .Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36:53728–53741. Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Re-flexion: Language agents with verbal reinforcement learning. Advances in Neural Information Process-ing Systems , 36:8634–8652. Haoxiang Wang, Wei Xiong, Tengyang Xie, Han Zhao, and Tong Zhang. 2024. Interpretable preferences via multi-objective reward modeling and mixture-of-experts. In EMNLP .Jiaming Wang, Yunke Zhao, Peng Ding, Jun Kuang, Zongyu Wang, Xuezhi Cao, and Xunliang Cai. 2025. Ask, fail, repeat: Meeseeks, an iterative feedback benchmark for llms’ multi-turn instruction-following ability. arXiv preprint arXiv:2504.21625 .Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny Zhou, and 1 others. 2022. Chain-of-thought prompting elic-its reasoning in large language models. Advances in neural information processing systems , 35:24824– 24837. Zhaofeng Wu, Michihiro Yasunaga, Andrew Cohen, Yoon Kim, Asli Celikyilmaz, and Marjan Ghazvinine-jad. 2025. rewordbench: Benchmarking and improv-ing the robustness of reward models with transformed inputs. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing ,pages 3383–3409. Can Xu, Qingfeng Sun, Kai Zheng, Xiubo Geng, Pu Zhao, Jiazhan Feng, Chongyang Tao, and Daxin 
+
+10 Jiang. 2023. Wizardlm: Empowering large lan-guage models to follow complex instructions. arXiv preprint arXiv:2304.12244 .Tianyi Yan, Fei Wang, James Y Huang, Wenxuan Zhou, Fan Yin, Aram Galstyan, Wenpeng Yin, and Muhao Chen. 2024. Contrastive instruction tuning. In Find-ings of the Association for Computational Linguistics: ACL 2024 , pages 10288–10302. Ping Yu, Weizhe Yuan, Olga Golovneva, Tianhao Wu, Sainbayar Sukhbaatar, Jason E Weston, and Jing Xu. 2025. Rip: Better models by survival of the fittest prompts. In International Conference on Machine Learning , pages 73350–73374. PMLR. Kaiyan Zhang, Sihang Zeng, Ermo Hua, Ning Ding, Zhang-Ren Chen, Zhiyuan Ma, Haoxin Li, Ganqu Cui, Biqing Qi, Xuekai Zhu, Xingtai Lv, Hu Jinfang, Zhiyuan Liu, and Bowen Zhou. 2024. Ultramedi-cal: Building specialized generalists in biomedicine. 
+
+Preprint , arXiv:2406.03949. Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, and 1 others. 2023. Judging llm-as-a-judge with mt-bench and chatbot arena. Advances in neural information pro-cessing systems , 36:46595–46623. Yaowei Zheng, Richong Zhang, Junhao Zhang, Yanhan Ye, Zheyan Luo, Zhangchi Feng, and Yongqiang Ma. 2024. Llamafactory: Unified efficient fine-tuning of 100+ language models. In Proceedings of the 62nd Annual Meeting of the Association for Compu-tational Linguistics (Volume 3: System Demonstra-tions) , Bangkok, Thailand. Association for Computa-tional Linguistics. Chunting Zhou, Pengfei Liu, Puxin Xu, Srinivasan Iyer, Jiao Sun, Yuning Mao, Xuezhe Ma, Avia Efrat, Ping Yu, Lili Yu, and 1 others. 2023a. Lima: Less is more for alignment. Advances in Neural Information Processing Systems , 36:55006–55021. Jeffrey Zhou, Tianjian Lu, Swaroop Mishra, Sid-dhartha Brahma, Sujoy Basu, Yi Luan, Denny Zhou, and Le Hou. 2023b. Instruction-following evalu-ation for large language models. arXiv preprint arXiv:2311.07911 .Yongchao Zhou, Andrei Ioan Muresanu, Ziwen Han, Keiran Paster, Silviu Pitis, Harris Chan, and Jimmy Ba. 2022. Large language models are human-level prompt engineers. In The eleventh international con-ference on learning representations .He Zhu, Yifan Ding, Yicheng Tao, Zhiwen Ruan, Yixia Li, Wenjia Zhang, Yun Chen, and Guanhua Chen. 2025. Fanno: Augmenting high-quality instruction data with open-sourced llms only. In Findings of the Association for Computational Linguistics: ACL 2025 , pages 17633–17653. 
+
+11 A Motivating Analysis Details 
+
+This matters for preference learning because both tails affect pairwise data informativeness. Let 
+
+Fx(t) = Pr Y ∼μx [R(x, Y ) ≤ t] be the response-quality distribution induced by instruction x, where 
+
+R(x, y ) is a reward-based proxy for response qual-ity. With K sampled candidates, the probability of obtaining a high-quality response above τh is 
+
+1 − Fx(τh)K , while the probability of obtaining a trivial response below τl is 1 − (1 − Fx(τl)) K .Thus, improving the upper tail increases coverage of strong chosen candidates, while reducing lower-tail mass decreases degenerate rejected candidates that can form overly easy preference pairs. This motivates instruction refinement as an upstream intervention before candidate response generation. We introduce our motivation by presenting ev-idence from Best-of-N (Bo N ) and Worst-of-N
+
+(Wo N ) experiments, showing that instruction qual-ity constrains both the upper and lower tails of response quality. Bo N selects the highest-reward response among N generated candidates, provid-ing an estimate of the maximum attainable re-sponse quality, while Wo N selects the lowest-reward response, characterizing the quality floor of responses induced by an instruction. We partition 1.5K sampled instructions from the UltraFeedback dataset into three quality groups ( High , Mid , and 
+
+Low ) based on our instruction quality assessment, which scores each instruction on seven criteria and uses the average score to assign a quality tier (refer to Section 3.3), and generate multiple responses per instruction using LLaMA3-8B (Grattafiori et al., 2024). As shown in Figure 2(a), Bo N reward improves with increasing N , but a substantial gap persists between high- and low-quality instruction groups even at large sampling budgets. At N = 16 , high-quality instructions achieve a mean Bo N reward of 0.150, compared to 0.128 for low-quality in-structions, yielding a gap of 0.0218 ( p < 0.0001 ). This suggests that instruction quality constrains the observed upper tail of response quality under the sampled candidate distribution. Figure 2(b) further shows that the same trend holds for Wo N : high-quality instructions also yield higher worst-case rewards than low-quality instructions. At N = 16 ,high-quality instructions achieve a mean Wo N re-ward of 0.092, compared to 0.063 for low-quality instructions, corresponding to a gap of 0.0297 (p < 0.0001 ). Together, these results suggest that high-quality instructions improve both the upper and lower tails of the sampled response-quality dis-tribution. To interpret these results, let μx(y) = μ(y | x)
+
+denote the candidate response distribution induced by instruction x. For each sampled response Yi ∼
+
+μx, let R∗(x, Y i) denote its latent response quality. Given N sampled candidates Y1, . . . , Y N ∼ μx,the Bo N and Wo N experiments can be viewed as measuring the upper and lower order statistics of this quality distribution: 
+
+R(N )max (x) = max   
+
+> i∈[N]
+
+R∗(x, Y i),R(N )min (x) = min   
+
+> i∈[N]
+
+R∗(x, Y i). (1) The observed Bo N gap indicates that high-quality instructions induce candidate distributions with bet-ter upper tails. The observed Wo N gap further in-dicates that they also raise the lower tail, reducing the likelihood of very poor sampled responses. Preference data are constructed from these sam-pled candidates by selecting a chosen response Y +
+
+and a rejected response Y −. Let 
+
+r+ = R∗(x, Y +), r− = R∗(x, Y −) (2) denote the latent qualities of the chosen and re-jected responses. 
+
+Coverage Enables Direct Gradients. When an instruction is low quality, the induced candidate distribution may rarely contain strong responses. For a high-quality threshold τ , suppose that low-quality instructions assign negligible probability mass to high-quality responses: 
+
+Pr  
+
+> Y∼μxlow
+
+[R∗(xlow , Y ) ≥ τ ] ≈ 0. (3) Since Y + is selected from a finite set of candidates sampled from μxlow , the probability of obtaining a high-quality chosen response is also small: 
+
+Pr R∗(xlow , Y +) ≥ τ | xlow 
+
+ ≈ 0. (4) For a preference tuple (x, y +, y −), the DPO gra-dient (Rafailov et al., 2023) can be written as 
+
+∇θLDPO = −βE(x,y +,y −)∼D [σ(−uθ)dθ] , (5) where 
+
+uθ = β
+
+
+
+log πθ(y+ | x)
+
+πref (y+ | x) − log πθ(y− | x)
+
+πref (y− | x)
+
+
+
+,
+
+(6) 12 and 
+
+dθ = ∇θ log πθ(y+ | x)−∇ θ log πθ(y− | x). (7) The first term in dθ increases the likelihood of the chosen response. Therefore, if high-quality chosen responses are rarely observed, DPO receives little direct gradient signal for increasing the likelihood of high-quality responses. (Pan et al., 2025) In con-trast, high-quality instructions make such chosen responses more likely to appear in preference data, yielding more useful positive updates. 
+
+Higher Rejected Floors Yield More Informative Pairs. Instruction quality also affects the rejected response because Y − is selected from candidates sampled from the same response distribution μx. A higher-quality lower tail increases the typical value of r−, thereby reducing the quality gap r+ − r−
+
+between chosen and rejected responses. When a large quality gap between r+ and r− is reflected in the learned preference margin uθ, we have 
+
+uθ ≫ 0 ⇒ σ(−uθ) ≈ 0. (8) Such pairs have a large quality gap between the chosen and rejected responses, making them easy to distinguish and less informative for gradient up-dates (Houliston et al., 2024). In contrast, when the quality gap r+ − r− is smaller and reflected in 
+
+uθ, the resulting margin can be smaller (Lee et al., 2025b): 
+
+uθ̸ ≫ 0 ⇒ σ(−uθ)̸ ≈ 0.
+
+Thus, improving instruction quality can provide more direct positive updates toward high-quality chosen responses while maintaining informative gradients from pairs with smaller chosen–rejected quality gaps. 
+
+B Experimental Details 
+
+B.1 Instruction Evaluation Rubric Details 
+
+We survey prior studies on active preference learn-ing and preference dataset selection to identify which aspects of instructions degrade preference data quality, and derive seven instruction refine-ment rubrics from this analysis. • Clarity assesses whether the instruction clearly specifies what the model is expected to do without ambiguity. Prior work shows that ambiguous instructions can lead models to misidentify the intended action, motivat-ing consistency in interpretation (Wang et al., 2025). • Specificity evaluates whether the instruc-tion provides sufficiently concrete require-ments, as vague or underspecified instructions have been shown to degrade model perfor-mance (Zhou et al., 2023b; Kim, 2025). To-gether, these criteria encourage instructions to state requirements explicitly and precisely. • Completeness measures whether all neces-sary information and constraints to answer an instruction are provided. Prior work shows that missing context or incomplete task def-initions are associated with failures indepen-dent of model capability, highlighting issues in instruction design (Wang et al., 2025; Liang et al., 2022). Providing a complete specifica-tion is therefore essential for reliable response generation. • Safety evaluates whether the instruction may elicit harmful or unsafe outputs. Previous stud-ies report that unsafe instructions can induce harmful behaviors or generate dangerous in-formation (Bai et al., 2022; Perez et al., 2022). We explicitly assess instruction safety to en-sure refinement remains within acceptable re-sponse boundaries. • Answerability examines whether the instruc-tion admits a well-defined and reasonably an-swerable response. Several data collection studies identify answerability as a core cri-terion for high-quality instruction data, not-ing that unanswerable or ill-posed instruc-tions lead to failures regardless of model strength (Mahmud et al., 2025; Zhu et al., 2025). We therefore treat answerability as a first-class criterion in instruction evaluation. • Conciseness assesses whether the instruction avoids unnecessary information that may dis-tract the model from core requirements. Prior work shows that excessive constraints or irrele-vant details can impair generation quality (Liu et al., 2023). This criterion ensures that in-structions convey only information essential for the task. • Format Consistency evaluates whether the desired output format is clearly specified and 13 consistently illustrated, for example through few-shot examples. Inconsistent or under-specified formats have been shown to cause instruction-following failures (Zhou et al., 2023b; Liu et al., 2025). For each rubric dimension, we use a 5-point Likert-style scale. This choice is motivated by prior human and AI evaluation practices in nat-ural language generation. In particular, recent AI-feedback annotation pipelines such as UltraFeed-back (Cui et al., 2024) use 1–5 scalar scores with detailed score documentation for each aspect to reduce variability and subjectivity in annotation standards. Furthermore, because our refinement procedure is methodologically inspired by Self-Refine (Madaan et al., 2023), we follow its use of bounded, multi-dimensional 1–5 scoring prompts with textual feedback. 
+
+B.2 Feedback and Refinement Prompt 
+
+As described in section 3.3, we include the prompts used as input to the LLM-as-a-judge for feedback generation and instruction refinement in Figure 9 and 10. These prompts are adapted from prior Self-Refine (Madaan et al., 2023), with newly defined rubric criteria for instruction-level refinement. The prompts are designed to robustly elicit both rubric-based scores and natural language feedback, and we strictly constrain the output format and provide few-shot examples to ensure consistent and accu-rate refinement. Especially, to preserve the original intent during refinement, we explicitly impose the constraints to preserve the intent of the original on the instructions. 
+
+B.3 Benchmarks 
+
+For both main experimental settings, LLM align-ment is evaluated using three benchmarks—MT-Bench (Zheng et al., 2023), Evol-Instruct (Xu et al., 2023), and AlpacaEval 2.0 (Li et al., 2023). These benchmarks adopt an LLM-as-a-judge evaluation paradigm and report Win Rate, defined as the pro-portion of cases in which the target model’s re-sponse is preferred over that of a comparison model. For MT-Bench and Evol-Instruct, we additionally report single score evaluations that quantify ab-solute response quality. For AlpacaEval, we re-port both the standard Win Rate and the length-controlled Win Rate to mitigate biases arising from response length. MT-Bench (Zheng et al., 2023) and Evol-Instruct (Xu et al., 2023) are alignment benchmarks designed to evaluate instruction-following capabili-ties under different levels of interaction and com-plexity. MT-Bench focuses on multi-turn dialogue and instruction execution, assessing a model’s abil-ity to maintain coherent and natural conversations across two-turn interactions. In contrast, Evol-Instruct addresses the bias of existing benchmarks toward relatively simple instructions by automati-cally generating instruction data with diverse diffi-culty levels using LLMs, resulting in a more chal-lenging evaluation set. Both benchmarks adopt the same auto-matic evaluation protocol based on the 
+
+llm-judge framework (Zheng et al., 2023), with GPT-4o-2024-11-20 serving as the judge model. For each instruction, responses generated by the target model are compared against those produced by GPT-3.5-turbo to assign win/lose/tie outcomes, enabling the computation of win rates. In addition, the judge produces scalar quality scores for individual responses, and we report the averaged single score for each benchmark. AlpacaEval (Li et al., 2023) is an LLM-based benchmark that evaluates general instruction-following performance. Each example consists of an instruction paired with two responses: one generated by the target model and the other by a reference model, GPT-4-1106-preview . Judg-ing is conducted by GPT-4o-mini-2024-07-18 ,which compares the two responses and assigns a win/lose/tie label according to how well each ful-fills the instruction. We report the win rate of the target model relative to the reference model. 
+
+C Training Details 
+
+In this section, we provide the training setup used in our experiments for reproducibility, including the basic configuration and hyperparameter set-tings. In the main experiments, both DPO and SimPO training were conducted, and we imple-mented both using the LLaMA-Factory (Zheng et al., 2024) codebase. 
+
+C.1 DPO and SimPO Training Details Offline Settings. In the offline setting, we conduct experiments using hyperparameters that achieved the best performance identified through random hyperparameter search. For DPO, the learning rate is selected from 14 Method DPO SimPO                                                        
+
+> Backbone Data Type MT-Bench Evol-Instruct AlpacaEval MT-Bench Evol-Instruct AlpacaEval WR Score WR Score WR LC WR WR Score WR Score WR LC WR
+> Llama3-8b SFT 27.8 4.61 23.4 5.80 3.95 7.49 27.8 4.61 23.4 5.80 3.95 7.49 Original 45.0 5.57 40.6 6.60 8.74 17.59 45.6 5.45 38.1 6.63 7.08 14.92 Refined 51.6 5.53 36.0 6.63 9.26 19.00 48.8 5.39 41.1 6.64 8.87 17.07
+
+Table 7: Evaluation results of prompt refinement experiment with the Feedback & Refine module, conducted under the same experimental setting as Table 1. The highest values for each backbone are highlighted in bold .
+
+[2e − 6, 1e − 6, 5e − 7, 6e − 7] and β is cho-sen from [ 0.01 , 0.05 , 0.1]. For SimPO, hyperpa-rameter tuning is performed over learning rates [3e−6, 2e−6, 1e−6, 3e−7, 5e−7, 6e−7], β val-ues [ 1, 2, 2.5], and γ values [ 1.0, 1.6]. In LLaMA3-8B SimPO, learning rate range is [ 3e − 6, 2e −
+
+6, 1e − 6, 3e − 7, 5e − 7, 6e − 7], and in Mistral-7B SimPO, [ 3e−7, 5e−7, 2e−6, 1e−5, 2e−5]. The optimal hyperparameters were selected separately for each model backbone. In our experiments, for LLaMA-3-8B, DPO training was conducted with β
+
+= 0.01 and a learning rate of 1e − 6, while SimPO used β = 1, a learning rate of 2e − 6, and γ = 1.0. For Mistral-7B, DPO was trained with β = 0.01 and a learning rate of 2e − 6. SimPO employed β
+
+= 1, a learning rate of 2e − 6, and γ = 1.0. The LLaMA-3-8B model was trained for 3 epochs, while the Mistral-7B model was trained for 1 epoch. Both models were trained with a batch size of 16. All experiments were conducted using two NVIDIA H200 GPUs. 
+
+Online Settings. In the online setting, we fol-lowed the SPA (Kim et al., 2025) experiment con-figuration and used the same hyperparameters. In this experiment, we employed a LLaMA-3-8B backbone and performed one epoch of DPO train-ing per iteration with a learning rate of 1e − 5 and 
+
+β = 0.01. We also utilize two NVIDIA H200 GPUs in online setting. 
+
+C.2 Feedback and Refinement Module Training. 
+
+In feedback and refinement module training, we adopted supervised fine-tuning in LLaMA-3-8B model. We utilized GPT-generated 16k feedback data and refinement data, which produce in Ultra-Feedback offline experiment in Section 4.1. SFT was conducted with learning rate of 1e − 4, and we train model for 3 epoch with batch size 16. 
+
+D Additional Experiments 
+
+D.1 Feedback & Refinement Module Experiment 
+
+To demonstrate that refinement is possible by re-placing the foundation model with a module trained via supervised fine-tuning (SFT), we conducted module experiments under the same settings as in Section 4.1. 
+
+Experimental Setups. As for the fine-tuning LLaMA3-8B, we use another unseen instructions in the UltraFeedback and collect the feedback and refinement results of them from GPT-4o. Similarly, we performed three iteration of instruction refine-ment. Models were trained on the dataset before refinement and on the refined dataset, and their performance was subsequently compared. 
+
+Experimental Results. Table 7 shows the offline preference learning results, where utilized a feed-back module and refiner module trained via SFT instead of GPT-4o . Consistent with previous re-sults, table also demonstrates that refined data leads to superior training performance across nearly all benchmarks. This demonstrates that a trained re-finer module can effectively polish data as an alter-native to a foundation model. 
+
+D.2 Alternative Reward Model Experiment 
+
+We have demonstrated that our framework works with two different reward models—ArmoRM in the offline setting and PairRM in the online set-ting. To further verify that our approach does not depend on a specific reward model, we conduct additional experiments with an alternative reward model, OpenAssistant/reward-model-deberta-v3-large-v2 , a general-purpose reward model trained on diverse datasets such as WebGPT and HH-RLHF. All experimental settings follow those de-scribed in Section 4.1, and we conduct DPO and SimPO on LLaMA-3-8B. 15 Method DPO SimPO                                                       
+
+> Backbone Data Type MT-Bench Evol-Instruct AlpacaEval MT-Bench Evol-Instruct AlpacaEval WR Score WR Score WR LC WR WR Score WR Score WR LC WR
+> Llama3-8b SFT 0.278 4.61 0.234 5.80 3.55 7.15 0.278 4.61 0.234 5.80 3.55 7.15 Original 0.466 5.47 0.374 6.39 9.43 16.56 0.466 5.23 0.401 6.56 3.61 8.07 Refined 0.453 5.22 0.383 6.47 9.38 17.20 0.466 5.30 0.436 6.49 6.75 13.84
+
+Table 8: Results with an alternative reward model on MT-Bench, Evol-Instruct, and AlpacaEval. For MT-Bench and Evol-Instruct, conducted under the same experimental setting as Table 1. The highest values for each backbone are highlighted in bold .                                     
+
+> Method MMLU-med MedQA MedMCQA PubMedQA
+> Clinical Knowledge Medical Genetics Anatomy Professional Medicine College Biology College Medicine Acc. Acc. Acc. SFT 0.592 0.710 0.556 0.592 0.618 0.578 0.515 0.486 0.022
+> DPO (Original) 0.660 0.620 0.593 0.607 0.681 0.566 0.534 0.496 0.196
+> Refined 0.694 0.680 0.593 0.588 0.681 0.578 0.537 0.502 0.254
+
+Table 9: Medical-domain evaluation results on MMLU-med, MedQA, and PubMedQA. The highest values in each column are highlighted in bold .
+
+Table 8 reports the results. Overall, refining in-structions yields improvements on multiple bench-marks and settings under the alternative reward model. In particular, clearer improvements are observed on Evol-Instruct and AlpacaEval, while some MT-Bench metrics show smaller gains or slight decreases. These results suggest that the pro-posed approach is not tied to a single reward model configuration, while also indicating that the mag-nitude and consistency of the improvements are affected by the reward signal. 
+
+D.3 Alternative Dataset Experiment 
+
+Since our main experiments are conducted on UltraFeedback, the observed performance gains could be specific to the data characteristics of Ul-traFeedback. To examine this possibility, we con-duct an additional DPO experiment with LLaMA-3-8B using TsinghuaC3I/UltraMedical-Preference, a medical-domain preference dataset. We use 33K examples corresponding to 30% of the full 110K UltraMedical-Preference dataset. Following the setup in Section 4, we train LLaMA-3-8B-SFT with DPO on original and refined dataset. For in-struction refinement, we use GPT-4o with the same configuration as in our main experiments, applying a refinement threshold of 0.13 for two iterations. The results in Table 9 show an overall posi-tive trend from instruction refinement, while the effect varies across MMLU-med. The improve-ments are particularly clear on QA-style bench-marks, where the refined model achieves higher scores on MedQA, MedMCQA, and PubMedQA. 2 3 4 5   
+
+> Feedback Avg. Score
+> 0.0 0.1 0.2
+> Min Reward Score  x: 4.080
+> y: 0.100
+> Original Data
+> 2345
+> Feedback Avg. Score
+> x: 4.351
+> y: 0.114
+> Refined Data
+
+Figure 5: Distribution of feedback scores and minimum response rewards before and after instruction refinement, showing consistent improvements in both instruction quality and lower-bound response quality. 
+
+These results suggest that our pipeline can also pro-vide benefits on preference datasets from different domains. 
+
+E Additional Analysis 
+
+E.1 Instruction–Response Quality Analysis 
+
+To analyze the relationship between instruction quality and response quality, we present a scat-ter plot in Figure 5 that compares the distributions of feedback scores and minimum reward scores before and after instruction refinement. Each point represents an instruction, with the horizontal axis denoting the average rubric-based feedback score and the vertical axis indicating the minimum re-ward score across sampled responses. After refinement, we observe a clear upward shift along both axes. The average minimum re-ward score rises from μy = 0 .100 to μy = 0 .114 ,which corresponds to 11.65% of the effective re-ward range of ArmoRM scores on UltraFeedback. This observation suggests that refinement re-16 Method MT-Bench Evol-Instruct AlpacaEval 2.0                                                                                          
+
+> Win Rate Score Win Rate Score Win Rate LC Win Rate SFT 27.8 4.61 23.4 5.8 3.95 7.49 DPO 39.4 5.12 37.4 6.05 7.73 12.33 SPA (iter 2) 53.1 5.56 56.0 6.46 19.14 20.27 +w/ instruction refinement 54.7 (↑1.6%p) 5.59 (↑0.03) 55.7 ( ↓0.3%p) 6.89 (↑0.43) 20.80 (↑1.66%p) 20.82 (↑0.55%p) Reward Model (iter 2) 43.1 5.19 40.8 6.41 9.19 15.49 +w/ instruction refinement 45.3 (↑2.2%p) 5.18 ( ↓0.01) 42.9 (↑2.1%p) 6.33 ( ↓0.08) 9.01 ( ↓0.18%p) 15.62 (↑0.14%p) Implicit Reward (iter 2) 53.1 5.49 48.4 6.54 14.27 21.38 +w/ instruction refinement 50.9 ( ↓2.2%p) 5.36 ( ↓0.13) 55.5 (↑7.1%p) 6.61 (↑0.07) 21.90 (↑7.63%p) 22.84 (↑1.46%p)
+
+Table 10: Evaluation results on MT-Bench, Evol-Instruct, and AlpacaEval 2.0 for LLaMA-3-8B models trained with SPA (iter 2). Bold indicates the better result within each method, and arrows indicate the change compared to the non-refined counterpart. SFT DPO Iter. 1 Iter. 2 Iter. 3 810 12 14 16 18 20 22          
+
+> LC Win Rate (%)
+> AlpacaEval - SPA
+> SFT DPO Iter. 1 Iter. 2 Iter. 3 810 12 14 16 18 20
+> AlpacaEval - RM
+> SFT DPO Iter. 1 Iter. 2 Iter. 3 7.5 10.0 12.5 15.0 17.5 20.0 22.5 25.0
+> AlpacaEval - IR
+> Baseline w/ Instruction Refinement
+
+Figure 6: AlpacaEval LC win rate result per iteration of online preference learning. Model capability increases as train iteration repeat, showing major increase in SPA + prompt refinement. 
+
+duces the prevalence of low-quality generations. In other words, refined instructions are more likely to elicit consistently high-quality responses, rather than exhibiting unstable generation behavior. This distributional shift helps explain the observed im-provements in both offline and online preference learning performance. These patterns suggest that high-quality instructions are associated with reli-able response quality and strong preference signals. 
+
+E.2 Online Experiment Analysis 
+
+To provide a more detailed analysis of the SPA ex-periments presented in the main paper (Section 4.2), this section reports the results at iteration 2 and presents performance gain across iterations, illus-trating how model performance evolves as iterative preference learning progresses. Table 10 summarizes the results of online prefer-ence learning with two iterations of SPA, compar-ing baseline training with and without instruction refinement. Across most settings, incorporating in-struction refinement consistently improves or main-tains performance over the non-refined counter-parts, demonstrating its effectiveness as a comple-mentary mechanism in online preference learning. Notably, SPA with instruction refinement yields consistent gains across most benchmarks, while reward-model-based and implicit-reward-based set-tings also benefit from refinement, particularly on Evol-Instruct and AlpacaEval. These results indi-cate that refining queries improves the quality of on-policy preference data, leading to more infor-mative learning signals during online training. Figure 6 further illustrates performance trends across training iterations. In most settings—SPA and implicit-reward-based training—instruction re-finement accelerates performance improvements as training progresses. These results show that instruction refinement enhances the effectiveness of online preference learning by improving data quality throughout training, rather than only at ini-tialization. 
+
+E.3 Threshold Sensitivity Analysis 
+
+Figure 7 reports the sensitivity of instruction refine-ment performance to the minimum-reward thresh-old τ across different evaluation benchmarks for both DPO and SimPO. Across MT-Bench, Evol-Instruct, and AlpacaEval, moderate threshold val-ues consistently lead to improved performance compared to the non-refined baseline, indicating that selectively refining low-quality queries effec-17 0.05 0.08 0.10 0.13 0.15                       
+
+> Threshold
+> 0.375 0.400 0.425 0.450 0.475 0.500 0.525
+> DPO Score MT-Bench Pairwise
+> 0.05 0.08 0.10 0.13 0.15
+> Threshold
+> 0.325 0.350 0.375 0.400 0.425 0.450
+> Evol-Instruct Pairwise
+> 0.05 0.08 0.10 0.13 0.15
+> Threshold
+> 12 14 16 18 20
+> AlpacaEval LC Win Rate
+> 0.05 0.08 0.10 0.13 0.15
+> Threshold
+> 0.375 0.400 0.425 0.450 0.475 0.500 0.525
+> SimPO Score
+> 0.05 0.08 0.10 0.13 0.15
+> Threshold
+> 0.325 0.350 0.375 0.400 0.425 0.450
+> 0.05 0.08 0.10 0.13 0.15
+> Threshold
+> 12 14 16 18 20
+> DPO SimPO Best Perf.
+
+Figure 7: τ Sensitivity Analysis Result in MT-Bench (Zheng et al., 2023), Evol-Instruct (Xu et al., 2023), and AlpacaEval 2.0 (Li et al., 2023). 
+
+Dataset MT-Bench Evol-Instruct 
+
+Overall Low-IFD Mid-IFD High-IFD Overall Low-IFD Mid-IFD High-IFD Original 4.913 4.302 5.056 4.925 6.147 6.342 6.208 6.411 Refined 5.381 5.037 5.717 5.396 6.390 6.205 6.417 6.548 
+
+Table 11: Evaluation results across different IFD difficulty levels on MT-Bench (Zheng et al., 2023) and Evol-Instruct (Xu et al., 2023). Each cell reports the average score. The highest value in each column is highlighted in 
+
+bold .
+
+tively enhances preference learning. In particular, both methods achieve their best or near-best per-formance around τ = 0 .1–0.13 , suggesting that filtering and refining approximately the lower por-tion of queries strikes a balance between removing unstable instructions and preserving informative preference signals. When the threshold is set too high (e.g., τ = 0 .15 ), performance sometimes de-grades, implying that excessive refinement may over-constrain instructions or reduce preference signal effectivity. Overall, these results confirm that instruction refinement is robust to threshold choice within a reasonable range, while highlight-ing the importance of moderate filtering for stable and effective preference optimization. 
+
+E.4 IFD Score Analysis IFD Score Experiment. Task difficulty and in-struction quality can be closely related, making it non-trivial to determine whether improved down-stream performance stems from better instruction quality or from a reduction in task difficulty. In particular, if instruction refinement reduces task difficulty, the resulting performance gains may be confounded with difficulty reduction rather than re-flecting improvements in instruction quality alone. To examine whether our refinement process reduces task difficulty, we conducted an addi-tional analysis using Instruction-Following Diffi-culty (IFD) scores (Li et al., 2024). We use IFD as a proxy for instruction-following difficulty, with higher scores indicating greater difficulty under the model used to compute IFD. For an instruction– answer pair (Q, A ), the IFD score is defined as: 
+
+IFD θ(Q, A ) = sθ(A | Q)
+
+sθ(A) (9) We computed IFD scores for each instance be-fore and after instruction refinement using the Llama-3-Base-8B-SFT model and compared the resulting paired scores. After refinement, the mean IFD score increased from 0.6423 to 0.6823, yield-18 Category Original instruction Refined instruction 
+
+Major Shift How to use corkscrew to chop the vegeta-bles? Ensure safety by securely holding a knife to chop carrots, onions, and bell peppers on a stable cutting board. Minor Shift Create a sentence using five synonyms Use five synonyms for “happy” in a single sentence. 
+
+Table 12: Examples of major and minor instruction shifts between original and refined instructions. SFT Iter. 0 Iter. 1 Iter. 2 27.5 30.0 32.5 35.0 37.5 40.0 42.5 45.0 47.5       
+
+> LC Win Rate (%)
+> MT-Bench
+> SFT Iter. 0 Iter. 1 Iter. 2 22.5 25.0 27.5 30.0 32.5 35.0 37.5 40.0 42.5
+> Evol-Instruct
+> SFT Iter. 0 Iter. 1 Iter. 2 810 12 14 16 18 20
+> AlpacaEval
+
+Figure 8: Performance across refinement iterations. Win rate generally improves from SFT to later refinement iterations across MT-Bench, Evol-Instruct, and AlpacaEval. 
+
+ing a mean paired difference of +0.0406. In ad-dition, 54.38% of the instances had higher IFD scores after refinement. The difference was lim-ited in magnitude, and the increase in IFD suggests that the refined instructions were not easier but marginally more difficult to follow. Therefore, the observed improvement in model performance is unlikely to be attributable to reduced task difficulty in the refined data. 
+
+Benchmark Evaluation. To further examine whether the downstream gains are driven by easier data, we conducted an additional analysis on the evaluation benchmark. If the observed improve-ments were mainly driven by easier training data, the refined model would be expected to show de-graded performance on evaluation prompts with higher IFD scores. We therefore grouped the eval-uation prompts into low-, middle-, and high-IFD 
+
+groups based on their IFD scores and compared model performance within each group. The results in Table 11 show that the gains from instruction-quality refinement were not confined to low-difficulty evaluation prompts. On both Evol-Instruct and MT-Bench, the refined model outper-formed the original model across most IFD-based difficulty groups, including prompts with relatively high IFD scores. This suggests that instruction-quality refinement remains effective not only for easier prompts but also for more difficult instruc-tions. Therefore, model performance gains are unlikely to be explained solely by task difficulty. 
+
+E.5 Effect of Refinement Iterations on Performance 
+
+To examine how performance changes with re-peated refinement, we evaluate models trained on instructions refined over multiple iterations. We re-port the win rate for MT-Bench and Evol-Instruct, and the length-controlled win rate for AlpacaE-val. As shown in Figure 8, performance generally improves from SFT to later refinement iterations across MT-Bench, Evol-Instruct, and AlpacaEval. The gains are most pronounced in the early refine-ment stages, while later iterations show smaller improvements or signs of saturation. This sug-gests that iterative refinement can further improve downstream performance, but its marginal benefit diminishes after a small number of iterations. 
+
+F Human Evaluation 
+
+To further strengthen the robustness of the refine-ment process, we conducted two small-scale hu-man evaluations. The first evaluation was designed to verify whether task drift occurred during refine-ment. In this evaluation, human annotators directly compared the instructions before and after refine-ment and assessed whether the underlying task was preserved. The second evaluation was conducted to further examine the alignment between the reward model and human preferences. Human evaluators were asked to review the instruction and the corre-sponding model responses, assess their preference between the responses, and determine whether in-struction refinement was necessary. 19 F.1 Task/Distribution Shift Human Evaluation 
+
+To verify that intent preservation is achieved in practice, we conduct a human evaluation on task/intent drift. We quantitatively evaluate in-tent and task preservation between the original and refined instructions. The evaluation is con-ducted on 60 randomly selected instructions, with each instruction assessed by three human anno-tators (12 annotators in total, each evaluating 20 instructions). Annotators are shown the original and refined instructions in random order and asked to judge whether they are semantically equivalent, exhibit a minor shift, or exhibit a major shift. • Same intent : The core task and output type remain unchanged, with only changes in ex-pression. • Minor shift : The core task is preserved, but some constraints or output formats are modi-fied. • Major shift : The task type or underlying objective is altered. Differences in instruction length, wording, or style are not considered intent drift. The results show 66.7% Same Intent , 21.7% Minor Shift , 8.3% Ma-jor Shift , and 3.3% Tie. Overall, 88.4% of samples preserve the core task ( Same Intent + Minor Shift ), indicating that intent preservation is largely main-tained despite occasional shifts. We also conduct case studies of minor and major intent shifts in table 12. In major shift exam-ple, instruction asks how to cut vegetables with a corkscrew involves using a tool in a dangerous and unintended way. Following safety and answerabil-ity criteria, the refiner shifts the intent to providing safety guidance and requesting the use of appro-priate tools. In minor shift example, instruction requests to generate sentences using five synonyms is unanswerable without a target word. The refiner adds a reference word (e.g., happy), introducing a minor shift while preserving the main task and in-put/output format. These cases illustrate that even when intent shifts occur, they can lead to improved preference data quality. The instructions given to human evaluators are provided in Figure 11. 
+
+F.2 Reward Model Human Evaluation 
+
+To assess how well our reward-model-based pipeline aligns with human preferences, we con-         
+
+> Original instruction: How long is the needle inside the monkey’s ear?
+> Original Response 1: The needle inside the monkey’s ear is 2cm long.
+> Original Response 2: The needle is 2.5cm long and it is inserted into the monkey’s ear. [...]
+> Feedback (Evaluator): Clarity: 1/5, Specificity: 1/5, Completeness: 1/5, Safety: 3/5, Answerability: 1/5, Conciseness: 3/5, FormatConsistency: 4/5. "Unclear context, lacks details, unanswerable without additional information."
+> Refined instruction: Provide the typical length of nee-dles used in veterinary procedures for monkeys’ ears, specifying the context and purpose of the procedure.
+> Refined Response 1: The typical length ranges from
+> 1 to 1.5 inches . These needles are usually used for ear canal biopsies or ear canal washes to diagnose [...]
+> Refined Response 2: The typical length is 1 inch (2.5 cm) . This needle length is used for blood collection, injection, or fluid removal [...]
+
+Table 13: Case study of instruction refinement. 
+
+ducted a small-scale human evaluation on 30 ran-domly sampled instruction–response-pair tuples. The evaluation set consisted of 15 samples selected by our pipeline as requiring refinement and 15 sam-ples not selected for refinement. Each tuple was annotated by three human evaluators, and the fi-nal decision was determined by majority vote. (9 annotators in total, each evaluating 10 instructions) To approximate the conditions of our actual pipeline, annotators were asked to judge whether the instruction should be refined after inspecting the two associated responses. If either response revealed an issue attributable to the instruction, an-notators were instructed to mark the instruction as requiring refinement. In addition, annotators as-signed scores to the two responses and selected the better one, thereby producing a human cho-sen/rejected preference label. The detailed annota-tion prompt is provided in Figure 12. The reward-model-based refinement decision agreed with the human majority judgment in 76.7% of cases. For preference labeling, the reward-model label agreed with the human majority choice in 71.4% of cases. These results indicate that both instruction selection and preference labeling are reasonably aligned with human judgments. How-ever, reward models can still be biased by factors such as response length, style, and surface-level fluency. Thus, the reward model in our pipeline should be viewed as a reasonably accurate proxy for human preference, rather than a perfect substi-tute. 20 G Case Study 
+
+G.1 Refinement Case Study 
+
+Table 13 presents a qualitative case study illustrat-ing the effect of instruction refinement. The orig-inal instruction is ambiguous and underspecified, asking for the length of a “needle inside the mon-key’s ear” without providing any context, which leads to arbitrary and inconsistent responses despite surface-level confidence. The evaluator feedback identifies deficiencies in clarity and specificity, in-dicating that the instruction is fundamentally un-derspecified. After refinement, the instruction is revised to specify a realistic veterinary context and purpose, resulting in responses that are more con-crete, medically plausible, and mutually consistent. This example illustrates how improving instruction quality can yield more reliable preference data. 
+
+G.2 Degradation Case Study 
+
+We further analyzed cases where the refined model receives lower evaluation scores than the original model. These cases suggest that larger drops can occur in tasks where correctness or output format is critical, including probability reasoning and named entity extraction. Table 14 shows a representative degradation case in named entity extraction (NER). The task requires a JSON dictionary grouped into predefined entity types. While the original model follows the requested format, the refined model adds non-requested content and includes invalid or misclassified entities. This example illustrates that instruction refinement can occasionally be less stable for tasks requiring strict output formats. This pattern is less evident in open-ended generation tasks, where score changes are more likely to reflect judge-score variance or response-style differences. 21 You are an evaluator. Given an Original instruction, evaluate the instruction using the criteria below. Follow these STRICT rules: 1. Output must start with exactly ’Evaluation:’ on its own line. 2. You must include ALL 7 criteria in the following order: Clarity, Specificity, Completeness, Safety, Answerability, Conciseness, FormatConsistency. 3. Each line must follow the format: *<Criterion>: <digit 1-5>/5 - <one concise note> 4. Do NOT add any text before or after the evaluation block. Output format: Evaluation: * Clarity: <1-5>/5 - <one-line note> * Specificity: <1-5>/5 - <one-line note> * Completeness: <1-5>/5 - <one-line note> * Safety: <1-5>/5 - <one-line note> * Answerability: <1-5>/5 - <one-line note> * Conciseness: <1-5>/5 - <one-line note> * FormatConsistency: <1-5>/5 - <one-line note> —### Few-shot Examples Original instruction: Write something about animals Evaluation: * Clarity: 2/5 - vague request * Specificity: 2/5 - no length, no scope * Completeness: 2/5 - missing output format * Safety: 5/5 - safe * Answerability: 4/5 - feasible but broad * Conciseness: 3/5 - some redundancy * FormatConsistency: 3/5 - unspecified output format ### Original instruction: Make a paragraph using that language Evaluation: * Clarity: 2/5 - unclear what "that language" refers to * Specificity: 2/5 - format is defined (paragraph) but content is vague * Completeness: 2/5 - missing target language or subject * Safety: 5/5 - safe request * Answerability: 2/5 - partially answerable but underspecified * Conciseness: 4/5 - concise but incomplete * FormatConsistency: 3/5 - loosely consistent but ambiguous wording ### Original instruction: {instruction} 
+
+Figure 9: Prompt used for Feedback Generation. 
+
+You are an instruction refiner. Given an Original instruction and its Evaluation, rewrite the instruction so it is clear, specific, complete, safe, feasible, concise, and consistent. STRICT RULES: 1. Output ONLY the refined instruction text — no labels, no commentary, no examples. 2. The refined instruction must be executable directly by a model (not guidelines). 3. Preserve the intent of the original, but resolve ambiguity using the feedback. 4. Do not include the words "Refined instruction" in the output. 5. Write a single instruction only. Original instruction: {instruction} Evaluation: {feedback} 
+
+Figure 10: Prompt used for Refinement Generation. 
+
+22 You will compare two prompts (an original version and a revised version) and assess whether the revised prompt preserves the same underlying intent and task as the original. This evaluation focuses on the core task the model is expected to perform, not on superficial differences in wording or style. ### How to Evaluate Read the two prompts (Version A and Version B) shown below and judge whether they require the model to perform the same task. When making your decision, consider the following: Whether the type of output expected from the model is the same Whether the core operation the model must perform (e.g., translation, classification, reasoning, generation) is the same Whether the goal or scope of the task has changed Differences in phrasing, length, or politeness alone do not constitute intent drift. If the model is expected to perform the same core action, select “Same intent.” ### Options Please choose one of the following: Same intent : The two prompts differ only in wording or formatting; the core task and output type remain the same. Minor shift : The core task is largely preserved, but some constraints or output format have changed. Major shift : The type of task or the objective has changed. For example, the output type changes, or the prompt shifts from solving a problem to describing the task itself. ### Notes Do not base your judgment on prompt length, verbosity, or stylistic differences. Focus on what the model is being asked to do. If unsure, base your decision on whether the nature of the expected output is the same in both prompts. 
+
+Figure 11: Instructions provided to human evaluators for task shift evaluation. 
+
+You are a human evaluator. Your task is to evaluate two model responses to the same instruction. For each evaluation item, follow this process: Step 1. Score each response separately. Give a score to Response 1. Give a score to Response 2. Judge based on how well each response follows the instruction, correctness, completeness, clarity, formatting, and overall usefulness. Use the same scoring standard for both responses. Step 2. Decide whether the instruction needs refinement. If either responses receive low scores, determine that the instruction has issues, respond that instruction refinement is needed. Check whether the cause is issues in the instruction’s clarity, specificity, completeness, safety, answerability, conciseness, or format consistency. Step 3. Select <chosen> and <rejected>. Choose the better response as chosen. Mark the weaker response as rejected. If both responses are equally poor or equally good, still choose the slightly better one. 
+
+Figure 12: Instructions provided to human evaluators for response evaluation and instruction refinement. 
+
+23 Question: Identify the named entities (people, organizations, locations) mentioned in the given news article. Please generate a JSON dictionary that lists the named entities in three separate groups based on their entity types. The key is the type of entity and the value is a list of strings. 
+
+Article: Yesterday, Adamson Emerson, the CEO of Faraday, and Dieter Zetsche, the CEO of Daimler AG, announced plans to build a new Gigafactory in Berlin. The facility will be a joint venture between Faraday and Daimler, producing electric vehicles and battery packs for both companies, creating thousands of job opportunities in the region. Emerson and Zetsche stated that the strategic location of Berlin, coupled with its skilled workforce and strong infrastructure, makes it an ideal choice for expansion. The new Gigafactory aims to meet the growing demand for electric vehicles in Europe and contribute to a sustainable future. Volkswagen CEO Herbert Diess welcomed the news, saying greater collaboration will benefit the auto industry’s transition to e-mobility. 
+
+Model Model Response Score Original {"Person": ["Adamson Emerson", "Dieter Zetsche", "Herbert Diess"], "Organization": ["Faraday", "Daimler AG", "Volkswagen"], "Location": ["Berlin"] }
+
+9
+
+Refined Named Entities: - Adamson Emerson (person) - Dieter Zetsche (person) - Faraday (organization) - Daimler AG (organization) - Berlin (location) - Gigafactory (location) - electric vehicles (product) - battery packs (product) - job opportunities (event) - skilled workforce (attribute) - strong infrastructure (attribute) - sustainable future (goal) - Herbert Diess (person) - Volkswagen (organization) - e-mobility (industry transition) JSON Dictionary: {"Person": ["Adamson Emerson", "Dieter Zetsche", "Herbert Diess"], "Organization": ["Faraday", "Daimler AG", "Volkswagen"], "Location": ["Berlin", "Gigafactory"] }
+
+5
+
+Table 14: Representative degradation case in a strict-format named entity extraction task. The refined model adds non-requested content and misclassifies entities, leading to a lower evaluation score. 
+
+24
