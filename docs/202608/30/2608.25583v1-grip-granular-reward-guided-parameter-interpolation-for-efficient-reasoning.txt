@@ -1,0 +1,466 @@
+Title: GRIP: Granular Reward-Guided Parameter Interpolation for Efficient Reasoning
+
+URL Source: https://arxiv.org/pdf/2608.25583v1
+
+Published Time: Thu, 27 Aug 2026 00:46:58 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# GRIP: Granular Reward-Guided Parameter Interpolation for Efficient Reasoning 
+
+Lam So 1*, Canhui Wu 2*† , Han Lin 11Peking University, 2Xi’an Jiaotong University 
+
+wucanhui@stu.xjtu.edu.cn 
+
+Abstract 
+
+Reasoning-oriented large language models of-ten achieve strong problem-solving perfor-mance by generating long chains of thought, but this behavior substantially increases infer-ence cost and latency. In contrast, instruction-tuned models tend to answer more concisely, yet often lack comparable reasoning ability. This accuracy-efficiency mismatch motivates a lightweight approach that combines the strengths of both models without full model retraining. In this paper, we propose GRIP 
+
+(Granular Reward-guided Interpolation of Pa-rameters ), a reward-guided parameter interpo-lation framework for efficient reasoning. Given a reasoning model and an instruction model with identical architectures, GRIP assigns learn-able interpolation ratios to individual modules and optimizes only these ratios while keeping both source models frozen. The interpolation ratios are trained with a reward signal that fa-vors responses that are both correct and con-cise. Experiments show that GRIP achieves a better accuracy-efficiency trade-off than fixed or search-based merging baselines and further reveals module-wise fusion patterns associated with efficient reasoning. 
+
+1 Introduction 
+
+Large language models (LLMs) have demonstrated remarkable reasoning abilities across arithmetic, commonsense, and symbolic domains. Chain-of-Thought (CoT) prompting (Wei et al., 2022; Ko-jima et al., 2022) further enhances these abilities by encouraging models to decompose complex prob-lems into intermediate reasoning steps. This ex-plicit reasoning paradigm has become an important mechanism for improving both interpretability and success rates on multi-step reasoning tasks. However, the same explicit reasoning behav-ior also exposes a growing efficiency problem. 
+
+> *Equal contribution.
+> †Corresponding author.
+
+Reasoning-oriented models frequently produce un-necessarily long explanations, and may even en-ter cycles of self-reflection when solving relatively simple problems, a phenomenon referred to as over-thinking (Sui et al., 2025; Chen et al., 2025). Such verbosity directly increases token consumption and latency (Aytes et al., 2025), and redundant inter-mediate steps may introduce self-contradictions or compounding reasoning errors (Cuadron et al., 2025; Su et al., 2025). As reasoning models are in-creasingly deployed in latency- and cost-sensitive scenarios, improving reasoning efficiency without sacrificing accuracy has become a central chal-lenge. Existing approaches to efficient reasoning typi-cally fall into two categories. Prompt-based meth-ods encourage shorter responses through concise instructions or explicit token budgets (Renze and Guven, 2024; Xu et al., 2025), but their effective-ness depends on prompt design and may not re-liably change the model’s underlying reasoning behavior. Training-based methods, including re-inforcement learning (RL) with length-aware re-wards (Luo et al., 2025a; Yi et al., 2025; Arora and Zanette, 2025; Hou et al., 2025) and supervised fine-tuning (SFT) on concise reasoning traces (Ma et al., 2025; Kang et al., 2025; Xia et al., 2025; Yu et al., 2025a), can more directly shape model outputs, but usually require costly model-level op-timization. These limitations motivate a lighter alternative that can adjust the accuracy-efficiency trade-off without updating the full model. Model merging provides a promising starting point for such an alternative. A reasoning model and a non-thinking instruction model from the same family often share an aligned parameter space: the former offers strong reasoning ability, whereas the latter exhibits concise instruction-following behav-ior. Interpolating their parameters can therefore produce fused models whose behavior moves be-tween deliberate reasoning and concise answer-arXiv:2608.25583v1 [cs.CL] 26 Aug 2026 ing. However, existing merge-based methods com-monly rely on fixed global coefficients or black-box search (Wu et al., 2025a,b). As a result, they provide limited task-adaptive control over which modules should preserve reasoning-specific param-eters and which modules can shift toward concise instruction-following behavior. In this work, we introduce GRIP (Granular Reward-guided Interpolation of Parameters ), a lightweight reward-guided interpolation framework for efficient reasoning. Starting from a reasoning model and a non-thinking instruction model with identical architectures, GRIP assigns a learnable interpolation ratio to each module and optimizes only these ratios while keeping both source mod-els frozen. At each optimization step, the current fused model rolls out responses, and a reward func-tion jointly considers answer correctness and re-sponse length, giving higher rewards to outputs that are both correct and concise. This reward sig-nal updates the module-wise interpolation ratios through an RL-based objective, allowing the fused model to discover task-aware fusion strategies with substantially fewer trainable parameters than full model training. Beyond improving the accuracy-efficiency trade-off over existing merging schemes, the learned interpolation patterns also provide in-sight into how reasoning behavior is distributed across modules. Our contributions are summarized as follows: • We propose GRIP, a lightweight granu-lar reward-guided parameter interpolation method that combines a reasoning model with a non-thinking instruction model of identical architecture for efficient reasoning. • We optimize only module-wise interpolation ratios with an RL-based update, using re-wards that jointly encourage answer correct-ness and response conciseness while keeping both source models frozen. • Experiments demonstrate that GRIP achieves a stronger accuracy-efficiency trade-off than existing merging baselines and reveals module-wise patterns related to reasoning be-havior. 
+
+2 Related Work 
+
+2.1 Model Merging 
+
+Model merging aims to integrate multiple inde-pendently trained models into a unified parame-ter space, enabling the combined model to inherit diverse capabilities. This paradigm has been ex-tensively explored in settings such as continual learning (Marczak et al., 2024), multi-task learn-ing (Yang et al., 2023), and even adversarial anal-ysis of model behaviors (Gangwal and Sharma, 2025). A fundamental requirement for most merg-ing approaches is architectural alignment, which allows parameters from different models to be di-rectly combined. Among existing strategies, a straightforward solution is to perform element-wise weight averaging across models (Utans, 1996). Building upon this intuition, the task arithmetic framework generalizes weight averaging by oper-ating on task-specific parameter offsets, enabling controlled model editing and composition (Ilharco et al., 2022). A comprehensive overview of model merging techniques, along with their theoretical foundations and practical applications, is provided by Yang et al. (2024). More recently, practical deployments have demonstrated the effectiveness of model merging for reasoning efficiency. For instance, Kimi k1.5 combines models specialized in long and short chain-of-thought reasoning by uniformly averaging their parameters (Team et al., 2025). 
+
+2.2 Efficient Reasoning 
+
+As reasoning in LLMs becomes increasingly ver-bose, recent works have focused on improving conciseness while maintaining reasoning qual-ity and accuracy. Prompt-based methods, such as CCoT (Renze and Guven, 2024), guide mod-els through explicit instructions like “Be con-cise,” whereas CoD (Xu et al., 2025) and Token-budget (Han et al., 2024) impose strict token con-straints to prevent excessively long outputs. Su-pervised fine-tuning (SFT) approaches, includ-ing C3oT (Kang et al., 2025), CoT-Valve (Ma et al., 2025), TokenSkip (Xia et al., 2025), and LS-Mixture (Yu et al., 2025a), train models on rea-soning traces of varying lengths, with particular emphasis on shorter and more efficient chains. Re-inforcement learning (RL)-based methods, such as StepPruner (Wu et al., 2026), O1-pruner (Luo et al., 2025a), ShorterBetter (Yi et al., 2025), and TrainEfficient (Arora and Zanette, 2025), further encourage concise reasoning by incorporating ex-plicit length penalties during optimization. Finally, merge-based approaches (Wu et al., 2025a,b) re-duce reasoning length by directly combining the parameters of reasoning-oriented and instruction-following models, achieving efficiency gains with-out additional training. 
+
+3 Method 
+
+3.1 Problem Setup 
+
+Let θR denote a reasoning-oriented model and θI
+
+denote an instruction-tuned model. Both models share an identical architecture and come from the same model family, so their parameter tensors are shape-compatible and directly aligned. Our goal is to construct a fused model θF that preserves the reasoning accuracy of θR while exhibiting the con-cise response behavior of θI . GRIP parameterizes 
+
+θF with a small set of module-wise interpolation logits and updates them with group-relative reward feedback in the spirit of GRPO (Shao et al., 2024). Formally, we aim to optimize a set of module-wise fusion ratios such that the resulting model achieves high task accuracy with reduced output length. Figure 1 provides an overview of the pro-posed interpolation and reward-guided optimiza-tion pipeline. 
+
+3.2 Module-wise Sigmoid-controlled Fusion 
+
+We construct the fused model by interpolating the parameters of the reasoning model and the instruc-tion model in a module-wise manner. Let K denote the number of interpolated modules, including at-tention modules, FFN modules, and optionally sep-arately weighted modules such as the embedding layer and the language modeling head. When the embedding layer and the language modeling head share tied weights, they use the same interpolation coefficient to preserve weight tying. For the k-th module, we introduce an unconstrained trainable parameter ρk ∈ R and map it to a valid interpola-tion coefficient through a sigmoid function: 
+
+αk = σ(ρk) = 11 + exp( −ρk) , αk ∈ (0 , 1) .
+
+(1) The fused parameters of the k-th module are then defined as 
+
+θFk (ρ) = αkθRk + (1 − αk)θIk, (2) where αk controls the contribution of the reasoning model and 1 − αk controls the contribution of the instruction model. Equivalently, the overall fused model is 
+
+θF (ρ) = F(θR, θ I , α), α = σ(ρ). (3) This sigmoid parameterization allows us to opti-mize unconstrained variables ρ with gradient-based methods while ensuring that every module-wise fusion ratio remains within the valid interval. Dur-ing optimization, only ρ is updated, whereas both source models θR and θI are frozen. Because θFk is differentiable in ρk, the gradient of any per-token RL loss L with respect to a fusion logit follows directly from the chain rule: 
+
+∂L
+
+∂ρ k
+
+=
+
+ ∂L
+
+∂θ Fk
+
+, θ Rk − θIk
+
+
+
+· σ′(ρk), (4) where ⟨· , ·⟩ denotes the inner product over the mod-ule’s parameter tensor. GRIP therefore receives the same per-token reward signal that full-model RL would deliver to θFk , but projected onto the single direction θRk − θIk. This projection is what makes the optimization lightweight: each module collapses to one trainable scalar without losing the per-token credit that gradient-based RL provides. 
+
+3.3 Reward-Guided Interpolation Optimization 
+
+We optimize the module-wise fusion logits ρ with an RL-based objective. At each optimization step, we set the current fused policy as the old policy 
+
+πold and sample a group of G responses {yi}Gi=1 
+
+for each prompt x. Each response receives a re-ward that encourages correctness while penalizing excessive response length. 
+
+Reward Function. Let y∗(x) denote the ground-truth answer of prompt x, let Ans( y) denote the final answer extracted from response y, and let 
+
+LEN( y) denote the number of generated tokens in response y. Following the reward design in Fig-ure 1, we define the reward as 
+
+r(x, y ) = I{Ans( y) = y∗(x)} (1 − λg (LEN( y))) ,
+
+(5) where λ ∈ [0 , 1] controls the strength of length reg-ularization. To compare lengths among responses generated for the same prompt, we normalize re-sponse length within the correct responses of the sampled group and apply a sigmoid soft clipping function: 
+
+g(LEN( yi)) = σ
+
+ LEN( yi) − μx
+
+sx + δ
+
+
+
+, (6) where δ is a small constant for numerical stabil-ity. Let Cx = {i : Ans( yi) = y∗(x)} denote the GRIP Update   
+
+> Update only fusion weights 𝜶
+> Non-Thinking
+> Model
+> 𝒉 𝒍 𝒏𝒐𝒏−𝒕𝒉𝒊𝒏𝒌
+> LM Head
+> Layer L
+> Layer 2
+> Layer 1
+> LM Head
+> Layer L
+> Layer 2
+> Layer 1
+> Embedding Embedding
+> . .
+> . .
+> Thinking
+> Model
+> Non-Thinking
+> Model
+> Same architecture
+
+Base Models  
+
+> ℎ𝐿 𝑡ℎ𝑖𝑛𝑘
+> ℎ2
+> 𝑡ℎ𝑖𝑛𝑘
+> ℎ1
+> 𝑡ℎ𝑖𝑛𝑘
+> ℎ𝐿 no𝑛−𝑡ℎ𝑖𝑛𝑘
+> ℎ2
+> 𝑛𝑜𝑛−𝑡ℎ𝑖𝑛𝑘
+> ℎ1
+> 𝑛𝑜𝑛−𝑡ℎ𝑖𝑛𝑘
+> 𝛼 L
+> 𝛼 L
+> 𝛼 L
+> 1
+
+Module-wise Fusion 2      
+
+> Thinking
+> Model
+> 𝒉 𝒍 𝒕𝒉𝒊𝒏𝒌
+> 𝒉 𝑳 𝒇𝒖𝒔𝒆𝒅
+> 𝒉 𝟐 𝒇𝒖𝒔𝒆𝒅
+> 𝒉 𝟏
+> 𝒇𝒖𝒔𝒆𝒅
+> . . .
+> . . .
+> 𝒉 𝒍 𝒇𝒖𝒔𝒆𝒅 = 𝜶 𝒍 𝒉 𝒍 𝒕𝒉𝒊𝒏𝒌 +𝟏 − 𝜶 𝒍 𝒉 𝒍 𝒏𝒐𝒏−𝒕𝒉𝒊𝒏𝒌
+> Trainable parameters:
+> = {𝜶 𝟏 , … , 𝜶 𝑳 }
+> Input Prompt 𝑥
+> Fused Policy
+> (Fused Model)
+> Sampled Responses
+> Response 3
+
+⋮
+
+> Response 2
+> Response 1
+
+Rollout 3 Reward 4
+
+Reward Computation 
+
+> Correctness
+> (higher is better)
+> Efficiency
+> (shorter is better)
+
+Accurate 
+
+Final Model 5
+
+Efficient 
+
+Efficient 
+
+Thinking Model 
+
+Learned optimal 
+
+fusion ratio Freeze 
+
+> sigmoid
+
+Figure 1: Overview of GRIP. GRIP learns module-wise sigmoid-controlled fusion ratios between a reasoning model and a non-thinking model, and updates them with an RL-based objective using rewards based on correctness and response length. 
+
+indices of correct responses in the group, and let 
+
+Gc = |C x|. Then 
+
+μx = 1
+
+Gc
+
+X
+
+i∈C x
+
+LEN( yi)
+
+sx =
+
+s 1
+
+Gc
+
+X
+
+i∈C x
+
+(LEN( yi) − μx)2.
+
+(7) When Gc = 0 , the indicator I{Ans( yi) = y∗(x)}
+
+in the reward is zero for every response in the group, so all responses receive zero reward (and contribute zero advantage). When Gc = 1 , sx is set to 1
+
+to avoid a degenerate denominator; in this case the single correct response has z = 0 and there-fore g(LEN( yi)) = σ(0) = 0 .5. Thus, incorrect responses receive zero reward, while correct re-sponses are further ranked by length, with shorter correct responses receiving larger rewards. 
+
+Policy Update. Given rewards {ri}Gi=1 for re-sponses sampled from the old fused policy πold ,we compute group-relative advantages by normal-izing rewards within each group: 
+
+ˆAi = ri − ¯r
+
+std( {rj }Gj=1 ) + δ , ¯r = 1
+
+G
+
+GX
+
+j=1 
+
+rj . (8) For brevity, denote the current fused policy by πρ =
+
+πθF (ρ). Following GRPO (Shao et al., 2024) with the clip-higher and KL-free modifications from DAPO (Yu et al., 2025b), we update the fusion logits ρ using 
+
+J (ρ) = E
+
+"
+
+1
+
+G
+
+GX
+
+i=1 
+
+min  ωi ˆAi, ˜ωi ˆAi
+
+#
+
+, (9) where the expectation is over prompts and re-sponse groups sampled from πold , ωi = ωi(ρ) = 
+
+πρ(yi | x)/π old (yi | x) is the policy ratio, and 
+
+˜ωi = clip( ωi, 1 − εlo , 1 + εhi ) uses asymmetric 
+
+clip-higher bounds. Both ωi and the loss are esti-mated at the token level. We omit the KL anchor: since ρ is confined to a low-dimensional sigmoid-bounded space and the original model weights are frozen, the fused policy stays close to its initializa-tion without requiring an explicit reference-policy regularizer. The trainable logits are then updated by gradient ascent: 
+
+ρ ← ρ + η∇ρJ (ρ), α = σ(ρ). (10) This update directly changes the module-wise in-terpolation ratios through gradient ascent while keeping the original model parameters fixed. The overall optimization procedure is summarized in Algorithm 1. 
+
+4 Experiments 
+
+4.1 Experimental Setup Models and Datasets We conduct experiments on the Qwen3-4B-Instruct-2507 and Qwen3-4B-Thinking-2507 (Yang et al., 2025) models, which Algorithm 1 RL-based Module-wise Parameter Interpolation 
+
+Require: Reasoning model θR, Instruction model 
+
+θI
+
+Ensure: Optimized fusion ratios α∗ 
+
+> 1:
+
+Initialize trainable fusion logits ρ =logit(0 .8) 1 
+
+> 2:
+
+while not converged do  
+
+> 3:
+
+Compute fusion ratios α ← σ(ρ) 
+
+> 4:
+
+Construct fused model θF (ρ) ←F(θR, θ I , α) 
+
+> 5:
+
+Sample a batch of problems B 
+
+> 6:
+
+Set πold ← πθF (ρ) and roll out response groups {yi}Gi=1  
+
+> 7:
+
+Compute rewards {ri} using correctness and normalized length penalty  
+
+> 8:
+
+Compute group-relative advantages { ˆAi} 
+
+> 9:
+
+Update ρ with the RL-based objective  
+
+> 10:
+
+end while  
+
+> 11:
+
+return α∗ = σ(ρ∗)
+
+share the same architecture and therefore allow di-rect parameter interpolation. We use DeepScaleR-preview (Luo et al., 2025b) as the training dataset for optimizing the module-wise fusion logits. To test both in-domain and out-of-domain gen-eralization, we evaluate GRIP on five reason-ing benchmarks: AIME25, MATH500 (Light-man et al., 2024), GSM8K (Cobbe et al., 2021), GPQA-D (Rein et al., 2024), and LiveCodeBench (LCB) (Jain et al., 2024). These datasets cover competition math, grade-school math, scientific question answering, and code generation. 
+
+Implementation Details We train GRIP with the slime framework (Zhu et al., 2025). For Qwen3-4B, the trainable variables are K = 74 fusion logits: 36 for attention, 36 for FFN, one for the final RMSNorm, and one shared by the tied in-put embedding and LM head. This keeps opti-mization lightweight because both source mod-els remain frozen and only scalar fusion param-eters are updated. We use learning rate 0.1, length penalty λ = 0 .4, rollout group size G = 16 , and 
+
+32 prompts per rollout, producing 32 ×16=512 re-sponses per rollout. With a global batch size of 512 ,each rollout yields one optimizer step. The maxi-mum response length is 10 ,240 during training, and we train for 750 optimizer steps. The asymmetric clipping bounds are εlo = 0 .2 and εhi = 0 .28 ; KL anchoring and entropy bonus are disabled. Eval-uation uses LightEval (Habib et al., 2023) with temperature 0.8, top_p 0.9, and a 32 ,768 token limit. 
+
+Baselines We compare our method against three types of baselines. 1) Qwen3 Modes : We report the original Qwen3-Thinking and Qwen3-Instruct models to show the accuracy-efficiency trade-off before fusion. 2) Model Merging : We compare with representative parameter-space merging meth-ods, including Linear interpolation, SLERP (Shoe-make, 1985), TIES (Yadav et al., 2023), DARE-TIES (Yu et al., 2024; Yadav et al., 2023), and DELLA (Pala Tej Deep et al., 2024). Following the setting of Wu et al. (2025b), all interpolation-based baselines use a fixed reasoning-model coefficient of 0.8. 3) Black-box Search : We include CMA-ES (Hansen and Ostermeier, 2001) as a search-based baseline for optimizing fusion ratios without gradient-based reward feedback. To make the com-parison apples-to-apples, CMA-ES uses the same training prompts as GRIP (DeepScaleR-preview), the same module-wise parameterization, and a fit-ness that jointly rewards accuracy and penalizes generation length on those training prompts, match-ing GRIP’s reward function. AIME25, MATH500, GSM8K, GPQA-D, and LCB are all held-out for both methods. 
+
+4.2 Main Results 
+
+Table 1 shows that GRIP improves the accuracy-efficiency trade-off without simply moving the model toward shorter but weaker responses. Al-though the instruction model is much more con-cise, it suffers a large accuracy drop, especially on AIME25, GPQA-D, and LCB. By contrast, GRIP reduces the average generation length by 27.0% relative to Qwen3-Thinking while slightly improv-ing average accuracy from 76.0 to 76.5, suggesting that much of the verbose reasoning can be removed without sacrificing task-critical reasoning behavior. GRIP also compares favorably with conventional merging baselines. Fixed-ratio methods such as Linear interpolation and SLERP shorten outputs to some extent, but their global fusion strength limits the ability to preserve reasoning-sensitive compo-nents. GRIP reaches the same average accuracy as SLERP while using 14.5% fewer tokens, indicating that adaptive module-wise fusion provides a more efficient allocation of inference computation. The gains vary across benchmarks. On AIME25, GRIP improves accuracy over Qwen3-Thinking by Methods AIME25 MATH500 GSM8K GPQA-D † LCB † Avg                                                                                                                        
+
+> Acc. Tok. Acc. Tok. Acc. Tok. Acc. Tok. Acc. Tok. Acc. Tok.
+> Qwen3
+> Thinking 73.3 19630 89.4 5802 94.5 1350 66.7 9057 56.0 18439 76.0 (+0 .0) 10856 (100 .0%)
+> Instruct 36.7 10555 85.6 1623 92.6 304 46.5 459 30.3 2824 58.3 (−17 .7) 3153 (29 .0%)
+> Linear 73.3 15977 88.0 4339 93.6 1223 70.3 8591 53.1 15814 75.7 (−0.3) 9189 (84 .6%)
+> SLERP 76.7 16467 89.0 4442 94.2 1231 69.2 8449 53.7 15770 76.5 (+0 .5) 9272 (85 .4%)
+> TIES 76.7 16106 85.8 4433 93.6 1197 69.2 8724 56.0 16097 76.3 (+0 .3) 9311 (85 .8%)
+> DARE-TIES 70.0 16455 88.0 4640 93.1 1223 68.2 8735 54.9 16658 74.8 (−1.2) 9542 (87 .9%)
+> DELLA 66.7 17447 88.0 4807 94.5 1205 68.7 8026 53.1 16875 74.2 (−1.8) 9672 (89 .1%)
+> CMA-ES 60.0 11990 85.8 3632 94.5 1202 67.2 6839 42.9 18675 70.1 (−5.9) 8413 (77 .5%)
+> GRIP 80.0 11838 86.7 3565 94.4 1115 70.2 8236 51.4 14894 76.5 (+0 .5) 7930 (73 .0%)
+
+Table 1: Main comparison of accuracy and inference efficiency on five reasoning benchmarks. Acc. denotes task accuracy, and Tok. denotes the average number of generated tokens per example. The Avg column reports the mean performance across AIME25, MATH500, GSM8K, GPQA-D, and LCB. Best results are highlighted in bold. † marks out-of-domain benchmarks: GRIP and the CMA-ES baseline are both trained on math data only (DeepScaleR-preview). 
+
+6.7 points while reducing output length by 39.7%, suggesting that difficult mathematical problems contain substantial redundant exploration. Notably, although GRIP is optimized only on mathemati-cal data, it also transfers well to out-of-domain benchmarks: GPQA-D shows accuracy gains with shorter reasoning, and LCB achieves the lowest token usage among strong reasoning variants. On MATH500 and GSM8K, GRIP mainly converts the strong baseline performance into shorter genera-tions, while LCB remains more sensitive to length reduction, possibly because code generation bene-fits more from extended deliberation or verification. 
+
+4.3 Validating Module-wise Interpolation 
+
+We first test whether attention and FFN require sep-arate fusion ratios. On the Qwen3-4B Thinking/In-struct pair, we sweep α ∈ {0.0, 0.1, . . . , 1.0},where α = 1 recovers Thinking and α = 0 recov-ers Instruct. We compare three settings: applying 
+
+α only to attention, only to FFN, or globally to all modules. Non-swept modules are fixed at 0.5,isolating the marginal effect of each module type. Each setting is evaluated on the same five bench-marks (macro pass@1, average generation length). 
+
+Attention and FFN play sharply different roles. 
+
+Figure 2 shows a clear asymmetry. Sweeping atten-tion barely changes macro pass@1, which remains in [0 .690 , 0.722] , and increases length by only 26% .Sweeping FFN instead raises macro pass@1 from 
+
+0.612 to 0.782 and increases length by 178% . FFN therefore drives most of both accuracy and length, while attention is largely inert; a single global coef-ficient conflates the two. 
+
+Module-wise tuning beats any global α. The FFN sweep also outperforms the global sweep for every α ≥ 0.4. Its best accuracy is 0.782 at α = 0 .9,compared with 0.760 for the best global setting. The global sweep additionally pays an unnecessary length cost because it moves attention together with FFN. Separating the two streams removes this cou-pling, and motivates the per-layer extension used by GRIP. 
+
+4.4 Tracking Module-wise Fusion Coefficients 
+
+We next track the learned fusion ratios over training. Every ∼ 10 optimization steps, we record αk(t) = 
+
+σ(ρk(t)) for all Qwen3-4B modules: 36 attention coefficients, 36 FFN coefficients, one shared coef-ficient for the tied input embedding and LM head, and one coefficient for the final RMSNorm. All co-efficients start from an 80% /20% Thinking/Instruct blend. This lets us observe whether the optimizer keeps a nearly global interpolation pattern or ac-tively assigns different modules to different source models. 
+
+From a uniform initialization to strong per-layer differentiation. Figure 3 reports the inter-layer standard deviation of α for attention and FFN. Both start near 0, rise rapidly in the first ∼ 300 steps, and saturate around 0.30 . Since a global coefficient would keep this value at 0, the learned solution separates layers in both module streams rather than Figure 2: Module-targeted coefficient sweeps on Qwen3-4B. The attention sweep is nearly flat in both macro pass@1 and length, while the FFN sweep changes both metrics substantially. The global sweep follows the FFN trend but pays a larger length cost because all modules are moved together.   
+
+> Figure 3: Inter-layer standard deviation of attention and FFN fusion ratios during training. Both start near zero, grow rapidly in the first few hundred steps, and stabilize around ≈0.30 , showing that training breaks the initially uniform blend.
+
+merely shifting the whole model toward one end-point. 
+
+Where in the network does the differentiation happen? Figure 5 groups the 36 layers into early (0–8), middle ( 9–26 ), and late ( 27 –35 ) bands, and reports the mean fusion ratio per band over training. The split is not uniform across depth. For attention, the early band stays Thinking-heavy throughout (α ≈ 0.85 –0.9), while the middle and late bands first dip sharply toward Instruct (down to α ≈ 0.5
+
+and α ≈ 0.3 respectively in the first ∼ 200 steps) before partially recovering and stabilizing around 
+
+α ≈ 0.7 and α ≈ 0.6. FFN follows a different shape: the early band drifts only mildly downward to α ≈ 0.75 , but both the middle and late bands plunge much deeper (the middle band reaches 
+
+α ≈ 0.3, more Instruct-heavy than any attention band) and settle around α ≈ 0.55 and α ≈ 0.65 .Along the time axis the differentiation stabilizes rather than diverging: most movement happens in   
+
+> Figure 4: Learned per-layer fusion ratios after 750 train-ing steps for attention and FFN modules.
+
+the first ∼ 300 steps and the trajectories then flat-ten. Attention and FFN therefore differentiate in different depth regions and along different trajec-tories, which a single global ratio cannot capture. Figure 4 compares the learned coefficients under the trained GRIP policy against the fixed α=0 .8
+
+baseline used by interpolation methods following Wu et al. (2025b); the broad spread around this dashed line shows that most layers prefer substan-tially different mixing ratios, rather than the same global coefficient. 
+
+4.5 Reward-Guided vs. Black-Box Search 
+
+We also compare GRIP with CMA-ES (Hansen and Ostermeier, 2001), a black-box search base-line over the same module-wise parameterization 
+
+λ ∈ [0 , 1] D with D=74 for Qwen3-4B (one mixing weight per attn/FFN block plus embed-ding and final norm). CMA-ES samples 6 can-didates per generation and ranks them by the Figure 5: Mean fusion ratio α over training, with the 36 layers grouped into early ( 0–8), middle ( 9–26 ), and late (27 –35 ) bands; shaded regions show within-band standard deviation. Left: attention. Right: FFN. The early band stays close to the 0.8 initialization, while middle and late bands move substantially toward Instruct, and the FFN middle band moves more aggressively than any attention band.   
+
+> Figure 6: RL optimization is smoother than CMA-ES. Per-coordinate RMS shift between adjacent updates, measured every 10 gradient steps for RL and every gen-eration for CMA-ES.
+
+same accuracy −length fitness used by GRIP’s re-ward, evaluated on the same DeepScaleR-preview prompts. With training distribution, search space, and objective all matched, the comparison isolates the optimization mechanism itself: reward-guided gradient updates vs. evolutionary search. 
+
+Continuity. The median per-coordinate RMS shift between adjacent updates is 0.018 for GRIP and 0.083 for CMA-ES. The path-to-net-displacement ratio is 4.9× for GRIP and 21 .8×
+
+for CMA-ES, after which CMA-ES retraces most of its path while GRIP does not. 
+
+Credit assignment. CMA-ES performs 100 ×
+
+6 = 600 fitness evaluations on the training prompts and receives one scalar score per candidate for all 74 coordinates, so it must infer which coordi-nates matter only through population-level rank-ing. GRIP operates on the same 74 -dim space but receives gradient feedback on every rollout, assigning credit directly to each module-level co-efficient. With training data, search space, and objective held fixed, the gap in Table 1 isolates the value of reward-guided updates over evolutionary search. 
+
+5 Conclusion 
+
+We presented GRIP, a reward-guided parameter interpolation framework for efficient reasoning. Given a reasoning model and an instruction model with identical architectures, GRIP freezes source models, assigns learnable fusion coefficients to modules, and updates these coefficients with a re-ward favoring correct, concise responses. Across five reasoning benchmarks, this module-wise in-terpolation reduces generation length while pre-serving or improving average accuracy relative to the original reasoning model, yielding a stronger accuracy-efficiency trade-off than fixed-ratio merg-ing and search-based baselines. Our analyses show that reasoning relies on per-layer, per-module coefficients that cannot be reduced to a single global ratio, and that reward-guided updates yield a smoother trajectory than black-box search over the same interpolation space, with distinct fusion pat-terns emerging across attention and FFN modules. Together, these results suggest that reward-guided interpolation is a lightweight alternative to full-model training for reducing overthinking in large language models. 6 Limitations 
+
+Our study has several limitations. First, due to compute constraints we evaluate GRIP only at the 4B scale; whether the observed accuracy-efficiency trade-off and per-layer differentiation patterns transfer to substantially larger reasoning models ( 30 B+) remains open. Second, all experi-ments use dense Transformer backbones; we have not validated GRIP on Mixture-of-Experts archi-tectures, where router and expert weights introduce additional structure that the current per-module pa-rameterization does not address. Finally, GRIP assumes the reasoning model and the instruction model share an identical architecture (same depth, width, and head count), which restricts the method to within-family pairs (e.g., Qwen3-Thinking with Qwen3-Instruct); cross-family fusion (e.g., a Llama Thinking variant with a Qwen Instruct variant) is not directly supported and is not evaluated. 
+
+References 
+
+Daman Arora and Andrea Zanette. 2025. Training language models to reason efficiently. Preprint ,arXiv:2502.04463. Simon A Aytes, Jinheon Baek, and Sung Ju Hwang. 2025. Sketch-of-thought: Efficient llm reasoning with adaptive cognitive-inspired sketching. arXiv preprint arXiv:2503.05179 .Xingyu Chen, Jiahao Xu, Tian Liang, Zhiwei He, Jianhui Pang, Dian Yu, Linfeng Song, Qiuzhi Liu, Mengfei Zhou, Zhuosheng Zhang, Rui Wang, Zhaopeng Tu, Haitao Mi, and Dong Yu. 2025. Do not think that much for 2+3=? on the overthinking of o1-like llms. Preprint , arXiv:2412.21187. Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. 2021. Training verifiers to solve math word prob-lems. arXiv preprint arXiv:2110.14168 .Alejandro Cuadron, Dacheng Li, Wenjie Ma, Xingyao Wang, Yichuan Wang, Siyuan Zhuang, Shu Liu, Luis Gaspar Schroeder, Tian Xia, Huanzhi Mao, Nicholas Thumiger, Aditya Desai, Ion Stoica, Ana Klimovic, Graham Neubig, and Joseph E. Gonzalez. 2025. The danger of overthinking: Examining the reasoning-action dilemma in agentic tasks. Preprint ,arXiv:2502.08235. Ankit Gangwal and Aaryan Ajay Sharma. 2025. Merge now, regret later: The hidden cost of model merg-ing is adversarial transferability. arXiv preprint arXiv:2509.23689 .Nathan Habib, Clémentine Fourrier, Hynek Kydlíˇ cek, Thomas Wolf, and Lewis Tunstall. 2023. Lighteval: A lightweight framework for llm evaluation. Tingxu Han, Zhenting Wang, Chunrong Fang, Shiyu Zhao, Shiqing Ma, and Zhenyu Chen. 2024. Token-budget-aware llm reasoning. arXiv preprint arXiv:2412.18547 .Nikolaus Hansen and Andreas Ostermeier. 2001. Com-pletely derandomized self-adaptation in evolution strategies. Evolutionary Computation , 9(2):159–195. Bairu Hou, Yang Zhang, Jiabao Ji, Yujian Liu, Kaizhi Qian, Jacob Andreas, and Shiyu Chang. 2025. Thinkprune: Pruning long chain-of-thought of llms via reinforcement learning. arXiv preprint arXiv:2504.01296 .Gabriel Ilharco, Marco Tulio Ribeiro, Mitchell Worts-man, Suchin Gururangan, Ludwig Schmidt, Han-naneh Hajishirzi, and Ali Farhadi. 2022. Edit-ing models with task arithmetic. arXiv preprint arXiv:2212.04089 .Naman Jain, King Han, Alex Gu, Wen-Ding Li, Fanjia Yan, Tianjun Zhang, Sida Wang, Armando Solar-Lezama, Koushik Sen, and Ion Stoica. 2024. Live-codebench: Holistic and contamination free evalu-ation of large language models for code. Preprint ,arXiv:2403.07974. Yu Kang, Xianghui Sun, Liangyu Chen, and Wei Zou. 2025. C3ot: Generating shorter chain-of-thought without compromising effectiveness. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 39, pages 24312–24320. Takeshi Kojima, Shixiang Shane Gu, Machel Reid, Yu-taka Matsuo, and Yusuke Iwasawa. 2022. Large lan-guage models are zero-shot reasoners. Advances in neural information processing systems , 35:22199– 22213. Hunter Lightman, Vineet Kosaraju, Yuri Burda, Harri-son Edwards, Bowen Baker, Teddy Lee, Jan Leike, John Schulman, Ilya Sutskever, and Karl Cobbe. 2024. Let’s Verify Step by Step. In International Conference on Learning Representations .Haotian Luo, Li Shen, Haiying He, Yibo Wang, Shi-wei Liu, Wei Li, Naiqiang Tan, Xiaochun Cao, and Dacheng Tao. 2025a. O1-pruner: Length-harmonizing fine-tuning for o1-like reasoning prun-ing. arXiv preprint arXiv:2501.12570 .Michael Luo, Sijun Tan, Justin Wong, Xiaoxiang Shi, William Y. Tang, Manan Roongta, Colin Cai, Jeffrey Luo, Tianjun Zhang, Li Erran Li, Raluca Ada Popa, and Ion Stoica. 2025b. DeepScaleR: Surpassing O1-Preview with a 1.5B model by scaling RL. Notion Blog. Xinyin Ma, Guangnian Wan, Runpeng Yu, Gongfan Fang, and Xinchao Wang. 2025. Cot-valve: Length-compressible chain-of-thought tuning. arXiv preprint arXiv:2502.09601 .Daniel Marczak, Bartłomiej Twardowski, Tomasz Trz-ci´ nski, and Sebastian Cygert. 2024. Magmax: Lever-aging model merging for seamless continual learning. In European Conference on Computer Vision , pages 379–395. Springer. Pala Tej Deep, Rishabh Bhardwaj, and Soujanya Po-ria. 2024. Della-merging: Reducing interference in model merging through magnitude-based sampling. 
+
+arXiv preprint arXiv:2406.11617 .David Rein, Betty Li Hou, Asa Cooper Stickland, Jack-son Petty, Richard Yuanzhe Pang, Julien Dirani, Ju-lian Michael, and Samuel R Bowman. 2024. Gpqa: A graduate-level google-proof q&a benchmark. In 
+
+First Conference on Language Modeling .Matthew Renze and Erhan Guven. 2024. The benefits of a concise chain of thought on problem-solving in large language models. In 2024 2nd International Conference on Foundation and Large Language Mod-els (FLLM) , pages 476–483. IEEE. Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024. Deepseekmath: Pushing the limits of mathemati-cal reasoning in open language models. Preprint ,arXiv:2402.03300. Ken Shoemake. 1985. Animating rotation with quater-nion curves. In Proceedings of the 12th Annual Con-ference on Computer Graphics and Interactive Tech-niques , SIGGRAPH ’85, pages 245–254, New York, NY, USA. Association for Computing Machinery. Jinyan Su, Jennifer Healey, Preslav Nakov, and Claire Cardie. 2025. Between underthinking and overthink-ing: An empirical study of reasoning length and cor-rectness in llms. arXiv preprint arXiv:2505.00127 .Yang Sui, Yu-Neng Chuang, Guanchu Wang, Jiamu Zhang, Tianyi Zhang, Jiayi Yuan, Hongyi Liu, An-drew Wen, Shaochen Zhong, Na Zou, Hanjie Chen, and Xia Hu. 2025. Stop overthinking: A survey on ef-ficient reasoning for large language models. Preprint ,arXiv:2503.16419. Kimi Team, Angang Du, Bofei Gao, Bowei Xing, Changjiu Jiang, Cheng Chen, Cheng Li, Chenjun Xiao, Chenzhuang Du, Chonghua Liao, Chuning Tang, Congcong Wang, Dehao Zhang, Enming Yuan, Enzhe Lu, Fengxiang Tang, Flood Sung, Guangda Wei, Guokun Lai, and 77 others. 2025. Kimi k1.5: Scaling reinforcement learning with llms. Preprint ,arXiv:2501.12599. Joachim Utans. 1996. Weight averaging for neural networks and local resampling schemes. In Proc. AAAI-96 Workshop on Integrating Multiple Learned Models. AAAI Press , pages 133–138. Citeseer. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, brian ichter, Fei Xia, Ed Chi, Quoc V Le, and Denny Zhou. 2022. Chain-of-thought prompt-ing elicits reasoning in large language models. In 
+
+Advances in Neural Information Processing Systems ,volume 35, pages 24824–24837. Curran Associates, Inc. Canhui Wu, Qiong Cao, Chang Li, Zhenfang Wang, Chao Xue, Yuwei Fan, Wei Xi, and Xiaodong He. 2026. Beyond token length: Step pruner for efficient and accurate reasoning in large language models. In 
+
+Findings of the Association for Computational Lin-guistics: ACL 2026 , pages 1953–1974. Han Wu, Yuxuan Yao, Shuqi Liu, Zehua Liu, Xiaojin Fu, Xiongwei Han, Xing Li, Hui-Ling Zhen, Tao Zhong, and Mingxuan Yuan. 2025a. Unlocking effi-cient long-to-short llm reasoning with model merging. 
+
+arXiv preprint arXiv:2503.20641 .Taiqiang Wu, Runming Yang, Tao Liu, Jiahao Wang, and Ngai Wong. 2025b. Revisiting model inter-polation for efficient reasoning. arXiv preprint arXiv:2510.10977 .Heming Xia, Yongqi Li, Chak Tou Leong, Wenjie Wang, and Wenjie Li. 2025. Tokenskip: Control-lable chain-of-thought compression in llms. arXiv preprint arXiv:2502.12067 .Silei Xu, Wenhao Xie, Lingxiao Zhao, and Pengcheng He. 2025. Chain of draft: Thinking faster by writing less. arXiv preprint arXiv:2502.18600 .Prateek Yadav, Derek Tam, Leshem Choshen, Colin Raffel, and Mohit Bansal. 2023. Ties-merging: Re-solving interference when merging models. In Ad-vances in Neural Information Processing Systems ,volume 36, pages 7093–7115. Curran Associates, Inc. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, Chujie Zheng, Day-iheng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge, Haoran Wei, Huan Lin, Jialong Tang, and 41 others. 2025. Qwen3 technical report. Preprint ,arXiv:2505.09388. Enneng Yang, Li Shen, Guibing Guo, Xingwei Wang, Xiaochun Cao, Jie Zhang, and Dacheng Tao. 2024. Model merging in llms, mllms, and beyond: Meth-ods, theories, applications and opportunities. arXiv preprint arXiv:2408.07666 .Enneng Yang, Zhenyi Wang, Li Shen, Shiwei Liu, Guib-ing Guo, Xingwei Wang, and Dacheng Tao. 2023. Adamerging: Adaptive model merging for multi-task learning. arXiv preprint arXiv:2310.02575 .Jingyang Yi, Jiazheng Wang, and Sida Li. 2025. Short-erbetter: Guiding reasoning models to find optimal in-ference length for efficient reasoning. arXiv preprint arXiv:2504.21370 .Bin Yu, Hang Yuan, Haotian Li, Xueyin Xu, Yuliang Wei, Bailing Wang, Weizhen Qi, and Kai Chen. 2025a. Long-short chain-of-thought mixture super-vised fine-tuning eliciting efficient reasoning in large language models. arXiv preprint arXiv:2505.03469 .Le Yu, Bowen Yu, Haiyang Yu, Fei Huang, and Yongbin Li. 2024. Language models are super mario: Absorb-ing abilities from homologous models as a free lunch. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pages 57755–57775. PMLR. Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xi-aochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan, Gao-hong Liu, juncai liu, LingJun Liu, Xin Liu, Haibin Lin, Zhiqi Lin, Bole Ma, Guangming Sheng, Yux-uan Tong, Chi Zhang, Mofan Zhang, and 17 others. 2025b. Dapo: An open-source llm reinforcement learning system at scale. In Advances in Neural In-formation Processing Systems , volume 38, Main Con-ference, pages 113222–113244. Curran Associates, Inc. Zilin Zhu, Chengxing Xie, Xin Lv, and slime Contrib-utors. 2025. slime: An llm post-training framework for rl scaling. https://github.com/THUDM/slime .GitHub repository. Corresponding author: Xin Lv. A Appendix 
+
+A.1 Experimental environment 
+
+We trained on a node with 8 ×NVIDIA H200 GPUs and Intel Xeon Platinum 8558 CPUs. The total training time was approximately 42 hours. 
+
+A.2 Qwen3-4B training curves 
+
+The training dynamics show that GRIP gradually shortens responses while maintaining a stable re-ward signal, indicating that the learned interpola-tion can improve efficiency without collapsing task performance.   
+
+> Figure 7: Mean response length during GRIP training on the Qwen3-4B pair through step 750 .
+> Figure 8: Raw reward during GRIP training on the Qwen3-4B pair through step 750 .
+
+A.3 Ablation: layer-wise versus module-wise interpolation 
+
+We compare the module-wise parameterization used by GRIP with a coarser layer-wise alternative. The layer-wise variant assigns one shared coeffi-cient to each transformer layer, together with two special coefficients: one for the final RMSNorm and one shared by the tied input embedding and LM head, resulting in 36 + 2 trainable parame-ters. In contrast, our module-wise design assigns separate coefficients to attention and FFN in every layer, plus the same two special coefficients, result-ing in 72 + 2 trainable parameters. This distinction matters because Section 4.3 shows that attention and FFN affect accuracy and response length differ-ently; tying them inside each layer forces a single coefficient to control two modules with different roles.             
+
+> Method Avg Acc. Avg Tok.
+> Layer-wise ( 36 + 2 params) 73.5 7571 Module-wise ( 72 + 2 params) 76.5 7930
+> Table 2: Ablation comparing layer-wise and module-wise interpolation on the same five evaluation bench-marks. The layer-wise result is evaluated at step 230 ,while the module-wise result is the GRIP configura-tion reported in Table 1. Module-wise interpolation improves average accuracy by 3.0points while using a comparable number of generated tokens.
+
+The result supports using module-wise rather than layer-wise interpolation. Although the layer-wise model is slightly shorter on average, it loses substantial accuracy because it cannot indepen-dently preserve reasoning-sensitive FFN compo-nents while allowing attention modules to move dif-ferently. The additional parameters in the module-wise design are therefore not merely extra capacity; they encode the structural asymmetry between at-tention and FFN observed in Figure 2. 
+
+A.4 Artifact licenses and terms 
+
+We use publicly available models, frameworks, and evaluation artifacts in accordance with their released licenses and terms. LightEval, Live-CodeBench, GPQA, GSM8K, and MATH-500 are released under the MIT License. SLIME, Qwen3-4B, and AIME25 are released under the Apache-2.0 License. Our use of these artifacts is limited to training and evaluation in the experimental setting described in this paper, and we do not redistribute modified versions of the original datasets or model checkpoints. 
+
+A.5 Data statistics and splits 
+
+GRIP is trained on the DeepScaleR-preview math prompt set used by SLIME, containing 40 ,196 
+
+training examples in JSONL format. We do not construct additional development or test splits from this training set; all reported generalization re-sults use external benchmarks. Evaluation is con-ducted through LightEval on the official benchmark splits: AIME25 contains 30 competition problems, MATH500 contains 500 math problems, GSM8K contains 1,319 grade-school math test problems, GPQA-Diamond contains 198 graduate-level sci-ence questions, and LiveCodeBench code genera-tion v6 contains 175 programming problems. Ta-ble 1 reports results on these five evaluation sets, and Section 4.3 uses the same evaluation protocol for coefficient sweeps. 
+
+A.6 Software package versions 
+
+The environment uses Python 3.12.3, CUDA 12.9, SLIME 0.2.4, Megatron-Core 0.16.0rc0, SGLang 0.5.10.post1, Ray 2.55.1, PyTorch 2.9.1+cu129, Transformers 5.3.0, Safetensors 0.7.0, SymPy 1.14.0, NumPy 1.26.4, and Weights & Biases 0.26.1. Evaluation uses the LightEval codebase at commit 33acf35f . We will release the source code for GRIP to support reproducibility. 
+
+A.7 Human subjects and ethics review 
+
+This work did not involve human subjects, crowd-workers, or human annotators. We used only pub-licly available datasets, models, and automated evaluation pipelines. Therefore, no new data col-lection protocol involving human participants was conducted, and ethics review board approval was not applicable.

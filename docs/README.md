@@ -6,55 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-29
-- 运行时间：2026-08-29 22:34:36 UTC
+- 最新运行日期：2026-08-30
+- 运行时间：2026-08-30 22:50:00 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：4
-- 速读区：7
+- 本次总论文数：6
+- 精读区：0
+- 速读区：6
 
 ### 今日简报（AI）
-今日精选 11 篇前沿论文，深度复盘提示词优化策略并探索知识编辑的可靠性边界。
-满分论文挑战了复杂提示词搜索的必要性，多目标强化学习则为模型知识更新提供了更稳健的方案。
-建议优先关注提示词优化的“极简主义”趋势，并尝试通过提升指令质量来优化模型偏好学习。
-- 详情：[/202608/29/README](/202608/29/README)
+今日聚焦大模型在翻译推理、微电网控制及视觉逻辑领域的跨界应用。
+重点关注通过上下文样本优化翻译
+- 详情：[/202608/30/README](/202608/30/README)
 
 ### 精读区论文标签
-1. [Naive Prompt Optimization: Rethinking the Need for Complex Prompt Search](/202608/29/2608.27266v1-naive-prompt-optimization-rethinking-the-need-for-complex-prompt-search)  
-   标签：评分：10.0/10、query:bopl
-   evidence：使用教师模型和展开反馈进行迭代提示词修订
-2. [Towards Reliable, Generalizable, and Specific In-Context Knowledge Editing via Multi-Objective Reinforcement Learning](/202608/29/2608.25100v1-towards-reliable-generalizable-and-specific-in-context-knowledge-editing-via-multi-objective-reinforcement-learning)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过多目标强化学习调整提示构建
-3. [A Decomposed Bilevel Search for Variable-Metric Proximal Gradient Methods](/202608/29/2608.25557v1-a-decomposed-bilevel-search-for-variable-metric-proximal-gradient-methods)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于优化的分解双层搜索
-4. [Cascaded Batch Prompting](/202608/29/2608.27038v1-cascaded-batch-prompting)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于 LLM 推理的级联批处理提示
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Zero-Shot Video Restoration and Enhancement with Text-to-Image Latent Diffusion Models and Multi-Modal References](/202608/29/2608.26476v1-zero-shot-video-restoration-and-enhancement-with-text-to-image-latent-diffusion-models-and-multi-modal-references)  
+1. [Reasoning about In-Context Samples for Machine-Translation](/202608/30/2608.27036v1-reasoning-about-in-context-samples-for-machine-translation)  
    标签：评分：7.0/10、query:bopl
-   evidence：双重提示微调反转与采样
-2. [Instruction Quality Matters: Refining Instructions for Effective Preference Learning](/202608/29/2608.26779v1-instruction-quality-matters-refining-instructions-for-effective-preference-learning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：使用奖励信号的指令精炼流水线
-3. [MVC-Bench: Benchmarking Calibration of Medical Vision-Language Models](/202608/29/2608.27004v1-mvc-bench-benchmarking-calibration-of-medical-vision-language-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：医疗视觉语言模型中提示微调方法的有效性
-4. [Difficulty-Aware Semantic-ID Optimization for Generative Recommendation](/202608/29/2608.20611v1-difficulty-aware-semantic-id-optimization-for-generative-recommendation)  
+   evidence：利用上下文样本进行机器翻译推理
+2. [LLMs are Few-Shot Decision-Makers: Generalized Context-Aware Microgrid Frequency Control through Prompt Decision Transformer](/202608/30/2608.21858v1-llms-are-few-shot-decision-makers-generalized-context-aware-microgrid-frequency-control-through-prompt-decision-transformer)  
    标签：评分：6.0/10、query:bopl
-   evidence：生成式推荐的提示级诊断与优化
-5. [TASSO: TAsk-Specific Subspace Optimization for Continual Learning of Vision-Language Models](/202608/29/2608.21487v1-tasso-task-specific-subspace-optimization-for-continual-learning-of-vision-language-models)  
+   evidence：用于少样本决策的提示决策Transformer
+3. [Weakly supervised concept Bottleneck Learning for Robust Two stage Object centric visual reasoning](/202608/30/2608.22584v1-weakly-supervised-concept-bottleneck-learning-for-robust-two-stage-object-centric-visual-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉语言模型的任务特定子空间优化
-6. [Reasoning-Oriented Post-Training and Inference-Time LoRA Rescaling for Audio-Dependent Question Answering](/202608/29/2608.23092v1-reasoning-oriented-post-training-and-inference-time-lora-rescaling-for-audio-dependent-question-answering)  
+   evidence：在训练过程中动态学习最优超参数分配
+4. [Beyond the Stability-Exploration Dilemma: Environmental Regularization for LLM Policy Optimization](/202608/30/2608.23311v1-beyond-the-stability-exploration-dilemma-environmental-regularization-for-llm-policy-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：推理时 LoRA 缩放与适配
-7. [VISA: Agentic Self-Evolving Data Synthesis for Multimodal Instruction Following](/202608/29/2608.26013v2-visa-agentic-self-evolving-data-synthesis-for-multimodal-instruction-following)  
+   evidence：通过输入侧正则化进行大语言模型策略优化
+5. [GRIP: Granular Reward-Guided Parameter Interpolation for Efficient Reasoning](/202608/30/2608.25583v1-grip-granular-reward-guided-parameter-interpolation-for-efficient-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：指令合成的智能体自我演化循环
+   evidence：用于高效推理的可学习插值比例
+6. [RA-VLA: Retrieval-Augmented VLA for Test-Time Adaptation](/202608/30/2608.25585v1-ra-vla-retrieval-augmented-vla-for-test-time-adaptation)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于上下文内模仿学习的检索增强上下文
 
 
 <div class="dpr-home-promo-card">
