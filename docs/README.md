@@ -6,47 +6,51 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-31
-- 运行时间：2026-09-01 00:29:53 UTC
+- 最新运行日期：2026-09-01
+- 运行时间：2026-09-01 22:34:06 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
-- 速读区：8
+- 本次总论文数：10
+- 精读区：5
+- 速读区：5
 
 ### 今日简报（AI）
-今日深度解析 9 篇前沿论文，重点推介获 9.0 高分的 SEPO 框架，探索提示词的结构
-- 详情：[/202608/31/README](/202608/31/README)
+今日精选 10 篇论文，深度聚焦参数化优化理论与双层优化算法的突破性进展。
+重点推荐最小
+- 详情：[/202609/01/README](/202609/01/README)
 
 ### 精读区论文标签
-1. [SEPO: Evidence-Grounded Prompt Optimization via Structural Editing](/202608/31/2608.28067v1-sepo-evidence-grounded-prompt-optimization-via-structural-editing)  
+1. [Differentiating Minimal-Norm Solutions to Parametric Optimization Problems](/202609/01/2608.28899v1-differentiating-minimal-norm-solutions-to-parametric-optimization-problems)  
    标签：评分：9.0/10、query:bopl
-   evidence：通过结构化编辑和反馈实现自动化提示词优化
+   evidence：通过参数化优化进行双层规划求导
+2. [Regularized extragradient method for structured bilevel optimization in continuous and discrete time](/202609/01/2608.29181v1-regularized-extragradient-method-for-structured-bilevel-optimization-in-continuous-and-discrete-time)  
+   标签：评分：9.0/10、query:bopl
+   evidence：希尔伯特空间中的结构化双层优化
+3. [Co-Evolutionary Prompt Optimization with Cross-Category Transfer for Zero-Shot Anomaly Detection](/202609/01/2608.29467v1-co-evolutionary-prompt-optimization-with-cross-category-transfer-for-zero-shot-anomaly-detection)  
+   标签：评分：9.0/10、query:bopl
+   evidence：用于离散提示词搜索与优化的进化算法
+4. [HiVe: Beyond Static Prompts for Multitask Learning via Hierarchy-based Vertical Mixture-of-Experts](/202609/01/2608.29790v1-hive-beyond-static-prompts-for-multitask-learning-via-hierarchy-based-vertical-mixture-of-experts)  
+   标签：评分：9.0/10、query:bopl
+   evidence：参数高效的提示微调框架
+5. [Graph4BiLO: Graph Neural Network Approximation for Bilevel Mixed-Integer Linear Optimization](/202609/01/2608.30103v1-graph4bilo-graph-neural-network-approximation-for-bilevel-mixed-integer-linear-optimization)  
+   标签：评分：9.0/10、query:bopl
+   evidence：双层混合整数线性优化的GNN近似
 
 ### 速读区论文标签
-1. [Unifying Detection and Adaptation in Task-Free Continual Learning](/202608/31/2608.27070v1-unifying-detection-and-adaptation-in-task-free-continual-learning)  
+1. [Towards Reliable, Generalizable, and Specific In-Context Knowledge Editing via Multi-Objective Reinforcement Learning](/202609/01/2608.25100v2-towards-reliable-generalizable-and-specific-in-context-knowledge-editing-via-multi-objective-reinforcement-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：大语言模型的高效参数持续适配
-2. [Predicting LLM Performance from Prompt Linguistic Features: An Empirical Study in Requirements Engineering](/202608/31/2608.27621v1-predicting-llm-performance-from-prompt-linguistic-features-an-empirical-study-in-requirements-engineering)  
-   标签：评分：7.0/10、query:bopl
-   evidence：低成本提示选择与优化
-3. [Beyond the Vacuum: Combinatorial Strategy Selection for Competitor-Aware Generative Engine Optimization](/202608/31/2608.27631v1-beyond-the-vacuum-combinatorial-strategy-selection-for-competitor-aware-generative-engine-optimization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：重写策略的贝叶斯优化
-4. [Learning from Hard Prompts: Difficulty-aware Advantage Amplification in Dynamic Sampling](/202608/31/2608.27982v1-learning-from-hard-prompts-difficulty-aware-advantage-amplification-in-dynamic-sampling)  
-   标签：评分：7.0/10、query:bopl
-   evidence：提示词动态采样与策略优化
-5. [SimpCue: Cue-Based Prompting for Multilingual Text Simplification](/202608/31/2608.28042v1-simpcue-cue-based-prompting-for-multilingual-text-simplification)  
-   标签：评分：7.0/10、query:bopl
-   evidence：基于线索的提示和自动语言线索预测
-6. [On Nonsmooth and Relatively Weakly Convex Minimization](/202608/31/2608.28530v1-on-nonsmooth-and-relatively-weakly-convex-minimization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：非平滑和非凸设置下的复合优化
-7. [CG4AI: A Column Generation Framework for Training AI Models Under Constraints](/202608/31/2608.26375v1-cg4ai-a-column-generation-framework-for-training-ai-models-under-constraints)  
+   evidence：通过强化学习调整提示构建
+2. [Instruction Distillation: Text Instructions as Visual Examples](/202609/01/2608.28696v1-instruction-distillation-text-instructions-as-visual-examples)  
    标签：评分：6.0/10、query:bopl
-   evidence：主线性规划与定价子问题优化
-8. [LLaVAFlow: Preserving Latent Alignment Flow for Parameter-Efficient Multimodal Fine-Tuning](/202608/31/2608.26820v1-llavaflow-preserving-latent-alignment-flow-for-parameter-efficient-multimodal-fine-tuning)  
+   evidence：为视觉示例生成结构化识别指令
+3. [Agent2UCB: Agentic System for Generative Engine Optimization](/202609/01/2608.29063v1-agent2ucb-agentic-system-for-generative-engine-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：参数高效的多模态微调和用于对齐的可学习模块
+   evidence：生成式引擎内容的反馈驱动优化
+4. [When to Adapt: Conditional Memory Adapters for Retention-Preserving Domain Specialization](/202609/01/2608.29327v1-when-to-adapt-conditional-memory-adapters-for-retention-preserving-domain-specialization)  
+   标签：评分：6.0/10、query:bopl
+   evidence：参数高效微调与适配器
+5. [OPUS: A Simple yet Effective Unified Framework for Open-Vocabulary Detection](/202609/01/2608.30247v1-opus-a-simple-yet-effective-unified-framework-for-open-vocabulary-detection)  
+   标签：评分：6.0/10、query:bopl
+   evidence：支持异构提示的统一框架
 
 
 <div class="dpr-home-promo-card">
