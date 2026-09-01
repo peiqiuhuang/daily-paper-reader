@@ -6,40 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-30
-- 运行时间：2026-08-30 22:50:00 UTC
+- 最新运行日期：2026-08-31
+- 运行时间：2026-09-01 00:29:53 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：0
-- 速读区：6
+- 本次总论文数：9
+- 精读区：1
+- 速读区：8
 
 ### 今日简报（AI）
-今日聚焦大模型在翻译推理、微电网控制及视觉逻辑领域的跨界应用。
-重点关注通过上下文样本优化翻译
-- 详情：[/202608/30/README](/202608/30/README)
+今日深度解析 9 篇前沿论文，重点推介获 9.0 高分的 SEPO 框架，探索提示词的结构
+- 详情：[/202608/31/README](/202608/31/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [SEPO: Evidence-Grounded Prompt Optimization via Structural Editing](/202608/31/2608.28067v1-sepo-evidence-grounded-prompt-optimization-via-structural-editing)  
+   标签：评分：9.0/10、query:bopl
+   evidence：通过结构化编辑和反馈实现自动化提示词优化
 
 ### 速读区论文标签
-1. [Reasoning about In-Context Samples for Machine-Translation](/202608/30/2608.27036v1-reasoning-about-in-context-samples-for-machine-translation)  
+1. [Unifying Detection and Adaptation in Task-Free Continual Learning](/202608/31/2608.27070v1-unifying-detection-and-adaptation-in-task-free-continual-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：利用上下文样本进行机器翻译推理
-2. [LLMs are Few-Shot Decision-Makers: Generalized Context-Aware Microgrid Frequency Control through Prompt Decision Transformer](/202608/30/2608.21858v1-llms-are-few-shot-decision-makers-generalized-context-aware-microgrid-frequency-control-through-prompt-decision-transformer)  
+   evidence：大语言模型的高效参数持续适配
+2. [Predicting LLM Performance from Prompt Linguistic Features: An Empirical Study in Requirements Engineering](/202608/31/2608.27621v1-predicting-llm-performance-from-prompt-linguistic-features-an-empirical-study-in-requirements-engineering)  
+   标签：评分：7.0/10、query:bopl
+   evidence：低成本提示选择与优化
+3. [Beyond the Vacuum: Combinatorial Strategy Selection for Competitor-Aware Generative Engine Optimization](/202608/31/2608.27631v1-beyond-the-vacuum-combinatorial-strategy-selection-for-competitor-aware-generative-engine-optimization)  
+   标签：评分：7.0/10、query:bopl
+   evidence：重写策略的贝叶斯优化
+4. [Learning from Hard Prompts: Difficulty-aware Advantage Amplification in Dynamic Sampling](/202608/31/2608.27982v1-learning-from-hard-prompts-difficulty-aware-advantage-amplification-in-dynamic-sampling)  
+   标签：评分：7.0/10、query:bopl
+   evidence：提示词动态采样与策略优化
+5. [SimpCue: Cue-Based Prompting for Multilingual Text Simplification](/202608/31/2608.28042v1-simpcue-cue-based-prompting-for-multilingual-text-simplification)  
+   标签：评分：7.0/10、query:bopl
+   evidence：基于线索的提示和自动语言线索预测
+6. [On Nonsmooth and Relatively Weakly Convex Minimization](/202608/31/2608.28530v1-on-nonsmooth-and-relatively-weakly-convex-minimization)  
+   标签：评分：7.0/10、query:bopl
+   evidence：非平滑和非凸设置下的复合优化
+7. [CG4AI: A Column Generation Framework for Training AI Models Under Constraints](/202608/31/2608.26375v1-cg4ai-a-column-generation-framework-for-training-ai-models-under-constraints)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于少样本决策的提示决策Transformer
-3. [Weakly supervised concept Bottleneck Learning for Robust Two stage Object centric visual reasoning](/202608/30/2608.22584v1-weakly-supervised-concept-bottleneck-learning-for-robust-two-stage-object-centric-visual-reasoning)  
+   evidence：主线性规划与定价子问题优化
+8. [LLaVAFlow: Preserving Latent Alignment Flow for Parameter-Efficient Multimodal Fine-Tuning](/202608/31/2608.26820v1-llavaflow-preserving-latent-alignment-flow-for-parameter-efficient-multimodal-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：在训练过程中动态学习最优超参数分配
-4. [Beyond the Stability-Exploration Dilemma: Environmental Regularization for LLM Policy Optimization](/202608/30/2608.23311v1-beyond-the-stability-exploration-dilemma-environmental-regularization-for-llm-policy-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：通过输入侧正则化进行大语言模型策略优化
-5. [GRIP: Granular Reward-Guided Parameter Interpolation for Efficient Reasoning](/202608/30/2608.25583v1-grip-granular-reward-guided-parameter-interpolation-for-efficient-reasoning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于高效推理的可学习插值比例
-6. [RA-VLA: Retrieval-Augmented VLA for Test-Time Adaptation](/202608/30/2608.25585v1-ra-vla-retrieval-augmented-vla-for-test-time-adaptation)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于上下文内模仿学习的检索增强上下文
+   evidence：参数高效的多模态微调和用于对齐的可学习模块
 
 
 <div class="dpr-home-promo-card">

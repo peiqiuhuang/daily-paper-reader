@@ -1,0 +1,869 @@
+Title: Beyond the Vacuum: Combinatorial Strategy Selection for Competitor-Aware Generative Engine Optimization
+
+URL Source: https://arxiv.org/pdf/2608.27631v1
+
+Published Time: Mon, 31 Aug 2026 00:09:30 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Beyond the Vacuum: Combinatorial Strategy Selection for Competitor-Aware Generative Engine Optimization 
+
+Vaibhav Sourirajan Yao Zhang Himanshu Kumar Sahil Wadhwa Mann Patel Amirfarrokh Iranitalab 
+
+Capital One, AI Foundations 
+
+{vaibhav.sourirajan, yao.zhang, himanshu.kumar2, sahil.wadhwa, mann.patel2, amirfarrokh.iranitalab}@capitalone.com 
+
+Abstract 
+
+Generative Engine Optimization (GEO) has emerged as a novel paradigm for transform-ing content to increase visibility in Large Language Model (LLM) responses. Tradi-tional GEO methods, however, select rewriting strategies in isolation, ignoring a critical ex-ternality: as adoption of content optimization grows, optimal strategies for rewriting content change. We formalize GEO as a competitor-aware strategy selection problem and propose a two-phase pipeline to solve it: (1) We use Bayesian Optimization of Combinatorial Struc-tures (BOCS) to efficiently search the space of rewriting strategies, (2) We generate preference pairs and grounded reasoning traces from the BOCS black-box observations to fine-tune a language model to analyze a document corpus and propose optimal rewriting strategy com-binations. We achieve state-of-the-art perfor-mance across several impression metrics over existing agentic and single-heuristic methods on both geo-bench and our synthetically aug-mented competitive dataset geo-bench comp .Our method also transfers to multiple out-of-distribution datasets, proving effective across domains, queries, and document types. 
+
+1 Introduction 
+
+The way users access information on the web is un-dergoing a major shift. Traditional search engines are rapidly being augmented or replaced by gener-ative answer engines that leverage LLMs to synthe-size direct, conversational responses (Chen et al., 2026). Consequently, content creators are shifting focus from traditional Search Engine Optimization (SEO) (Davis, 2006; Almukhtar et al., 2021) to Generative Engine Optimization (GEO): the prac-tice of rewriting source content to maximize vis-ibility and citation likelihood in LLM-generated responses. Early GEO work showed that single rewriting heuristics (eg. adding quotations, authoritative tone) and agentic methods that identify broad con-tent improvement trends can significantly boost a document’s representation in generative outputs (Aggarwal et al., 2024; Wu et al., 2026b,a; Kim et al., 2026; Kumar and Lakkaraju, 2024). How-ever, these methods optimize a target document in isolation, producing fixed rewrites without aware-ness of the surrounding competitive corpus. When several documents apply the same rewriting strate-gies, overall gains decrease, revealing a zero-sum nature to content optimization (Puerto et al., 2026). Effective GEO is thus a relative problem, requiring methods that consider the full competitive land-scape. Motivated by these insights, we formalize GEO as a competitor-aware strategy selection problem: given a query, a target document, and the surround-ing corpus, we seek to find the combination of strategies maximizing the target document’s visibil-ity in generative engine responses. We implement a two-stage pipeline for training a selector language model to propose optimal, reasoning-backed rewrit-ing strategies. The first stage employs Bayesian Optimization of Combinatorial Structures (BOCS) (Baptista and Poloczek, 2018) to efficiently search the strategy space, collecting black-box observa-tions of downstream visibility for various rewriting combinations. The second stage curates a training dataset from noisy BOCS observations by introduc-ing a statistically principled hard-negative mining algorithm that uses Hamming distance to surface preference pairs. To ensure the selector robustly maps document context to rewriting strategies, we generate contrastive post-hoc reasoning traces us-ing a teacher LLM. The selector is fine-tuned via Direct Preference Optimization (DPO) (Rafailov et al., 2023) on grounded reasoning and strategy pairs, enabling the model to internalize relative document dynamics and identify comparative ad-vantages. We perform evaluation on geo-bench 
+
+and geo-bench comp , a synthetically augmented arXiv:2608.27631v1 [cs.IR] 27 Aug 2026 version of geo-bench which introduces competi-tor document optimization at varying adoption rates. Our approach outperforms 15 single-strategy and 2 agentic baselines across several citation and LLM-based metrics on both datasets. Crucially, on geo-bench comp , our method is resilient to scal-ing adoption rate, exhibiting the slowest rate of performance degradation. Further analysis demon-strates that grounding strategy combinations with teacher-generated reasoning traces unlocks strong generalization capabilities, mitigating hallucinated analysis and surface-level pattern recognition. Our main contributions are as follows: 1. We are the first to formalize, implement, and evaluate competitor-aware GEO. To support this, we introduce geo-bench comp , a compet-itive benchmark that enables the evaluation of optimization strategies under varying GEO adoption rates. 2. We design a two-stage data curation pipeline combining BOCS-driven combinatorial search, statistically grounded hard-negative mining, and teacher-generated reasoning traces to produce high-quality DPO training pairs. 3. We fine-tune a selector model that achieves state-of-the-art performance on both 
+
+geo-bench and geo-bench comp , as well as robust transferability to out-of-distribution datasets. 
+
+2 Related Work 
+
+The concept of GEO was formalized by Aggarwal et al. (2024), which also introduced the geo-bench 
+
+dataset and demonstrated that targeted rewriting strategies, such as adding quotations, could sig-nificantly boost a document’s visibility in LLM-generated responses. This finding sparked multi-ple lines of inquiry, including automating strategy discovery and formalizing robust GEO evaluation systems. AutoGEO (Wu et al., 2026b) tackled strat-egy discovery by extracting optimization rules that caused the largest changes in citation rates, merging extracted heuristics into concrete, non-overlapping rewriting strategies. As the field matured, eval-uation frameworks extended beyond word count metrics: CC-GSEO-Bench (Chen et al., 2025) in-troduced an LLM-as-a-judge approach to measure a document’s marginal contribution by comparing responses with and without it, while C-SEO Bench (Puerto et al., 2026) measured delta-rank ( ∆rank )
+
+of citation position. Puerto et al. (2026) took a critical step further by introducing the notion of adoption rate to quantify the fraction of documents adopting GEO strategy. Importantly, they found that strategy effectiveness degrades as more com-petitors optimize document content, directly moti-vating our work: if strategies lose marginal gains as adoption grows, then optimizing in isolation is fundamentally flawed. Building on these foundations, subsequent work pushed GEO toward more realistic settings and sophisticated optimization. SAGEO Arena (Kim et al., 2026) introduced a benchmark requiring doc-uments to survive a full retrieval and re-ranking pipeline before generation, revealing that strategies effective in isolation often fail under real-world re-trieval conditions. They additionally preserve key structural elements in web documents, indexing meta descriptions and schema markup of scraped web pages, enabling realistic evaluation of strate-gies. On the optimization side, Product Bench (Jin et al., 2026) proposed controlling output rankings by directly targeting document embedding repre-sentations, while MAGEO (Wu et al., 2026a) de-veloped a multi-agent framework that learns and reuses optimization strategies across documents. AgenticGEO (Yuan et al., 2026) pushed the fron-tier, introducing a content-conditioned methodol-ogy which utilized a continuous Evolver-Critic setup for multi-turn rewriting. Despite these ad-vances in GEO study, current methodologies treat document optimization as an isolated generative task. By ignoring the surrounding competitive cor-pus, they fail to adapt to the shifting baseline cre-ated when multiple documents employ GEO strate-gies. We argue that robust content optimization must move beyond static heuristics and isolated agentic methods in favor of conditioning on the full competitive environment. 
+
+3 Problem Formulation 
+
+We formalize competitor-aware GEO as a content-conditioned combinatorial optimization problem: given a query, a target document, and a surround-ing competitive corpus, select the rewriting strategy combination maximizing the target document’s vis-ibility. Let q denote a query, D = {d1, . . . , d k}
+
+an initial document corpus for q, and index j ∈{1, . . . , k } identifying the document to optimize. Given an adoption rate α ∈ [0 , k−1 
+
+> k
+
+], we con-struct the competitive corpus Dα by rewriting αFigure 1: Overview of the Competitor-Aware GEO pipeline. Phase 1 (GEO-Optimal Combinatorial Strategy Search): We produce geo-bench comp through competitor simulation, drawing rewriting strategies from a mixed distribution for varying adoption rates α. For these datasets, BOCS searches the 215 strategy space per (query, document set) pair, evaluating candidates via a rewrite-once/evaluate-five black-box function. Phase 2 (Preference Optimization): Hard negative mining extracts statistically significant preference pairs from BOCS observations; a teacher model generates contrastive reasoning traces for each pair; a selector language model is then fine-tuned via a two step SFT+DPO recipe on the resulting preference pairs. At evaluation time, the fine-tuned selector receives only the query and document corpus and outputs a reasoning-backed strategy combination, which is applied to the target document and evaluated for downstream visibility. 
+
+fraction of total documents (excluding the target document) according to the competitor simula-tion (§3.1). Note, in practice, the α space is dis-cretized by the number of documents, taking on k
+
+distinct values. A rewriting strategy combination 
+
+x ∈ { 0, 1}r, where each dimension xi represents the the inclusion or exclusion of heuristic i in the rewriting prompt, transforms the target document into d′ 
+
+> j
+
+= dj (x), producing the final evaluation cor-pus D′ 
+
+> α
+
+by substituting the rewritten target into the competitive corpus. A generative engine G receives the query and full document corpus and produces a cited response: 
+
+R = G(q, D′
+
+> α
+
+(x)) (1) We seek the strategy combination that maximizes the impression of the target source in the generated response: 
+
+x∗ = arg max 
+
+> x∈{ 0,1}r
+
+Impression (j, R ) (2) Following Aggarwal et al. (2024), we utilize Position-Adjusted Word Count (PAWC), an ex-ponentially decaying weighted citation function, as the primary impression metric for evaluation. Let R consist of sentences {s1, . . . , s N }, and let cites (si) denote the multiset of citation indices ex-tracted from sentence si. The PAWC score for target source index j is: PAWC (j, R ) = 
+
+> N
+
+X
+
+> i=1
+
+cj (si) · | si| · wi
+
+|cites (si)| (3) where cj (si) = P 
+
+> c∈cites (si)
+
+1[c = j] counts ci-tations to source j in sentence si, |si| counts words with more than 2 characters, and wi =exp( −i/ (N −1)) is an exponential position decay giving earlier sentences higher weight. 
+
+3.1 Competitor Simulation 
+
+To construct Dα, we model a heterogeneous com-petitive landscape. We define three competitor rewriting functions: 1. W1 (Random Combo ): Rewrite using a uni-formly sampled x ∼ Uniform ({0, 1}r)
+
+2. W2 (Strongest Single ): Rewrite using the em-pirically strongest individual strategy (Quota-tion Addition, e4)Algorithm 1 Hard Negative Mining for GEO 
+
+Require: BOCS observations {(xi, μ i, SE i)}Ni=1 
+
+for a single training point, each xi ∈ { 0, 1}15 
+
+is a strategy combination evaluated during BOCS, μi, SE i are the sample mean and stan-dard error; (μ0, SE 0) are the mean and stan-dard error of the zero-vector baseline; thresh-old tthresh = 1 .860 
+
+Ensure: A preference pair (x+, x−)—the chosen and rejected strategy combinations—or N ONE 
+
+if no valid pair exists  
+
+> 1:
+
+x+ ← arg max i μi 
+
+> 2:
+
+(μc, SE c) ← (μx+ , SE x+ ) 
+
+> 3:
+
+if (μc − μ0)/pSE 2 
+
+> c
+
++ SE 20 ≤ tthresh then  
+
+> 4:
+
+return NONE {Chosen does not signifi-cantly beat baseline}  
+
+> 5:
+
+end if  
+
+> 6:
+
+R ← ∅  
+
+> 7:
+
+for each (xi, μ i, SE i) with μi < μ c do  
+
+> 8:
+
+ti ← (μc − μi)/
+
+q
+
+SE 2 
+
+> c
+
++ SE 2 
+
+> i
+> 9:
+
+if ti > t thresh then  
+
+> 10:
+
+hi ← Hamming (x+, xi) 
+
+> 11:
+
+R ← R ∪ { (xi, h i, t i)} 
+
+> 12:
+
+end if  
+
+> 13:
+
+end for  
+
+> 14:
+
+Sort R by (hi ↑, t i ↑) {Closest to chosen (min Hamming), tie-broken by smallest significant 
+
+t (hardest)}  
+
+> 15:
+
+return (x+, R[0]) 
+
+3. W3 (AutoGEO ): Rewrite using the full set of extracted heuristics from Wu et al. (2026b) For a given α, we compute the number of doc-uments to rewrite as nα = α|D| = αk . We then sample nα indices without replacement from the competitor document set D \ { dj } per data point 
+
+i. The selected indices are sorted in ascending order and each is assigned a rewriting function 
+
+w ∈ {W 1, W2, W3} via fixed cyclic allocation. All non-selected documents remain unchanged. This produces a heterogeneous competitive cor-pus where, for any nα ≥ 3, all three competitor types are represented in roughly equal proportion. The deterministic seeding ensures reproducibility, while the per-α independent sampling avoids artifi-cial nesting across adoption rates. 
+
+4 Methodology 
+
+4.1 Overview 
+
+Our methodology has two phases (Figure 1): (1) GEO-optimal combinatorial strategy search via BOCS, and (2) preference optimization of a selec-tor LLM via DPO. 
+
+4.2 GEO-Optimal Combinatorial Strategy Search 
+
+We start from the geo-bench training split (Ag-garwal et al., 2024), containing 7,998 queries, each with 5 documents, spanning various do-mains and query types. We augment this into 
+
+geo-bench comp by constructing competitive cor-pora at each α ∈ { 0.0, 0.2, 0.4, 0.6, 0.8} accord-ing to the mixed competitor distribution defined in §3.1, yielding 39,990 total training examples. For evaluation, we similarly augment the 
+
+geo-bench test split (1000 samples) following the same mixed competitor distribution to produce a 
+
+geo-bench comp test split of size 5000. For each data point in geo-bench and geo-bench comp , we run Bayesian Optimization of Combinatorial Struc-tures (BOCS) (Baptista and Poloczek, 2018) to ef-ficiently search the strategy space, collecting black-box observations from which statistically grounded preference pairs are later mined. 
+
+Strategy combination space. We define 15 bi-nary rewriting strategies yielding a search space of size 215 = 32 ,768 possible combinations: Fluency, Unique Words, Authoritative, Quotation Addition, Citing Sources, Easy Understanding, Technical Terms, Keyword Stuffing, and Statistics Addition from Aggarwal et al. (2024) (rewriting prompts adopted from AgenticGEO (Yuan et al., 2026)); LLM Guidance from C-SEO Bench (Puerto et al., 2026); and five additional strategies introduced in this work—Expanding Facts, Structured Format-ting, Balanced View, Conciseness, and Pros and Cons—which formalize heuristics discovered by AutoGEO (Wu et al., 2026b). We include all single-strategy rewriting prompts and composed rewriting prompt for multi-strategy rewriting in Appendix E. 
+
+4.2.1 BOCS Training 
+
+Following Baptista and Poloczek (2018), given an expensive-to-evaluate black-box function f
+
+over domain D = {0, 1}d, we seek to find 
+
+arg max x∈D f (x). In our case, D = {0, 1}15 .gpt-oss-120b Llama-3.3-70B-Instruct Method PAWC Pos Count Word Count PAWC Pos Count Word Count 
+
+No Rewrite 20 .03 ± 0.24 20 .02 ± 0.33 19 .99 ± 0.23 20 .18 ± 0.20 20 .13 ± 0.20 20 .14 ± 0.17 
+
+Fluency Optimization 21 .92 ± 0.32 21 .79 ± 0.37 21 .77 ± 0.22 21 .42 ± 0.14 21 .48 ± 0.15 21 .37 ± 0.16 
+
+Unique Words 20 .22 ± 0.29 20 .23 ± 0.28 20 .17 ± 0.26 19 .52 ± 0.20 19 .66 ± 0.22 19 .54 ± 0.21 
+
+Authoritative 21 .02 ± 0.17 20 .91 ± 0.18 20 .99 ± 0.21 20 .97 ± 0.14 21 .10 ± 0.11 20 .98 ± 0.22 
+
+Quotation Addition 21 .96 ± 0.33 21 .95 ± 0.25 21 .86 ± 0.22 22 .59 ± 0.13 22 .76 ± 0.15 22 .54 ± 0.14 
+
+Citing Sources 21 .72 ± 0.30 21 .60 ± 0.35 21 .53 ± 0.26 21 .42 ± 0.08 21 .40 ± 0.13 21 .49 ± 0.08 
+
+Easy Understanding 22 .03 ± 0.20 21 .95 ± 0.23 21 .95 ± 0.20 21 .34 ± 0.10 21 .38 ± 0.13 21 .35 ± 0.07 
+
+Technical Terms 21 .40 ± 0.15 21 .29 ± 0.15 21 .33 ± 0.17 19 .52 ± 0.06 19 .61 ± 0.05 19 .67 ± 0.08 
+
+Keyword Stuffing 20 .52 ± 0.10 20 .53 ± 0.09 20 .58 ± 0.09 21 .67 ± 0.30 21 .78 ± 0.27 21 .76 ± 0.33 
+
+Statistics Addition 23 .08 ± 0.28 23 .14 ± 0.25 22 .91 ± 0.24 22 .38 ± 0.16 22 .42 ± 0.22 22 .44 ± 0.13 
+
+All In One 22 .40 ± 0.44 22 .35 ± 0.44 22 .17 ± 0.38 21 .83 ± 0.14 21 .93 ± 0.15 21 .83 ± 0.08 
+
+LLM Guidance 23 .18 ± 0.19 23 .30 ± 0.21 23 .27 ± 0.20 22 .36 ± 0.19 22 .62 ± 0.17 22 .39 ± 0.19 
+
+Expanding Facts 22 .16 ± 0.21 22 .09 ± 0.13 21 .92 ± 0.24 22 .55 ± 0.24 22 .42 ± 0.22 22 .31 ± 0.32 
+
+Structured Formatting 23 .04 ± 0.43 23 .12 ± 0.36 22 .94 ± 0.40 21 .21 ± 0.18 21 .40 ± 0.16 21 .34 ± 0.14 
+
+Balanced View 19 .44 ± 0.24 19 .49 ± 0.25 19 .77 ± 0.27 20 .95 ± 0.11 20 .95 ± 0.07 21 .12 ± 0.16 
+
+Conciseness 23 .44 ± 0.22 23 .50 ± 0.21 23 .48 ± 0.19 21 .07 ± 0.31 21 .37 ± 0.24 21 .12 ± 0.28 
+
+Pros and Cons 20 .71 ± 0.21 20 .63 ± 0.18 20 .84 ± 0.19 22 .47 ± 0.49 22 .57 ± 0.49 22 .69 ± 0.46 
+
+AutoGEO 27 .16 ± 0.44 27 .16 ± 0.46 26 .93 ± 0.41 23 .85 ± 0.24 23 .73 ± 0.22 24 .05 ± 0.28 
+
+AgenticGEO 27 .95 ± 0.30 27 .72 ± 0.29 28 .06 ± 0.22 26 .80 ± 0.08 26 .38 ± 0.11 27 .04 ± 0.07 
+
+Competitor-Aware GEO (Ours) 32 .62 ± 0.25 32 .86 ± 0.28 32 .36 ± 0.24 29 .55 ± 0.15 29 .85 ± 0.10 29 .14 ± 0.08 
+
+Table 1: Overall performance on geo-bench (original corpus, no competitor rewrites). We report mean and standard deviation across 1 rewrite (temperature=0) and 5 evaluations from the generative engine (temperature=0.7). 
+
+Surrogate model and acquisition function. We use a second-order polynomial with 1 + d +  d
+
+> 2
+
+ =121 terms—a constant, d=15 linear terms, and  d
+
+> 2
+
+ = 105 pairwise interaction terms: 
+
+f (x) = β0 +
+
+> d
+
+X
+
+> j=1
+
+βj xj + X
+
+> j<k
+
+βjk xj xk (4) We place a horseshoe prior (Carvalho et al., 2010) over the coefficients β. We use Gibbs sam-pling and leverage fast multivariate Gaussian sam-plers (Bhattacharya et al., 2016; Rue, 2001) for posterior inference. Given a posterior sample ˜β,we use simulated annealing (Bertsimas and Tsit-siklis, 1993) as the acquisition function to opti-mize the surrogate prediction over {0, 1}d. We run BOCS for a total of 50 function evaluations (10 random initializations followed by up to 40 surrogate-guided iterations), with early stopping patience. We provide the full algorithm hyperpa-rameters in Appendix C. 
+
+Black-box evaluation. Each evaluation of a can-didate combination x proceeds in two steps. First, the target document dj is rewritten once at temper-ature 0 using the composed strategy prompt for x
+
+(Appendix E.3), producing dj (x). Second, the gen-erative engine evaluates the resulting corpus n=5 
+
+independent times at temperature 0.7, yielding PAWC scores {PAWC 1, . . . , PAWC 5}. We record the sample mean μ(x) and standard error SE (x).
+
+4.3 Preference Optimization 
+
+Preference optimization proceeds in three phases: (1) hard negative mining to identify high-quality contrastive pairs, (2) reasoning trace generation to ground each pair in empirical BOCS evidence, and (3) preference tuning of the selector model. 
+
+4.3.1 Hard Negative Mining 
+
+We employ a hard negative mining strategy (Algo-rithm 1) that operates independently on each query– document set pair, producing a single preference pair (x+, x−) from all black-box BOCS observa-tions collected for that point. We select the chosen combination x+ as the BOCS observation with the highest mean PAWC, provided it statistically significantly outperforms the zero-vector baseline under a one-tailed Welch’s t-test with threshold 
+
+tthresh = 1 .860 . If no such combination exists, the training point is discarded. Candidate rejected combinations are then drawn from observations with lower mean PAWC than x+ that are also sta-tistically significantly worse under the same test. Among these, we select the hardest negative, which minimizes Hamming distance to x+, breaking ties by the smallest statistically significant t-statistic. This ensures x− is maximally similar to x+ in strategy space yet reliably distinguishable in per-formance. 4.3.2 Score-Grounded Reasoning Trace Generation 
+
+The preference pairs produced by hard negative mining are strategy vectors (x+, x−). Without intermediate reasoning, DPO over short strategy lists has no rich signal to learn from (Liu et al., 2025). Following Orca-style distillation (Mukher-jee et al., 2023; Mitra et al., 2023), we indepen-dently generate reasoning traces leading to the fi-nal strategy combination using a teacher model: 
+
+gemma-4-31b-it (Team et al., 2026). We note that the generated traces are post-hoc : BOCS discovers optimal combinations, not the teacher model. We address this by providing the teacher with a priv-ileged scorecard : the top-10 BOCS observations (ranked by mean PAWC) alongside the baseline zero-vector PAWC. This scorecard helps anchor the trace in empirical observations rather than spec-ulation. The teacher is then instructed to produce reasoning grounded entirely in document content— never citing the scores directly—ensuring the stu-dent learns to reason from observable document features, not privileged information it will never see at inference time. The chosen prompt receives the full scorecard (top-10 combinations plus baseline), while the re-jected prompt receives a truncated scorecard con-taining the top-10 combinations at or below x−’s score. Both prompts additionally receive the full document corpus Dα and target document index 
+
+j. Importantly, the teacher does not know x− is suboptimal relative to x+. This produces a rejected trace that is locally rational and forces genuine rea-soning within an incomplete information set. We include the full teacher prompt in Appendix G. 
+
+4.3.3 Preference Tuning 
+
+We fine-tune gemma-4-E2B-it (Team et al., 2026) as the student selector with LoRA (Hu et al., 2022) from preference pairs and reasoning traces gener-ated following §4.3.1 and §4.3.2. We utilize the Gemma 4 family’s native thinking channel for rea-soning, and wrap the strategy combination recom-mendation in <final_answer> tags for easy pars-ing. We first perform SFT on chosen traces to ensure format compliance and preference for cho-sen completions. We then apply DPO (Rafailov et al., 2023) with a length-normalized loss (Meng et al., 2024) to maximize the probability difference between chosen and rejected completions. Full set of hyperparameters are listed in Appendix D. During training and evaluation, the selector re-ceives: (1) the query, (2) all source documents with the target identified, and (3) the full strategy menu with descriptions. Crucially, the model receives 
+
+no adoption rate or BOCS scores. It must learn to infer competitive pressure directly from document content—detecting signs of prior optimization (eg. added statistics) in competitor sources. This de-sign ensures the selector generalizes to deployment settings where true α is unknown. 
+
+5 Experimental Setup 
+
+We use the geo-bench training split (Aggarwal et al., 2024) to generate geo-bench comp following the competitor simulation described in §3.1. All document rewrites—both for competitor corpus construction and target document rewriting—are performed using gpt-oss-120b (Agarwal et al., 2025). We evaluate performance under two gener-ative engines: gpt-oss-120b and Llama-3.3-70B-Instruct (Grattafiori et al., 2024). During evaluation, the fine-tuned selector gener-ates (temperature=0.1) a reasoning trace followed by strategy recommendation, which is parsed from the <final_answer> tags of the completion. The target document is rewritten once at temperature 0 according to the strategy combination, using the composed prompt in Appendix E.3. We generate 5 independent responses from the generative engine at temperature 0.7, reporting mean and standard deviation across three citation-based impression metrics: PAWC (Position-Adjusted Word Count), 
+
+Pos Count (position-weighted citation frequency), and Word Count (raw cited word count). Formal definitions are given in Appendix B. We compare against all 15 individual rewriting strategies com-posing our combinatorial search space (enumerated in §4.2) as well as existing agentic methods Auto-GEO (Wu et al., 2026b) and AgenticGEO (Yuan et al., 2026). We report metrics on both geo-bench 
+
+and geo-bench comp . We benchmark LLM-based impression metrics from Wu et al. (2026a) as well as transferability to E-Commerce and Researchy-GEO datasets (Wu et al., 2026b). 
+
+6 Results 
+
+Main Results. Table 1 reports mean PAWC, position count, and word count on the original 
+
+geo-bench corpus and Table 2 on geo-bench comp ,each evaluated under two generative engines: 
+
+gpt-oss-120b and Llama-3.3-70B-Instruct. Competitor-Aware GEO outperforms all baselines gpt-oss-120b Llama-3.3-70B-Instruct Method PAWC Pos Count Word Count PAWC Pos Count Word Count 
+
+No Rewrite 17 .99 ± 0.15 17 .89 ± 0.13 18 .00 ± 0.17 19 .16 ± 0.02 19 .12 ± 0.04 19 .06 ± 0.04 
+
+Fluency Optimization 20 .80 ± 0.15 20 .73 ± 0.14 20 .73 ± 0.15 20 .27 ± 0.15 20 .35 ± 0.14 20 .17 ± 0.16 
+
+Unique Words 19 .23 ± 0.09 19 .13 ± 0.09 19 .22 ± 0.14 18 .53 ± 0.05 18 .66 ± 0.05 18 .56 ± 0.04 
+
+Authoritative 20 .16 ± 0.06 20 .10 ± 0.04 20 .09 ± 0.07 19 .73 ± 0.11 19 .80 ± 0.11 19 .64 ± 0.09 
+
+Quotation Addition 19 .60 ± 0.13 19 .54 ± 0.11 19 .50 ± 0.13 21 .55 ± 0.08 21 .56 ± 0.06 21 .48 ± 0.07 
+
+Citing Sources 20 .70 ± 0.13 20 .70 ± 0.16 20 .61 ± 0.13 20 .34 ± 0.08 20 .28 ± 0.06 20 .30 ± 0.08 
+
+Easy Understanding 21 .09 ± 0.08 20 .93 ± 0.08 21 .07 ± 0.10 20 .22 ± 0.12 20 .19 ± 0.11 20 .13 ± 0.11 
+
+Technical Terms 20 .46 ± 0.10 20 .38 ± 0.10 20 .43 ± 0.10 18 .28 ± 0.09 18 .33 ± 0.08 18 .40 ± 0.09 
+
+Keyword Stuffing 19 .51 ± 0.07 19 .41 ± 0.09 19 .60 ± 0.10 20 .68 ± 0.09 20 .67 ± 0.08 20 .70 ± 0.11 
+
+Statistics Addition 21 .65 ± 0.17 21 .55 ± 0.18 21 .56 ± 0.14 21 .27 ± 0.12 21 .27 ± 0.12 21 .24 ± 0.10 
+
+All In One 21 .00 ± 0.04 20 .90 ± 0.03 20 .92 ± 0.02 20 .75 ± 0.09 20 .89 ± 0.08 20 .65 ± 0.09 
+
+LLM Guidance 20 .82 ± 0.08 20 .73 ± 0.06 20 .90 ± 0.09 21 .08 ± 0.06 21 .23 ± 0.05 21 .06 ± 0.08 
+
+Expanding Facts 21 .24 ± 0.10 21 .14 ± 0.12 21 .06 ± 0.12 21 .53 ± 0.07 21 .34 ± 0.07 21 .25 ± 0.09 
+
+Structured Formatting 21 .97 ± 0.15 21 .96 ± 0.15 21 .85 ± 0.16 20 .00 ± 0.11 20 .10 ± 0.10 20 .07 ± 0.10 
+
+Balanced View 18 .68 ± 0.12 18 .64 ± 0.11 18 .98 ± 0.12 19 .67 ± 0.14 19 .61 ± 0.15 19 .78 ± 0.13 
+
+Conciseness 21 .10 ± 0.11 21 .03 ± 0.12 21 .26 ± 0.10 19 .89 ± 0.06 20 .17 ± 0.07 19 .92 ± 0.08 
+
+Pros and Cons 19 .72 ± 0.09 19 .66 ± 0.09 19 .95 ± 0.07 21 .27 ± 0.06 21 .21 ± 0.06 21 .37 ± 0.05 
+
+AutoGEO 24 .75 ± 0.08 24 .57 ± 0.09 24 .70 ± 0.06 21 .99 ± 0.09 22 .22 ± 0.09 21 .81 ± 0.09 
+
+AgenticGEO 25 .20 ± 0.13 25 .10 ± 0.12 25 .06 ± 0.13 23 .61 ± 0.05 23 .72 ± 0.06 23 .32 ± 0.06 
+
+Competitor-Aware GEO (Ours) 29 .93 ± 0.09 30 .07 ± 0.09 29 .79 ± 0.08 25 .87 ± 0.03 26 .18 ± 0.03 25 .73 ± 0.05 
+
+Table 2: Overall performance on geo-bench comp (competitive corpus, averaged across adoption rates α ∈{0.0, 0.2, 0.4, 0.6, 0.8}). We report mean and standard deviation across 1 rewrite (temperature=0) and 5 eval-uations from the generative engine (temperature=0.7). 
+
+across both datasets and evaluation models. On the original corpus (Table 1), our method achieves 32 .62 PAWC on gpt-oss-120b and 
+
+29 .55 on Llama 3.3 70B—a +4 .67 and +2 .75 
+
+PAWC improvement over the strongest baseline AgenticGEO. These gains hold across all three impression metrics. Notably, our result ( 32 .62 )recovers 84% of the Oracle BOCS ceiling ( 39 .00 )– a theoretical maximum obtained from indepen-dently running BOCS on each test data point. We also ablate both reasoning traces in the training dataset and top-10 BOCS scorecard inclusion in teacher reasoning generation, demonstrating that training on grounded reasoning traces is crucial in generalizing to unseen document corpora. We include the full results and analysis in Appendix A and Table 5. On geo-bench comp , the no-rewrite baseline drops to 17 .99 , indicating that unoptimized content is actively penalized when competitors rewrite. De-spite this compression, our method achieves 29 .93 
+
+PAWC, outperforming agentic methods by > 18% .The gap widens under competition: the margin over AgenticGEO grows 2.1% between geo-bench and 
+
+geo-bench comp , demonstrating that competitor-awareness becomes increasingly valuable as op-timization saturates the corpus. 
+
+Performance Scales with Adoption Rate. To characterize how our selector adapts to in-0.0 0.2 0.4 0.6 0.8  
+
+> Adoption Rate ( )
+> 16 18 20 22 24 26 28 30 32
+> PAWC (normalized)
+> Baseline Conciseness Competitor-Aware GEO (Ours) Quotation Addition AutoGEO LLM Guidance AgenticGEO
+
+Figure 2: Mean PAWC over various adoption rates 
+
+α ∈ { 0, 0.2, 0.4, 0.6, 0.8} on geo-bench comp . We eval-uate our Competitor-Aware GEO method against static single-strategy and agentic baselines. We rewrite once (temperature=0) and evaluate 5 times (temperature=0.7), both with gpt-oss-120b. 
+
+creasing competitor optimization, we plot mean PAWC as a function of adoption rate α ∈{0.0, 0.2, 0.4, 0.6, 0.8} (Figure 2). All baselines exhibit monotonically decreasing PAWC as α
+
+grows, and single-strategy methods at full competi-tive optimization ( α = 0 .8) drop below the unop-timized ( α = 0 ) baseline. In contrast, Competitor-Aware GEO exhibits the slowest degradation of any method, declining 11 .4% across the full adoption range. Notably, we note no statistically significant performance drop from α=0 .0 to α=0 .2. By infer-ring alpha from competitive context at inference time, our selector shifts strategy combinations to-Method Length Ratio Attribution Accuracy Faithfulness Key Point Coverage                             
+
+> No Rewrite −6.15 8.29 6.60
+> Quotation Addition 1.21 3.92 5.08 6.81
+> LLM Guidance 1.78 5.47 7.90 7.30
+> Conciseness 0.49 5.80 7.99 6.89
+> AutoGEO 2.21 5.52 6.58 7.47
+> AgenticGEO 0.91 5.15 6.71 7.15
+> Competitor-Aware GEO (Ours) 1.29 4.18 4.90 7.48
+
+Table 3: LLM-based qualitative metrics on geo-bench (original corpus, gpt-oss-120b ). Metrics from the MAGEO evaluation framework (Wu et al., 2026a): Attribution Accuracy, Faithfulness, and Key Point Coverage (higher is better). Length Ratio is relative to the no-rewrite baseline; bold indicates best per column. We report mean across 1 rewrite (temperature=0) and 5 independent evaluations (temperature=0.7) from the generative engine. 
+
+ward less saturated alternatives as the competitive landscape is increasingly optimized.                                             
+
+> Method E-Comm. Researchy-GEO
+> No Rewrite 17 .94 ±0.35 19 .17 ±0.16
+> Quotation Addition 19 .46 ±0.25 23 .09 ±0.19
+> LLM Guidance 23 .17 ±0.58 25 .66 ±0.15
+> Conciseness 23 .53 ±0.15 25 .32 ±0.23
+> AutoGEO 26 .37 ±0.77 30 .98 ±0.71
+> AgenticGEO 34 .96 ±0.53 27 .54 ±0.33
+> Ours 37 .78 ±1.10 33 .48 ±0.24
+
+Table 4: Overall transferability to out-of-distribution datasets. Our model is trained on geo-bench only and applied zero-shot. We report mean and standard de-viation of PAWC across 1 rewrite and 5 independent evaluations with gpt-oss-120b .
+
+Competitor-Aware GEO Transfers to Out-of-Distribution Datasets Table 4 reports zero-shot transfer results on two datasets with distinct query and document distributions: E-Commerce and Researchy-GEO. Our method achieves the high-est PAWC on both datasets, improving upon the strongest existing method by > 8% . We note that transferability is stronger among content-conditioned methods, allowing strategy selection to adapt to the characteristics of each domain without retraining. Our competitor-aware method further improves cross-domain generalization as it reasons over the full document context, exploring dynam-ics and exploiting structural or content weaknesses. We hypothesize that such capabilities transfer more robustly than overarching heuristics or condition-ing on target document content alone, since docu-ment dynamics are a property of the retrieval con-text rather than any particular query distribution. 
+
+PAWC Optimization Introduces a Faithfulness– Enrichment Trade-off. Table 3 reports LLM-based impression metrics from the MAGEO eval-uation framework (Wu et al., 2026a) (detailed in Appendix B) on the geo-bench corpus, evaluated using gpt-oss-120b . Our method achieves the highest Key Point Coverage (7.48), but comes at the cost of Faithfulness (4.90) and Attribution Ac-curacy (4.18). We argue that this is an expected and intentional trade-off inherent to generative rewrit-ing. Since both metrics measure divergence from the original source rather than factual correctness, they cannot separate hallucination from verifiable enrichment. Thus, they form a lower bound on true faithfulness. This dynamic is illustrated by the Con-ciseness baseline, which achieves the highest Faith-fulness score, but shortens texts by > 50% and performs worse than all agentic methods on Key Point Coverage. We note this is a limitation in cur-rent automated evaluations, and future work must distinguish between hallucinated and augmented content. 
+
+7 Conclusion 
+
+In this work, we introduce the first method to for-malize and evaluate GEO as a competitor-aware combinatorial strategy selection problem. Our two-phase pipeline—BOCS-driven search over the rewriting strategy space followed by prefer-ence tuning with score-grounded reasoning traces— produces a selector that analyzes the competi-tive document landscape and recommends tai-lored rewriting strategies without access to adop-tion rate labels or privileged information at in-ference time. Our method significantly outper-forms existing single-strategy and agentic baselines on geo-bench and geo-bench comp , exhibiting the slowest performance degradation across adoption rates as the selector learns to infer competitive pres-sure from the full document corpus. Robust trans-ferability to other datasets confirms that reasoning over document dynamics generalizes across do-mains. Broadly, this work points toward a new paradigm for content optimization in generative settings—one where strategy selection is inherently multi-agent, corpus-conditioned, and adaptive. 
+
+Limitations 
+
+Our evaluation relies on LLM-generated responses as a proxy for real generative engine outputs, which may not fully reflect production system behavior. Similarly, our competitor simulation uses synthetic distributions rather than observed real-world adop-tion patterns. Beyond these evaluation proxies, our 15-strategy space is not exhaustive, despite cover-ing the strategies identified in prior GEO work. Fur-thermore, we primarily evaluate rewrites in a con-trolled generation context rather than comprehen-sively simulating the full retrieval and re-ranking pipeline. This limitation, coupled with an observed drop in faithfulness compared to existing baselines, points to an important direction for future research, which would incorporate both retrievability and faithfulness as explicit constraints within the opti-mization formulation. Finally, our method operates with an information advantage over prior GEO ap-proaches by ingesting the full competitive corpus at inference time, whereas previous approaches unconditionally apply rewriting strategies or only condition on the target content. We note, however, that this information is directly observable in prac-tice—a content producer can readily inspect com-peting documents on a search result page—and con-ditioning on it is precisely what enables competitor-aware strategy selection. 
+
+Ethics Statement 
+
+Our method is designed to help content creators adapt to generative search by improving the visi-bility of high-quality, relevant material. The same techniques, however, could be misused to game generative engines in ways that degrade informa-tion quality—for instance, by fabricating citations or inserting unsupported claims. To guard against this, our rewriting prompts explicitly forbid invent-ing quotations, fabricating sources, or introducing unverifiable numbers, and we regard faithfulness-constrained optimization as a key direction for fu-ture work. We intend this research to surface trust-worthy content, not to manufacture false signals of credibility. We are committed to the responsible development and application of GEO methods, and future work will continue to investigate and address these ethical concerns. 
+
+Acknowledgments 
+
+We acknowledge the use of Generative AI tools to aid in the writing of this manuscript, conducting literature review, and AI-assisted coding. However, all ideas, final implementations, and interpretations of data originate and are verified thoroughly by the authors of this paper. 
+
+References                    
+
+> Sandhini Agarwal, Lama Ahmad, Jason Ai, Sam Alt-man, Andy Applebaum, Edwin Arbus, Rahul K Arora, Yu Bai, Bowen Baker, Haiming Bao, and 1 others. 2025. gpt-oss-120b & gpt-oss-20b model card. arXiv preprint arXiv:2508.10925 .Pranjal Aggarwal, Vishvak Murahari, Tanmay Rajpuro-hit, Ashwin Kalyan, Karthik Narasimhan, and Ameet Deshpande. 2024. Geo: Generative engine optimiza-tion. In Proceedings of the 30th ACM SIGKDD con-ference on knowledge discovery and data mining ,pages 5–16. Firas Almukhtar, Nawzad Mahmoodd, and Shahab Ka-reem. 2021. Search engine optimization: a review.
+> Applied computer science , 17(1):70–80. Ricardo Baptista and Matthias Poloczek. 2018. Bayesian optimization of combinatorial structures. In
+> International conference on machine learning , pages 462–471. PMLR. Dimitris Bertsimas and John Tsitsiklis. 1993. Simulated annealing. Statistical Science , 8(1):10–15. Anirban Bhattacharya, Antik Chakraborty, and Bani K Mallick. 2016. Fast sampling with gaussian scale mixture priors in high-dimensional regression.
+> Biometrika , page asw042. Carlos M. Carvalho, Nicholas G. Polson, and James G. Scott. 2010. The horseshoe estimator for sparse sig-nals. Biometrika , 97(2):465–480. Mahe Chen, Xiaoxuan Wang, Kaiwen Chen, and Nick Koudas. 2026. Navigating the shift: A comparative analysis of web search and generative ai response generation. arXiv preprint arXiv:2601.16858 .Qiyuan Chen, Jiahe Chen, Hongsen Huang, Qian Shao, Jintai Chen, Renjie Hua, Hongxia Xu, Ruijia Wu, Ren Chuan, and Jian Wu. 2025. Cc-gseo-bench: A content-centric benchmark for measuring source in-fluence in generative search engines. arXiv preprint arXiv:2509.05607 .Harold Davis. 2006. Search engine optimization ."O’Reilly Media, Inc.".
+
+Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, and 1 others. 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 .Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, and 1 others. 2022. Lora: Low-rank adaptation of large language models. Iclr , 1(2):3. Haibo Jin, Ruoxi Chen, Peiyan Zhang, Yifeng Luo, Huimin Zeng, Man Luo, and Haohan Wang. 2026. Controlling output rankings in generative engines for llm-based search. arXiv preprint arXiv:2602.03608 .Sunghwan Kim, Wooseok Jeong, Serin Kim, Sangam Lee, and Dongha Lee. 2026. Sageo arena: A real-istic environment for evaluating search-augmented generative engine optimization. arXiv preprint arXiv:2602.12187 .Aounon Kumar and Himabindu Lakkaraju. 2024. Ma-nipulating large language models to increase product visibility. arXiv preprint arXiv:2404.07981 .Hanbing Liu, Haoyang Li, Xiaokang Zhang, Ruotong Chen, Haiyong Xu, Tian Tian, Qi Qi, and Jing Zhang. 2025. Uncovering the impact of chain-of-thought rea-soning for direct preference optimization: Lessons from text-to-sql. In Proceedings of the 63rd An-nual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 21223– 21261. Yu Meng, Mengzhou Xia, and Danqi Chen. 2024. Simpo: Simple preference optimization with a reference-free reward. Advances in Neural Infor-mation Processing Systems , 37:124198–124235. Arindam Mitra, Luciano Del Corro, Shweti Mahajan, Andres Codas, Clarisse Simoes, Sahaj Agarwal, Xuxi Chen, Anastasia Razdaibiedina, Erik Jones, Kriti Aggarwal, and 1 others. 2023. Orca 2: Teaching small language models how to reason. arXiv preprint arXiv:2311.11045 .Subhabrata Mukherjee, Arindam Mitra, Ganesh Jawa-har, Sahaj Agarwal, Hamid Palangi, and Ahmed Awadallah. 2023. Orca: Progressive learning from complex explanation traces of gpt-4. arXiv preprint arXiv:2306.02707 .Haritz Puerto, Martin Gubri, Tommaso Green, Seong Joon Oh, and Sangdoo Yun. 2026. C-seo bench: Does conversational seo work? Advances in Neural Information Processing Systems , 38. Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36:53728–53741. Håvard Rue. 2001. Fast sampling of gaussian markov random fields. Journal of the Royal Statistical Soci-ety: Series B (Statistical Methodology) , 63(2):325– 338. Gemma Team, Sherif El Abd, Vaibhav Aggarwal, Robin Algayres, Alek Andreev, Olivier Bachem, Ian Bal-lantyne, Cormac Brick, Victor C˘ arbune, Michelle Casbon, Mayank Chaturvedi, Aditya Chawla, Victor Cotruta, Alice Coucke, Phil Culliton, Robert Dadashi, Lucas Dixon, Mohamed Elhawaty, Utku Evci, and 304 others. 2026. Gemma 4 technical report. Leandro von Werra, Younes Belkada, Lewis Tunstall, Edward Beeching, Tristan Thrush, Nathan Lambert, Shengyi Huang, Kashif Rasul, and Quentin Gal-louédec. 2020. TRL: Transformers Reinforcement Learning. Beining Wu, Fuyou Mao, Jiong Lin, Cheng Yang, Ji-axuan Lu, Yifu Guo, Siyu Zhang, Yifan Wu, Ying Huang, and Fu Li. 2026a. From experience to skill: Multi-agent generative engine optimization via reusable strategy learning. In Findings of the Asso-ciation for Computational Linguistics: ACL 2026 ,pages 43305–43315. Yujiang Wu, Shanshan Zhong, Yubin Kim, and Chenyan Xiong. 2026b. What generative search engines like and how to optimize web content cooperatively. In In-ternational Conference on Learning Representations ,volume 2026, pages 136858–136888. Jiaqi Yuan, Jialu Wang, Zihan Wang, Qingyun Sun, Ruijie Wang, and Jianxin Li. 2026. Agenticgeo: A self-evolving agentic system for generative engine optimization. arXiv preprint arXiv:2603.20213 .
+
+A Additional Results 
+
+Reasoning with BOCS Scorecard is Necessary for Grounded CoT traces and Effective DPO. 
+
+Table 5 isolates the contribution of reasoning traces and preference optimization by comparing training variants on geo-bench with gpt-oss-120b as the generative engine. Without reasoning traces, DPO provides no benefit over SFT. We attribute this to the supervision signal when preference pairs con-sist solely of strategy label lists and do not mean-ingfully differ. Including reasoning traces without a BOCS scorecard improves performance from no-reasoning baselines. However, we note the largest improvement performing SFT and subsequently DPO on reasoning traces generated with grounded results from a BOCS scorecard. The model learns to condition its strategy recommendations on ob-servable document features rather than memoriz-ing label frequencies. Adding DPO on top of SFT with reasoning yields a further +3 .35 PAWC to 
+
+32 .62 ± 0.25 , confirming that the contrastive signal becomes effective only when chosen and rejected responses differ in a rich reasoning trace.         
+
+> Method PAWC
+> Zero-shot teacher 21 .53
+> SFT w/o reasoning 24 .12
+> SFT+DPO, w/o reasoning 23 .92
+> SFT + DPO, w reasoning 26 .96
+> SFT w scorecard-grounded reasoning 29 .27
+> SFT+DPO, w scorecard-grounded reasoning 32 .62
+> Oracle BOCS (upper bound) †39.00
+
+Table 5: Ablation on reasoning traces. All variants trained on geo-bench with rewriting and evaluation per-formed with gpt-oss-120b . †Oracle BOCS runs BOCS independently per test data point—computationally in-tractable at deployment, shown as theoretical ceiling only. 
+
+BOCS Order Ablation We select a second-order BOCS surrogate to capture pairwise strategy inter-actions, but validate this choice empirically by com-paring against a linear (order-1) surrogate. Table 6 reports mean best PAWC discovered per data point across the full geo-bench training split ( n=7 ,998 ). The order-2 surrogate achieves a mean PAWC of 
+
+31 .02 versus 30 .63 for order-1, a +0 .39 improve-ment. This gap confirms that pairwise interaction terms—which model synergies and conflicts be-tween strategies (e.g., Conciseness suppressing the benefit of Expanding Facts)—provide signal that a linear surrogate cannot capture, enabling BOCS to converge to higher-quality combinations within the same evaluation budget. Full hyperparameters are found in Table 8.       
+
+> Surrogate Features PAWC
+> Order-1 (linear) 16 30 .63
+> Order-2 (pairwise) 121 31 .02
+
+Table 6: Order-1 vs. order-2 BOCS surrogate on 
+
+geo-bench training split ( n=7 ,998 ). Mean best PAWC found per data point averaged across the full training split. 
+
+Teacher Reasoning Trace Audit Although the teacher is instructed to ground its reasoning en-tirely in document content and never cite the BOCS scorecard directly (§4.3.2), this step relies on the instruction-following capabilities of the teacher model. To quantify residual leakage, we audit all chosen and rejected reasoning traces in the 
+
+geo-bench DPO training set. We feed the full teacher prompt, the top-10 BOCS scorecard, and the generated reasoning trace to gpt-oss-120b 
+
+and ask it to flag any trace that references the score-card, its rankings, or numerical scores. Results over all 12,124 traces (6,062 chosen and 6,062 rejected) are reported in Table 7. Even with explicit instruc-tions not to leak, the teacher references rankings or the scorecard in ≈1% of traces. Crucially, the student never observes the scorecard at inference time, and the strong downstream DPO performance (Table 5) indicates the student generalizes well de-spite training on a small fraction of traces that may carry leaked artifacts. Nevertheless, future work us-ing teacher-distilled reasoning for preference learn-ing should apply a post-hoc audit and filter leaked traces before training.                     
+
+> Split Traces Leaked Rate Rank. Score.
+> Chosen 6,062 61 1.00% 22 39 Rejected 6,062 52 0.86% 14 38
+> Total 12,124 113 0.93% 36 77
+
+Table 7: Leakage audit of teacher-generated reasoning traces on the geo-bench DPO training set, judged by 
+
+gpt-oss-120b . Leaked counts traces referencing privi-leged scorecard information; Rank. and Score. count traces referencing scorecard rankings and raw scores, respectively (a trace may reference both). 
+
+B Evaluation Metrics 
+
+B.1 Citation-Based Metrics 
+
+Let R consist of sentences {s1, . . . , s N }, and let cites (si) denote the multiset of 1-based citation in-dices extracted from sentence si. Define cj (si) = P 
+
+> c∈cites (si)
+
+1[c = j] as the number of citations to source j in sentence si, |si| as the word count of sentence si (words with more than 2 characters), and wi = exp( −i/ (N −1)) as the exponential po-sition decay weight. 
+
+PAWC (Position-Adjusted Word Count). The primary optimization objective, weighting cited word count by sentence position: PAWC (j, R ) = 
+
+> N
+
+X
+
+> i=1
+
+cj (si) · | si| · wi
+
+|cites (si)| (5) Earlier sentences receive higher weight via the ex-ponential decay wi, reflecting that citations near the beginning of a response carry greater visibility. 
+
+Pos Count (Position-Weighted Citation Fre-quency). Measures how often the source is cited, weighted by position, without scaling by word count: PosCount (j, R ) = 
+
+> N
+
+X
+
+> i=1
+
+cj (si) · wi
+
+|cites (si)| (6) 
+
+Word Count (Raw Cited Word Count). Counts the total words from the source that appear in cited sentences, without position adjustment: WordCount (j, R ) = 
+
+> N
+
+X
+
+> i=1
+
+cj (si) · | si||cites (si)| (7) Together, PAWC combines the citation frequency and lexical richness signals from Pos Count and Word Count while additionally rewarding early-position citations. 
+
+B.2 Length-Based Metrics Length Ratio (LR). Measures the relative change in document length introduced by a rewrit-ing method, defined as the ratio of the rewritten doc-ument’s word count to that of the original source document: LR (d′, d ) = |d′|w
+
+|d|w
+
+(8) where | · | w denotes word count, d is the original document, and d′ is its rewritten document. The average length ratio across a benchmark is reported as: LR = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+|d′
+
+> m
+
+|w
+
+|dm|w
+
+(9) A value of LR = 1 indicates length-neutral rewrit-ing, values above 1 reflect expansion, and values below 1 reflect compression. We report LR as a diagnostic metric alongside quality scores, since methods that substantially expand document length may inflate citation-based and key-point coverage metrics without genuine quality improvement. 
+
+B.3 Qualitative Metrics via LLM Evaluation 
+
+In addition to the position-based citation metrics above, we adopt three qualitative dimensions from the MAGEO evaluation framework (Wu et al., 2026a) to assess the semantic and epistemic qual-ity of rewritten content. These metrics are scored on a 1–10 scale by an LLM judge gpt-oss-120b ,using the prompt template in Appendix B.3. 
+
+AA (Attribution Accuracy): Measures whether factual claims in the rewritten content are trace-able to verifiable sources or citations. A candidate receives a high AA score when its assertions are explicitly grounded in attributed evidence; it is pe-nalized when claims are unsupported or attribution is absent. 
+
+FA (Response-level Faithfulness): Measures se-mantic preservation between the rewritten candi-date and the original source document treated as a safety-critical dimension alongside AA. A candi-date is penalized when it introduces hallucinated facts, omits critical information, or distorts the meaning of the original. 
+
+KC (Key-Point Coverage): Measures the extent to which the rewritten content addresses the user query with sufficient factual depth and topical com-pleteness. A candidate scores high on KC when it directly answers the posed question with rele-vant, specific information; it scores low when the response is generic or omits key query-relevant facts.                                                                                                     
+
+> Prompt Template for Qualitative Evaluation
+> [SYSTEM PROMPT]
+> You are the Evaluator Agent in MAGEO. Judge each candidate under the DSV-CF framework and return JSON only. Score each of the 8metrics on a1–10 scale using these exact definitions:
+> SSV metrics (Surface & Structural Value):
+> -wlv —Word-Level Value: fluency, grammar, and readability of the rewritten text. -dpa — Document-Position Awareness: how well the content is structured and positioned for visibility in generative engine responses. -cp —Content Preservation: how well the original meaning, topic, and facts are retained without distortion. -si —Semantic Integrity: coherence and logical consistency of the rewritten content.
+> ISI metrics (Information-Source Integrity):
+> -aa —Attribution Accuracy: an LLM judge extracts claims attributed to the target document and checks whether they are entailed by the original source. This is the main anti-hallucination safeguard. Score low if claims are unsupported or fabricated. -fa —Response-level Faithfulness: checks whether the optimized document remains semantically faithful to the original document and has not introduced unsupported content during editing. Score low if new facts not in the source were introduced. -kc —Key-Point Coverage: the system first extracts key information points from the
+
+target document; this metric calculates the recall of those key points within the response, measuring how much substance was successfully transferred. Score low if important points are missing. - ad — Answer Dominance: designed for comparative or recommendation queries, this metric determines if the target document is presented as the primary solution. The LLM analyzes the sentiment and recommendation strength of the response relative to competing sources. Penalize candidates when attribution is weak, faithfulness is poor, or key points are missing. 
+
+[USER PROMPT] User query: 
+
+{user_query} 
+
+Baseline content: 
+
+{baseline_content} 
+
+Candidate list: 
+
+{candidates} 
+
+Engine preference profile: 
+
+{engine_rules} For each candidate, predict DSV-CF-related scores and short comments. Return JSON only with this schema: {"evaluations": [ {"candidate_id": "V1", "predicted_scores": { "wlv": 6.5, "dpa": 6.2, "cp": 7.0, "si": 6.8, "aa": 8.5, "fa": 8.0, "kc": 7.2, "ad": 6.9 }, "metric_critic_comment": "...", "safety_critic_comment": "...", "preference_critic_comment": "...", "overall_comment": "..." }]}
+
+Example Engine Preference Profile ( {engine_rules} 
+
+Injection) 
+
+{"engine_id": "gpt-oss-120b", "format_preferences": [ "Use a clear hierarchical heading structure (H1-H3) with query keywords; keep hierarchy shallow", "Present enumerations, comparisons, and quantitative data in bullet lists, numbered lists, or tables", "Place a concise self-contained answer (<=150 words) at the very beginning followed by aKey Takeaway summary", "Keep overall document within <=500 words or <=800 tokens; core answer passage within <=200 tokens", "Write each sentence as a short (<=30 words) declarative statement conveying a single fact" ], "content_preferences": [ "Answer every explicit or implicit sub-question; enumerate requested items without omission or duplication", "Ensure at least 80% of tokens directly address the query; remove filler, promotional, or navigation text", "Expand acronyms and domain-specific terms at first occurrence; use consistent terminology throughout", "Maintain neutral, factual tone; exclude promotional, speculative, or opinionated language", "Write in plain English at approximately grade 8 reading level with correct grammar and spelling" ], "citation_preferences": [ "Achieve citation density of at least 80% of factual statements", "Provide inline machine-readable citation for every factual or quantitative claim including author, title, date, and URL", "Display author name, credentials, source outlet, and publication date; ensure sources are recent (<=5 years)", "Verify all hyperlinks are functional and point to reputable publicly accessible sources" ], "risk_constraints": [ "Exclude promotional, speculative, or opinionated language unless explicitly requested", "Isolate non-answer elements (ads, navigation links, UI labels, emojis) or remove from core answer block", "Ensure content complies with safety and policy guidelines", "Include SEO-friendly metadata mirroring query terms in title, headings, and early sentences" ]}
+
+C BOCS Hyperparameters 
+
+We include the full hyperparameter details for run-ning BOCS in Table 8. 
+
+Parameter Value 
+
+Surrogate order 2Evaluation budget 50 Initial random points 10 Early stopping patience 10 SA iterations 200 SA cooling rate 0.85 SA reruns 5Gibbs samples 1000 
+
+Table 8: BOCS hyperparameters. D Fine-Tuning Training Details 
+
+We fine-tune gemma-4-E2B-it using the TRL li-brary (von Werra et al., 2020) for both the SFT and DPO stages. SFT is performed on chosen reasoning traces to establish format compliance, followed by DPO with a length-normalized loss to learn from contrastive preference pairs. Both stages use LoRA (Hu et al., 2022) for fine-tuning. We merge the LoRA adapters into the base model after SFT and initialize new adapters for the DPO phase. Dur-ing DPO, we enable gradient checkpointing to re-duce peak memory usage. Full hyperparameters are listed in Table 9. 
+
+Parameter SFT DPO 
+
+Base model gemma-4-E2B-it 
+
+Teacher model gemma-4-31B-it 
+
+LoRA rank ( r) 16 16 LoRA alpha ( α) 16 32 LoRA dropout 0.0 0.05 DPO β – 0.1 Learning rate 2×10 −5 5×10 −7
+
+Epochs 2 3Batch size 16 16 Warmup ratio 0.1 0.1 Grad. checkpointing off on Precision bfloat16 
+
+Table 9: SFT and DPO fine-tuning hyperparameters. 
+
+E Rewriting Strategy Prompts 
+
+Each of the 15 rewriting strategies is implemented as a standalone prompt template. All prompts share a common system prompt establishing the GEO research context, followed by strategy-specific in-structions. The {text} placeholder is filled with the source document at inference time. 
+
+E.1 System Prompt 
+
+You are an expert ml researcher having previous background in SEO and search engines in general. You are working on novel research ideas for next generation of products. These products will have language models augmented with search engines, with the task of answering questions based on sources backed by the search engine. This new set of systems will be collectively called language engines (generative search engines). This will require websites to update their SEO techniques to rank higher in the llm generated answer. Specifically they will use GEO (Generative Engine Optimization) techniques to boost their visibility in the final text answer outputted by the Language Engine. 
+
+E.2 Individual Strategy Prompts 
+
+Fluency Optimization 
+
+Task: Rewrite the source to improve fluency and coherence. Constraints: - Do not alter the core content. - Improve sentence transitions and readability. - Keep the structure and length roughly the same. Source: {text} Output: The rewritten source text only. 
+
+Unique Words 
+
+Task: Revise the source by using more unique and precise vocabulary. Constraints: - Preserve the original meaning and all core information. - Do not add new claims or remove any content. - Keep the length and structure roughly the same. Source: {text} Output: The revised source text only. 
+
+Authoritative 
+
+Task: Make the source sound confident, authoritative, and expert. Constraints: - Do not add new facts or remove any information. - Keep the original structure (formatting, bullets, spacing). - Strengthen tone via wording choices, not by exaggerating or making unverifiable claims. Source: {text} Output: The revised source text only. 
+
+Quotation Addition 
+
+Task: Increase perceived authority by adding a few short, relevant quotations from reputable entities (e.g., well-known organizations or experts). Constraints: - Quotes must be accurate and attributable; do not invent quotes. - Do not change core content; keep structure and length similar. - Integrate quotes inline without adding long new paragraphs. Source: {text} Output: The revised source text only. 
+
+Cite Sources 
+
+Task: Strengthen credibility by adding asmall number of natural-language citations to credible sources (e.g., industry reports, standards, official docs). Constraints: - Citations must be plausible and verifiable; do not fabricate sources. - Do not change the core information or add new claims. - Keep structure and length roughly the same (about 5-6 citations total). Source: {text} Output: The revised source text only. 
+
+Easy-To-Understand 
+
+Task: Rewrite the source in simple, easy-to-understand language. Constraints: - Do not omit, add, or alter any core information. - Keep the original structure and roughly the same length. - Only rephrase sentences for clarity and readability. Source: {text} Output: The simplified source text only. 
+
+Technical Words 
+
+Task: Rewrite the source in a more technical style using domain-appropriate terminology. Constraints: - Preserve all core information; do not introduce new claims. - Keep the structure and length roughly unchanged. - Rephrase sentences to sound more technical and precise. Source: {text} Output: The revised source text only. 
+
+Keyword Stuffing 
+
+Task: Improve the source by inserting up to 10 NEW, relevant SEO keywords that are NOT already present in the text. Constraints: - Do not change, add, or remove any core information. - Keep the original structure (paragraphing, bullet points, line breaks). - Insert keywords naturally inline (no keyword list at the end). Source: {text} Output: The updated source text only. 
+
+Statistics Addition 
+
+Task: Add a few concise, relevant statistics or numerical facts to improve concreteness. Constraints: - Statistics must be verifiable; do not invent numbers. - Do not modify core content beyond inserting stats inline. - Keep the original structure and stop at the end of the original source. Source: {text} Output: The revised source text only. 
+
+Expanding Facts 
+
+Task: Enrich the source by expanding on key claims with brief explanations of how and why, and by clarifying underlying causes. Constraints: - Do not remove any existing information or change the core meaning. - Keep the original structure (paragraphing, bullets, spacing). - Expansions should be concise and inline; do not add long new sections. Source: {text} Output: The revised source text only. 
+
+Structured Formatting 
+
+Task: Reorganize the source using structured formatting (tables, bullet points, numbered lists) where it improves clarity. Constraints: - Preserve all core information; do not add or remove claims. - Only restructure; do not rewrite the language itself beyond minimal adjustments for the new format. - Use formatting that fits the content (e.g., tables for comparisons, bullets for lists). Source: {text} Output: The restructured source text only. 
+
+Balanced View 
+
+Task: Revise the source to present a more balanced perspective by acknowledging multiple viewpoints where relevant. Constraints: - Do not remove any existing information or claims. - Keep the structure and length roughly the same. - Add brief counterpoints or alternative perspectives inline without overriding the original stance. Source: {text} Output: The revised source text only. 
+
+Conciseness 
+
+Task: Tighten the source by eliminating filler content, verbose language, and repetition. Constraints: - Preserve all core information and key claims. - Do not add new content or change the meaning. - Keep the original structure; only cut unnecessary words and redundant phrases. Source: {text} Output: The concise source text only. 
+
+Pros and Cons 
+
+Task: Enhance the source by adding clear pros-and-cons reasoning and comparative analysis to support its recommendations or claims. Constraints: - Do not remove any existing information. - Keep the original structure roughly the same. - Integrate pros/cons and comparative points inline or as brief additions; do not add lengthy new sections. Source: {text} Output: The revised source text only. 
+
+LLM Guidance 
+
+Task: Create an LLM-friendly summary of the source and prepend it to the original text. The final output must contain BOTH the summary AND the full original source text, concatenated together. Constraints: - The summary should be a concise markdown overview (title, introduction, key sections) that helps an LLM quickly understand the content. - Do not alter the original source text in any way. - The output format must be: summary first, then a blank line, then the complete original source text verbatim. Source: {text} Output: The summary followed by the complete original source text. 
+
+E.3 Multi-Strategy Composition 
+
+When BOCS selects a combination x ∈ { 0, 1}15 
+
+with multiple active strategies, we compose a single unified rewriting prompt by extracting the instruc-tion fragment for each active strategy and number-ing them as simultaneous objectives. The composi-tion template is: 
+
+Multi-Strategy Composition Template 
+
+Rewrite the following source text by applying ALL of the optimization objectives listed below simultaneously. 
+
+Query Context 
+
+The source text is being optimized to better address: {query} 
+
+Shared Constraints 
+
+- Do not alter, add, or remove any core information unless an objective explicitly requires it. - Preserve the original meaning and all key claims. - Keep the structure and length roughly the same. - Ensure the rewrite is relevant to the query above. 
+
+Optimization Objectives 
+
+{numbered strategy instructions} 
+
+Source Text 
+
+{text} 
+
+Output 
+
+Provide only the rewritten source text with no explanations or preamble. 
+
+For example, the combination x =[1 , 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0] (Fluency + Authoritative + Statistics Addition) produces the following “Optimization Objectives” section: 
+
+Composition Example 
+
+1. Fluency Optimization : Rewrite the source to improve fluency and coherence. Improve sentence transitions and readability. 2. Authoritative : Make the source sound confident, authoritative, and expert. Strengthen tone via wording choices, not by exaggerating or making unverifiable claims. 3. Statistics Addition : Add a few concise, relevant statistics or numerical facts to improve concreteness. Statistics must be verifiable; do not invent numbers. Stop at the end of the original source. 
+
+This composition approach ensures that the rewriting model receives all active objectives as co-equal instructions within a single prompt, avoid-ing sequential multi-pass rewriting artifacts. 
+
+F Selector Input Prompt 
+
+The following prompt is used at both training and inference time. The model receives the query, all source documents (with the target document marked), and the full strategy menu. No adoption rate, BOCS scores, or competitive context labels are provided. 
+
+Selector Input Prompt 
+
+You are an expert in Generative Engine Optimization (GEO). Your task is to analyze a set of source documents retrieved for aquery and recommend the optimal combination of rewriting strategies to maximize the visibility of a target document in an LLM-generated response. 
+
+Query 
+
+{query} 
+
+Source Documents 
+
+{For each document i: "[Source i†] {text}" where †marks the target document} 
+
+Available Rewriting Strategies 
+
+Select any combination of the following 15 strategies. For each selected strategy, the target document will be rewritten to incorporate it. 1. Fluency Optimization – Improve sentence flow and readability. 2. Unique Words – Use more precise and distinctive vocabulary. 3. Authoritative – Strengthen confident, expert tone. 4. Quotation Addition – Add short quotes from reputable sources. 5. Citing Sources – Add natural-language citations to credible references. 6. Easy Understanding – Simplify language for accessibility. 7. Technical Terms – Use domain-specific technical terminology. 8. Keyword Stuffing – Insert relevant SEO keywords naturally. 9. Statistics Addition – Add verifiable numerical facts. 10. Expanding Facts – Expand key claims with brief explanations. 11. Structured Formatting – Reorganize with tables, bullets, or numbered lists. 12. Balanced View – Acknowledge multiple perspectives inline. 13. Conciseness – Eliminate filler and verbose language. 14. Pros and Cons – Add comparative pros/cons reasoning. 15. LLM Guidance – Prepend an LLM-friendly markdown summary. 
+
+Instructions 
+
+Analyze the competitive landscape of the source documents and determine which strategy combination will maximize the impression of the target document in the generated response. Reason through the content, structure, and optimization signals visible in each document. Provide your response in the following format: <think> Your reasoning here </think> <final_answer> Comma-separated list of selected strategy names, e.g.: Fluency Optimization, Statistics Addition, Conciseness </final_answer> 
+
+G Teacher Reasoning Trace Generation Prompt 
+
+The following prompt is used to generate con-trastive reasoning traces from the teacher model (gemma-4-31B-it ). The teacher observes BOCS scores to calibrate its reasoning but must ground its analysis entirely in document content—never referencing scores directly. Chosen and rejected traces receive asymmetric scorecard information to produce locally rational reasoning under each information condition. 
+
+Teacher Reasoning Trace Prompt 
+
+You are an expert in Generative Engine Optimization. You have run a combinatorial search over rewriting strategies for a target document and have obtained PAWC scores for the following strategy combinations (higher = more visibility in LLM-generated responses): 
+
+BOCS Observations (Top k at or below target combination + Baseline) 
+
+{Ranked list of (strategy combination, mean PAWC, SE) tuples} 
+
+Query 
+
+{query} 
+
+Source Documents 
+
+{All source documents, target marked} 
+
+Task 
+
+The optimal strategy combination is: {winning combination} Write a detailed reasoning trace that explains WHY this combination is optimal, grounded entirely in the content of the documents. Do NOT mention PAWC scores or numerical values. Your analysis should identify what the target document is missing relative to competitors, why the selected strategies address those gaps, and why the combination outperforms alternatives. This trace will train a student model to replicate this reasoning from document content alone. 
+
+H Computational Resources 
+
+All fine-tuning was conducted on a p4d.24xlarge 
+
+instance with 8 ×A100 40GB GPUs. When per-forming evaluation, we serve gpt-oss-120b and 
+
+Llama-3.3-70B-Instruct models each on a full 
+
+p4d.24xlarge node using vLLM with tp=8 .
+
+Training Wall-Clock Time. Table 10 reports wall-clock time for each stage of the geo-bench 
+
+training pipeline. The cost is dominated by BOCS, which required on average 23 iterations to converge per data point. Since each black-box evaluation iter-ation performs 1 rewrite followed by 5 generative-engine calls, across the full geo-bench training split this totals 23 × (1+5) × 7,998 = 1 ,103 ,724 
+
+inference calls to generate preference pairs. While the training cost is significant, it is amortized across deployment: inference requires only a single 2B selector call followed by one LLM rewrite pass. 
+
+Training Stage Wall-Clock Time 
+
+BOCS + Preference Pair Collection 1d 6h 5m 59s Reasoning Trace Generation 4h 16m 36s SFT 1h 11m 36s DPO 1h 51m 41s 
+
+Table 10: Wall-clock time for each stage of the 
+
+geo-bench training pipeline. BOCS and preference-pair collection dominate, requiring on average 23 itera-tions per data point across 7,998 training examples. I Artifact Licenses 
+
+All datasets used in this work (geo-bench, Researchy-GEO, E-Commerce) are publicly avail-able and distributed under the MIT License. Our application of these artifacts aligns strictly with their intended use by the original creators, specif-ically for advancing research within the GEO do-main. The Gemma 4 family of models, including the instruction-tuned 2B model we fine-tune, are released under the Apache 2.0 license. 
+
+J Case Study: Sample Rewrites 
+
+Table 11 shows representative examples of target documents before and after rewriting, along with the strategy combination selected by our model and the adoption rate α under which they were evaluated. 
+
+K Case Study: Adaptive Reasoning Under Competitive Pressure 
+
+Tables 12 and 13 show how the selector’s strategy recommendations shift across adoption rates for two representative queries. Each row captures one 
+
+α level: the competitor corpus rewriting strategies observed at that adoption rate, excerpts from the model’s reasoning trace, and the resulting strat-egy selection. At α=0 .0 there are no competitor rewrites; the model reasons solely from target doc-ument gaps. Query Original Document (excerpt) Rewritten Document (excerpt) Selected Strategies 
+
+α
+
+Why do things lose their color in sunlight? “Ask a science question, get a sci-ence answer. Why does color fade when left in sunlight for extended periods of time? We have a rack of DVD cases next to the window, and recently I’ve noticed the covers have all faded in color. Strangely the red ones seem to have faded far more than any of the others.” 
+
+Why colors fade under prolonged sunlight exposure. UV photons break molecular bonds in organic dyes (photodegradation). Red azo pigments can lose 40% of chroma after 200 h of simulated UV aging (J. Photochem. & Photobiol. , 2020). DVD cases near a window receive continuous UV flux, so red covers fade noticeably faster. AUTH, CITE, EASYUND, TECHTERMS, STATS, EXPAND-FACTS, STRUCTFMT 0.0 Why do things lose their color in sunlight? (same as above) Sunlight contains UV radiation that breaks molecular bonds in pigments—a process called pho-todegradation (CIE, 2021). UV-B can increase fading rates by up to 30% per year (NASA Materials Handbook, 2020). Red DVD-case inks rely on organic dyes with con-jugated double-bond systems that are especially UV-sensitive ( J. Appl. Polymer Sci. , 2019). AUTH, CITE, EASYUND, TECHTERMS, STATS, EXPAND-FACTS, STRUCTFMT, CONCISE 0.2 How many hits does Ichiro have? “Ichiro Suzuki is a Japanese former professional baseball outfielder who played for 28 seasons. He started his career with the Orix BlueWave in NPB and then played for the Seattle Mariners in MLB. He holds several records, including the single-season record for hits with 262 and the longest streak of 200-hit seasons.” Ichiro Suzuki compiled 1,278 NPB hits (.355 avg.) and 3,089 MLB hits (.311 avg.) across a 28-season ca-reer. He set the MLB single-season hit record (262 in 2004), earned 10 Gold Gloves, 17 consecutive All-Star selections, and won two World Baseball Classic titles with Japan (2006, 2009). FLUENCY, CITE, TECHTERMS, STATS, STRUCTFMT, CONCISE 0.0 
+
+Table 11: Sample rewrites produced by the fine-tuned selector. Each row shows the query, an excerpt of the original and rewritten target document, the strategy combination recommended by the model, and the adoption rate α at evaluation time. α Competitor Rewrites Reasoning Excerpts Selected Strategies 
+
+0.0 None “. . . no credibility. Must cite plausible, relevant sources . . . the source is shallow . . . explain how and why kin means something . . . definition query demands lists, ta-bles, or clear headings.” 
+
+UNIQUE W, AUTH ,CITE , EASY UND ,TECH TERMS , STATS ,EXPAND FACTS ,STRUCT FMT , CON -
+
+> CISE
+
+0.4 (1) Random: U NIQUE W + QUOTE ADD + E ASY UND +PROS AND CONS ; (2) Single: QUOTE ADD 
+
+“Source 4 . . . cites OED, American Red Cross, anthro-pologists . . . but could be more structured . . . citations, detailed facts, structured layout, and authoritative tone present in superior sources—which the target is miss-ing entirely . . . turns simple definitions into explanatory content.” 
+
+FLUENCY , AUTH ,CITE , S TATS , E XPAND -FACTS , STRUCT FMT ,TECH TERMS 
+
+0.8 (1) Random: U NIQUE W + AUTH + Q UOTE ADD + KW + STATS + STRUCT FMT 
+
++ BAL VIEW + CON - 
+
+> CISE
+
++ LLM; (2) Single: QUOTE ADD ; (3) AutoGEO; (4) Random: U NIQUE W + AUTH + S TATS + E XPAND -FACTS + STRUCT FMT +CONCISE + PROS AND -CONS + LLM 
+
+“Source 2 (TikTok) . . . lacks formal citation structure . . . Source 3 (Wiktionary): strong definitions . . . no exter-nal citation integration . . . EASY_UNDERSTANDING added . . . competitors are either informal (Source 2) or overly dense (Source 3).” 
+
+FLUENCY , AUTH ,CITE , EASY UND ,TECH TERMS , STATS ,STRUCT FMT 
+
+Table 12: Case study 1 — Query: “what is a kin” (query_id 450). At α=0 .0 the model fills pure target gaps (no citations, no structure). At α=0 .4 it audits competitor sources by name—observing that Source 4 cites the OED and anthropologists but lacks structure—and drops C ONCISE and U NIQUE W in favor of depth and fluency. At α=0 .8,after identifying that competitors are either informal (Source 2) or overly dense (Source 3), E ASY UND is restored to exploit that specific gap. 
+
+α Competitor Rewrites Reasoning Excerpts Selected Strategies 
+
+0.0 None “. . . inject concrete exchange rates and figures . . . trans-forming claims into trustworthy information . . . users need lists and tables, not dense paragraphs.” 
+
+AUTH , C ITE , E ASY UND ,TECH TERMS , STATS ,EXPAND FACTS ,STRUCT FMT 
+
+0.4 (1) Random: AUTH +CITE + STRUCT FMT +PROS AND CONS ; (2) Single: QUOTE ADD 
+
+“Competitors cite RBA, IMF, Bloomberg . . . Source 4 sounds like a service advertisement . . . tells what to do but not how to optimize . . . original listed only one provider; competitors present multi-provider compar-isons.” 
+
+AUTH , C ITE , E ASY UND ,TECH TERMS , STATS ,EXPAND FACTS ,STRUCT FMT , B AL VIEW ,CONCISE 
+
+0.8 (1) Random: CITE +STATS + EXPAND -FACTS + STRUCT FMT 
+
++ PROS AND CONS ; (2) Single: QUOTE ADD ; (3) AutoGEO; (4) Random: FLUENCY + UNIQUE W+ QUOTE ADD + CITE 
+
++ EASY UND + KW +STATS + E XPAND FACTS +STRUCT FMT + B AL VIEW +PROS AND CONS + LLM 
+
+“Source 4 is promotional; needs expert tone built on facts, not hype . . . transform vague descriptions into a useful currency guide . . . BALANCED_VIEW dropped: competitors already saturate multi-provider comparisons—adding it no longer differentiates.” 
+
+AUTH , C ITE , E ASY UND ,TECH TERMS , STATS ,EXPAND FACTS ,STRUCT FMT , CON -
+
+> CISE
+
+Table 13: Case study 2 — Query: “australian dollar currency converter” (query_id 972). At α=0 .0 the model identifies structural and citation gaps in isolation. At α=0 .4, observing that competitors cite authoritative financial institutions (RBA, IMF, Bloomberg) while the target reads as an advertisement, the model adds B AL VIEW to exploit the single-provider framing. At α=0 .8, with four competitors including AutoGEO all providing multi-provider coverage, B AL VIEW is dropped as it no longer differentiates—the model pivots to domain-specific terminology (T ECH TERMS ) as the remaining gap.
