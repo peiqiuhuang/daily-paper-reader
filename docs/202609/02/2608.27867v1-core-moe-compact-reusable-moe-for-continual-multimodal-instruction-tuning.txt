@@ -1,0 +1,599 @@
+Title: CoRe-MoE: Compact Reusable MoE for Continual Multimodal Instruction Tuning
+
+URL Source: https://arxiv.org/pdf/2608.27867v1
+
+Published Time: Mon, 31 Aug 2026 00:33:38 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# CoRe-MoE: Compact Reusable MoE for Continual Multimodal Instruction Tuning 
+
+Runze Liu 1,2*, Naibin Gu 1,2*, Mingxu Ai 1,2, Yuqing Li 1,2,Peng Fu 1,2†, Zheng Lin 1,2, Weiping Wang 11Institute of Information Engineering, Chinese Academy of Sciences, Beijing, China 
+
+> 2
+
+School of Cyber Security, University of Chinese Academy of Sciences, Beijing, China 
+
+{liurunze,gunaibin,fupeng}@iie.ac.cn 
+
+Abstract 
+
+Continual multimodal instruction tuning re-quires multimodal large language models to ac-quire new task abilities sequentially while pre-serving previously learned knowledge. LoRA-MoE provides a promising solution by intro-ducing expert-based capacity, but repeatedly learning and maintaining full LoRA experts leads to substantial parameter overhead. This raises a natural question: is full expert expan-sion necessary for every new task? To an-swer it, we analyze the SVD of task-specific LoRA updates and observe substantial over-lap in their input- and output-side LoRA di-rection subspaces, with task-specific adapta-tion largely captured by lightweight coordi-nates over these subspaces. Motivated by this observation, we propose CoRe-MoE, a Com-pact Reusable MoE framework for parameter-efficient continual multimodal instruction tun-ing. CoRe-MoE extracts reusable input- and output-side direction bases from an initial ex-pert bank, and for subsequent tasks trains only compact coordinate experts together with task-specific low-rank routers. Experiments on two representative MLLMs show that CoRe-MoE improves final average performance over the strongest competing baseline by up to 5.90 points, while using less than 1% of the train-able parameters required by sequential LoRA for later tasks.The code is publicly available at 
+
+https://github.com/runzezz/CoRe-MoE .
+
+1 Introduction 
+
+Multimodal large language models (MLLMs) have shown strong capabilities in visual instruction fol-lowing, image-text reasoning, and multimodal gen-eration (Liu et al., 2023; Dai et al., 2023; Zhu et al., 2024; Li et al., 2023). In real-world deployment, new multimodal tasks, domains, and instruction data may emerge over time, while repeatedly re-training on all historical data is often costly or 
+
+> *Equal contribution.
+> †Corresponding author.
+
+infeasible. This motivates continual multimodal instruction tuning, where an MLLM must acquire new task-specific abilities while preserving previ-ously learned knowledge. Compared with static instruction tuning, this setting is more challenging because the model must adapt to heterogeneous multimodal tasks without catastrophic forgetting. Existing studies have explored continual mul-timodal instruction tuning from the perspective of knowledge preservation. Early work analyzes severe forgetting under sequential adaptation of large multimodal models (He et al., 2023), while later methods mitigate forgetting through prompt-based task selection (Zeng et al., 2025), constrained parameter updates (Chen et al., 2025), or LoRA-based residual adaptation (Luo et al., 2026). While these methods are effective for preserving previous knowledge, they treat learned adaptations as ob-jects to be protected, rather than examining whether learned structures can be reused for future tasks. To improve task-specific adaptation capacity, recent studies introduce expert-based LoRA tun-ing into continual multimodal instruction tuning. For example, MoELoRA in CoIN (Chen et al., 2024), CL-MoE (Huai et al., 2025), and LLaVA-CMoE (Zhao et al., 2025) use MoE-style routing or expert expansion to allocate task-relevant LoRA experts. However, continual LoRA-MoE still faces two structural challenges. First, expanding LoRA experts for new tasks introduces non-negligible pa-rameter overhead as the task sequence grows. Sec-ond, shared expert pools and routers may entangle task-specific knowledge instead of organizing it for reuse. This raises a key question: do later tasks need to repeatedly learn complete LoRA experts, or can reusable LoRA direction subspaces be shared across tasks? 
+
+To answer this question, we analyze the SVD structure of task-specific LoRA updates in contin-ual tuning. Our study shows that later-task input-and output-side LoRA direction subspaces substan-arXiv:2608.27867v1 [cs.AI] 28 Aug 2026 tially overlap with those learned from the initial task. Moreover, freezing the initial-task direction bases and training only middle coordinate matrices remains effective for later-task adaptation, suggest-ing that full expert expansion may be unnecessary for every new task. Motivated by this finding, we propose CoRe-MoE , short for Co mpact Re usable MoE, a LoRA-MoE framework for continual multimodal instruc-tion tuning. CoRe-MoE separates reusable direc-tion bases from task-specific compact coordinates: it extracts reusable input- and output-side direc-tion bases from the initial LoRA-MoE expert bank, and subsequent tasks only learn task-coordinate matrices with task-specific low-rank routers. This enables later tasks to exploit previously discovered direction bases instead of repeatedly learning com-plete LoRA experts. Experiments on continual multimodal task se-quences with LLaVA-1.5-7B and Qwen2-VL-7B show that CoRe-MoE improves continual mul-timodal instruction tuning. On LLaVA-1.5-7B, CoRe-MoE achieves 71.20% average performance, outperforming the second-best baseline by 3.33 
+
+points, and improves final average performance after the last task by 5.90 points. On Qwen2-VL-7B, CoRe-MoE improves Avg. and Last by 2.32 
+
+and 4.58 points, respectively. CoRe-MoE shows stronger resistance to forgetting on both backbones. In terms of efficiency, it introduces only about 
+
+0.6M trainable parameters per later task. In our experimental setup, trainable parameters required for subsequent-task adaptation are less than 1% 
+
+of those required by LoRA-FT and vanilla LoRA-MoE. Its cumulative stored overhead also remains close to sequential LoRA fine-tuning. In summary, our contributions are as follows: • We reveal direction-subspace redundancy in continual LoRA-MoE expansion, showing that later tasks can reuse initial-task direction subspaces and adapt through compact task-specific coordinates. • We propose CoRe-MoE, a Compact Reusable MoE framework that extracts reusable input-and output-side direction bases from an initial expert bank, and trains compact coordinate experts with task-specific low-rank routers for later tasks. • Extensive experiments on LLaVA-1.5-7B and Qwen2-VL-7B show that CoRe-MoE im-proves final average performance by up to 5.90 points and requires less than 1% of the trainable parameters used by sequential LoRA for later tasks. 
+
+2 Related Work 
+
+Continual Instruction Tuning for Multimodal Large Language Models. Continual instruction tuning extends continual learning (Li and Hoiem, 2017; Kirkpatrick et al., 2017) to multimodal instruction-following models, requiring MLLMs to acquire new abilities sequentially while retaining previously learned knowledge. Eproj (He et al., 2023) first studies sequential instruction tuning for large multimodal models and reveals severe forget-ting. CoIN (Chen et al., 2024) further constructs a benchmark for MLLM continual instruction tuning and introduces MoELoRA with LoRA experts and MoE routing. Subsequent methods mitigate for-getting from different angles: ModalPrompt (Zeng et al., 2025) uses dual-modality guided prompts, Continual-LLaVA (Cao et al., 2024) studies contin-ual tuning for large vision-language models, and HiDe-LLaVA (Guo et al., 2025a) adopts hierarchi-cal decoupling for task-specific expansion and task-general fusion. Recent surveys summarize this area into architecture-, regularization-, and replay-based paradigms (Guo et al., 2025b). Different from these works, CoRe-MoE does not primarily design a new forgetting constraint; instead, it studies whether LoRA parameters learned from previous tasks con-tain reusable structures for later tasks. 
+
+LoRA-MoE and Compact LoRA Representa-tions. LoRA (Hu et al., 2021) is a widely used parameter-efficient fine-tuning method, injecting low-rank trainable updates into frozen pretrained weights. LoRA-MoE methods improve adaptation capacity by replacing a single LoRA branch with multiple expert branches and routing their outputs. Recent large-scale multimodal MoE models such as ERNIE 5.0 (Wang et al., 2026) further explore modality-agnostic expert routing and elastic rout-ing sparsity for flexible efficiency–performance trade-offs. For example, MoLE (wu et al., 2024) treats LoRA branches as gated experts, while MoLA (Gao et al., 2025) and HMoRA (Liao et al., 2025) study layer-wise expert allocation and hi-erarchical routing. DIVE (Feng et al., 2025) ex-plores diversity-enhanced MoE construction by re-constructing dense FFNs into specialized experts through pruning-based reconstruction and efficient Figure 1: ArxivQA-to-ImageNet-R direction-subspace overlap. High SAR on both V A and U B indicates clear cross-task overlap. 
+
+retraining. Beyond routing, recent work explores the internal structure and parameter allocation of LoRA updates. BeamLoRA (Gu et al., 2025) re-veals that different LoRA rank components exhibit heterogeneous and dynamically evolving impor-tance, and reallocates capacity by pruning less important ranks and expanding important ones. MoSLoRA (Wu et al., 2024) decomposes LoRA up-dates into subspaces, indicating separable structural components in low-rank adaptation. Core Space Merging (Panariello et al., 2026) represents LoRA-adapted models with shared bases and compact co-ordinate matrices for model merging. Unlike these works, CoRe-MoE focuses on direction-subspace redundancy across tasks in continual LoRA tun-ing, and builds a compact reusable MoE where later tasks learn task-specific compact coordinates rather than complete LoRA experts. 
+
+3 Pilot Study 
+
+To examine whether newly expanded LoRA-MoE experts overlap with previously learned ones, we analyze the internal structure of task-specific LoRA factors. For task Tt, the LoRA update is: 
+
+∆Wt = BtAt. (1) A straightforward way to examine cross-task over-lap is to compare the learned LoRA factors ( At)and ( Bt) across tasks. However, such a comparison implicitly assumes that the intermediate low-rank channels have a fixed and comparable coordinate system across different experts. This assumption does not hold for LoRA. The rank-r bottleneck is only an internal representation, and its basis can be changed without altering the induced update. Specifically, for any invertible matrix R ∈ Rr×r,we have 
+
+BtAt = ( BtR)( R−1At). (2) This implies that the raw LoRA factors are not uniquely identifiable: different factor pairs can rep-resent exactly the same update. Therefore, directly comparing At and Bt may make two tasks appear different even when their LoRA updates are similar. This ambiguity suggests that we should com-pare the subspaces induced by the LoRA factors instead of their raw coordinates. These subspaces are invariant to the above reparameterization: mul-tiplying Bt by an invertible matrix does not change its column space, and multiplying At by an in-vertible matrix on the left does not change its row space. We therefore use SVD as a tool to obtain orthonormal bases of these invariant subspaces: 
+
+Bt = U Bt ΣBt V B⊤ 
+
+> t
+
+, At = U At ΣAt V A⊤ 
+
+> t
+
+. (3) The left singular vectors U Bt span the column space of Bt and span the output-side direction subspace, while the right singular vectors V At span the row space of At and span the input-side direction sub-space. In our analysis, we compare these factor-side subspaces rather than raw LoRA factors. Under this factor-side view, a LoRA update can be interpreted as a transformation from an input-side subspace to an output-side subspace. Given the direction bases U Bt and V At , the remaining task-dependent transformation can be represented by a coordinate matrix 
+
+Ct = U B⊤ 
+
+> t
+
+BtAtV At , (4) so that 
+
+∆Wt = U Bt CtV A⊤ 
+
+> t
+
+. (5) Here, U Bt and V At describe the boundary directions of the update, while Ct specifies how input-side di-rections are mapped to output-side directions. This decomposition allows us to separate reusable di-rection subspaces from task-specific coordinates. This decomposition motivates the following two empirical questions: do different tasks share similar input- and output-side LoRA direction subspaces, and if so, can later tasks adapt by learning only task-specific coordinates over these bases? To answer the first question, we measure cross-task direction-subspace overlap using the projec-tion idea of SAR (Marczak et al., 2025). As shown in Figure 1, projecting ArxivQA (Li et al., 2024) direction subspaces onto ImageNet-R (Hendrycks et al., 2021) yields high SAR values across lay-ers and modules. Both the input-side subspace 
+
+V A and the output-side subspace U B exhibit clear (a) ArxivQA performance. 
+
+> (b) CLEVR-Math performance.
+> Figure 2: Effect of frozen LoRA direction bases on later-task adaptation.
+
+overlap, suggesting that later-task experts share di-rection subspaces already covered by the initial expert bank. To answer the second question, we freeze U B
+
+and V A extracted from the ImageNet-R expert bank and train only the coordinate matrix for sub-sequent UCIT tasks (Guo et al., 2025a). As shown in Figure 2, using frozen U B /V A with the target-task coordinate matrix remains close to full LoRA on ArxivQA and CLEVR-Math (Lindström and Abraham, 2022), while clearly outperforming se-quential fine-tuning and zero-shot evaluation. In contrast, using a mismatched Flickr30k (Plummer et al., 2015) coordinate matrix leads to lower per-formance, indicating that the direction bases are reusable while the task-specific coordinate matrix should remain task-specific. These observations motivate CoRe-MoE to preserve reusable direction bases and learn compact task-specific coordinates for later tasks. 
+
+4 Methodology 
+
+In this section, we propose CoRe-MoE, a Com-pact Reusable MoE framework for continual multi-modal instruction tuning. The key idea is to retain the expert routing capacity of LoRA-MoE while reducing the redundant learning of similar LoRA direction subspaces across tasks. As illustrated in Figure 3, CoRe-MoE warms up a vanilla LoRA-MoE expert bank on the initial task, converts the learned experts into reusable direction bases and coordinate matrices, and then trains compact coor-dinate experts with task-specific low-rank routers for subsequent tasks. During inference, visual and textual prototypes select the task-related router and compact coordinate expert. 
+
+4.1 Initial Expert Bank Training 
+
+CoRe-MoE first warms up a vanilla LoRA-MoE adapter on the initial task to obtain an expressive expert bank. Given the hidden state h, the output of a LoRA-MoE layer is: 
+
+y = W0x + X
+
+> e∈S (x)
+
+ge(h)B1,e A1,e x, (6) where S(x) and ge(x) denote the selected experts and their routing weights. During this warmup stage, the pretrained weight W0 remains frozen, while the LoRA-MoE experts and router are trained. We also collect visual and textual task prototypes from the initial task for later task-aware routing. The learned expert bank is then converted into reusable input- and output-side direction bases and coordinate matrices. 
+
+4.2 Compact Coordinate Conversion 
+
+After the first-task LoRA-MoE warmup, CoRe-MoE performs the compact coordinate conversion shown in Figure 3. This step converts the initial expert bank into reusable direction bases and coor-dinate matrices, separating reusable basis structures from task-specific compact coordinates. Let E be the number of experts and r be the LoRA rank. For each layer, the B matrices of all experts are con-catenated along the column dimension, while the 
+
+A matrices are concatenated along the row dimen-sion: Bcat = [ B1,1, . . . , B 1,E ],Acat =
+
+
+
+A1,1
+
+...
+
+A1,E 
+
+ . (7) Here, Bcat ∈ Rdout ×Er and Acat ∈ REr ×din . We then apply SVD to obtain reusable output-side and input-side direction bases: 
+
+Bcat = U B
+
+> dir
+
+ΣB RB ⊤,Acat = LAΣAV A
+
+> dir
+> ⊤
+
+.
+
+(8) SVD 
+
+> Router1
+
+SVD       
+
+> Task N Task 2
+> Task N
+> Task 1
+> Visual Encoder
+> Task coordinate matrix
+> Router1
+> Task Prototype Construct
+> Test data from new task
+> Routing with Visual and Textual Prototypes
+> Visual Encoder Text Encoder
+> Train data
+> ... ... ...
+> similarity Cosine
+> Full Router1
+> Input Hidden
+> VLLM Backbone
+> Compact Coordinate Conversion
+> Text Encoder
+> LoRA-MoE Training Warmup for Task 1 Continual Training
+> Output
+> Train data from task 1
+> Router Low-Rank
+> Task-Aware Inference
+> LoRA Adapter
+> Trainable
+> Frozen
+
+Figure 3: Overview of CoRe-MoE pipeline. In the initial task, CoRe-MoE trains a vanilla LoRA-MoE expert bank and converts it into reusable direction bases and coordinate matrices through compact coordinate conversion. For subsequent tasks, the direction bases are frozen, and only compact coordinate experts and task-specific routers are trained. During inference, visual and textual prototypes guide task-aware routing, while token-level routing is performed in the corresponding compact coordinate space. 
+
+Thus, U B 
+
+> dir
+
+∈ Rdout ×Er and V A 
+
+> dir
+
+∈ Rdin ×Er define reusable direction bases for representing LoRA ex-perts. Inspired by the compact low-rank representation in low-rank model merging (Panariello et al., 2026), each original LoRA expert is projected onto these direction bases as a coordinate matrix: 
+
+C1,e = U B
+
+> dir
+> ⊤
+
+B1,e A1,e V A
+
+> dir
+
+. (9) Here, C1,e ∈ REr ×Er records how the e-th ex-pert combines the reusable input- and output-side bases. The corresponding LoRA update can be reconstructed by: 
+
+B1,e A1,e ≈ U B
+
+> dir
+
+C1,e V A
+
+> dir
+> ⊤
+
+. (10) After conversion, CoRe-MoE freezes U B 
+
+> dir
+
+and V A
+
+> dir
+
+,so subsequent tasks need to learn compact coordi-nate experts rather than complete LoRA experts. 
+
+4.3 Compact Coordinate Training 
+
+Given the frozen direction bases U B 
+
+> dir
+
+and V A
+
+> dir
+
+, each later task Tt with t ≥ 2 learns task-specific coor-dinate matrix/matrices in the compact coordinate space, rather than newly allocating complete LoRA factors. For a compact coordinate expert indexed by e, its update is represented as: 
+
+∆Wt,e = U B
+
+> dir
+
+Ct,e V A
+
+> dir
+> ⊤
+
+. (11) This reduces the trainable expert parameters from 
+
+O(E(dout + din )r) for full LoRA experts to 
+
+O(( Er )2) for compact coordinate matrices, while preserving the expert-style representation of LoRA-MoE. 
+
+Low-rank routing for later tasks. Unlike Task 1, which uses the full-rank router in the vanilla LoRA-MoE warmup, tasks from T2 onward use a low-rank router operating in the compact input-side space. Given a row-wise token hidden state 
+
+x ∈ Rdin , we project it onto the reusable input-side basis: 
+
+xproj = xV A
+
+> dir
+
+. (12) The router then computes expert logits from this compact representation: 
+
+p = LRRouter t(xproj ). (13) Since routing operates on xproj rather than the full hidden state, it aligns expert selection with compact coordinate experts and further reduces the trainable and stored parameter overhead. 
+
+4.4 Task-Aware Routing 
+
+In multimodal continual instruction tuning, task identity is unavailable during inference. CoRe-MoE therefore uses prototype-guided task routing to select the task-related router and compact co-ordinate expert. For each learned task, we main-tain a visual prototype and a textual prototype by extracting image and text features with CLIP en-coders (Radford et al., 2021). For a test sample, let Method Eval. ImageNet-R ArxivQA VizWiz IconQA CLEVR-Math Flickr30k Avg. ( ↑) BWT final (↑)Zero-shot – 16.33% 53.83% 38.56 19.97% 20.40% 41.88 31.83% –Sequential Fine-Tuning – 90.80% 93.07% 59.41 75.50% 72.70% 57.20 74.78% –LoRA-FT Avg. 79.08% 80.85% 48.13 67.63% 55.10% 57.20 64.67% -20.31% Last 68.20% 75.43% 44.61 64.20% 37.50% 57.20 57.85% HiDe Avg. 88.64% 92.81% 49.25 67.84% 52.44% 53.36 67.39% -5.98% Last 85.67% 93.07% 44.67 64.63% 50.40% 53.36 65.30% MoELoRA Avg. 81.66% 83.49% 52.00 70.85% 61.89% 57.36 67.87% -17.18% Last 69.40% 78.37% 44.17 67.93% 48.90% 57.36 61.02% CL-MoE Avg. 88.05% 83.19% 44.89 68.54% 59.88% 57.41 67.00% -9.01% Last 84.37% 78.33% 44.54 64.93% 51.70% 57.41 63.55% CoRe-MoE (ours) Avg. 90.47% 92.01% 56.88 65.73% 66.37% 55.74 71.20% (+3.33) -0.02%         
+
+> Last 90.47% 91.97% 56.91 65.73% 66.37% 55.74 71.20% (+5.90)
+
+Table 1: Main results on the UCIT benchmark with LLaVA-1.5-7B. Avg. and Last denote continual-average and final-after-last-task performance, respectively. BWT final is computed after the last task. Best and second-best continual results are marked in bold and underlined, and red numbers indicate gains over the second-best result. 
+
+zv and zq denote its visual and textual features. We compute its similarity to each task Tt as: 
+
+st = α·sim( zv, m vt )+(1 −α)·sim( zq, m qt ), (14) where sim( ·, ·) denotes cosine similarity, and α
+
+balances the visual and textual modalities. The task with the highest similarity is selected as: 
+
+ˆt = arg max  
+
+> t
+
+st. (15) CoRe-MoE then activates the corresponding router and compact coordinate expert for Tˆt. This keeps task-level expert selection explicit, while token-level routing is performed within the selected task’s compact coordinate space. 
+
+5 Experiments 
+
+5.1 Experimental Setup Backbones. We evaluate CoRe-MoE on LLaVA-1.5-7B (Liu et al., 2024) and Qwen2-VL-7B-Instruct (Wang et al., 2024). We use CLIP-L/14-336 (Radford et al., 2021) to extract visual/textual task prototypes for task-aware routing. 
+
+Datasets. We conduct experiments on the UCIT benchmark introduced by HiDe-LLaVA (Guo et al., 2025a). For LLaVA-1.5-7B, we follow the six-task sequence: ImageNet-R (Hendrycks et al., 2021), ArxivQA (Li et al., 2024), VizWiz-caption (Gu-rari et al., 2018), IconQA (Lu et al., 2021), CLEVR-Math (Lindström and Abraham, 2022), and Flickr30k (Plummer et al., 2015). For Qwen2-VL-7B-Instruct, we use the same sequence except CLEVR-Math, which is excluded because the base model already achieves a very high zero-shot accu-racy of 96.37% on this task. 
+
+Baselines. We compare CoRe-MoE with sev-eral continual instruction tuning baselines. Z ERO - 
+
+> SHOT
+
+evaluates the untouched base MLLM, while SEQUENTIAL FINE -T UNING reports immediate performance after current-task training. LORA-FT (Hu et al., 2021) trains one LoRA adapter per task, and M OEL ORA (Chen et al., 2024) extends LoRA with multiple experts and a learned router. We also compare with CL-M OE (Huai et al., 2025) and H IDE (Guo et al., 2025a). All baselines follow the same task order as CoRe-MoE. 
+
+Implementation Details. For both backbones, Task 1 is trained with a vanilla LoRA-MoE adapter using rank r = 8 , E = 3 experts, top-2 rout-ing, and lr = 2 × 10 −4. After Task 1, CoRe-MoE extracts reusable input- and output-side direction bases through SVD. For later tasks, we train only the compact coordinate expert and task-specific low-rank router. 
+
+Evaluation Metrics. We use Accuracy for ImageNet-R, ArxivQA, IconQA, and CLEVR-Math, and the dataset-level Average score for VizWiz-caption and Flickr30k. We report aver-age performance during continual evaluation, final average performance after the last task, and Back-ward Transfer (BWT) for forgetting, where BWT is computed only on the final model after the full task sequence. 
+
+5.2 Main Results 
+
+Tables 1 and 2 report the main results on the UCIT benchmark with LLaVA-1.5-7B and Qwen2-VL-7B, respectively. We compare CoRe-MoE with zero-shot evaluation, sequential fine-tuning, LoRA-Method Eval. ImageNet-R ArxivQA VizWiz IconQA Flickr30k Avg. ( ↑) BWT final (↑)Zero-shot – 28.30% 39.10% 42.72 31.17% 49.54 38.17% –Sequential Fine-Tuning – 94.27% 91.23% 66.01 97.10% 60.93 82.51% –LoRA-FT Avg. 86.17% 84.37% 59.40 95.83% 60.93 77.34% -12.16% Last 73.27% 79.90% 52.22 94.57% 60.93 72.18% HiDe Avg. 89.25% 83.92% 64.95 96.15% 60.42 78.94% -6.27% Last 86.33% 80.87% 59.30 94.67% 60.42 76.32% MoELoRA Avg. 82.02% 83.78% 59.62 96.30% 60.92 76.54% -16.11% Last 60.60% 79.07% 49.94 95.10% 60.92 69.13% CL-MoE Avg. 92.83% 91.92% 51.79 93.48% 60.74 78.12% -3.41% Last 90.57% 88.70% 51.53 91.93% 60.74 76.69% CoRe-MoE (ours) Avg. 94.13% 93.84% 65.51 92.13% 60.71 81.26% (+2.32) -0.01%        
+
+> Last 94.13% 93.87% 65.50 92.13% 60.71 81.27% (+4.58)
+
+Table 2: Main results on the UCIT benchmark with Qwen2-VL-7B. Avg. and Last denote continual-average and final performance, respectively. BWT final is computed after the last task. Bold/underline mark the best/second-best continual learning results, and red numbers indicate gains over the second-best result.                             
+
+> Method Avg. ( ↑)Last ( ↑)BWT ( ↑)Vanilla LoRA-MoE ( r= 16 )73.21 73.21 -0.01 Budget-Matched LoRA-MoE 70.61 70.61 -0.01 CoRe-MoE w/ LR Router 71.20 71.20 -0.02 + Ortho Init w/ LR Router 67.02 66.97 -0.19 CoRe-MoE w/ Full Router 71.54 71.52 -0.07 + Ortho Init w/ Full Router 71.07 71.05 -0.09 + Probe w/ Full Router 60.16 60.14 -0.10 w/ Global Router 57.43 54.64 -19.28
+
+Table 3: Ablation results of expert parameterization, routing strategies, and basis initialization on LLaVA-1.5-7B. 
+
+FT, HiDe, MoELoRA, and CL-MoE under the same task-incremental evaluation protocol. On LLaVA-1.5-7B, CoRe-MoE achieves the best performance among continual tuning baselines. It obtains 71.20% in the Avg. setting, outperforming the second-best method by 3.33 points, and reaches 71.20% in the Last setting, improving second-best result by 5.90 points. CoRe-MoE also achieves the highest BWT of −0.02% , indicating strong retention of learned tasks. On Qwen2-VL-7B, CoRe-MoE shows consistent gains. Since CLEVR-Math is excluded from the Qwen2-VL continual training sequence, the aver-age score is computed over the remaining five tasks. CoRe-MoE obtains 81.26% in the Avg. setting and 81.27% in the Last setting, exceeding the second-best results by 2.32 and 4.58 points, respectively. Its BWT of -0.01% is also the highest among all compared continual learning methods. Overall, CoRe-MoE consistently improves av-erage performance and reduces forgetting across different backbones. These results indicate that compact coordinate experts under reusable direc-tion bases can effectively support continual multi-modal instruction tuning. 
+
+5.3 Ablation Study 
+
+We conduct ablation studies on the UCIT bench-mark with LLaVA-1.5-7B to analyze expert param-eterization, router design, reusable direction-basis initialization, and dual-modality task routing. Ta-ble 3 summarizes the quantitative ablation results, while Figure 4 analyzes the effect of visual-textual similarity weights in task routing. 
+
+Expert parameterization and probe-based selec-tion. Vanilla LoRA-MoE trains complete LoRA experts for each task. With rank r = 16 , it achieves the highest Avg. and Last scores, serving as a full-capacity reference. However, this gain comes with larger stored parameter overhead, as further ana-lyzed in Figure 5. To further examine whether the advantage of CoRe-MoE comes from a different parameter budget, we introduce a budget-matched LoRA-MoE variant with similar adaptation capac-ity. Specifically, this variant restricts LoRA expert expansion after Task 1 by adding LoRA experts only to the last transformer layer, matching the adaptation budget of CoRe-MoE. As shown in Ta-ble 3, the budget-matched LoRA-MoE achieves an Avg. score of 70.61, while CoRe-MoE obtains 71.20 under the same evaluation setting, demon-strating that reusable direction bases and compact coordinate experts provide a more effective pa-rameterization for continual adaptation. We also evaluate a probe-based variant inspired by LLaVA-CMoE (Zhao et al., 2025), which uses probe ex-Figure 4: Effect of α on task routing accuracy after com-pleting all six UCIT tasks. The coefficient α balances textual and visual similarities. 
+
+perts to decide where new experts should be ex-panded. In our compact coordinate setting, this variant reduces the Avg. score to 60.16, suggesting that directly applying probe-based layer selection may discard useful task-coordinate capacity for UCIT tasks. 
+
+Router design. We compare the default low-rank router with a full-rank router and a shared global router. Replacing the low-rank router with a full-rank router slightly improves Avg. from 71.20 to 71.54, suggesting that the low-rank router is not the main source of average-score gains under UCIT task boundaries. However, the low-rank router bet-ter matches the compact coordinate representation and reduces router-side trainable and stored param-eters. In contrast, the global router variant causes a large performance drop, reducing Avg. to 57.43. This indicates that sharing one router across tasks disrupts task-specific expert selection. 
+
+Reusable direction-basis initialization. We compare the SVD-based conversion with orthog-onal initialization to test whether the reusable di-rection bases should be extracted from the Task 1 expert bank. In the orthogonal-initialized variants, 
+
+U B 
+
+> dir
+
+and V A 
+
+> dir
+
+are replaced by random orthogonal bases of the same size, while the compact coor-dinate training procedure is kept unchanged. As shown in Table 3, orthogonal initialization under-performs SVD-based extraction, suggesting that di-rection bases from the Task 1 expert bank provide a more suitable reconstruction space for later-task updates than arbitrary orthogonal bases. 
+
+Dual-modality task routing. Figure 4 analyzes task routing after all six UCIT tasks by varying the balance coefficient α between textual and visual             
+
+> Metric RAVICF AIRFCV FRCAVI CVIFAR Last 71.20% 69.79% 69.71% 69.90% Avg. 71.20% 69.80% 69.73% 69.91%
+> Table 4: Ablation results under different task orders. R, A, V, I, C, and F denote ImageNet-R, ArxivQA, VizWiz-caption, IconQA, CLEVR-Math, and Flickr30k.
+> Figure 5: Continual learning phase parameter efficiency on UCIT. Bars denote average trainable parameters per later task from Tasks 2–6, and the line denotes cumula-tive additional stored overhead after six tasks.
+
+similarities. Text-only routing achieves 82.52% ac-curacy, visual-only routing reaches 97.95%, and combining both modalities with α = 0 .5 achieves the best accuracy of 99.74%. This shows that vi-sual and textual prototypes provide complementary signals for task identification. 
+
+5.4 Further Analysis Parameter efficiency. Figure 5 compares aver-age trainable parameters per later task and cu-mulative stored overhead after six UCIT tasks. Trainable-parameter bars exclude the Task 1warmup and average over Tasks 2–6. CoRe-MoE introduces only about 0.6M trainable parameters per later task, compared with about 60M for LoRA-FT and vanilla LoRA-MoE and over 260M for MoELoRA/CL-MoE. Using a full-rank router in-creases this overhead to about 8M, confirming the efficiency benefit of the low-rank router. For stor-age, CoRe-MoE keeps cumulative overhead close to sequential LoRA fine-tuning, while remaining far below MoELoRA/CL-MoE and vanilla LoRA-MoE. These results show that CoRe-MoE mainly reduces continual learning phase trainable param-eters while maintaining LoRA-comparable stored overhead. 
+
+Robustness to task order. Table 4 evaluates CoRe-MoE under different UCIT task orders. The default order RAVICF obtains 71.20% Avg. and 71.20% Last, while AIRFCV, FRCAVI, and CV-IFAR still achieve around 69.8%–69.9% average performance. The small variation across task or-ders suggests that CoRe-MoE is not highly sensi-tive to the starting task category. This indicates that reusable direction bases and task-aware routing re-main reasonably robust under different continual learning sequences. 
+
+6 Conclusion 
+
+In this paper, we identify direction-subspace redun-dancy in continual LoRA tuning: LoRA updates from different tasks exhibit high overlap in their input- and output-side LoRA direction subspaces, suggesting that later tasks often relearn similar di-rection subspaces. Motivated by this, we propose CoRe-MoE, a Compact Reusable MoE framework for continual multimodal instruction tuning. CoRe-MoE separates reusable direction bases from task-specific compact coordinates by extracting reusable input- and output-side direction bases from the ini-tial expert bank. Later tasks only learn coordinate matrices and task-specific low-rank routers, avoid-ing repeated learning of complete LoRA experts. Extensive experiments show that CoRe-MoE im-proves continual learning performance and reduces forgetting while greatly lowering trainable parame-ters for subsequent-task adaptation and keeping ad-ditional stored overhead close to sequential LoRA fine-tuning. These results suggest that reusing di-rection subspaces with compact coordinates is an effective and scalable strategy for continual multi-modal instruction tuning. 
+
+Limitations 
+
+Although CoRe-MoE improves parameter effi-ciency and forgetting mitigation, it still depends on the reusable direction bases extracted from the ini-tial task expert bank. If the initial task is less repre-sentative of later tasks, these frozen direction bases may provide less suitable bases for subsequent adaptation. In addition, the task-aware routing module relies on visual and textual task prototypes, whose robustness under ambiguous task bound-aries or open-world task distributions remains to be further explored. Current experiments are mainly conducted on UCIT with two 7B-level backbones, and future work will evaluate CoRe-MoE on longer task sequences, larger models, and more diverse multimodal continual learning scenarios. 
+
+Ethics Statement 
+
+This work uses publicly available datasets and benchmarks for continual multimodal instruction tuning. We do not collect, annotate, or process any private or personally identifiable information. All datasets are used in accordance with their origi-nal licenses and intended research purposes. We acknowledge that multimodal models may inherit biases or unintended behaviors from their training data, and further evaluation is necessary before deploying such models in real-world applications. 
+
+Acknowledgment 
+
+This work is supported by the National Natural Science Foundation of China (No. 62472419, 62472420). 
+
+References        
+
+> Meng Cao, Yuyang Liu, Yingfei Liu, Tiancai Wang, Jiahua Dong, Henghui Ding, Xiangyu Zhang, Ian Reid, and Xiaodan Liang. 2024. Continual llava: Continual instruction tuning in large vision-language models. arXiv preprint arXiv:2411.02564 .Cheng Chen, Junchen Zhu, Xu Luo, Heng T Shen, Jingkuan Song, and Lianli Gao. 2024. Coin: A bench-mark of continual instruction tuning for multimodel large language models. Advances in neural informa-tion processing systems , 37:57817–57840. Jinpeng Chen, Runmin Cong, Yuzhi Zhao, Hongzheng Yang, Guangneng Hu, Horace Ho Shing Ip, and Sam Kwong. 2025. Sefe: Superficial and essential forget-ting eliminator for multimodal continual instruction tuning. arXiv preprint arXiv:2505.02486 .Wenliang Dai, Junnan Li, Dongxu Li, Anthony Tiong, Junqi Zhao, Weisheng Wang, Boyang Li, Pascale N Fung, and Steven Hoi. 2023. Instructblip: Towards general-purpose vision-language models with instruc-tion tuning. Advances in neural information process-ing systems , 36:49250–49267. Yuchen Feng, Bowen Shen, Naibin Gu, Jiaxuan Zhao, Peng Fu, Zheng Lin, and Weiping Wang. 2025. Dive into moe: Diversity-enhanced reconstruction of large language models from dense into mixture-of-experts.
+> Preprint , arXiv:2506.09351. Chongyang Gao, Kezhen Chen, Jinmeng Rao, Ruibo Liu, Baochen Sun, Yawen Zhang, Daiyi Peng, Xi-aoyuan Guo, and VS Subrahmanian. 2025. Mola: Moe lora with layer-wise expert allocation. In Find-ings of the Association for Computational Linguistics: NAACL 2025 , pages 5097–5112. Naibin Gu, Zhenyu Zhang, Xiyu Liu, Peng Fu, Zheng Lin, Shuohuan Wang, Yu Sun, Hua Wu, Weiping
+
+Wang, and Haifeng Wang. 2025. BeamLoRA: Beam-constraint low-rank adaptation. In Proceedings of the 63rd Annual Meeting of the Association for Compu-tational Linguistics (Volume 1: Long Papers) , pages 11871–11883, Vienna, Austria. Association for Com-putational Linguistics. Haiyang Guo, Fanhu Zeng, Ziwei Xiang, Fei Zhu, Da-Han Wang, Xu-Yao Zhang, and Cheng-Lin Liu. 2025a. Hide-llava: Hierarchical decoupling for con-tinual instruction tuning of multimodal large lan-guage model. In Proceedings of the 63rd Annual Meeting of the Association for Computational Lin-guistics (Volume 1: Long Papers) , pages 13572– 13586. Haiyang Guo, Fanhu Zeng, Fei Zhu, Jiayi Wang, Xukai Wang, Jingang Zhou, Hongbo Zhao, Wenzhuo Liu, Shijie Ma, Da-Han Wang, Xu-Yao Zhang, and Cheng-Lin Liu. 2025b. Continual learning for generative ai: From llms to mllms and beyond. Preprint ,arXiv:2506.13045. Danna Gurari, Qing Li, Abigale J Stangl, Anhong Guo, Chi Lin, Kristen Grauman, Jiebo Luo, and Jeffrey P Bigham. 2018. Vizwiz grand challenge: Answering visual questions from blind people. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 3608–3617. Jinghan He, Haiyun Guo, Ming Tang, and Jinqiao Wang. 2023. Continual instruction tuning for large multi-modal models. arXiv e-prints , pages arXiv–2311. Dan Hendrycks, Steven Basart, Norman Mu, Saurav Kadavath, Frank Wang, Evan Dorundo, Rahul Desai, Tyler Zhu, Samyak Parajuli, Mike Guo, and 1 oth-ers. 2021. The many faces of robustness: A critical analysis of out-of-distribution generalization. In Pro-ceedings of the IEEE/CVF international conference on computer vision , pages 8340–8349. Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2021. Lora: Low-rank adaptation of large language models. Preprint , arXiv:2106.09685. Tianyu Huai, Jie Zhou, Xingjiao Wu, Qin Chen, Qingchun Bai, Ze Zhou, and Liang He. 2025. Cl-moe: Enhancing multimodal large language model with dual momentum mixture-of-experts for contin-ual visual question answering. In Proceedings of the computer vision and pattern recognition conference ,pages 19608–19617. James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel Veness, Guillaume Desjardins, Andrei A Rusu, Kieran Milan, John Quan, Tiago Ramalho, Ag-nieszka Grabska-Barwinska, and 1 others. 2017. Overcoming catastrophic forgetting in neural net-works. Proceedings of the national academy of sci-ences , 114(13):3521–3526. Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi. 2023. Blip-2: Bootstrapping language-image pre-training with frozen image encoders and large lan-guage models. In International conference on ma-chine learning , pages 19730–19742. PMLR. Lei Li, Yuqi Wang, Runxin Xu, Peiyi Wang, Xiachong Feng, Lingpeng Kong, and Qi Liu. 2024. Multimodal arxiv: A dataset for improving scientific comprehen-sion of large vision-language models. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pages 14369–14387. Zhizhong Li and Derek Hoiem. 2017. Learning without forgetting. IEEE transactions on pattern analysis and machine intelligence , 40(12):2935–2947. Mengqi Liao, Wei Chen, Junfeng Shen, Shengnan Guo, and Huaiyu Wan. 2025. Hmora: Making llms more effective with hierarchical mixture of lora experts. In 
+
+The Thirteenth International Conference on Learning Representations .Adam Dahlgren Lindström and Savitha Sam Abraham. 2022. Clevr-math: A dataset for compositional lan-guage, visual and mathematical reasoning. arXiv preprint arXiv:2208.05358 .Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee. 2024. Improved baselines with visual instruc-tion tuning. In Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition ,pages 26296–26306. Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee. 2023. Visual instruction tuning. Advances in neural information processing systems , 36:34892– 34916. Pan Lu, Liang Qiu, Jiaqi Chen, Tony Xia, Yizhou Zhao, Wei Zhang, Zhou Yu, Xiaodan Liang, and Song-Chun Zhu. 2021. Iconqa: A new benchmark for abstract di-agram understanding and visual language reasoning. 
+
+arXiv preprint arXiv:2110.13214 .Mao-Lin Luo, Zi-Hao Zhou, Yi-Lin Zhang, Yuanyu Wan, Tong Wei, and Min-Ling Zhang. 2026. Keeplora: Continual learning with residual gradient adaptation. arXiv preprint arXiv:2601.19659 .Daniel Marczak, Simone Magistri, Sebastian Cygert, Bartłomiej Twardowski, Andrew D Bagdanov, and Joost Van De Weijer. 2025. No task left be-hind: Isotropic model merging with common and task-specific subspaces. arXiv preprint arXiv:2502.04959 .Aniello Panariello, Daniel Marczak, Simone Magistri, Angelo Porrello, Bartłomiej Twardowski, Andrew Bagdanov, Simone Calderara, and Joost van de Wei-jer. 2026. Accurate and efficient low-rank model merging in core space. Advances in Neural Informa-tion Processing Systems , 38:61793–61825. Bryan A Plummer, Liwei Wang, Chris M Cervantes, Juan C Caicedo, Julia Hockenmaier, and Svetlana Lazebnik. 2015. Flickr30k entities: Collecting region-to-phrase correspondences for richer image-to-sentence models. In Proceedings of the IEEE international conference on computer vision , pages 2641–2649. Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sas-try, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. 2021. Learn-ing transferable visual models from natural language supervision. In Proceedings of the 38th International Conference on Machine Learning , volume 139 of 
+
+Proceedings of Machine Learning Research , pages 8748–8763. PMLR. Haifeng Wang, Hua Wu, Tian Wu, Yu Sun, Jing Liu, Dianhai Yu, Yanjun Ma, Jingzhou He, Zhongjun He, Dou Hong, Qiwen Liu, Shuohuan Wang, Junyuan Shang, Zhenyu Zhang, Yuchen Ding, Jinle Zeng, Jiabin Yang, Liang Shen, Ruibiao Chen, and 419 others. 2026. Ernie 5.0 technical report. Preprint ,arXiv:2602.04705. Peng Wang, Shuai Bai, Sinan Tan, Shijie Wang, Zhi-hao Fan, Jinze Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, Yang Fan, Kai Dang, Mengfei Du, Xuancheng Ren, Rui Men, Dayiheng Liu, Chang Zhou, Jingren Zhou, and Junyang Lin. 2024. Qwen2-vl: Enhancing vision-language model’s per-ception of the world at any resolution. Preprint ,arXiv:2409.12191. Taiqiang Wu, Jiahao Wang, Zhe Zhao, and Ngai Wong. 2024. Mixture-of-subspaces in low-rank adaptation. In Proceedings of the 2024 Conference on Empiri-cal Methods in Natural Language Processing , pages 7880–7899. xun wu, Shaohan Huang, and Furu Wei. 2024. Mix-ture of lora experts. In International Conference on Learning Representations , volume 2024, pages 47302–47318. Fanhu Zeng, Fei Zhu, Haiyang Guo, Xu-Yao Zhang, and Cheng-Lin Liu. 2025. Modalprompt: Towards efficient multimodal continual instruction tuning with dual-modality guided prompt. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pages 12137–12152. Hengyuan Zhao, Ziqin Wang, Qixin Sun, Kaiyou Song, Yilin Li, Xiaolin Hu, Qingpei Guo, and Si Liu. 2025. Llava-cmoe: Towards continual mixture of experts for large vision-language models. arXiv preprint arXiv:2503.21227 .Deyao Zhu, jun chen, Xiaoqian Shen, Xiang Li, and Mohamed Elhoseiny. 2024. Minigpt-4: Enhanc-ing vision-language understanding with advanced large language models. In International Conference on Learning Representations , volume 2024, pages 18378–18394. A LoRA Direction-Subspace Overlap Computation 
+
+This appendix provides the detailed computation of the LoRA direction-subspace overlap scores used in Section 3. We adopt the projection-based idea of SAR (Marczak et al., 2025), but apply it to the singular direction bases of LoRA factors rather than to the full task matrix. For task Tt, the LoRA update of a given layer and module is: 
+
+∆Wt = BtAt, (16) where Bt ∈ Rdout ×r and At ∈ Rr×din are the learned LoRA factors. We separately decompose the two factors: 
+
+Bt = U Bt ΣBt V Bt
+
+> ⊤
+
+, At = U At ΣAt V At
+
+> ⊤
+
+. (17) For the B factor, we use the top-k left singular vectors U Bt,k as the output-side direction basis. For the A factor, we use the top-k right singular vectors 
+
+V At,k as the input-side direction basis. 
+
+Selection of top-k directions. For each LoRA factor, we first compute its effective rank. Given singular values {σi}, the effective rank is defined as: 
+
+reff = |{ i | σi > ϵ · σmax }| , (18) where ϵ = 10 −4 is the relative threshold and σmax 
+
+is the largest singular value. We then select: 
+
+k = ⌈ρ · reff ⌉ , (19) where ρ = 0 .8 in our experiments. When compar-ing two tasks, we compute k for both tasks and use the smaller value to ensure that the projected bases have the same dimension. Given two tasks, T1 and T2, we measure how much the direction subspace of Task 2 can be rep-resented by the corresponding subspace of Task 1. In our analysis, Task 1 is ImageNet-R and Task 2 is ArxivQA, so the projection direction is Task 2 
+
+→ Task 1. For the B side, the projection overlap is defined as: 
+
+SAR B (2 → 1) = 
+
+U B
+
+> 1,k
+
+U B
+
+> 1,k
+> ⊤
+
+U B 
+
+> 2,k F
+
+U B 
+
+> 2,k F
+
+. (20) For the A side, the projection overlap is defined as: 
+
+SAR A(2 → 1) = 
+
+V A
+
+> 1,k
+
+V A
+
+> 1,k
+> ⊤
+
+V A 
+
+> 2,k F
+
+V A 
+
+> 2,k F
+
+. (21) Here, 2 → 1 means that the direction subspace of Task 2 is projected onto the corresponding direc-tion subspace of Task 1. A higher value of SAR B
+
+indicates stronger overlap in output-side LoRA di-rection subspaces, while a higher value of SAR A
+
+indicates stronger overlap in input-side LoRA di-rections. Since U B 
+
+> 2,k
+
+and V A 
+
+> 2,k
+
+are orthogonal bases, the denominator normalizes the projected energy, making the score reflect the fraction of the Task 2 direction subspace captured by Task 1. 
+
+Analyzed layers and modules. For the 32-layer backbone, we analyze the sampled layers: 
+
+{0, 3, 7, 11 , 15 , 19 , 23 , 27 , 31 }. (22) For each sampled layer, we compute the overlap scores on seven LoRA module types: q_proj ,
+
+k_proj , v_proj , o_proj , gate_proj , up_proj ,and down_proj . The final visualization reports two overview heatmaps, one for SAR B and one for 
+
+SAR A, where each cell corresponds to one layer-module pair. 
+
+B Evaluation Protocol 
+
+This appendix provides additional details about the evaluation protocol used in our UCIT experiments. 
+
+B.1 Dataset-Specific Metrics 
+
+The six UCIT tasks use different output formats. Following the evaluation scripts, we use Accu-racy as the main metric for ImageNet-R, Arx-ivQA, IconQA, and CLEVR-Math. For VizWiz and Flickr30k, we use the dataset-level Average score produced by the caption evaluation script. For the two caption-style datasets, the evaluation script reports seven captioning metrics: 
+
+C = {B1 , B2 , B3 , B4 ,
+
+METEOR , ROUGE -L, CIDEr }. (23) where B1 –B4 denote Bleu-1 to Bleu-4. The dataset-level caption Average is computed as: 
+
+Average cap = 1
+
+|C| 
+
+X
+
+> c∈C
+
+c. (24) 
+
+B.2 Average Score 
+
+The reported Average score in continual evaluation is different from the dataset-level caption Aver-age in Eq. 24. In the final report, each dataset is first evaluated with its own main metric: Accuracy Setting Avg. ( ↑) Last ( ↑) BWT ( ↑)                
+
+> λaux = 10 −3, lr= 2×10 −471.20 71.20 -0.02
+> λaux = 0 , lr= 2×10 −470.78 70.83 -0.03
+> λaux = 10 −3, lr= 1×10 −468.51 68.50 -0.03
+> λaux = 10 −3, lr= 5×10 −566.36 66.30 -0.03
+
+Table 5: Hyperparameter study on LLaVA-1.5-7B. Task 1 is trained with a fixed vanilla LoRA-MoE configura-tion using lr= 2×10 −4. We then fix the Task 1 result and tune the auxiliary load-balancing loss coefficient λaux 
+
+and learning rate for Task 2–Task 6. 
+
+for ImageNet-R, ArxivQA, IconQA, and CLEVR-Math, and the dataset-level caption Average for VizWiz and Flickr30k. Let md denote the main metric score of dataset d
+
+after the final training step. The final average score over all six UCIT tasks is computed as: 
+
+Average final = 16
+
+> 6
+
+X
+
+> d=1
+
+md. (25) Similarly, after each training step, the average score is computed over the tasks observed up to that step. 
+
+B.3 Backward Transfer 
+
+We use Backward Transfer (BWT) to measure for-getting over historical tasks. Let ai,s i be the score of task i when it is first learned at step si, and let 
+
+ai,T be the score of the same task after the final step T . BWT is computed as: 
+
+BWT = 1
+
+|H| 
+
+X
+
+> i∈H
+
+(ai,T − ai,s i ) , (26) where H denotes the set of historical tasks that can be compared between their first-learning step and the final step. Under the standard six-task UCIT sequence, this becomes: 
+
+BWT = 15
+
+> 5
+
+X
+
+> i=1
+
+(ai, 6 − ai,i ) . (27) A larger BWT indicates better knowledge retention or positive backward transfer, while a smaller value indicates stronger forgetting. 
+
+C Hyperparameter Study 
+
+We conduct a hyperparameter study on LLaVA-1.5-7B to select the training configuration for subse-quent compact coordinate experts. In all settings, Task 1 is first trained with a vanilla LoRA-MoE 
+
+Figure 6: Cumulative parameter overhead over the base model after each UCIT task. 
+
+adapter using learning rate 2 × 10 −4. We then fix the Task 1 training result and tune the hyperparam-eters for Task 2–Task 6. Specifically, we vary the learning rate for subsequent tasks and the auxiliary load-balancing loss coefficient λaux , where λaux 
+
+controls the strength of the router load-balancing objective. Table 5 reports the results. The setting λaux =10 −3 and learning rate 2 × 10 −4 achieves the best Avg. and Last scores, with the highest BWT. There-fore, we use this configuration for the main LLaVA experiments. 
+
+D Per-Task Parameter Overhead 
+
+In addition to the overall parameter efficiency anal-ysis in Figure 5, we further report the cumulative stored parameter overhead after each UCIT task. As shown in Figure 6, CoRe-MoE introduces only a small increase in stored parameters as new tasks are added. In contrast, vanilla LoRA-MoE contin-uously accumulates complete task-specific LoRA experts, leading to rapid parameter growth along the task sequence. MoELoRA and CL-MoE have the same stored parameter overhead and are there-fore shown as a single curve. For HiDe, we count merged LoRA layers once and count task-specific last-layer LoRA modules separately. 
+
+E CLIP-Based Task Prototype Extraction 
+
+We further provide the implementation details of the CLIP-based task-aware routing module. Dur-ing training, CoRe-MoE maintains two task-level prototypes for each learned task: an image proto-type and a text prototype. These prototypes are not single-sample features, but running-mean represen-tations accumulated from the training samples of each task. For the image branch, the model reads the pooled Figure 7: Confusion matrix of CLIP-based task routing after completing all six UCIT tasks. 
+
+visual representation from the vision tower and projects it into the CLIP embedding space: 
+
+zimg = Wvis himg pooler , zimg ∈ R768 . (28) For the text branch, the input question is first cleaned by extracting the user query and remov-ing the image placeholder. The cleaned text is then encoded by the CLIP text encoder and projected into the same embedding space: 
+
+ztxt = Wtxt htxt pooler , ztxt ∈ R768 . (29) For each task, the image and text prototypes are updated with a running mean over training batches: 
+
+at, new = at, old nold + PBb=1 zb
+
+nold + B . (30) The final image and text prototypes are normalized and saved for inference. During evaluation, the task identity is predicted by the weighted similarity be-tween a test sample and all stored task prototypes. Figure 7 shows the confusion matrix of task rout-ing after all six UCIT tasks are learned. Each task contains 3,000 samples. The routing module achieves nearly diagonal predictions, with 17,953 out of 18,000 samples assigned to the correct task. The remaining errors mainly occur between Arx-ivQA and IconQA, VizWiz and Flickr30k, and Flickr30k and VizWiz, which are visually or se-mantically closer than the other task pairs. This result further confirms that the dual-modality task prototypes provide reliable task identification for selecting the corresponding router and compact coordinate expert. 
+
+F Computational Details 
+
+We conduct our experiments on two NVIDIA A100-SXM4-80GB GPUs. For each UCIT task, continual tuning takes approximately 2–3 hours of wall-clock time on two GPUs. The LLaVA-1.5-7B experiments are implemented with torch 2.0.1+ cu118 , transformers 4.31.0, 
+
+peft 0.4.0, accelerate 0.21.0, deepspeed 0.9.5, 
+
+tokenizers 0.13.3, and bitsandbytes 0.41.0. The corresponding PyTorch CUDA version is 11.8. The Qwen2-VL-7B experiments are implemented with torch 2.4.1+ cu121 , transformers 4.57.6, 
+
+peft 0.15.2, accelerate 1.4.0, deepspeed 
+
+0.16.9, tokenizers 0.22.2, and bitsandbytes 
+
+0.45.5. The corresponding PyTorch CUDA version is 12.1. Training Step ImageNet-R ArxivQA VizWiz IconQA CLEVR-Math Flickr30k ImageNet-R 90.80% – – – – –ArxivQA 87.87% 93.07% – – – –VizWiz 74.70% 88.90% 59.41 – – –IconQA 76.37% 70.30% 44.33 75.50% – –CLEVR-Math 76.53% 76.60% 44.18 63.20% 72.70% –Flickr30k 68.20% 75.43% 44.61 64.20% 37.50% 57.20 
+
+Table 6: Detailed UCIT evaluation matrix of LLaVA-1.5-7B with LoRA-FT. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA CLEVR-Math Flickr30k ImageNet-R 91.20% – – – – –ArxivQA 90.43% 92.77% – – – –VizWiz 79.73% 91.17% 59.83 – – –IconQA 80.87% 76.87% 53.32 76.00% – –CLEVR-Math 78.33% 78.27% 50.67 68.63% 74.87% –Flickr30k 69.40% 78.37% 44.17 67.93% 48.90% 57.36 
+
+Table 7: Detailed UCIT evaluation matrix of LLaVA-1.5-7B with MoELoRA. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA CLEVR-Math Flickr30k ImageNet-R 91.47% – – – – –ArxivQA 90.13% 89.93% – – – –VizWiz 88.53% 90.00% 46.53 – – –IconQA 87.70% 79.07% 44.80 72.93% – –CLEVR-Math 86.13% 78.60% 43.70 67.77% 68.07% –Flickr30k 84.37% 78.33% 44.54 64.93% 51.70% 57.41 
+
+Table 8: Detailed UCIT evaluation matrix of LLaVA-1.5-7B with CL-MoE. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA CLEVR-Math Flickr30k ImageNet-R 90.47% – – – – –ArxivQA 90.47% 92.13% – – – –VizWiz 90.47% 92.13% 56.87 – – –IconQA 90.47% 92.13% 56.87 65.73% – –CLEVR-Math 90.47% 91.97% 56.87 65.73% 66.37% –Flickr30k 90.47% 91.97% 56.91 65.73% 66.37% 55.74 
+
+Table 9: Detailed UCIT evaluation matrix of LLaVA-1.5-7B with CoRe-MoE. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA CLEVR-Math Flickr30k ImageNet-R 91.43% – – – – –ArxivQA 90.40% 93.87% – – – –VizWiz 89.10% 92.47% 55.73 – – –IconQA 88.10% 92.23% 49.65 72.57% – –CLEVR-Math 87.03% 93.07% 46.68 66.33% 54.47% –Flickr30k 85.67% 93.07% 44.67 64.63% 50.40% 53.36 
+
+Table 10: Detailed UCIT evaluation matrix of LLaVA-1.5-7B with HiDe. Training Step ImageNet-R ArxivQA VizWiz IconQA Flickr30k ImageNet-R 94.27% – – – –ArxivQA 93.00% 91.23% – – –VizWiz 85.40% 86.83% 66.01 – –IconQA 84.93% 79.50% 59.97 97.10% –Flickr30k 73.27% 79.90% 52.22 94.57% 60.93 
+
+Table 11: Detailed UCIT evaluation matrix of Qwen2-VL-7B-Instruct with LoRA-FT. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA Flickr30k ImageNet-R 94.20% – – – –ArxivQA 93.13% 91.13% – – –VizWiz 82.23% 85.77% 66.32 – –IconQA 79.93% 79.17% 62.60 97.50% –Flickr30k 60.60% 79.07% 49.94 95.10% 60.92 
+
+Table 12: Detailed UCIT evaluation matrix of Qwen2-VL-7B-Instruct with MoELoRA. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA Flickr30k ImageNet-R 94.03% – – – –ArxivQA 93.77% 95.23% – – –VizWiz 93.03% 95.17% 52.09 – –IconQA 92.77% 88.60% 51.74 95.03% –Flickr30k 90.57% 88.70% 51.53 91.93% 60.74 
+
+Table 13: Detailed UCIT evaluation matrix of Qwen2-VL-7B-Instruct with CL-MoE. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA Flickr30k ImageNet-R 94.13% – – – –ArxivQA 94.13% 93.80% – – –VizWiz 94.13% 93.80% 65.52 – –IconQA 94.13% 93.87% 65.52 92.13% –Flickr30k 94.13% 93.87% 65.50 92.13% 60.71 
+
+Table 14: Detailed UCIT evaluation matrix of Qwen2-VL-7B-Instruct with CoRe-MoE. 
+
+Training Step ImageNet-R ArxivQA VizWiz IconQA Flickr30k ImageNet-R 91.73% – – – –ArxivQA 90.37% 88.40% – – –VizWiz 89.27% 85.70% 68.49 – –IconQA 88.53% 80.70% 67.07 97.63% –Flickr30k 86.33% 80.87% 59.30 94.67% 60.42 
+
+Table 15: Detailed UCIT evaluation matrix of Qwen2-VL-7B-Instruct with HiDe.

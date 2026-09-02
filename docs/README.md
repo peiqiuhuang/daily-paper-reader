@@ -6,51 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-01
-- 运行时间：2026-09-01 22:34:06 UTC
+- 最新运行日期：2026-09-02
+- 运行时间：2026-09-02 22:34:31 UTC
 - 运行状态：成功
-- 本次总论文数：10
+- 本次总论文数：9
 - 精读区：5
-- 速读区：5
+- 速读区：4
 
 ### 今日简报（AI）
-今日精选 10 篇论文，深度聚焦参数化优化理论与双层优化算法的突破性进展。
-重点推荐最小
-- 详情：[/202609/01/README](/202609/01/README)
+今日精选 9 篇论文聚焦多任务学习，重点突破了动态 Prompt 与 MoE 架构的性能瓶颈。
+- 详情：[/202609/02/README](/202609/02/README)
 
 ### 精读区论文标签
-1. [Differentiating Minimal-Norm Solutions to Parametric Optimization Problems](/202609/01/2608.28899v1-differentiating-minimal-norm-solutions-to-parametric-optimization-problems)  
+1. [HiVe: Beyond Static Prompts for Multitask Learning via Hierarchy-based Vertical Mixture-of-Experts](/202609/02/2608.29790v2-hive-beyond-static-prompts-for-multitask-learning-via-hierarchy-based-vertical-mixture-of-experts)  
    标签：评分：9.0/10、query:bopl
-   evidence：通过参数化优化进行双层规划求导
-2. [Regularized extragradient method for structured bilevel optimization in continuous and discrete time](/202609/01/2608.29181v1-regularized-extragradient-method-for-structured-bilevel-optimization-in-continuous-and-discrete-time)  
+   evidence：多任务学习的分层提示微调框架
+2. [Task-Specific Prompt with Global Context for Multi-Task Graph Pre-Training](/202609/02/2609.00047v1-task-specific-prompt-with-global-context-for-multi-task-graph-pre-training)  
    标签：评分：9.0/10、query:bopl
-   evidence：希尔伯特空间中的结构化双层优化
-3. [Co-Evolutionary Prompt Optimization with Cross-Category Transfer for Zero-Shot Anomaly Detection](/202609/01/2608.29467v1-co-evolutionary-prompt-optimization-with-cross-category-transfer-for-zero-shot-anomaly-detection)  
+   evidence：具有任务特定初始化的图提示学习
+3. [Control-Data Flow Separation: Stable Prompt Optimization in Multi-Agent LLMs](/202609/02/2609.00621v1-control-data-flow-separation-stable-prompt-optimization-in-multi-agent-llms)  
    标签：评分：9.0/10、query:bopl
-   evidence：用于离散提示词搜索与优化的进化算法
-4. [HiVe: Beyond Static Prompts for Multitask Learning via Hierarchy-based Vertical Mixture-of-Experts](/202609/01/2608.29790v1-hive-beyond-static-prompts-for-multitask-learning-via-hierarchy-based-vertical-mixture-of-experts)  
+   evidence：通过控制-数据流分离实现稳定的提示词优化
+4. [Disciplined Bilevel Programming](/202609/02/2609.00644v1-disciplined-bilevel-programming)  
    标签：评分：9.0/10、query:bopl
-   evidence：参数高效的提示微调框架
-5. [Graph4BiLO: Graph Neural Network Approximation for Bilevel Mixed-Integer Linear Optimization](/202609/01/2608.30103v1-graph4bilo-graph-neural-network-approximation-for-bilevel-mixed-integer-linear-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：双层混合整数线性优化的GNN近似
+   evidence：用于定义和求解双层规划问题的符号框架
+5. [Prompt-Robust Language Models: Which Training Strategies Work?](/202609/02/2609.01217v1-prompt-robust-language-models-which-training-strategies-work)  
+   标签：评分：8.0/10、query:bopl
+   evidence：评估提示鲁棒型语言模型的训练策略
 
 ### 速读区论文标签
-1. [Towards Reliable, Generalizable, and Specific In-Context Knowledge Editing via Multi-Objective Reinforcement Learning](/202609/01/2608.25100v2-towards-reliable-generalizable-and-specific-in-context-knowledge-editing-via-multi-objective-reinforcement-learning)  
+1. [CoRe-MoE: Compact Reusable MoE for Continual Multimodal Instruction Tuning](/202609/02/2608.27867v1-core-moe-compact-reusable-moe-for-continual-multimodal-instruction-tuning)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过强化学习调整提示构建
-2. [Instruction Distillation: Text Instructions as Visual Examples](/202609/01/2608.28696v1-instruction-distillation-text-instructions-as-visual-examples)  
+   evidence：使用LoRA-MoE和SVD分析的参数高效微调
+2. [Bandits in Prod: Hyperparameter Optimization at Inference Time](/202609/02/2609.01335v1-bandits-in-prod-hyperparameter-optimization-at-inference-time)  
+   标签：评分：7.0/10、query:bopl
+   evidence：针对提示策略的在线超参数优化
+3. [Meta-Learning Where to Allocate Experts: Task-Conditioned Layer-Wise Compression for MoEs](/202609/02/2608.26650v1-meta-learning-where-to-allocate-experts-task-conditioned-layer-wise-compression-for-moes)  
    标签：评分：6.0/10、query:bopl
-   evidence：为视觉示例生成结构化识别指令
-3. [Agent2UCB: Agentic System for Generative Engine Optimization](/202609/01/2608.29063v1-agent2ucb-agentic-system-for-generative-engine-optimization)  
+   evidence：用于 MoE 专家分配的元学习控制器
+4. [Compositional Online Learning for Semantic Data Processing Systems](/202609/02/2608.27244v1-compositional-online-learning-for-semantic-data-processing-systems)  
    标签：评分：6.0/10、query:bopl
-   evidence：生成式引擎内容的反馈驱动优化
-4. [When to Adapt: Conditional Memory Adapters for Retention-Preserving Domain Specialization](/202609/01/2608.29327v1-when-to-adapt-conditional-memory-adapters-for-retention-preserving-domain-specialization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：参数高效微调与适配器
-5. [OPUS: A Simple yet Effective Unified Framework for Open-Vocabulary Detection](/202609/01/2608.30247v1-opus-a-simple-yet-effective-unified-framework-for-open-vocabulary-detection)  
-   标签：评分：6.0/10、query:bopl
-   evidence：支持异构提示的统一框架
+   evidence：大模型调用边界的逐调用梯度步骤和在线学习器
 
 
 <div class="dpr-home-promo-card">
