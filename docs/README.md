@@ -6,47 +6,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-02
-- 运行时间：2026-09-02 22:34:31 UTC
+- 最新运行日期：2026-09-03
+- 运行时间：2026-09-03 21:49:16 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：5
-- 速读区：4
+- 本次总论文数：10
+- 精读区：2
+- 速读区：8
 
 ### 今日简报（AI）
-今日精选 9 篇论文聚焦多任务学习，重点突破了动态 Prompt 与 MoE 架构的性能瓶颈。
-- 详情：[/202609/02/README](/202609/02/README)
+(3 lines/sentences).
+        *   Catchy & concise? Yes.
+        *   Factually strict based on provided text? Yes
+- 详情：[/202609/03/README](/202609/03/README)
 
 ### 精读区论文标签
-1. [HiVe: Beyond Static Prompts for Multitask Learning via Hierarchy-based Vertical Mixture-of-Experts](/202609/02/2608.29790v2-hive-beyond-static-prompts-for-multitask-learning-via-hierarchy-based-vertical-mixture-of-experts)  
-   标签：评分：9.0/10、query:bopl
-   evidence：多任务学习的分层提示微调框架
-2. [Task-Specific Prompt with Global Context for Multi-Task Graph Pre-Training](/202609/02/2609.00047v1-task-specific-prompt-with-global-context-for-multi-task-graph-pre-training)  
-   标签：评分：9.0/10、query:bopl
-   evidence：具有任务特定初始化的图提示学习
-3. [Control-Data Flow Separation: Stable Prompt Optimization in Multi-Agent LLMs](/202609/02/2609.00621v1-control-data-flow-separation-stable-prompt-optimization-in-multi-agent-llms)  
-   标签：评分：9.0/10、query:bopl
-   evidence：通过控制-数据流分离实现稳定的提示词优化
-4. [Disciplined Bilevel Programming](/202609/02/2609.00644v1-disciplined-bilevel-programming)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于定义和求解双层规划问题的符号框架
-5. [Prompt-Robust Language Models: Which Training Strategies Work?](/202609/02/2609.01217v1-prompt-robust-language-models-which-training-strategies-work)  
+1. [Bandits in Prod: Hyperparameter Optimization at Inference Time](/202609/03/2609.01335v2-bandits-in-prod-hyperparameter-optimization-at-inference-time)  
    标签：评分：8.0/10、query:bopl
-   evidence：评估提示鲁棒型语言模型的训练策略
+   evidence：提示策略的在线超参数优化
+2. [D-FROST: Decentralized Federated pRompt-tuning via Optimal tranSporT for Non-IID and Imbalanced Data](/202609/03/2609.01802v1-d-frost-decentralized-federated-prompt-tuning-via-optimal-transport-for-non-iid-and-imbalanced-data)  
+   标签：评分：8.0/10、query:bopl
+   evidence：去中心化联邦学习中的参数高效提示微调
 
 ### 速读区论文标签
-1. [CoRe-MoE: Compact Reusable MoE for Continual Multimodal Instruction Tuning](/202609/02/2608.27867v1-core-moe-compact-reusable-moe-for-continual-multimodal-instruction-tuning)  
+1. [An Adaptive Augmented Lagrangian Method for Deterministic and Stochastic Nonconvex Optimization](/202609/03/2608.27676v1-an-adaptive-augmented-lagrangian-method-for-deterministic-and-stochastic-nonconvex-optimization)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用LoRA-MoE和SVD分析的参数高效微调
-2. [Bandits in Prod: Hyperparameter Optimization at Inference Time](/202609/02/2609.01335v1-bandits-in-prod-hyperparameter-optimization-at-inference-time)  
+   evidence：用于非凸优化的不精确增广拉格朗日算法
+2. [DeicticVLA: Unifying Instruction Modes Based on Language and Deictic Gestures in a Single VLA](/202609/03/2608.28108v1-deicticvla-unifying-instruction-modes-based-on-language-and-deictic-gestures-in-a-single-vla)  
    标签：评分：7.0/10、query:bopl
-   evidence：针对提示策略的在线超参数优化
-3. [Meta-Learning Where to Allocate Experts: Task-Conditioned Layer-Wise Compression for MoEs](/202609/02/2608.26650v1-meta-learning-where-to-allocate-experts-task-conditioned-layer-wise-compression-for-moes)  
+   evidence：将指令规范化为VLA模型的文本提示
+3. [Test-Time Logit Prompting for Source-Free Missing Modality Adaptation](/202609/03/2609.02039v1-test-time-logit-prompting-for-source-free-missing-modality-adaptation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：视觉语言模型的测试时Logit提示
+4. [From Prompting to Engineering: A Research Agenda for Prompt Engineering in Software Engineering](/202609/03/2609.02248v1-from-prompting-to-engineering-a-research-agenda-for-prompt-engineering-in-software-engineering)  
+   标签：评分：7.0/10、query:bopl
+   evidence：提示工程实践的系统评估与管理
+5. [Toward Latent Language Model Skills Steering and Optimization: An Empirical Study](/202609/03/2608.29459v1-toward-latent-language-model-skills-steering-and-optimization-an-empirical-study)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于 MoE 专家分配的元学习控制器
-4. [Compositional Online Learning for Semantic Data Processing Systems](/202609/02/2608.27244v1-compositional-online-learning-for-semantic-data-processing-systems)  
+   evidence：研究潜在语言模型技能的引导与优化
+6. [How Do Prompt Variations Affect Energy Consumption in On-Device LLMs?](/202609/03/2609.01798v1-how-do-prompt-variations-affect-energy-consumption-in-on-device-llms)  
    标签：评分：6.0/10、query:bopl
-   evidence：大模型调用边界的逐调用梯度步骤和在线学习器
+   evidence：提示词设计和表述方式对LLM行为的影响
+7. [Implicit Manipulation for Skill Selection in LLM Agents with Semantic Matching](/202609/03/2609.02035v1-implicit-manipulation-for-skill-selection-in-llm-agents-with-semantic-matching)  
+   标签：评分：6.0/10、query:bopl
+   evidence：塑造可重用提示以操纵大模型智能体的技能选择
+8. [SALA: Semantic-Aware Logical Alignment for Complex Reasoning in In-Context Learning](/202609/03/2609.02336v1-sala-semantic-aware-logical-alignment-for-complex-reasoning-in-in-context-learning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：上下文学习的语义感知逻辑对齐
 
 
 <div class="dpr-home-promo-card">
