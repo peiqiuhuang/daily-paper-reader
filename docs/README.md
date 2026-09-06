@@ -6,33 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-05
-- 运行时间：2026-09-05 22:21:24 UTC
+- 最新运行日期：2026-09-06
+- 运行时间：2026-09-06 22:05:00 UTC
 - 运行状态：成功
-- 本次总论文数：4
+- 本次总论文数：5
 - 精读区：0
-- 速读区：4
+- 速读区：5
 
 ### 今日简报（AI）
-今日成功速读 4 篇 AI 前沿论文，高效扫览大模型后训练、知识图谱推理与
-- 详情：[/202609/05/README](/202609/05/README)
+今日精选 5 篇速读论文，聚焦大模型高效训练与跨语言理解前沿。
+最值得关注的技术路线是通过幂律熵搜索优化超参数缩放法则，以及引入任务级自然语言先验破局低资源 LLM 训练。
+建议优先浏览这两篇高分研究，快速掌握大模型降本增效的核心思路。
+- 详情：[/202609/06/README](/202609/06/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [CARE: Contrastive Anchor-based Rubric Evolution for Large Language Model Post-Training](/202609/05/2609.00892v1-care-contrastive-anchor-based-rubric-evolution-for-large-language-model-post-training)  
+1. [Efficiently Estimating Optimal Hyperparameter Scaling Laws through Power-Law Entropy Search](/202609/06/2609.01431v1-efficiently-estimating-optimal-hyperparameter-scaling-laws-through-power-law-entropy-search)  
    标签：评分：7.0/10、query:bopl
-   evidence：针对特定提示任务的动态准则演化
-2. [RACER: Reinforced Agent Collaboration for Explainable Reasoning on Knowledge Graphs](/202609/05/2608.29263v1-racer-reinforced-agent-collaboration-for-explainable-reasoning-on-knowledge-graphs)  
+   evidence：用于大语言模型超参数缩放法则的贝叶斯优化
+2. [Task-Level Natural Language Priors as Learning Signals for Low-Resource LLM Training](/202609/06/2609.02244v1-task-level-natural-language-priors-as-learning-signals-for-low-resource-llm-training)  
+   标签：评分：7.0/10、query:bopl
+   evidence：先验引导微调作为大模型的训练视角
+3. [Cross-lingual Functional Vectors for Emotion Detection in Large Language Models](/202609/06/2608.29613v1-cross-lingual-functional-vectors-for-emotion-detection-in-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：针对知识图谱自适应提示的强化智能体协作
-3. [Evolutionary Soups: Evolving Mixture-of-Experts for Multi-Objective LLM Alignment](/202609/05/2608.29978v1-evolutionary-soups-evolving-mixture-of-experts-for-multi-objective-llm-alignment)  
+   evidence：利用上下文演示中的任务特定潜空间方向引导大模型行为
+4. [Soft Posterior Speaker Injection for Multi-Talker Speech Recognition](/202609/06/2609.01287v1-soft-posterior-speaker-injection-for-multi-talker-speech-recognition)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于输入提示优化混合专家模型的进化算法
-4. [A Model with No Head and Many Thoughts](/202609/05/2608.31069v1-a-model-with-no-head-and-many-thoughts)  
+   evidence：用于注入的解码器说话人记忆提示
+5. [IDEEA: training-free Input-Dependent stEEring via Activation cluster matching](/202609/06/2609.02089v1-ideea-training-free-input-dependent-steering-via-activation-cluster-matching)  
    标签：评分：6.0/10、query:bopl
-   evidence：连续嵌入空间中的软潜意识思考
+   evidence：通过激活簇匹配引导大语言模型，作为微调的替代方案
 
 
 <div class="dpr-home-promo-card">
