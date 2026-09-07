@@ -1,0 +1,996 @@
+Title: Amortizing Scaling Law Construction Costs
+
+URL Source: https://arxiv.org/pdf/2609.05016v1
+
+Published Time: Mon, 07 Sep 2026 00:52:01 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Amortizing Scaling Law Construction Costs 
+
+Abhash Kumar Jha 1,3,* Diana Alexandra Onut , u2,3,* Neeratyoy Mallik 4,5,1,6,* 
+
+Swagatam Haldar 1,3,* Sam Laing 1,3 Niccolò Ajroldi 1,3 Shiwei Liu 1,6,7 
+
+Joaquin Vanschoren 2,3 Aaron Klein 1,3 
+
+> 1
+
+ELLIS Institute Tübingen 2Eindhoven University of Technology 
+
+> 3
+
+OpenEuroLLM 4University of Freiburg 5Zuse School ELIZA 
+
+> 6
+
+Max Planck Institute for Intelligent Systems 7Tübingen AI Center 
+
+> *
+
+Equal Contribution. 
+
+Abstract 
+
+Scaling laws guide the design choices for training large foundation models, but deriving them involves training an exhaustive grid over hyperparameters, token budgets, and parameter counts, which is computationally expensive. Fitting a scaling law, however, only requires the best-loss frontier across compute scales, discarding most of the trained configurations. We propose a framework for efficient scaling law construction that formulates data collection as a Bayesian optimization problem, and introduce metrics for comparing scaling law fitting methods under constrained compute budgets. We find that progressively expanding the compute budget during acquisition, mirroring the compute-ordered evaluation of configu-rations in practice, substantially improves recovery efficiency. Augmenting the observed configurations with surrogate-fantasized evaluations then recovers the broader experimental grid, allowing accurate scaling law fitting without training every configuration. Together, these can closely match scaling law fits over a full dense grid at computational savings of up to 10 –100 ×.
+
+1 Introduction 
+
+Pretraining large language models requires decisions for a wide range of design choices. However, evaluating each alternative of model architecture, data mixture, optimization settings at the target scale is prohibitively expensive. Scaling laws [3, 21, 25] allow us to extrapolate model performance and optimal training configurations as we scale, by fitting a power law between quantities of interest, such as loss or hyperparameters, and the compute budget [6, 7, 11, 28, 30, 41, 42]. To derive them, we train a predefined dense grid of configurations across various scales. This requires careful experimental design of the grid over hyperparameters, token budgets, and parameter counts. Classical hyperparameter optimization (HPO) [16, 18, 19] automatically selects the optimal hyperpa-rameters that minimize the validation loss, typically at a single model or data scale. Multi-fidelity HPO [4, 15, 24, 35] and learning-curve extrapolation [1, 13, 26, 38] optimize over data scales, but are usually associated with early stopping of individual configurations. Parameter count, meanwhile, can also be seen as a fidelity affecting compute cost [8], and can interact with data scale to drive hyperparameter drift [40]. Tuning for a best-loss envelope for scaling law construction is therefore markedly different from the usual flavours of HPO, which return a single best-loss configuration.                    
+
+> Correspondence to: {abhash.kumar.jha,aaron.klein}@tue.ellis.eu
+> Preprint. arXiv:2609.05016v1 [cs.LG] 4 Sep 2026 10 16 10 19 10 22 10 25 10 28
+> Training compute (FLOPs)
+> 1.0 1.5 2.0 2.5
+> Loss  L
+> α = -0.139
+> Full Data Fit
+> All points ( n= 14 )Full-data fi t
+> 10 16 10 19 10 22 10 25 10 28
+> Training compute (FLOPs)
+> α = -0.106
+> Sparse Data Fit (Deviation)
+> Unused points Selected ( n= 4 )Sparse fi t
+> 10 16 10 19 10 22 10 25 10 28
+> Training compute (FLOPs)
+> α = -0.139
+> Sparse Data Fit (Match)
+> Unused points Selected ( n= 4 )Sparse fi t
+
+Figure 1: Scaling law L = E + AC α fit to different loss subsets. Left : the full Pareto envelope based all 14 different observations and its fitted law; Middle : a poorly selected four-point subset produces a deviated fit; Right : a different 4-point subset closely recovers the full-data fit. Both sparse fits use the same number of observations, but their accuracy depends strongly on which points are selected, motivating the problem of finding a small subset that reliably recovers the full scaling law. A parametric scaling law fit is a standard regression task where the data collection procedure directly affects the quality of the fit (see Figure 1). For each point in the parametric form, we use only a subset consisting of the minimum loss over the independent variables. This provides a direct source of efficiency gains in data collection for scaling law fitting. Since only the loss envelope is required, evaluating the full dense grid is unnecessary. Therefore, a surrogate fitted on observed data that approximates the loss range and sub-optimal hyperparameter regions can enable a more sparse data collection. We thus view the scaling law fitting procedure and its data collection as a joint hyperparameter optimization task, and propose a formulation and framework for HPO as data collection for efficient scaling law construction. Concretely, 1. We formalize scaling law construction as a Bayesian Optimization (BO) problem, and show that compute slicing bridges BO with practical scaling law data collection by progressively expanding the compute window available in the acquisition process (Section 3). 2. We show that the scaling law fit can be constructed on a simulated grid, where unevaluated points are fantasized by a surrogate, removing the need to densely measure the loss envelope at every compute slice (Section 4). 3. We propose the metrics necessary to evaluate the search efficiency for this task, and empiri-cally show that with the proposed changes above to a BO algorithm, it can recover the dense grid fit at a 10 –100 × less cost than the exhaustive grid (Section 4). 
+
+2 Related Work 
+
+Scaling laws have been a central feature of current progress in large-scale deep learning [12, 21, 25, 36]. New contributions must retain their promised benefits across the scaling regime, which often necessitates either verification of existing scaling laws or construction of new fits. Since the cost of scaling grows prohibitively, this cost is often reduced by fitting specialized parametric forms [6, 28, 30, 42], to predict large-scale runs more accurately and thereby save compute. Similar predictive approaches have been developed for hyperparameters and other pipeline settings [14, 40]. The common objective is to direct compute resources carefully while still preserving decision quality. Hyperparameter optimization, particularly Bayesian Optimization, aims precisely at this performance-cost trade-off [19]. A BO algorithm has two major components: i) the choice of a probabilistic surrogate model (Gaussian Processes [39], Random Forests [23], etc.), and ii) the acquisition strategy that utilizes the surrogate prediction and uncertainty to choose the next query point. Scaling law construction can similarly be viewed as a relatively low-dimensional regression problem built on ob-servations obtained from multiple costly deep-learning runs, with an outer procedure fitting/updating the scaling law parameters [29]. Closest to our setting, Li et al. [31] formulate the selection of these runs as a budget-aware sequential experimental-design problem and propose a specialized acquisition strategy tailored for extrapolation. They show that observations over the modeled input space can be selected sparsely while maintaining accurate extrapolation. In contrast, we also consider sparsity over auxiliary hyperparameters omitted from the final scaling law form, whose optimization is required to construct the near-optimal loss frontier. Li et al. [31] consider general parametric scaling law forms, whereas we focus specifically on compute-optimal scaling laws, where each response represents 2the near-optimal loss obtained after optimizing training hyperparameters at a given compute scale. Concurrently, Chen et al. [10] design a custom BO acquisition for scaling law construction, but only for optimal hyperparameters, addressing a subset of our general case we describe below. 
+
+3 Framework 
+
+Scaling law formulations model loss L as a power law in the independent variables determining compute (Appendix C.2). Let N ∈ N , D ∈ D , and λ ∈ Λ denote the model size, token budget, and training hyperparameters (e.g., learning rate or batch size), respectively, and let C = g(N, D )1
+
+denote compute. For a compute-optimal scaling law fit to be predictive over large extrapolation ranges, the observed data must approximate the optimal loss min L(C) at each compute scale. We frame the construction of these observations as a hyperparameter optimization problem (HPO), and use an iterative loop to make controlled progress in collecting data for a scaling law parametric fit. Compared to the usual dense evaluation of the grid G = N × D × Λ, we note two clear sources of efficiency gains: (i) avoiding evaluations of low-performing hyperparameter configurations at each compute budget C, parameter count N , or token budget D; (ii) approximating a dense optimal loss envelope to obtain early signal on scaling law fits, instead of evaluating the complete G.For the first source, we restrict the scope of data acquisition at each iteration, a deliberately myopic approach we refer to as compute slicing . Let Wj = [ C1, C j ] denote the compute window observed up to compute scale Cj . At each iteration, the surrogate is fitted on all observations collected within 
+
+Wj , while the search for the next configuration is performed over the expanded window Wj+1 ,which includes the immediate next compute slice. The size of a compute slice is determined by the discrete choices of N and D made for the scaling studies and is therefore fixed by the study design rather than tuned. We hypothesize that this allows the algorithm to conservatively invest in higher-compute configurations while retaining an opportunity to improve upon the loss observed at lower-compute slices. Although we do not explicitly isolate this effect within the scope of this work, the restriction is compatible with any general choice of BO components and serves only as a constraint over acquisition optimization. For the second source, we propose an evaluation procedure at each iteration for tracking the scaling law fit improvement based on the information currently available. Let Ot denote the observations collected by iteration t, and let Mt denote the surrogate fitted to them. The surrogate can be used to fantasize possible outputs at unobserved parts of G, allowing the scaling law to be fitted on a proxy dense grid containing observed losses where available and surrogate predictions elsewhere. As Mt improves with additional observations and better approximates the loss scales of unseen configurations, the resulting fit can approach the full data fit at a fraction of the total cost. Therefore, a well-designed surrogate that approximates the scale and shape of the loss landscape can enable efficient scaling law data collection. Our subsequent section shows empirical evidence that clear efficiency gains are achievable by modifying vanilla BO with two core mechanisms: compute slicing and fantasized fits. We provide the complete formalization in Appendix B and illustrate the framework in Figure 3. 
+
+4 Empirical Analysis 
+
+Setup. We rely on existing collections of scaling experiments and simulate scaling law construction over their predefined configuration grids. Our goal is to assess whether the proposed framework enables a standard search algorithm to recover scaling law fits comparable to those obtained from the full grid while using substantially less cumulative compute. We evaluate 4 settings: compute Window ,the standard BO definition of viewing the entire search space Full , and with or without fantasization of pending configurations. These configurations are compared in terms of scaling law recovery as a function of cumulative compute. In Figure 2, we present results on OELLM-English [2] using a standard BoTorch [5] defaults (Gaussian Process surrogate with constant mean, Matérn-5/2 kernel, and a Lower Confidence Bound acquisition with κ = 2 ). We repeat the study across additional datasets, parametric forms, and search methods detailed in Appendix C and Appendix D.    
+
+> 1We adopt the commonly used approximation C= 6 N D introduced in [25].
+
+3Metrics. Just as in standard HPO, our framework seeks to minimize observed loss, albeit for each compute slice, while additionally filling in the dense grid through fantasization and evaluating the resulting scaling law fit at each iteration. Existing literature typically reports the in-sample residual fit or the extrapolation error on the held-out set alone [31]. We argue that neither is sufficient on its own, since improvements in one do not translate predictably into the other, as they are measured on different scales. Depending on the parametric form and data, different fits can yield similar errors on the immediate held-out set but vary more drastically at much larger compute horizons. Since the analysis samples from a fixed grid, every search method eventually observes the entire data and all evaluation metrics converge once the entire grid is exhausted, so only the trajectory over cumulative compute separates methods. We present empirical evidence for why all metrics need to be studied 
+
+jointly in the next section and use the following: (i) Absolute difference of the estimated scaling law parameters to the ground truth estimated parameters (Regret); (ii) The mean-squared-error of the prediction on the held-out points of a fitted law at an iteration to the empirical loss recorded in the dataset (MSE); (iii) The percentage coverage of the ground truth loss-envelope set; (iv) Relative % difference in loss prediction over large extrapolation ranges. We detail our metrics in Appendix C.3. 
+
+Results. To assess the benefits of our proposed framework employing a growing compute window (Window ), we use the standard BO definition of viewing the entire space of (N, D, Λ) as a uniform search space ( Full ). Figure 2 shows that across both strategies and both fit types, the coefficients are re-covered well before the pool is exhausted, and a small fraction of the total acquisition compute already yields coefficient estimates close to the full data reference. The speedup for Window+fantasization is 
+
+10 × when compared to Full+fantasization , and up to even 100 × when compared to Full+observed-only . The envelope coverage panel indicates that this efficiency comes from where we expect it, with 
+
+window discovering its evaluations on the loss envelope far earlier than full , which is the behaviour compute slicing is designed to produce. 10 20 10 21 10 22 10 23                              
+
+> total cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0
+> j^E¡^Etj
+> 10 20 10 21 10 22 10 23
+> total cost (FLOPs)
+> 10 −1
+> 10 2
+> 10 5
+> 10 8j^A¡^Atj
+> 10 20 10 21 10 22 10 23
+> total cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0j^®¡^®tj
+> 10 20 10 21 10 22 10 23
+> total cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0MSE( L¤; L t)
+> 10 20 10 21 10 22 10 23
+> total cost (FLOPs)
+> 0% 50% 100% Envelope recovery Full Window Observed + fantasized Observed only
+
+Figure 2: Results on L = E + AC α comparing the same BO surrogate model, acquiring data by optimizing over the Full search space or a growing Window conditioned on the observations so far. Panels 1-3 report absolute error in each fitted parameter against the full data fit (sans held-out ). Panel 4 records the MSE of the loss predicted by the fitted parameters against the actual held-out loss. Panel 5 tracks the % recovery of the optimal-loss envelope. Shaded band is 1 S.D. over 10 seeds. Table 1 presents whether these recovered coefficients still agree once extrapolated well beyond the predefined grid, where the budget is reported as a fraction of the compute required to exhaust the grid. At 1% of total budget, the predicted losses stay within 1.6% of the full data fit even at 6–7 orders of magnitude higher. Spending more budget provides only marginal relative (coefficients in Table 5). Table 1: Extending the results of Figure 2’s window + fantasization to much larger extrapolation lengths. Entries are the relative % difference in predicted loss against the full data fit (sans held-out), at different fractions of the compute to exhaust the grid. S.D. over 10 seeds. Compute C (in FLOPs): 10 25 10 27 10 29 
+
+1% of Total Budget 1.09 ± 1.84 1.37 ± 2.35 1.56 ± 2.67 5% of Total Budget 0.22 ± 0.34 0.29 ± 0.41 0.36 ± 0.45 10% of Total Budget 0.04 ± 0.04 0.05 ± 0.04 0.06 ± 0.10 
+
+5 Conclusion & Future Work 
+
+We cast scaling law construction as a hyperparameter optimization (HPO) problem. We demonstrate that progressively growing the compute window during acquisition, combined with surrogate fanta-4sization to evaluate scaling law fits on a simulated dense grid proxy, allows BO to achieve highly accurate fits while reducing compute costs by 10 –100 × over the actual exhaustive grid. The recovered parameters’ predicted losses remain within 1.6% of the full-data fit, even at 6–7 orders of magnitude beyond the observed grid. To properly evaluate this efficiency, we introduced a multi-metric suite that captures the nuances of scaling law fits. Our ablations confirm that our proposed framework performs well for different settings and parametric forms, and seamlessly integrates with standard BO formulations. While the development of specialized kernels and acquisition functions for this framework presents an exciting direction to explore, we treat this as future work, and the ultimate stress-test will be validating this design on a novel, large-scale data collection run for scaling law discovery. An acquisition function that additionally incorporates scaling law fit variance is a natural extension that we also leave to future work. 
+
+Acknowledgments and Disclosure of Funding 
+
+We thank Johannes Hog for their feedback on the paper draft. 
+
+NM acknowledge funding by the state of Baden-Württemberg through bwHPC, the German Research Foundation (DFG) through grant numbers INST 39/963-1 FUGG and 417962828, and the European Union (via ERC Consolidator Grant Deep Learning 2.0, grant no. 101045765). Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or the European Research Council. Neither the European Union nor the granting authority can be held responsible for them. This research was also funded by the Deutsche Forschungsge-meinschaft (DFG, German Research Foundation) under grant number 539134284, through EFRE (FEIH_2698644) and the state of Baden-Württemberg. NM is supported by the Konrad Zuse School of Excellence in Learning and Intelligent Systems (ELIZA) through the DAAD programme Konrad Zuse Schools of Excellence in Artificial Intelligence, sponsored by the Federal Ministry of Education and Research. AK, JV, AJ, DO, SH, SL, NA acknowledge support from EC under the grant No. 101195233 (OpenEuroLLM). DO, JV acknowledge that this publication is part of project 2026.008 of the Computing Time National Computing Facilities program, which is financed by the Dutch Research Council (NWO) under the grant https://doi.org/10.61686/WBFDE48237. 
+
+5References 
+
+[1] S. Adriaensen, H. Rakotoarison, S. Müller, and F. Hutter. Efficient bayesian learning curve extrapolation using prior-data fitted networks. Advances in Neural Information Processing Systems , 2023. [2] N. Ajroldi, D. A. Onutu, H. Al-Tahan, J. Franke, S. Pyysalo, J. Jitsev, and A. Klein. Deriving scaling laws for openeurollm models: Learning rate, batch size and loss. arXiv:2608.28308 [cs.LG] , 2026. [3] I. M. Alabdulmohsin, X. Zhai, A. Kolesnikov, and L. Beyer. Getting vit in shape: Scaling laws for compute-optimal model design. Advances in Neural Information Processing Systems , 2023. [4] R. Astudillo and P. I. Frazier. Thinking inside the box: A tutorial on grey-box bayesian optimization. arXiv:2201.00272 [cs.LG] , 2022. [5] M. Balandat, B. Karrer, D. Jiang, S. Daulton, B. Letham, A. Wilson, and E. Bakshy. Botorch: A framework for efficient monte-carlo Bayesian optimization. In H. Larochelle, M. Ranzato, R. Hadsell, M.-F. Balcan, and H. Lin, editors, Proceedings of the 33rd International Conference on Advances in Neural Information Processing Systems (NeurIPS’20) , 2020. [6] S. Bergsma, N. Dey, G. Gosal, G. Gray, D. Soboleva, and J. Hestness. Power lines: Scaling laws for weight decay and batch size in llm pre-training. arXiv:2505.13738 [cs.LG] , 2025. [7] J. Bjorck, A. Benhaim, V. Chaudhary, F. Wei, and X. Song. Scaling optimal LR across token horizons. In The Thirteenth International Conference on Learning Representations , 2025. [8] T. Carstensen, N. Mallik, F. Hutter, and M. Rapp. Frozen layers: Memory-efficient many-fidelity hyperparameter optimization. In AutoML 2025 Methods Track , 2025. [9] T. Chen and C. Guestrin. Xgboost: A scalable tree boosting system. In Proceedings of the 22nd acm sigkdd international conference on knowledge discovery and data mining , pages 785–794, 2016. [10] Z. Chen, S. Ament, D. Eriksson, M. Balandat, B. K. H. Low, E. Bakshy, and J. A. Lin. Efficiently estimating optimal hyperparameter scaling laws through power-law entropy search. 
+
+arXiv:2609.01431 [cs.LG] , 2026. [11] A. Clark, D. De Las Casas, A. Guy, A. Mensch, M. Paganini, J. Hoffmann, B. Damoc, B. Hecht-man, T. Cai, S. Borgeaud, G. B. Van Den Driessche, E. Rutherford, T. Hennigan, M. J. Johnson, A. Cassirer, C. Jones, E. Buchatskaya, D. Budden, L. Sifre, S. Osindero, O. Vinyals, M. Ranzato, J. Rae, E. Elsen, K. Kavukcuoglu, and K. Simonyan. Unified scaling laws for routed language models. In K. Chaudhuri, S. Jegelka, L. Song, C. Szepesvári, G. Niu, and S. Sabato, editors, 
+
+Proceedings of the 39th International Conference on Machine Learning (ICML’22) , volume 162 of Proceedings of Machine Learning Research . PMLR, 2022. [12] M. Dehghani, J. Djolonga, B. Mustafa, P. Padlewski, J. Heek, J. Gilmer, A. Steiner, M. Caron, R. Geirhos, I. Alabdulmohsin, R. Jenatton, L. Beyer, M. Tschannen, A. Arnab, X. Wang, C. Riquelme, M. Minderer, J. Puigcerver, U. Evci, M. Kumar, S. van Steenkiste, G. F. Elsayed, A. Mahendran, F. Yu, A. Oliver, F. Huot, J. Bastings, M. P. Collier, A. Gritsenko, V. Birodkar, C. Vasconcelos, Y. Tay, T. Mensink, A. Kolesnikov, F. Paveti´ c, D. Tran, T. Kipf, M. Luˇ ci´ c, X. Zhai, D. Keysers, J. Harmsen, and N. Houlsby. Scaling vision transformers to 22 billion parameters. arXiv:2302.05442 [cs.CV] , 2023. [13] T. Domhan, J. Springenberg, and F. Hutter. Speeding up automatic Hyperparameter Optimiza-tion of deep neural networks by extrapolation of learning curves. In Q. Yang and M. Wooldridge, editors, Proceedings of the 24th International Joint Conference on Artificial Intelligence (IJ-CAI’15) , pages 3460–3468, 2015. [14] K. E. Everett, L. Xiao, M. Wortsman, A. A. Alemi, R. Novak, P. J. Liu, I. Gur, J. Sohl-Dickstein, L. P. Kaelbling, J. Lee, and J. Pennington. Scaling exponents across parameterizations and optimizers. In Proceedings of the 41st International Conference on Machine Learning , 2024. 6[15] S. Falkner, A. Klein, and F. Hutter. BOHB: Robust and efficient Hyperparameter Optimization at scale. In J. Dy and A. Krause, editors, Proceedings of the 35th International Conference on Machine Learning (ICML’18) , volume 80, pages 1437–1446. Proceedings of Machine Learning Research, 2018. [16] M. Feurer and F. Hutter. Hyperparameter Optimization. In F. Hutter, L. Kotthoff, and J. Van-schoren, editors, Automated Machine Learning: Methods, Systems, Challenges , chapter 1, pages 3 – 38. Springer, 2019. Available for free at http://automl.org/book .[17] K. Flöge and T. Çelik. Bayesian optimization with tabpfn extensions, 2026. URL https: //docs.priorlabs.ai/cookbook/bayesian_optimization .[18] L. Franceschi, M. Donini, V. Perrone, A. Klein, C. Archambeau, M. Seeger, M. Pontil, and P. Frasconi. Hyperparameter optimization in machine learning. Foundations and Trends in Machine Learning , 2025. [19] P. Frazier. A tutorial on Bayesian optimization. arXiv:1807.02811 [stat.ML] , 2018. [20] R. Garnett. Bayesian Optimization . Cambridge University Press, 2023. [21] J. Hoffmann, S. Borgeaud, A. Mensch, E. Buchatskaya, T. Cai, E. Rutherford, D. de Las Casas, L. A. Hendricks, J. Welbl, A. Clark, T. Hennigan, E. Noland, K. Millican, G. van den Driessche, B. Damoc, A. Guy, S. Osindero, K. Simonyan, E. Elsen, J. W. Rae, O. Vinyals, and L. Sifre. Training compute-optimal large language models. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, editors, Proceedings of the 35th International Conference on Advances in Neural Information Processing Systems (NeurIPS’22) , 2022. [22] J. Hoffmann, S. Borgeaud, A. Mensch, E. Buchatskaya, T. Cai, E. Rutherford, D. de Las Casas, L. A. Hendricks, J. Welbl, A. Clark, T. Hennigan, E. Noland, K. Millican, G. van den Driessche, B. Damoc, A. Guy, S. Osindero, K. Simonyan, E. Elsen, J. W. Rae, O. Vinyals, and L. Sifre. Training compute-optimal large language models, 2022. [23] F. Hutter, H. Hoos, and K. Leyton-Brown. Sequential model-based optimization for general algorithm configuration. In C. Coello, editor, Proceedings of the Fifth International Conference on Learning and Intelligent Optimization (LION’11) , volume 6683, pages 507–523, 2011. [24] K. Jamieson and A. Talwalkar. Non-stochastic best arm identification and Hyperparameter Optimization. In A. Gretton and C. Robert, editors, Proceedings of the Seventeenth International Conference on Artificial Intelligence and Statistics (AISTATS’16) , volume 51. Proceedings of Machine Learning Research, 2016. [25] J. Kaplan, S. McCandlish, T. Henighan, T. Brown, B. Chess, R. Child, S. Gray, A. Radford, J. Wu, and D. Amodei. Scaling laws for neural language models. arXiv:2001.08361 [cs.LG] ,2020. [26] A. Klein, S. Falkner, J. Springenberg, and F. Hutter. Learning curve prediction with Bayesian neural networks. In The Fifth International Conference on Learning Representations (ICLR’17) .ICLR, 2017. [27] H. Kushner. A new method of locating the maximum point of an arbitrary multipeak curve in the presence of noise. Journal of Basic Engineering , 86:97–106, 1964. [28] H. Li, W. Zheng, Q. Wang, H. Zhang, Z. Wang, S. Xuyang, Y. Fan, Z. Ding, H. Wang, N. Ding, S. Zhou, X. Zhang, and D. Jiang. Predictable scale: Part i – optimal hyperparameter scaling law in large language model pretraining. arXiv:2503.04715 [cs.LG] , 2025. [29] M. Li, S. Kudugunta, and L. Zettlemoyer. (mis)fitting scaling laws: A survey of scaling law fitting techniques in deep learning. In The Thirteenth International Conference on Learning Representations , 2025. [30] S. Li, P. Zhao, H. Zhang, S. Sun, H. Wu, D. Jiao, W. Wang, C. Liu, Z. Fang, J. Xue, Y. Tao, B. CUI, and D. Wang. Surge phenomenon in optimal learning rate and batch size scaling. In 
+
+Proceedings of the 37th International Conference on Advances in Neural Information Processing Systems (NeurIPS’24) , 2024. 7[31] S. Li, S. Li, H. Lin, W. Sun, A. Talwalkar, and Y. Yang. Spend less, fit better: Budget-efficient scaling law fitting via active experiment selection. In Workshop on Scientific Understanding of Foundation Models , 2026. [32] N. Mallik, M. Janowski, J. Hog, H. Rakotoarison, A. Klein, J. Grabocka, and F. Hutter. Warm-starting for scaling language models. In NeurIPS 2024 Workshop on Adaptive Foundation Models , 2024. [33] J. Mockus. On Bayesian methods for seeking the extremum and their application. In G. Marchuk, editor, Proceedings of the IFIP Technical Conference , page 400–404, 1977. [34] OpenEuroLLM. OpenEuroLLM Prelude. https://huggingface.co/openeurollm/ prelude , 2026. OpenEuroLLM multilingual training checkpoints. [35] M. Poloczek, J. Wang, and P. Frazier. Multi-Information Source Optimization. In I. Guyon, U. von Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vishwanathan, and R. Garnett, editors, 
+
+Proceedings of the 31st International Conference on Advances in Neural Information Processing Systems (NeurIPS’17) , pages 4288–4298, 2017. [36] T. Porian, M. Wortsman, J. Jitsev, L. Schmidt, and Y. Carmon. Resolving discrepancies in compute-optimal scaling of language models. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, Proceedings of the 37th International Conference on Advances in Neural Information Processing Systems (NeurIPS’24) , pages 100535–100570, 2024. [37] T. Porian, M. Wortsman, J. Jitsev, L. Schmidt, and Y. Carmon. Resolving discrepancies in compute-optimal scaling of language models. Advances in Neural Information Processing Systems , 2024. [38] H. Rakotoarison, S. Adriaensen, N. Mallik, S. Garibov, E. Bergman, and F. Hutter. In-context freeze-thaw Bayesian optimization for hyperparameter optimization. In Proceedings of the 41st International Conference on Machine Learning , 2024. [39] C. Rasmussen and C. Williams. Gaussian Processes for Machine Learning . The MIT Press, 2006. [40] G. Yang, E. Hu, I. Babuschkin, S. Sidor, X. Liu, D. Farhi, N. Ryder, J. Pachocki, W. Chen, and J. Gao. Tuning large neural networks via zero-shot hyperparameter transfer. In M. Ranzato, A. Beygelzimer, K. Nguyen, P. Liang, J. Vaughan, and Y. Dauphin, editors, Proceedings of the 34th International Conference on Advances in Neural Information Processing Systems (NeurIPS’21) , 2021. [41] Y. Yin, Y. Zhao, M. Zheng, K. Lin, J. Ou, R. Chen, V. S.-J. Huang, J. Wang, X. Tao, P. Wan, D. Zhang, B. Yin, W. Zhang, and K. Gai. Towards precise scaling laws for video diffusion transformers. In CVPR , pages 18155–18165, 2025. [42] H. Zhang, D. Morwani, N. Vyas, J. Wu, D. Zou, U. Ghai, D. Foster, and S. M. Kakade. How does critical batch size scale in pre-training? In The Thirteenth International Conference on Learning Representations (ICLR’25) . ICLR, 2025. 8A Limitations of the Current Study 
+
+There are several limitations in our current manuscript that can lead to many research directions for future extensions. First, we acknowledge that our results are a replay of existing dense grids, not a live data collection strategy for discovering a new law at a previously unmeasured scale for new modeling or data interventions. Some of the metrics we track (e.g., parameter differences) also lose meaning without a reference fit. We simulate different scenarios via ablations on other scaling datasets in Appendix C.1. Second, methodologically, we operate with standard kernel and acquisition function choices for Bayesian optimization, and offer some simple ablations in Appendix D.3 and Appendix D.4. There are potential extensions to scaling law form-aware mean and kernel functions (e.g., the group additive kernel used in Section D.3) for the GP. We also do not fully exploit the uncertainty measures available from the surrogate in scaling law construction. Potential extensions could propagate the uncertainty from the fantasized grid to scaling law coefficients directly, or weigh them differently in the weighted regression problem for identifying the fit. Third, methods to construct scaling laws by discarding a large part of a dense grid can still offer insights on how better to design scaling law studies. The choice between trying out a new hyperpa-rameter setting, extending a training run longer, and moving to a new model size dictates how we measure the best loss at a given compute budget. This directly ties to the width of the window used during data collection in this work. We also note that our compute slicing setup is similar in principle to a cost-aware acquisition. However, when measuring cost in FLOPs, multiple hyperparameters may share similar costs and therefore may not suitably change ranking in the acquisition function. 
+
+B Framework (continued) 
+
+Notation Summary We provide all the notations used within this study in Table 2. Typical scaling law studies define a scaling ladder, that is, a grid of model sizes and token budgets, contingent on the architecture chosen, hardware used, and total budget available. Let 
+
+N = {N1, N 2, . . . , N n} ⊂ Z + and D = {D1, D 2, . . . , D d} ⊂ Z + define the space of model and token budgets, respectively, and Λ ⊆ Rk defines a space of hyperparameters considered. Let 
+
+f : N × D × Λ → R represent the loss of a model run. A standard HPO problem would then be, 
+
+(N, D, λ )∗ ∈ arg min   
+
+> N∈N , D ∈D , λ ∈Λ
+
+f (N, D, λ ). (1) Given that compute is some function of model parameters and data seen, let C(N, D ) = g(N, D ) ∈
+
+R+ 2 , then the Equation (1) for scaling law data optimization will be, 
+
+(N, D, λ )∗Sj ∈ arg min   
+
+> N∈N , D ∈D , λ ∈Λ
+> g(N,D )∈S j
+
+f (N, D, λ ), ∀j = 1 , . . . , m. (2) Let g : N × D → R+ map a configuration to its compute, and let C1 < C 2 < . . . < C m be the distinct compute levels it induces, forming an increasing compute frontier (typically iso-FLOP, and generalizable to iso-parameter, iso-token, etc.). Since g is many-to-one, several (N, D ) pairs may share a compute level, so m ≤ n · d, with equality only when no two grid points collide. Let a 
+
+compute window be defined as Wj = [ C1, C j ], so that W1 ⊂ W 2 ⊂ . . . ⊂ W j ⊂ . . . ⊂ W m. Each consecutive pair of windows defines a compute slice , Sj = Wj \ W j−1 = ( Cj−1, C j ] for j > 1,with S1 = W1.The full space of optimization is thus the grid G = N × D × Λ. We label any HPO that searches this space jointly as Full in our analysis. Let Ot be the set of observations collected during an HPO run up to iteration t. For the compute window-based HPO, the search happens over Wp+1 , where 
+
+p = max { j : Sj ∩ O t̸ = ∅ } is the index of the highest compute slice observed so far. In our analysis, we call such methods Window .      
+
+> 2e.g. g(N, D ) = 6 ·N·Dfrom Kaplan et al. [25]
+
+9For evaluation, given a compute threshold τ as input, the full optimization space is split into a pool 
+
+Gpool = { x ∈ G : C(x) < τ } and a held-out set Gheld -out = { x ∈ G : C(x) ≥ τ }. The search is restricted to the pool, so Ot ⊆ G pool at every iteration. When a standard scaling law fit procedure is executed on Ot alone, we call it Observed .For model-based HPO, a surrogate Mt is fitted on Ot and used to fantasize predictions for the unevaluated points Gpool \ O t. Executing the scaling law fit procedure on this simulated pool, which takes observed losses where available and surrogate predictions elsewhere, gives the fit we call 
+
+Observed+Fantasized .Table 2: Summary of notations used. Symbol Definition 
+
+N , D Model size (parameter count) and training tokens 
+
+λ Hyperparameter configuration, λ ∈ Λ ⊆ Rk
+
+N , D Sets of candidate model sizes and token budgets 
+
+G Full grid of configurations, G = N × D × Λ
+
+f (N, D, λ ) Loss of a training run 
+
+g(N, D ) Compute cost in FLOPs, C(N, D ) = g(N, D ) ≈ 6N D C1 < . . . < C m Distinct compute levels induced by g over the grid 
+
+Wj Compute window, Wj = [ C1, C j ]
+
+Sj Compute slice, Sj = Wj \ W j−1
+
+τ Compute threshold separating the pool from the held-out set 
+
+Gpool Configurations available to the search, {x ∈ G : C(x) < τ }Gheld -out Configurations reserved for extrapolation testing, {x ∈ G : C(x) ≥ τ }Ot Observations collected up to iteration t, Ot ⊆ G pool 
+
+Mt Surrogate model fitted on Ot
+
+Figure 3 assembles these components into the full loop: starting from an initial design within the first compute window, each iteration fits the surrogate Mt on the observations Ot, selects and evaluates the next configuration over the expanded window Wt+1 , and optionally (in case of model-based method) fantasizes the unobserved pool Gpool \ Ot to fit and score the scaling law at that step. The loop repeats until the compute budget is spent, after which the recovered parameters ˆθ are evaluated against the full-grid reference, with compute slicing (the window Wp+1 ) and fantasization ( Mt) as the only two additions to an otherwise standard BO procedure. 
+
+C Experimental Extras 
+
+To assess the robustness of our framework, we validate the proposed method on several dimensions, namely different datasets (Appendix C.1) and parametric forms (Appendix C.2). Additionally, we detail the metrics used to track within our experiments (Appendix C.3) and the experiment settings used for motivating our analysis (Appendix C.4). 
+
+C.1 Datasets Used 
+
+We evaluate the proposed framework on 5 datasets spanning different compute ranges, grid densities, and scaling study designs. These differences are important because they determine which scaling laws can be reliably recovered from each dataset and affect the difficulty of the data acquisition problem. 
+
+OELLM-English [2] OELLM-English provides nearly complete coverage of the (N, D ) grid, with 51 of 54 possible combinations (94%) represented in Table 3. It also features a convenient scaling geometry for the compute slicing: token budgets are approximately geometrically spaced, with successive budgets differing by roughly 1.5 − 1.7×, resulting in approximately uniform spacing along the log-compute axis. Its full sweep has one of the largest total collection costs among the considered datasets, comparable to StepLaw (Table 4). The dataset was designed to study loss scaling with compute, model size and token budget, as well as the scaling of optimal learning rate and batch size scaling across (N, D ).10 Search Grid   
+
+> Initial Samples
+> Fit Surrogate
+> on
+> Next Query Selection,
+> using &
+> Observable Set: Evaluation Set:
+> Update:
+> HPO Loop
+> Fantasize:
+> from
+> Fit & Evaluate
+> Scaling Laws
+
+Figure 3: Overview of the framework. From the search grid we draw initial samples, then run the HPO loop: at each iteration a surrogate Mt is fit on the observations Ot, the next query is selected over the expanding window Wt+1 , its loss is evaluated, and Ot is updated, until the compute budget 
+
+Ctotal is reached. The surrogate optionally fantasizes losses over the grid, and the resulting observed (and fantasized) points are used to fit and evaluate the scaling law against the full-grid reference. Compute slicing and fantasization are the two additions to vanilla BO. 
+
+Porian-HP [37] From the experiments of [37], we select the hyperparameter scaling dataset which evaluates learning rate, batch size and Adam β2 across multiple model and data scales. Porian-HP requires substantially lower compute budgets than the other datasets and provides a sparse coverage of the (N, D ) space, containing only 14% of the possible combinations. Moreover, token budget is not varied independently of model size: runs follow similar token-per-ratios; thus, the observations cover a narrow region of the (N, D ) grid. This limited independent variation in N and D makes the dataset unsuitable for fitting scaling laws that require two-dimensional (N, D ) grid coverage, such as Chinchilla Approach 3 [22]. The 566 runs additionally vary with Adam β2, resulting in roughly 237 distinct (N, D, η, b ) configurations. The dataset was specifically designed to study the scaling of optimal hyperparameters. 
+
+StepLaw [28] StepLaw provides a broad coverage of learning rate and batch size, consisting of 175 of 182 possible (η, b ) combinations (96%), seen in Table 3. In contrast, its (N, D ) coverage is sparse: only 23% of the possible combinations are represented, spanning 5 model sizes over a relatively narrow range. Nevertheless, the large number of hyperparameter evaluations at these (N, D ) points makes StepLaw particularly well suited for evaluating hyperparameter search methods. Its full sweep has one of the highest total compute cost in our collection, comparable to OELLM-English (4). The dataset was collected to study the scaling of optimal hyperparameters. 
+
+Warmstart [32] Its (N, D ) coverage is sparse, with only 17% of possible combinations represented, and only 23 distinct (N, D ) pairs. Unlike other datasets, here μP [40] and batch size scaling [42] was used so a typically dense (η, b ) grid is not available. This project collected runs on language models that were initialized from smaller trained language models. Therefore, this dataset has 4
+
+other non-standard hyperparameters: the size of the smaller model used to initialize, the method to warmstart, warmstart hyperparameters, and the ratio of hidden sizes of the small and large model. The dataset was collected to study the scaling of loss with respect to model size and the token budget. 
+
+OELLM-Multilingual [34] OELLM-Multilingual follows a similar experimental design to OELLM-English, varying model size, token budget, learning rate and batch size. It provides complete coverage of its (N, D ) grid, with all 36 possible combinations represented. Compared with OELLM-English, however, it spans fewer model sizes and evaluates a smaller hyperparameter sweep 11 around each (N, D ) pair. It therefore retains regular two-dimensional model-data scaling coverage while providing a less densely sampled hyperparameter search problem. The dataset was designed to study loss scaling with compute, model size and token budget, together with the scaling of optimal hyperparameters in the multilingual setting. 
+
+Note. Tuple counts in Table 3 denote the number of distinct combinations observed in each dataset and therefore need not equal the product of the corresponding marginal counts. Differences between the total number of runs and the number of distinct (N, D, η, b ) configurations arise from additional variables varied in the original experimental design. For example, Porian-HP additionally sweeps three values of Adam β2.Table 3: Overview of the benchmark datasets and their configuration grids. 
+
+Dataset # Runs # N # D # (N, D ) # η # b # (η, b ) # (N, D, η, b )
+
+OELLM-English 942 6 9 51 5 8 36 942 Porian-HP 566 7 39 39 7 7 46 237 StepLaw 1911 5 15 17 14 13 175 1911 Warmstart 150 6 23 23 3 7 14 44 OELLM-Multilingual 332 4 9 36 5 8 30 332 Table 4: Scale and compute coverage of the benchmark datasets. 
+
+Dataset N range D range Ctotal 
+
+OELLM-English 47 .6M –1.71B 6B –300B 1.45 × 10 23 
+
+Porian-HP 5.2M –221M 103M –4.4B 2.88 × 10 20 
+
+StepLaw 215M –1.07B 4B –100B 1.45 × 10 23 
+
+Warmstart 32 .3M –1.22B 32 .3M –60 .9B 1.66 × 10 21 
+
+OELLM-Multilingual 206M –1.26B 6B –300B 6.57 × 10 22 
+
+C.2 Parametric Forms 
+
+We evaluate scaling law construction using two parametric forms that model loss at increasing scale. The forms differ in how the scale variables are represented and, consequently, in which configurations from the experimental grid contribute to the fit. For variables that are not explicitly modeled by the parametric form, we select the configuration achieving the lowest loss. 
+
+C.2.1 Loss as a function of compute: L(C)
+
+We first consider a power law relating loss directly to training compute, 
+
+L(C) = E + AC α, (3) where E denotes the irreducible loss, A controls the scale of the compute-dependent term, and α < 0
+
+determines the scaling rate. Since this formulation models loss only as a function of compute, configurations that differ in model size, token budget, or training hyperparameters but have the same compute are represented by the lowest-loss configuration. For each compute level C, we therefore define 
+
+L⋆(C) = min  
+
+> x∈G :C(x)= C
+
+L(x). (4) The scaling law is fitted to the resulting best-loss envelope {(C, L ⋆(C)) }. Thus, L(C) collapses the allocation of compute between model size and training tokens, as well as the training hyperparameters, into a one-dimensional compute-loss relationship. 
+
+C.2.2 Loss as a function of model size and data: L(N, D )
+
+We additionally evaluate the parametric loss model proposed in Approach 3 of Chinchilla [22], 
+
+L(N, D ) = E + AN α + BDβ (5) 12 The five parameters (E, A, B, α, β ) separately characterize the dependence of loss on model size N
+
+and training tokens D.Unlike L(C), this formulation retains the two-dimensional (N, D ) structure of the scaling study. Since our experimental grids additionally contain training hyperparameters, we first select the lowest-loss configuration for each (N, D ) pair, 
+
+L⋆(N, D ) = min  
+
+> η,b
+
+L(N, D, η, b ), (6) and fit the parametric form to the resulting set {(N, D, L ⋆(N, D )) }.Under the approximation C ≈ 6N D , the fitted parameters additionally determine the compute-optimal allocation between model size and training data, Consequently, recovering L(N, D ) places a stronger requirement on the coverage of the experimen-tal grid than recovering L(C): the acquisition process must recover near-optimal losses across a sufficiently broad set of (N, D ) pairs rather than only the one-dimensional compute-loss envelope. This formulation estimates 5 parameters, and models the dependence of loss on model size N and training tokens D separately. This setting differs from the L(C) scaling law considered above. While L(C) is fitted to the best-loss frontier across compute scales, L(N, D ) retains the 2D (N, D ) structure. Since our search space additionally contains training hyperparameters, we therefore identify the best performing configuration for each (N, D ) pairs before fitting the scaling law. 
+
+C.3 Metrics Why look at multiple metrics? Progress in HPO is typically measured by the minimum loss achieved, matching its underlying arg min L objective. We argue this is not enough for scaling law construction: An acquisition strategy can drive the loss down by clustering samples at the highest compute scale, leaving lower compute scales sparse which can affect the parametric fit quality. We therefore keep the usual check of what loss the acquired points actually achieve, but also treat it as one measure among several. Our primary metrics thus do not track traditional loss regret, instead they measure discrepancies (e.g., parameter error, frontier recovery, and held-out predictive loss) relative to a reference fit as defined below, extending notations from Table 2. 
+
+Set up. To extract the loss envelope on any grid G′, we define the frontier operator Π( G′): to fit 
+
+L(C) forms, Π( G′) extracts the compute–loss Pareto frontier; for L(N, D ) forms, Π( G′) extracts the min-loss configuration per (N, D ) cell present in G′. More generally, Π( G′) extracts the min-loss over all dimensions in G′ that is not an independent variable modeled in the loss-parametric form. 
+
+Reference fits. Given our empirical analysis has the full grid evaluation available, we compute two oracle fits on available reference grids: the validation fit ˆθval fitted on Π( Gpool ), and the global 
+
+fit ˆθglobal fitted on Π( G). At each acquisition step, a surrogate Mt can fantasize losses across the unobserved pool to form a mixed (observed + fantasized) grid ˆG. The estimated law ˆθ is then fitted directly on the extracted mixed frontier Π( ˆG). Unless otherwise stated, we omit the subscript val 
+
+from parameters ˆθ in the plots. To measure the quality of the fits, we propose to use 4 metrics. 
+
+Parameter regret. The unsigned parameter discrepancy r(ˆθt, ˆθval ) = |ˆθt − ˆθval |, reported as the running incumbent. 
+
+Held-out error. The mean squared error between predictions from Lˆθt (often abbreviated as Lt in plots) and the ground-truth values L∗ on the held-out frontier Π( Gheld −out ).
+
+Envelope recovery. The fraction of the true envelope recovered by the mixed grid, given by 
+
+R/ |Π( Gpool )| where R = |Π( ˆG) ∩ Π( Gpool )|. (Replacing ˆG with acquired points yields the observed-only variant). This fraction measures whether the mixed (observed + fantasized) grid has recovered the points the reference fit is trained on. 13 Relative Error Extrapolation. To have a more complete picture of how the scale of regret over the parameter fits affects the extrapolation quality, we also compare the relative % error at larger computes for the fit obtained on Π( ˆG) to the fit obtained on Π( Gpool ).Table 5: Incumbent coefficients of the loss law L(C) = E + A C α under LCB acquisition, at increasing fractions of the compute needed to exhaust the grid. Mean ± S.D. over 10 seeds. Budget E A α
+
+1% of Total Budget 0.4655 ± 0.0309 6.833 ± 0.332 −0.1559 ± 0.0087 5% of Total Budget 0.4536 ± 0.0054 6.686 ± 0.024 −0.1521 ± 0.0007 10% of Total Budget 0.4502 ± 0.0014 6.674 ± 0.006 −0.1517 ± 0.0001 25% of Total Budget 0.4502 ± 0.0014 6.674 ± 0.006 −0.1517 ± 0.0001 50% of Total Budget 0.4502 ± 0.0014 6.674 ± 0.006 −0.1517 ± 0.0001 100% of Total Budget 0.4499 6.679 −0.1518 
+
+C.4 Experimental Settings 
+
+For both L(C) and L(N, D ) studies we evaluate on five datasets: OELLM-English, OELLM-Multilingual, StepLaw, Porian-HP, and Warmstart. In every case the grid is split on compute into an acquirable pool Gpool and a held-out set Gheld -out , where the held-out set is the top slice of the compute axis reserved for held-out error and never acquired. We place this boundary at half the maximum available compute; a held-out fraction of 0.5 as a standard, untuned choice that still leaves more than one point on the held-out compute-optimal frontier, so that held-out error is measured over more than a single point. The one exception is Warmstart, whose grid contains a single run orders of magnitude above the rest; at a fraction of 0.5 this leaves only that lone point in the held-out set, so we widen the fraction to 0.9 to recover a held-out frontier with more than one point. The growing compute window Wt+1 expands with the observed frontier; its forward reach beyond the current frontier is set per dataset to a factor of 1.5× for OELLM-English and OELLM-Multilingual and 2×
+
+for StepLaw, Porian-HP, and Warmstart, while the full variant (vanilla) searches the whole pool. Each run starts from ten practice-initialized points and acquires under a Gaussian-process surrogate over 
+
+(N, D, λ ) with a Matérn kernel and Expected Improvement (for all ablations) and Lower Confidence Bound (LCB) for Figure 2, repeated over 10 seeds; we track coefficient regret, held-out MSE, and envelope-set coverage against cumulative compute and read them jointly. 
+
+D Ablations 
+
+In the main paper, we have shown results on the OELLM-English dataset [2] for Gaussian processes (GP) with Matérn kernel as the surrogate and Lower Confidence Bound (LCB) as the acquisition function as the choices for vanilla BO components. Now we investigate whether the proposed approach improves general search methods, reliably identifies scaling law fits on other datasets (Section D.2 and D.5.1) and parametric forms (Section D.5), and we also discuss the GP modeling choices (kernel and acquisition functions). 
+
+D.1 Improving any BO based search method 
+
+We ask whether our proposed changes to the standard Bayesian optimization methodology apply and improve other baseline search procedures for efficient scaling law construction. In Figure 4, we show the effect of applying compute slicing followed by fantasization (where applicable) to Random Search and two other choices of surrogates for BO on the OELLM-English study. We consider ensemble ofxgboost [9] and TabPFN BO [17], an extention of TabPFN that provides predictive distribution from TabPFN model as the two other modeling choices. For these surrogate baselines, we incorporate both compute window and fantasization. The surrogate methods all recover the compute-optimal envelope faster than random search. Random search reaches comparable coefficients but fails to identify most of the compute-optimal points (poor envelope recovery) while still benefitting on compute window. Note that both the dashed lines use 14 10 20 10 21 10 22 10 23                                                                                   
+
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0
+> Random Search
+> j^E¡^Etj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −1
+> 10 2
+> 10 5
+> 10 8j^A¡^Atj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0j^®¡^®tj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −5
+> 10 −3
+> 10 −1
+> MSE( L¤; L t)
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 0% 50% 100% Envelope recovery Full Window 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0
+> TabPFN
+> j^E¡^Etj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −3
+> 10 0
+> 10 3
+> 10 6
+> j^A¡^Atj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0j^®¡^®tj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0MSE( L¤; L t)
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 0% 50% 100% Envelope recovery 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> xgboost
+> j^E¡^Etj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 1
+> 10 3
+> 10 5
+> 10 7
+> j^A¡^Atj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> j^®¡^®tj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −5
+> 10 −3
+> 10 −1
+> MSE( L¤; L t)
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 0% 50% 100% Envelope recovery Full (Obs. only) Window (Obs. only) Window (Obs. + fant.)
+
+Figure 4: Effect of our proposed search (window) methodology with other models: Random Search (top) as a surrogate-free approach, and two other choices of surrogates for BO: TabPFN (middle) and xgboost (bottom). Our proposed method emperically improve over the standard BO definition (Full). only acquired points to fit the scaling law, while the solid line uses acquired and fantasized points on the grid. 
+
+D.2 Generalizing to other scaling law datasets 
+
+Next we apply the approach to other real-world scaling law benchmark datasets as defined in Table 3. We show the results in Figure 5. We note that while Warmstart, Porian and OELLM Multilingual studies show improvement, Step-law is particularly poor in terms of recovering the envelope with our approach. We suspect the method fails to reliably recover the compute-optimal points for Step-law with less cost because the dataset contains many poor hyperparameter settings affecting the surrogate. Next we run some ablations on GP on the OELLM-English dataset on the L(C) form. Unless otherwise specified, in all plots we show the compute window plus fantasization variants. 
+
+D.3 GP kernel choices 
+
+Here we fix GP with EI acquisition, and vary the covariance kernel k(x, x ′) of GP. We consider four kernels on the log-transformed input (log N, log D, log λ) where λ represents remaining hyperpa-rameters. The default is a Matérn-5/2 kernel k5/2 on all coordinates. Other kernels we consider are the linear kernel klin , sum of k5/2 and klin on all coordinates, and a grouped additive form 
+
+klin (log N, log D) + k5/2(log λ) applies the linear term only to the scale dimensions and the Matérn term only to the hyperparameters. We show the results in Figure 6. We see that while the Linear kernel often outperforms the other two on parameter regrets, it is typically worse than the default Matérn or the Linear +Matérn kernels. For this study, the grouped additive form also seem to not perform that well across all tracked metrics. 
+
+D.4 Choice of acquisition function 
+
+In Figure 7, we ablate over the choice of acquisition function used in the BO loop, and consider 3 standard choices: Expected Improvement (EI), Probability of Improvement (PI) and Lower Con-fidence Bound (LCB) [20, 27, 33]. We observe the GP+LCB combination performing better than other two acquisition functions, and choose to show the results for it in the main section of this study 15 10 18 10 19 10 20 
+
+cost (FLOPs) 
+
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0
+> Warmstart
+
+j ^E ¡ ^Etj  
+
+> 10 18 10 19 10 20
+
+cost (FLOPs) 
+
+> 10 −3
+> 10 0
+> 10 3
+> 10 6
+
+j ^A ¡ ^Atj  
+
+> 10 18 10 19 10 20
+
+cost (FLOPs)  
+
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0
+
+j ^® ¡ ^®tj  
+
+> 10 18 10 19 10 20
+
+cost (FLOPs) 
+
+> 10 −3
+> 10 −2
+> 10 −1
+
+MSE( L¤ ; L t)  
+
+> 10 18 10 19 10 20
+
+cost (FLOPs)  
+
+> 050 100
+
+Envelope recovery Full Window Observed + fantasized Observed only 10 20 10 23 
+
+cost (FLOPs) 
+
+> 10 −4
+> 10 −2
+> 10 0
+> Step-law
+
+j ^E ¡ ^Etj 
+
+> 10 20 10 23
+
+cost (FLOPs)  
+
+> 10 −1
+> 10 2
+> 10 5
+> 10 8
+
+j ^A ¡ ^Atj 
+
+> 10 20 10 23
+
+cost (FLOPs)  
+
+> 10 −4
+> 10 −2
+> 10 0
+
+j ^® ¡ ^®tj 
+
+> 10 20 10 23
+
+cost (FLOPs) 
+
+> 10 −4
+> 10 −3
+> 10 −2
+
+MSE( L¤ ; L t) 
+
+> 10 20 10 23
+
+cost (FLOPs)  
+
+> 050 100
+
+Envelope recovery Full Window Observed + fantasized Observed only 10 21 10 22 
+
+cost (FLOPs) 
+
+> 10 −4
+> 10 −2
+> 10 0
+> OELLM Multilingual
+
+j ^E ¡ ^Etj 
+
+> 10 21 10 22
+
+cost (FLOPs)  
+
+> 10 2
+> 10 4
+> 10 6
+> 10 8
+
+j ^A ¡ ^Atj 
+
+> 10 21 10 22
+
+cost (FLOPs) 
+
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+
+j ^® ¡ ^®tj 
+
+> 10 21 10 22
+
+cost (FLOPs) 
+
+> 10 −5
+> 10 −3
+> 10 −1
+
+MSE( L¤ ; L t) 
+
+> 10 21 10 22
+
+cost (FLOPs)  
+
+> 0% 50% 100%
+
+Envelope recovery Full Window Observed + fantasized Observed only 10 17 10 20 
+
+cost (FLOPs) 
+
+> 10 −4
+> 10 −2
+> 10 0
+> Porian
+
+j ^E ¡ ^Etj 
+
+> 10 17 10 20
+
+cost (FLOPs) 
+
+> 10 −2
+> 10 1
+> 10 4
+> 10 7
+
+j ^A ¡ ^Atj 
+
+> 10 17 10 20
+
+cost (FLOPs)  
+
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0
+
+j ^® ¡ ^®tj 
+
+> 10 17 10 20
+
+cost (FLOPs) 
+
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+
+MSE( L¤ ; L t) 
+
+> 10 17 10 20
+
+cost (FLOPs)  
+
+> 050 100
+
+Envelope recovery Full Window Observed + fantasized Observed only Figure 5: We provide L(C) scaling law recovery plots on applying our approach to other scaling law studies (each row). Here we keep standard BO settings fixed: GP surrogate with Matérn-5/2 kernel and EI as the acquisition function and show the results for plain (Full) and slabbed (Window) variants (dashed: only observed points used, solid: observed plus fantasized points used to construct L(C)). 10 20 10 21 10 22 10 23 
+
+cost (FLOPs) 
+
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0
+> OELLM-English
+
+j ^E ¡ ^Etj   
+
+> 10 20 10 21 10 22 10 23
+
+cost (FLOPs) 
+
+> 10 −3
+> 10 0
+> 10 3
+> 10 6
+
+j ^A ¡ ^Atj   
+
+> 10 20 10 21 10 22 10 23
+
+cost (FLOPs)  
+
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0
+
+j ^® ¡ ^®tj   
+
+> 10 20 10 21 10 22 10 23
+
+cost (FLOPs)  
+
+> 10 −4
+> 10 −2
+> 10 0
+
+MSE( L¤ ; L t)   
+
+> 10 20 10 21 10 22 10 23
+
+cost (FLOPs)  
+
+> 0% 50% 100%
+
+Envelope recovery Matern Linear Linear + Matern Linear (N,D) + Matern (HPs) 
+
+Figure 6: Different kernel choices for the GP surrogate with EI acquisition function. We experiment with 2 standard kernels and 2 additive kernels, with one applying different kernels to different variable types. (Figure 2) and the mean incumbent coefficients recovered in Table 5 at different fractions of the total compute budget, complementing the Table 1. 
+
+D.5 Parametric form: Chinchilla 3 Approach 
+
+We evaluate the Chinchilla 3 Approach L(N, D ) on the OELLM-English grid under the same surrogate-based acquisition protocol used for the L(C) experiments described in Section 4: 10 seeds (0–9), a Gaussian Process surrogate over (N, D, LR , BS ), Expected Improvement selection, 1000 acquisition iterations, and 10 practice initialized points drawn from the full HP grid at the smallest N
+
+over the four smallest D values. Unlike the L(C) experiment, which splits acquire-able pool and held-out set on compute, we split the grid on the model size axis and hold out the largest model size, which is never acquired. Each iteration scores the fitted law on the acquire-able pool (in-region recovery) and on the held-out large N region (extrapolation to unseen scale). 16 10 20 10 21 10 22 10 23                            
+
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0
+> OELLM-English  j^E¡^Etj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −2
+> 10 1
+> 10 4
+> 10 7
+> j^A¡^Atj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −6
+> 10 −4
+> 10 −2
+> 10 0j^®¡^®tj
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0MSE( L¤; L t)
+> 10 20 10 21 10 22 10 23
+> cost (FLOPs)
+> 0% 50% 100% Envelope recovery EI PI LCB
+
+Figure 7: Three standard choices for the acquisition function used in BO. LCB performs slightly better than EI and PI on OELLM-English dataset. Figure 8 shows that the conclusions obtained for L(C) in Figure 2 extend to the two-dimensional 
+
+L(N, D ) parametric form. Restricting acquisition to a growing compute window substantially speeds up the recovery of α, β, and E, and achieves lower held-out prediction error at smaller cumulative compute. Fantasization is particularly beneficial for recovering the per-(N, D ) loss envelope early in the search. This result is notable because L(N, D ) imposes a stronger recovery requirement than 
+
+L(C): rather than identifying a one-dimensional compute-loss envelope, the acquisition procedure must obtain accurate minima across multiple (N, D ) pairs. 10 20 10 23                    
+
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0
+> OELLM English
+> j^®¡^®tj
+> 10 20 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0j^¯¡^¯tj
+> 10 20 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0
+> j^E¡^Etj
+> 10 20 10 23
+> cost (FLOPs)
+> 10 −4
+> 10 −2
+> 10 0MSE( L¤; L t)
+> 10 20 10 23
+> cost (FLOPs)
+> 0% 50% 100%
+> Envelope recovery Full Window Observed + fantasized Observed only
+
+Figure 8: Recovery of the L(N, D ) parametric fit on OELLM-English under different BO variants. We compare acquisition over the full search space ( Full ) and a growing compute window ( Window ), with scaling laws fitted using either observed points only or observed and fantasized points. Panels report parameter recovery for α, β, and E, held-out MSE, and recovery of the minimum-loss configuration at each (N, D ) pair. Shaded regions show ±1 S.D. over 10 seeds. 
+
+D.5.1 Dataset experiments 
+
+To assess whether the recovery behavior observed on OELLM-English generalizes across scaling study designs, we repeat the L(N, D ) experiment on the remaining benchmark datasets. We keep the BO configuration fixed and compare the same Full and Window acquisition variants, with and without fantasization. Figure 9 reports the resulting parameter recovery, held-out prediction error, and per-(N, D ) envelope recovery as a function of cumulative compute. The benefit of compute-window acquisition persists across datasets, although its magnitude depends on the underlying grid. The improvement is clearest for Warmstart, OELLM-Multilingual, and Porian, where the window generally recovers the fitted parameters and the per-(N, D ) loss envelope at lower cumulative compute. StepLaw remains substantially more challenging: the acquisition strategies show limited separation and recover only a small fraction of the loss envelope before the grid is nearly exhausted. Fantasization can further improve early envelope recovery, but its benefit is less consistent across datasets and individual fit metrics. Overall, these results indicate that compute slicing remains effective for the more demanding L(N, D ) recovery setting, while recovery efficiency is sensitive to the structure and density of the underlying experimental grid. 17 10 18 10 21 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −2 
+
+10 0
+
+10 2
+
+> Warmstart
+
+j ^® ¡ ^®tj
+
+10 18 10 21 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −2 
+
+10 0
+
+j ^¯ ¡ ^¯tj
+
+10 18 10 21 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −2 
+
+10 0
+
+j ^E ¡ ^Etj
+
+10 18 10 21 
+
+cost (FLOPs) 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+MSE( L¤ ; L t)
+
+10 18 10 21 
+
+cost (FLOPs) 
+
+0% 50% 100% 
+
+Envelope recovery 10 20 10 21 10 22 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −2 
+
+10 0
+
+> StepLaw
+
+j ^® ¡ ^®tj
+
+10 20 10 21 10 22 
+
+cost (FLOPs) 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0 j ^¯ ¡ ^¯tj
+
+10 20 10 21 10 22 
+
+cost (FLOPs) 
+
+10 −15 
+
+10 −10 
+
+10 −5 
+
+10 0
+
+j ^E ¡ ^Etj
+
+10 20 10 21 10 22 
+
+cost (FLOPs) 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+MSE( L¤ ; L t)
+
+10 20 10 23 
+
+cost (FLOPs) 
+
+0% 50% 100% 
+
+Envelope recovery 10 21 10 22 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −2 
+
+10 0
+
+10 2
+
+> OELLM Multilingual
+
+j ^® ¡ ^®tj
+
+10 21 10 22 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+j ^¯ ¡ ^¯tj
+
+10 21 10 22 
+
+cost (FLOPs) 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0 j ^E ¡ ^Etj
+
+10 21 10 22 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+MSE( L¤ ; L t)
+
+10 21 10 22 
+
+cost (FLOPs) 
+
+0% 50% 100% 
+
+Envelope recovery 10 17 10 20 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −2 
+
+10 0
+
+10 2
+
+> Porian
+
+j ^® ¡ ^®tj
+
+10 17 10 20 
+
+cost (FLOPs) 
+
+10 −4 
+
+10 −3 
+
+10 −2 
+
+j ^¯ ¡ ^¯tj
+
+10 17 10 20 
+
+cost (FLOPs) 
+
+10 −3 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+j ^E ¡ ^Etj
+
+10 17 10 20 
+
+cost (FLOPs) 
+
+10 −2 
+
+10 −1 
+
+10 0
+
+10 1
+
+MSE( L¤ ; L t)
+
+10 17 10 20 
+
+cost (FLOPs) 
+
+0% 50% 100% 
+
+Envelope recovery Full Window Observed + fantasized Observed only Figure 9: L(N, D ) scaling law recovery across benchmark datasets. Columns report recovery of 
+
+α, β, and E, held-out MSE, and per-(N, D ) envelope recovery. Lines compare Full and Window 
+
+acquisition with observed-only and observed-plus-fantasized fits. 18
