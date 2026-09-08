@@ -1,0 +1,1717 @@
+Title: Gradient-Free Optimization for Matrix functions
+
+URL Source: https://arxiv.org/pdf/2609.03170v1
+
+Published Time: Fri, 04 Sep 2026 00:15:06 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Gradient-Free Optimization for Matrix functions 
+
+Sawyer Allen sawyer_allen@mines.edu Unaffiliated 
+
+Cash Cherry ccherry@ucsb.edu Department of Mathematics, UCSB 
+
+Aidan Eck aeck1@mines.edu Unaffiliated 
+
+Stephen Becker stephen.becker@colorado.edu Department of Applied Mathematics, CU Boulder 
+
+Daniel McKenzie dmckenzie@mines.edu Department of Applied Mathematics and Statistics, Colorado School of Mines 
+
+## Abstract 
+
+We consider the task of optimizing smooth, possibly non-convex functions of a matrix vari-able given access only to directional derivatives rather than full gradients. This setting arises when fine-tuning large neural networks on consumer-grade hardware: the network’s weights are matrices, memory constraints rule out backward-mode automatic differentiation, but directional derivatives remain available through forward mode. We frame gradient estimation in this setting as a structured recovery problem, in the spirit of signal processing. From this perspective we provide three contributions. First, we introduce an alternative to the standard random gradient estimator; the difference corresponds to replacing the adjoint of the sampling operator with its pseudoinverse. Second, when the gradient satisfies an approximate low-rank condition, techniques from matrix sensing yield a family of highly accurate gradient estimators that drop into any first-order method. Third, we note that while the computational cost of such estimators is high, this can be amortized by combining them with a matrix-aware optimizer such as spectral descent. Specifically, the gradient estimator computes a factorization of the gradient, allowing for the projection step of spectral descent to be done at no extra cost. We demonstrate our findings with two careful numerical experiments on synthetic functions with approximately low-rank gradients. We show that by exploiting this low-rank property one obtains much faster convergence to good approximate solutions. 
+
+## 1 Introduction 
+
+In this paper we consider the following optimization problem min  
+
+> X∈Rm×n
+
+f (X) (1) where f : Rm×n → R is Lipschitz differentiable. That is, we are interested in settings where the input to 
+
+f can naturally be thought of as a matrix. We shall call such functions matrix functions . Matrix functions arise in problems such as sensor localization Tasissa & Lai (2018), quantum state tomography Gross et al. (2010), and the training/fine-tuning of neural networks. While matrix functions may be reduced to the more familiar form ˜f : RN → R by defining N = mn and simply stacking the columns of X ∈ Rm×n to form a vector x ∈ RN , retaining the matrix structure of X allows for specialized optimization algorithms that may outperform generic, vectorized ones. 1arXiv:2609.03170v1 [math.OC] 2 Sep 2026 0 10 20 30 40 50 60 70 80                               
+
+> Singular Value Index
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> Singular Value Magnitude 010 20 30 40 50 60 70 80
+> Singular Value Index
+> 10 10
+> 10 8
+> 10 6
+> 10 4
+> 10 2
+> 10 0
+> Singular Value Magnitude 010 20 30 40 50 60 70 80
+> Singular Value Index
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> Singular Value Magnitude
+
+Figure 1: Singular values of gradients with respect to Q, K , and V (left, center, and right respectively) matrices across all attention heads of OPT-2.7B . We use a mini-batch of size 32 drawn from the SST-2 data set. Each blue line represents the singular values of a gradient matrix for a particular attention head, normalized by dividing through by the largest singular value. The black line represents the mean. Note that each gradient matrix is of size 2560 × 80. We study (1) in the gradient-free optimization (GFO) setting, where the full-gradient ∇f (X) is inaccessible but directional derivatives, 
+
+DZ f (X) := lim 
+
+> h→0
+
+f (X + hZ ) − f (X)
+
+h ,
+
+are readily available. Such settings frequently arise when finetuning large language models (LLMs) due to the asymmetry in memory cost between evaluating the model (a forward pass or inference) and computing a gradient via reverse-mode automatic differentiation (a backward pass). The former is possible on consumer-grade hardware, while the latter frequently is not Zhang et al. (2022). On the other hand, a directional derivative can be evaluated using forward-mode automatic differentiation and has a memory cost similar to that of a forward pass. In the closely related setting of derivative-free optimization (DFO), even directional derivatives are inacces-sible Conn et al. (2009). However, directional derivatives may be approximated using finite differences: 
+
+f (X + hZ ) − f (X)
+
+h ≈ DZ f (X), (2) for sufficiently small h > 0. Consequently GFO methods may be extended to this setting, see Appendix E. DFO—and to a lesser extent, GFO—for matrix functions has recently received much attention Zhang et al. (2024); Chen et al. (2025); Lang et al. (2026); Petrov et al. (2025), largely applied to the problem of LLM finetuning. This paper explores the topic from a theoretical, problem-agnostic perspective so as to expand the design space for such algorithms. Previous literature has explored gradient-free methods for functions of a vector input Nesterov & Spokoiny (2017); Baydin et al. (2022); Belouze (2022); Flügel et al. (2025); Kozak et al. (2021). A common bottleneck to applying gradient-free methods to large problems is that, for generic objective functions f , they typically require O(N ) directional derivative evaluations to find an acceptable solution to (1). Consequently, many works in GFO and DFO have proposed various notions of low intrinsic dimensionality , such as gradient sparsity, that can be exploited to design algorithms capable of finding an approximate solution using a sublinear-in-N number of queries Balasubramanian & Ghadimi (2018); Wang et al. (2018); Cai et al. (2021; 2022); Balasubramanian & Ghadimi (2022); Qiu & Tong (2024); Grapiglia & McKenzie (2025); Yue et al. (2023); Cartis & Otemissov (2022); Li et al. (2023); Malladi et al. (2023). We frame the problem of estimating ∇f (X) as a matrix recovery problem. This leads us to a notion of low intrinsic dimensionality adapted to matrix functions: approximately low-rank gradients. We provide evidence that this property occurs in applications of interest, specifically LLM finetuning. Drawing upon existing tools from signal processing, we provide several new GFO algorithms—some of which exploit low-rank gradients, and some which are insensitive to this. We demonstrate the performance of such approaches in a controlled experiment using two toy problems. We conclude with some thoughts on how to extend these approaches to large-scale problems. The accompanying code is available at https://github.com/mines-opt-ml/gradient_free_matrix_opt. 21.1 Notation and Conventions 
+
+We consider m × n matrices. Without loss of generality, we take m ≤ n. We shall refer to the (reduced) singular value decomposition of any matrix A ∈ Rm×n as A = UAΣAV ⊤ 
+
+> A
+
+where UA ∈ Rm×m and VA ∈ Rn×m
+
+have orthonormal columns and Σ A ∈ Rm×m is diagonal with the singular values σ1(A), . . . , σ m(A) of A along the diagonal. When we wish to emphasize that the optimization variable is a matrix we write in capital letters like 
+
+X ∈ Rm×n. Occasionally we write x = vec( X) ∈ RN to denote the vector obtained by stacking the columns of X, where N = mn . For A, B ∈ Rm×n we denote the Frobenius inner product and its induced norm as 
+
+⟨A, B ⟩ = trace( A⊤B), ∥A∥ = √⟨A, A ⟩. (3) This defines the same geometry over Rm×n as the Euclidean geometry over RN . We additionally use ∥x∥
+
+to denote the Euclidean norm of a vector, ∥A∥2 = σ1(A) to denote the spectral norm of a matrix, and 
+
+∥A∥⋆ = ∑mi=1 σi(A) to denote the nuclear norm of a matrix (which is the dual norm to the spectral norm). For any A ∈ Rm×n we define Proj r(A) to be the nearest matrix of rank at most r to A:Proj r(A) = argmin 
+
+> B:rank( B)≤r
+
+∥A − B∥ (4) Proj r(A) may be computed in closed form using the SVD: Proj r(A) = UA ˜ΣAV ⊤ 
+
+> A
+
+. (5) where ˜ΣA = diag( σ1(A), . . . , σ r (A), 0, . . . , 0). At a minimum, we assume the following: 
+
+Assumption 1. We assume that f is bounded below. That is, there exists a value flow ∈ R such that 
+
+f (X) ≥ flow ∀X ∈ Rm×n. (6) 
+
+Assumption 2. We assume f : Rm×n → R is Lipschitz differentiable, or L-smooth, (a) with respect to the Frobenius inner product: 
+
+∥∇ f (X) − ∇ f (Y )∥ ≤ L∥X − Y ∥.
+
+(b) with respect to the spectral/nuclear norm pairing: 
+
+∥∇ f (X) − ∇ f (Y )∥⋆ ≤ L⋆∥X − Y ∥2.
+
+By the equivalence of norms on finite-dimensional vector spaces Assumptions 2(a) and 2(b) are equivalent, albeit with different constants. 
+
+Remark 1. To simplify the exposition, we focus on functions of a single matrix variable. However, our techniques may easily be extended to functions of a set of matrix variables: f (X) where X = {X1, . . . , X ℓ}
+
+and Xi ∈ Rmi×ni . Such functions are ubiquitous in LLM pre-training and finetuning. 
+
+## 2 Related Work 
+
+Random gradient method The most common method for gradient-free optimization (GFO) was studied by Nesterov & Spokoiny (2017) under the name random gradient method , which iterates as 
+
+xk+1 = xk − αkDz f (xk)z. (7) 3In the context of machine learning, this method is also referred to as the forward gradient method (Baydin et al., 2022; Belouze, 2022; Ren et al., 2023). Variants which sample multiple zi per iteration, i.e. xk+1 =
+
+xk − αgk where 
+
+gk := 1
+
+d
+
+> d
+
+∑
+
+> i=1
+
+Dzi f (xk)zi (8) are a natural, although somewhat under-studied extension (Malladi et al., 2023; Flügel et al., 2025). Kozak et al. (2021) propose a gradient-free method which uses orthogonalized directions zi to obtain the projection of ∇f (xk) to random subspace. 
+
+Derivative-free optimization (DFO) DFO considers the setting where only function evaluations are available. Assuming noise-free function evaluations, directional derivatives may be approximated to arbitrary accuracy as 
+
+Dz f (x) ≈ f (x + hz) − f (x)
+
+h (9) by selecting a sufficiently small h (see Lemma 6). The derivative-free analogue of (8), i.e. 
+
+gk := 1
+
+d
+
+> d
+
+∑
+
+> i=1
+
+f (xk + hzi) − f (xk)
+
+h zi, (10) is known as the Random Gradient Estimator (RGE). DFO methods which use the RGE as a drop-in replace-ment for the gradient in first-order methods are widely used in practice Liu et al. (2020); Zhang et al. (2024), and well-studied in theory (Nesterov & Spokoiny, 2017; Ghadimi & Lan, 2013; Berahas et al., 2022). This is certainly not the only approach to derivative-free optimization, and we mention also model-based Powell (2006) algorithms; line-search based methods Karmanov (1974); Golovin et al. (2019); Bergou et al. (2020); Gorbunov et al. (2019); Kim et al. (2025); direct/pattern search methods Nelder & Mead (1965); Hough et al. (2001); Audet & Dennis Jr (2006); and evolutionary algorithms Hansen & Ostermeier (2001); Loshchilov (2014); Salimans et al. (2017). 
+
+Matrix optimization In the DFO setting, LOZO Chen et al. (2025) attempts to exploit low-rank structure in the gradients of matrix functions by replacing the random sampling directions 1 in the RGE (10) with random low-rank matrices: 
+
+Gk := 1
+
+d
+
+> d
+
+∑
+
+> i=1
+
+f (Xk + hU iV ⊤ 
+
+> i
+
+) − f (Xk)
+
+h UiV ⊤ 
+
+> i
+
+. (11) This approach is extended by Fang et al. (2026). In the first-order setting Martens & Grosse (2015); Gupta et al. (2018); Jordan (2024) and many others have analyzed matrix optimizers such as K-FAC, Shampoo, and Muon. These optimizers have been shown to outperform ‘generic’ vector optimizers such as Adam Kingma & Ba (2014) for certain tasks; notably LLM pre-training (Liu et al., 2025). Here, we focus on spectral descent (Carlson et al., 2015b;a), in which ∇f (Xk) is computed and then projected onto the set of semi-orthogonal matrices: 
+
+Om,n = {O ∈ Rm×n : O⊤O = In,n }, (12) whence the algorithm iterates as 
+
+Xk+1 = Xk − αkProj Om,n (∇f (Xk)) . (13) Analysis of spectral descent (Carlson et al., 2015b; Bernstein & Newhouse, 2024; Shulgin et al., 2026) typically proceeds by interpreting this projection as the steepest descent direction with respect to the spectral norm. Several recent works have adapted Muon/spectral descent to the DFO/GFO setting by combining a gradient estimator of the form (10), (11), or (8) with projection to Om,n (Lang et al., 2026; Petrov et al., 2025) However, these works treat gradient estimation and projection as independent sub-routines. We show that by reframing gradient estimation one can achieve both at the same time. 
+
+> 1Note they use centered—instead of forward—finite differences.
+
+43 Low-rank gradients 
+
+We say A ∈ Rm×n is ( δ, r )-approximately-low-rank if it is well-approximated by a low-rank matrix: 
+
+∥A − Proj r(A)∥ ≤ δ∥A∥. (14) We say f : Rm×n → R has ( δ, r )-approximately-low-rank gradients if, for all X ∈ Rm×n, the gradient ∇f (X)is ( δ, r )-approximately-low-rank. 
+
+Assumption 3. f has (δ, r )-approximately-low-rank gradients for some r ≪ m and δ ≪ 1.
+
+Low-rank structure in the weight matrices of deep neural networks has long been acknowledged, and is the basis for the popular LoRA fine-tuning framework Hu et al. (2021). Several recent works Zhao et al. (2024); Chen et al. (2025); Lang et al. (2026) have observed that the gradients associated to these weight matrices are also low-rank. For example, Chen et al. (2025) track the gradients associated to the Q and V matrices of a particular attention head while fine-tuning the OPT-1.3B Zhang et al. (2022) LLM. They show that the singular values of these gradients decay rapidly, indicating approximate low-rank structure. We verify this with a related but larger model ( OPT-2.7B ) and a different fine-tuning task (SST-2 Socher et al. (2013)). We train for just a single step of stochastic gradient descent (batch size of 32), but examine the structure of ∂f ∂Q , ∂f ∂K , and ∂f ∂V for all 1024 attention heads. The results are striking. Across all 1024 heads, we find that 59% of the K matrices, 83% of the Q matrices, and 58% of the V matrices are ( δ = 0 .05 , r = 4)-approximately low-rank (see Assumption 3). A similar experiment with gpt-2 Radford et al. (2019) revealed even more extreme low rank structure: of the 144 attention heads, 124 of the K matrices, 123 of the Q
+
+matrices, and 111 of the V matrices are ( δ = 0 .05 , r = 2)-approximately low-rank. 
+
+## 4 Gradient Recovery 
+
+The random gradient method (8) uses one approach for determining a step direction from directional deriva-tives. We frame this—in the matrix function context—as a problem of estimating the full gradient given only directional derivatives. This allows us to introduce novel tools from the signal processing into gradient-free optimization. Suppose we have selected d < N sampling directions Z1, . . . , Z d ∈ Rm×n. Consider the induced sensing operator 
+
+Z : Rm×n → Rd (15a) [Z(A)] i = ⟨Zi, A ⟩. (15b) An extensive line of work has studied the generic inverse problem of approximating A given Z(A). We call this the matrix recovery problem . Because 
+
+yi := DZi f (X) = ⟨Zi, ∇f (X)⟩
+
+we may write y := Z(∇f (X)) ∈ Rd and define the gradient recovery problem as 
+
+Approximate ∇f (X) given (Z, y), (16) which we recognize as a special case of matrix recovery. We review several representative approaches and adapt them to (16). We test these approaches empirically in Section 6 and analyze a subset of them theoretically in Section 5. 
+
+4.1 Rank-agnostic Recovery algorithms 
+
+The simplest algorithm for solving (16) is to apply the adjoint: 
+
+Gk = Z∗(y) = 
+
+> d
+
+∑
+
+> i=1
+
+yiZi.
+
+5With yi as above, we note that the adjoint sensing operator recovers the gradient estimator used in the random gradient method (8), up to a normalizing factor of 1 /d . We absorb this factor into the sampling distribution, see Section 4.3. We refer to this approach as adjoint .An improvement on adjoint can be made by applying the pseudoinverse operator Z† to y instead of the adjoint. In the case that the Gram matrix A ∈ Rd×d with entries Aij = ⟨Zi, Z j ⟩ is invertible, this corresponds to 
+
+Gk = Z†(y) = 
+
+> d
+
+∑
+
+> i=1
+
+wiZi, w = A−1y, (17) see Luenberger (1997) for a proof. We call this approach pseudoinverse . This is closely related to the simplex gradient in DFO Custódio & Vicente (2007); Regis (2015). 
+
+4.2 Rank-aware Recovery Algorithms 
+
+When f satisfies Assumption 3 we may refine (16) to incorporate this information. Specifically, we may phrase gradient recovery as a constrained optimization problem: 
+
+Gk = argmin 
+
+> G∈Rm×n
+
+∥Z (G) − y∥subject to rank( G) ≤ r. (18) Similar formulations exist for vector gradients, see Choromanski et al. (2020); Wang et al. (2018); Cai et al. (2022). Although (18) is a non-convex problem, one can still apply first-order methods such as projected gradient descent. The resulting iteration, with step sizes ηt > 0, 
+
+Gt+1 = Proj r
+
+(Gt − ηtZ⋆(Z(Gt) − y)) , (19) is guaranteed to converge linearly under certain conditions on Z Jain et al. (2010); Davenport & Romberg (2016). We select ηt using a rule proposed by Tanner & Wei (2013), and, following Davenport & Romberg (2016), we call this algorithm iterative hard thresholding, or IHT .Because the optimization variable G is assumed low-rank, it can be written as G = U V where U ∈ Rm×r
+
+and V ∈ Rr×n, leading to a class of algorithms which avoids the repeated SVD computations required to compute Proj r. While many algorithms in this class exist, we focus on two prototypical methods: alternating minimization AltMin Jain et al. (2012); Hardt (2014) and Burer-Monteiro gradient descent, or BM-GD . Both methods reparameterize (18) to (Uk, V k) = argmin  
+
+> (U,V )
+
+∥Z (U V ⊤) − y∥. (20) 
+
+AltMin freezes one matrix variable at a time and solves a standard least squares problem in the other: 
+
+U t+1 = argmin 
+
+> U
+
+∥Z (U V t, ⊤) − y∥,V t+1 = argmin 
+
+> V
+
+∥Z (U t+1 V ⊤) − y∥.
+
+We perform T iterations of this procedure. Another approach is to minimize the objective (20) with gradient descent; a naive implementation suffers from a non-uniqueness problem, as U V ⊤ = ( U C −1)( V C )⊤ for invertible C ∈ Rr×r. Algorithm 2 of Tu et al. (2016) employs a regularizer of the form ∥U U ⊤ − V V ⊤∥ to improve scaling of this problem. This is the algorithm we call BM-GD , which is gradient descent applied to the objective (Uk, V k) = argmin  
+
+> (U,V )
+
+∥Z (U V ⊤) − y∥2 + 18 ∥U U ⊤ − V V ⊤∥2
+
+︸ ︷︷ ︸ 
+
+> := g(U,V )
+
+.
+
+We use a backtracking line search to set the step size ηt and perform T steps. 64.3 On the selection of sampling directions 
+
+Analyzing both rank-agnostic and rank-aware recovery algorithms requires that Z is suitably well condi-tioned. For example, in the rank-aware case, we require Z to satisfy the restricted isometry property :
+
+Definition 1. We say Z satisfies the s restricted isometry property (RIP) if there exists a constant δ ∈ (0 , 1) 
+
+if, for all G ∈ Rm×n of rank at most s we have that 
+
+(1 − δ)∥G∥2 
+
+> F
+
+≤ ∥Z (G)∥22 ≤ (1 + δ)∥G∥2 
+
+> F
+
+(21) 
+
+We call the smallest such δ the restricted isometry constant of Z, denoted δs(Z).
+
+In signal processing the physics of the problem often constrain the construction of Z, making it hard to guarantee this conditioning. However, in our setting there are no such constraints, and consequently we choose a sampling distribution for Z—for all recovery algorithms—for which it is easy to prove the required conditioning holds. 
+
+Assumption 4. Each entry of each Zi is sampled independently from the Gaussian distribution N (0 , 1/d ).
+
+## 5 Proposed Algorithms 
+
+We propose two approaches for problem (1). The first is a simple meta-algorithm: we update the random gradient method by replacing the gradient estimator (8) with the estimators of Section 4, see Algorithm 1. We call this approach RA-GD , where RA is a placeholder for the recovery algorithm used. Note the subtle difference in how rank-aware and rank-agnostic recovery algorithms are treated. For rank-aware methods 
+
+Z1, . . . , Z d only needs to be sampled once. This is because the success or failure of these approaches depends only on whether Z satisfies the RIP (see Definition 1), which holds with high probability for a single draw of 
+
+Z1, . . . , Z d. The second approach drops the IHT gradient estimator into the spectral descent algorithm (13) in a way that amortizes the cost of gradient estimation over the orthogonalization step. In GFO, it is the number of directional derivative queries, not the number of iterations, that ultimately counts. Consequently, we analyze the convergence of all methods with respect to the number of queries required to find an ε-stationary point, that is, a point Xk with 
+
+∥∇ f (Xk)∥2 ≤ ε. (22) 
+
+Algorithm 1 RA-GD where RA denotes the recovery algorithm used.  
+
+> 1:
+
+Input: X0, choice of recovery algorithm RA , sampling parameter d 
+
+> 2:
+
+if RA ∈ { IHT, AltMin, BM-GD } then  
+
+> 3:
+
+Sample Z1, . . . , Z d satisfying Assumption 4.  
+
+> 4:
+
+end if  
+
+> 5:
+
+for k = 0 , . . . , K − 1 do  
+
+> 6:
+
+if RA ∈ { adjoint , pseudoinverse } then  
+
+> 7:
+
+Sample Z1, . . . , Z d satisfying Assumption 4.  
+
+> 8:
+
+end if  
+
+> 9:
+
+Acquire yi = DZi f (Xk) for i = 1 , . . . , d . 
+
+> 10:
+
+Acquire Gk = RA (y; Z1, . . . , Z d) ≈ ∇ f (Xk).  
+
+> 11:
+
+Acquire step-size αk 
+
+> 12:
+
+Iterate: Xk+1 = Xk − αkGk 
+
+> 13:
+
+end for  
+
+> 14:
+
+Return: XK .75.1 The rank agnostic case 
+
+First, we analyze the RA = pseudoinverse and RA = adjoint cases. Neither of these algorithms exploit low-rank structure in ∇f (Xk). Consequently, both algorithms may be analyzed by simply vectorizing the problem. The results in this section either recover or modestly extend results in the existing literature. 
+
+Lemma 1. Suppose Assumptions 2(a) and 4 hold. Then Gk produced by pseudoinverse satisfies 
+
+Gk = Z†(y) = Proj Span( Z1,...,Z d)(∇f (Xk)) . (23) 
+
+Furthermore, 
+
+E[Gk|Xk] = min( d, mn )
+
+mn ∇f (Xk) and E[∥Gk∥2|Xk] = min( d, mn )
+
+mn ∥∇ f (Xk)∥2.
+
+Next we consider RA = adjoint .
+
+Lemma 2. Suppose Assumptions 2(a) and 4 hold. Then Gk produced by adjoint satisfies 
+
+E[Gk|Xk] = ∇f (Xk) and E
+
+[
+
+∥Gk∥2 |Xk
+
+]
+
+=
+
+( d + mn + 1 
+
+d
+
+)
+
+∥∇ f (Xk)∥2. (24) 
+
+Remark 2. Lemma 2 with d = 1 is directly comparable to (Nesterov & Spokoiny, 2017, Theorem 3) where it is shown (converting to our notation) that 
+
+E
+
+[
+
+∥Gk∥2]
+
+≤ (mn + 4) ∥∇ f (Xk)∥2. (25) We improve upon this bound by reducing 4 to 2. Similar results can be found in Belouze (2022, Property 5), Malladi et al. (2023, Lemma 2) (for the case where the Zi are sampled uniformly from a sphere), and Berahas et al. (2022, Lemma 2.4) (for the true zeroth-order case). Combining Lemmas 1 and 2 with a standard convergence-in-expectation lemma we obtain the convergence results shown in the first two rows of Table 1; see Theorem 4 in Appendix B for the proof. These results do not require Assumption 3. The takeaway is that while both have the same order of dependence on K, the dimensional dependence for pseudoinverse ( mn d ) is slightly better than that for adjoint ( d+mn +1  
+
+> d
+
+). Kozak et al. (2021) analyze an algorithm very similar to RA-GD with RA =pseudoinverse and derive the same convergence rate (Kozak et al., 2021, Theorem 3). The difference between their algorithm and ours is that instead of using the pseudoinverse to obtain the projection of ∇f (Xk) on to a random subspace, they use an adjoint gradient estimator but with orthogonal sampling directions. More specifically, and in our notation, they sample Z1, . . . , Z d obeying Assumption 4 and then use the QR factorization to obtain orthonormal 
+
+Q1, . . . , Q d such that Span( Q1, . . . , Q d) = Span( Z1, . . . , Z d).
+
+The convergence rate for RA-GD with RA =adjoint is analogous to those for gradient descent schemes using the RGE (10), see (Nesterov & Spokoiny, 2017; Berahas et al., 2022). 
+
+5.2 The rank aware case 
+
+Next we consider the rank-aware case. We focus on RA-GD with RA =IHT . The analysis of the other rank-aware gradient recovery methods discussed in Section 4 follows a similar path, and we do not pursue this here. 
+
+Theorem 1. Suppose Assumptions 2(a), 3, and 4 hold and let d = 2 c0r(m + n). Then Gk produced by IHT 
+
+(given sufficiently many internal iterates) satisfies: 
+
+∥Gk − ∇ f (Xk)∥2 ≤
+
+(
+
+8C mr + 5 
+
+)
+
+δ2∥∇ f (Xk)∥2
+
+with probability at least 1 − e−c1d, where c0, c 1, and C are universal constants (i.e. they do not depend on f ). 
+
+8RA: Type of guarantee Step Size Number of Queries 
+
+adjoint in expectation α = d
+
+(d + mn + 1) L
+
+2L(d + mn + 1)∆ f
+
+ε
+
+pseudoinverse in expectation α = 1
+
+L
+
+2Lmn ∆f
+
+ε
+
+IHT with probab. 1 − e−c1d α = 1
+
+L
+
+2c0r(m + n)L∆f
+
+ε (1 − δ2CIHT (m, r )) Table 1: Number of directional derivative evaluations (“queries”) required to find an ε-stationary point, assuming d < mn . Here ∆ f = f (X0) − flow .The proof is in Appendix C along with an elaboration on the condition of sufficiently many iterates. We note that in practice we use the step-size rule of Tanner & Wei (2013), while in theory we consider a step-size determined by the RIP constant of Z. For notational convenience we define 
+
+CIHT (m, r ) = 8 C mr + 5 .
+
+Combining Theorem 1 with Lemma 4 we obtain 
+
+Theorem 2. Suppose Assumptions 2(a), 3, and 4 hold and let d = c0r(m + n). Suppose CIHT (m, r ) < δ −2.Then, after running K iterations of Algorithm 1, using IHT with step size α = 1 /L , we find 
+
+min  
+
+> 0≤k≤K−1
+
+∥∇ f (Xk)∥2 ≤ 2L(f (X0) − flow )(1 − δ2CIHT (m, r )) K
+
+with probability at least 1 − e−c1d, where c0, c 1, and C are the constants specified in Theorem 1. 
+
+Rearranging Theorem 2 yields the query complexity stated in line 3 of Table 1. 
+
+5.3 Spectral Descent 
+
+Each iteration of IHT computes an SVD, in order to compute Proj r. Consequently, we may easily modify 
+
+IHT to return the SVD of Gk at no extra cost. So, the projection of Gk on to the set of semi-orthogonal matrices (see (12)) is computable at the cost of one m × r matrix-matrix multiply: Proj Om,n (Gk) = UGk V ⊤ 
+
+> Gk
+
+. (26) Thus instead of vanilla gradient descent one may wrap the IHT gradient into Spectral Descent , see (13). 
+
+Algorithm 2 IHT-SpecGD . 
+
+> 1:
+
+Input: X0, number of samples per iteration d 
+
+> 2:
+
+Sample Z1, . . . , Z d satisfying Assumption 4.  
+
+> 3:
+
+for k = 0 , . . . , K − 1 do  
+
+> 4:
+
+Acquire yi = DZi f (Xk) for i = 1 , . . . , d . 
+
+> 5:
+
+Acquire the SVD of the gradient estimate :
+
+Uk, ˜Σk, V k where Uk ˜ΣkV ⊤ 
+
+> k
+
+= Gk = IHT (y; Z1, . . . , Z d). 
+
+> 6:
+
+Acquire step-size αk. 
+
+> 7:
+
+Iterate: Xk+1 = Xk − αkUkV ⊤ 
+
+> k
+> 8:
+
+end for  
+
+> 9:
+
+Return: XK .9We analyze the convergence of IHT-SpecGD under a different geometry to that considered in the preceding sections. Specifically, we assume smoothness with respect to the nuclear norm , as captured by Assump-tion 2(b). 
+
+Theorem 3. Suppose Assumptions 1, 2(b), 3, and 4 hold. Set αk = 1 /√K for all k ≥ 0, and K ≥ 3. Then, with probability at least 1 − e−c1d, the iterations of Algorithm 2 satisfy 
+
+min  
+
+> 0≤k≤K−1
+
+∥∇ f (Xk)∥⋆ ≤ 11 − 2√mC IHT (m, r )δ
+
+( f (X0) − flow 
+
+√K + L⋆
+
+2K3/2
+
+)
+
+. (27) 
+
+Remark 3. Ignoring the term proportional to K−3/2, we obtain a similar query complexity to those displayed in Table 1. That is, IHT-SpecGD finds an ε stationary point, in the sense of (22) but with the Frobenius norm replaced with the nuclear norm, after making on the order of 
+
+c0r(m + n)∆ 2
+
+> f
+
+ε(1 − 2√mC IHT (m, r )δ)2
+
+queries. Note the dependence on ∆ 2 
+
+> f
+
+, not ∆ f .
+
+## 6 Experiments 
+
+To understand which approaches are worth pursuing further, we study their performance on two synthetic test functions. We define the r-singular-value-squared function as 
+
+frσ : Rm×m → R frσ (X) := 
+
+> r
+
+∑
+
+> i=1
+
+σi(X)2 (28) which reduces to the strongly-convex and smooth function ∥X∥2 if r = m. Note frσ has gradients of rank at most r everywhere. The Ky Fan regression function is 
+
+fmr : Rm×m → R fmr (X) = 12 ∥X − X⋆∥2KF (29) where ∥ · ∥ KF is the r Ky Fan norm: 
+
+∥A∥KF = σ1(A) + . . . + σr (A)and X⋆ is a fixed matrix 2. This function also has gradients of rank at most r everywhere, but in the case 
+
+r = m reduces to the convex but non-smooth function ∥ · ∥ ⋆.We consider the following suite of optimizers: the d-sample random gradient method ((8), equivalently: 
+
+RA-GD with RA =adjoint ); LOZO Chen et al. (2025); RA-GD with RA = AltMin , BM , IHT and pseudoinverse ;and Algorithm 2. For each (optimizer, objective function) pair we run ten independent replicates given a query budget of 100 , 000. In each replicate the only randomness is in the choice of sampling directions. That is, X0 (and X⋆ in the case of fmr ) is fixed. For both frσ and fmr we set m = 30 and r = 3. We want to compare optimizers given the best possible step-sizes {αk}K−1 
+
+> k=0
+
+and per-iteration sample budget 
+
+d. We do so by (i) tuning d, the number of samples per iteration, for every method and every objective function; and (ii) selecting αk, the step-size in the k-th iterate, by line search. We do not count the function evaluations made during this line search towards the query budget. We set ηt, the inner step-size of BM-GD ,by a second line search. Additional implementation details can be found in Appendix D. Our results (Figure 2) show: (i) fmr is uniformly more challenging than frσ . This is to be expected, as 
+
+frσ corresponds to a strongly convex function as r → m, whereas fmr becomes merely convex; (ii) with the occasional exception of IHT-SpecGD , rank-aware optimizers handily outperform rank-agnostic optimizers, including LOZO.     
+
+> 2We generate X⋆randomly, but fix the seed across all replicates in our experiment so that X⋆is always the same.
+
+10 0 20000 40000 60000 80000 100000                  
+
+> Cumulative number of queries
+> 10 12
+> 10 10
+> 10 8
+> 10 6
+> 10 4
+> 10 2
+> 10 0
+> 10 2
+> Objective-function value
+> IHT-SpecGD adjoint AltMin BM-GD IHT LOZO pseudoinverse 020000 40000 60000 80000 100000
+> Cumulative number of queries
+> 10 12
+> 10 10
+> 10 8
+> 10 6
+> 10 4
+> 10 2
+> 10 0
+> 10 2
+> Objective-function value
+
+Figure 2: Comparing a suite of optimizers on frσ (left) and fmr (right). Shading indicates the 25th–75th percentiles. Solid line indicates the median. 
+
+## 7 Discussion and Limitations 
+
+It appears that rank-aware optimizers for matrix functions warrant further study. However, in order to apply this algorithm to the LLM scale problems discussed in Sections 1 and 3, several limitations must be overcome. First, Algorithms 1 and 2 must be adapted to functions of sets of matrices, see Remark 1. Second, the cost of storing the sampling directions Z1, . . . , Z d must be addressed. In principle this could be done using properties of pseudorandom number generators (pRNG), as proposed by Malladi et al. (2023). Specifically, instead of storing Zi one could just store the seed of the pRNG used, and re-generate Zi from scratch when needed. In practice, getting this to interact with sophisticated recovery algorithms such as IHT appears challenging. Finally, standard first-order optimization tricks such as momentum and gradient-clipping ought to be incorporated. The notion of gradient recovery, as presented in Section 4, could also be explored further. Specifically, we have limited ourselves to a class of algorithms which choose the sampling directions Z1, . . . , Z d before using them to estimate the gradient. However, adaptive sampling methods may well perform better. Finally, we highlight the potential of IHT-SpecGD . While it is not the most performant method in our simple experiments, given the success of Muon and relatives on large-scale, first-order matrix optimization problems we feel that it should not be ruled out. 
+
+## 8 Conclusion 
+
+We consider the problem of gradient free optimization for matrix functions. We propose a notion of low intrinsic dimensionality adapted to this setting, namely approximately low-rank gradients, and provide em-pirical evidence that this property occurs naturally when fine-tuning LLMs. When a matrix function satisfies this property techniques from the low-rank matrix sensing literature may be employed to provide improved gradient estimators. We have shown—in theory and in practice—that simple optimization schemes using such 
+
+rank-aware gradient estimators are more efficient than rank-agnostic ones when gradients are approximately low rank. Future work will focus on extending the optimization algorithms proposed here to large-scale problems of interest, specifically LLM fine-tuning. 
+
+## Statement on AI usage 
+
+The authors used AI tools, particularly Claude Opus 4.8 and Claude Fable, for surfacing references, brain-storming several proofs (particularly Lemma 2), and refining the accompanying codebase. The authors reviewed all AI produced content and take full responsibility for the content of this work. 11 Funding 
+
+SB and DM were partially supported by the National Science Foundation under Award No. 2608659. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation 
+
+## References 
+
+Charles Audet and John E Dennis Jr. Mesh adaptive direct search algorithms for constrained optimization. 
+
+SIAM Journal on optimization , 17(1):188–217, 2006. Krishnakumar Balasubramanian and Saeed Ghadimi. Zeroth-order (non)-convex stochastic optimization via conditional gradient and gradient updates. Advances in Neural Information Processing Systems , 31, 2018. Krishnakumar Balasubramanian and Saeed Ghadimi. Zeroth-order nonconvex stochastic optimization: Han-dling constraints, high dimensionality, and saddle points. Foundations of Computational Mathematics , 22 (1):35–76, 2022. Atılım Güneş Baydin, Barak A Pearlmutter, Don Syme, Frank Wood, and Philip Torr. Gradients without backpropagation. arXiv preprint arXiv:2202.08587 , 2022. Gabriel Belouze. Optimization without backpropagation. arXiv preprint arXiv:2209.06302 , 2022. Albert S Berahas, Liyuan Cao, Krzysztof Choromanski, and Katya Scheinberg. A theoretical and empirical comparison of gradient approximations in derivative-free optimization. Foundations of Computational Mathematics , 22(2):507–560, 2022. El Houcine Bergou, Eduard Gorbunov, and Peter Richtarik. Stochastic three points method for unconstrained smooth minimization. SIAM Journal on Optimization , 30(4):2726–2749, 2020. Jeremy Bernstein and Laker Newhouse. Old optimizer, new norm: An anthology. In OPT 2024: Optimization for Machine Learning , 2024. Léon Bottou, Frank E Curtis, and Jorge Nocedal. Optimization methods for large-scale machine learning. 
+
+SIAM review , 60(2):223–311, 2018. HanQin Cai, Yuchen Lou, Daniel McKenzie, and Wotao Yin. A zeroth-order block coordinate descent algorithm for huge-scale black-box optimization. In International Conference on Machine Learning , pp. 1193–1203. PMLR, 2021. HanQin Cai, Daniel McKenzie, Wotao Yin, and Zhenliang Zhang. Zeroth-order regularized optimization (zoro): Approximately sparse gradients and adaptive sampling. SIAM Journal on Optimization , 32(2): 687–714, 2022. Emmanuel J Candes and Yaniv Plan. Tight oracle inequalities for low-rank matrix recovery from a minimal number of noisy random measurements. IEEE Transactions on Information Theory , 57(4):2342–2359, 2011. David Carlson, Volkan Cevher, and Lawrence Carin. Stochastic spectral descent for restricted Boltzmann machines. In Artificial intelligence and statistics , pp. 111–119. PMLR, 2015a. David E Carlson, Edo Collins, Ya-Ping Hsieh, Lawrence Carin, and Volkan Cevher. Preconditioned spectral descent for deep learning. Advances in neural information processing systems , 28, 2015b. Coralia Cartis and Adilet Otemissov. A dimensionality reduction technique for unconstrained global opti-mization of functions with low effective dimensionality. Information and Inference: A Journal of the IMA ,11(1):167–201, 2022. 12 Yiming Chen, Yuan Zhang, Liyuan Cao, Kun Yuan, and Zaiwen Wen. Enhancing zeroth-order fine-tuning for language models with low-rank structures. In The Thirteenth International Conference on Learning Representations , 2025. Krzysztof Choromanski, Aldo Pacchiano, Jack Parker-Holder, Yunhao Tang, Deepali Jain, Yuxiang Yang, Atil Iscen, Jasmine Hsu, and Vikas Sindhwani. Provably robust blackbox optimization for reinforcement learning. In Conference on robot learning , pp. 683–696. PMLR, 2020. Andrew R Conn, Katya Scheinberg, and Luis N Vicente. Introduction to derivative-free optimization . SIAM, 2009. Ana Luísa Custódio and Luís Nunes Vicente. Using sampling and simplex derivatives in pattern search methods. SIAM Journal on Optimization , 18(2):537–555, 2007. Mark A Davenport and Justin Romberg. An overview of low-rank matrix recovery from incomplete obser-vations. IEEE Journal of Selected Topics in Signal Processing , 10(4):608–622, 2016. Jinjie Fang, Chengxun Jin, Tianxing Man, Yi Chang, and Bin Gu. Lozo+: Provably efficient zeroth-order fine-tuning via greedy low-rank subspace selection. In Forty-third International Conference on Machine Learning , 2026. Katharina Flügel, Daniel Coquelin, Marie Weiel, Charlotte Debus, Achim Streit, and Markus Götz. Be-yond backpropagation: Optimization with multi-tangent forward gradients. In 2025 International Joint Conference on Neural Networks (IJCNN) , pp. 1–8. IEEE, 2025. Guillaume Garrigos and Robert M Gower. Handbook of convergence theorems for (stochastic) gradient methods. arXiv preprint arXiv:2301.11235 , 2023. Saeed Ghadimi and Guanghui Lan. Stochastic first-and zeroth-order methods for nonconvex stochastic programming. SIAM journal on optimization , 23(4):2341–2368, 2013. Philip E. Gill, Walter Murray, Michael A. Saunders, and Margaret H. Wright. Computing forward-difference intervals for numerical optimization. SIAM Journal on Scientific and Statistical Computing , 4(2):310–321, 1983. doi: 10.1137/0904025. Donald Goldfarb and Shiqian Ma. Convergence of fixed-point continuation algorithms for matrix rank minimization. Foundations of Computational Mathematics , 11(2):183–210, 2011. Daniel Golovin, John Karro, Greg Kochanski, Chansoo Lee, Xingyou Song, and Qiuyi Zhang. Gradientless descent: High-dimensional zeroth-order optimization. In International Conference on Learning Represen-tations , 2019. Eduard Gorbunov, Adel Bibi, Ozan Sener, El Houcine Bergou, and Peter Richtarik. A stochastic derivative free optimization method with momentum. In International Conference on Learning Representations ,2019. Geovani Nunes Grapiglia and Daniel McKenzie. Fully adaptive zeroth-order method for minimizing functions with compressible gradients. arXiv preprint arXiv:2501.11616 , 2025. David Gross, Yi-Kai Liu, Steven T Flammia, Stephen Becker, and Jens Eisert. Quantum state tomography via compressed sensing. Physical review letters , 105(15):150401, 2010. Vineet Gupta, Tomer Koren, and Yoram Singer. Shampoo: Preconditioned stochastic tensor optimization. In International Conference on Machine Learning , pp. 1842–1850. PMLR, 2018. Nadav Hallak and Kfir Y Levy. A study of first-order methods with a probabilistic relative-error gradient oracle. Preprint, optimization-online. URL https://optimization-online. org/wp-content/uploads/2025/02/RAGM. pdf , 2025. 13 Nikolaus Hansen and Andreas Ostermeier. Completely derandomized self-adaptation in evolution strategies. 
+
+Evolutionary computation , 9(2):159–195, 2001. Moritz Hardt. Understanding alternating minimization for matrix completion. In 2014 IEEE 55th Annual Symposium on Foundations of Computer Science , pp. 651–660. IEEE, 2014. Chuan He, Zhanwang Deng, and Zhaosong Lu. Low-rank orthogonalization for large-scale matrix optimiza-tion with applications to foundation model training. arXiv preprint arXiv:2509.11983 , 2025. Patricia D Hough, Tamara G Kolda, and Virginia J Torczon. Asynchronous parallel pattern search for nonlinear optimization. SIAM Journal on Scientific Computing , 23(1):134–156, 2001. Edward J. Hu, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language models. In International Conference on Learning Repre-sentations , 2021. Leon Isserlis. On certain probable errors and correlation coefficients of multiple frequency distributions with skew regression. Biometrika , 11(3):185–190, 1916. Prateek Jain, Raghu Meka, and Inderjit Dhillon. Guaranteed rank minimization via singular value projection. 
+
+Advances in Neural Information Processing Systems , 23, 2010. Prateek Jain, Praneeth Netrapalli, and Sujay Sanghavi. Low-rank matrix completion using alternating minimization, 2012. URL https://arxiv.org/abs/1212.0467 .Keller Jordan. Muon: A new optimizer. https://kellerjordan.github.io/posts/muon/ , 2024. Accessed: August 15, 2025. VG Karmanov. Convergence estimates for iterative minimization methods. USSR Computational Mathe-matics and Mathematical Physics , 14(1):1–13, 1974. Bumsu Kim, Daniel McKenzie, HanQin Cai, and Wotao Yin. Curvature-aware derivative-free optimization. 
+
+Journal of Scientific Computing , 103(2):43, 2025. Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 , 2014. David Kozak, Stephen Becker, Alireza Doostan, and Luis Tenorio. A stochastic subspace approach to gradient-free optimization in high dimensions. Computational Optimization and Applications , 79(2):339– 368, 2021. Yicheng Lang, Changsheng Wang, Yihua Zhang, Mingyi Hong, Zheng Zhang, Wotao Yin, and Sijia Liu. Pow-ering up zeroth-order training via subspace gradient orthogonalization. arXiv preprint arXiv:2602.17155 ,2026. Jiaxiang Li, Krishnakumar Balasubramanian, and Shiqian Ma. Stochastic zeroth-order riemannian derivative estimation and optimization. Mathematics of Operations Research , 48(2):1183–1211, 2023. Jingyuan Liu, Jianlin Su, Xingcheng Yao, Zhejun Jiang, Guokun Lai, Yulun Du, Yidao Qin, Weixin Xu, Enzhe Lu, Junjie Yan, et al. Muon is scalable for llm training. arXiv e-prints , pp. arXiv–2502, 2025. Sijia Liu, Pin-Yu Chen, Bhavya Kailkhura, Gaoyuan Zhang, Alfred O Hero III, and Pramod K Varshney. A primer on zeroth-order optimization in signal processing and machine learning: Principals, recent advances, and applications. IEEE Signal Processing Magazine , 37(5):43–54, 2020. Ilya Loshchilov. A computationally efficient limited memory CMA-ES for large scale optimization. In 
+
+Proceedings of the 2014 Annual Conference on Genetic and Evolutionary Computation , pp. 397–404, 2014. David G Luenberger. Optimization by vector space methods . John Wiley & Sons, Nashville, TN, January 1997. 14 Sadhika Malladi, Tianyu Gao, Eshaan Nichani, Alex Damian, Jason D Lee, Danqi Chen, and Sanjeev Arora. Fine-tuning language models with just forward passes. Advances in Neural Information Processing Systems , 36:53038–53075, 2023. James Martens and Roger Grosse. Optimizing neural networks with Kronecker-factored approximate curva-ture. In International conference on machine learning , pp. 2408–2417. PMLR, 2015. John A Nelder and Roger Mead. A simplex method for function minimization. The computer journal , 7(4): 308–313, 1965. Yurii Nesterov and Vladimir Spokoiny. Random gradient-free minimization of convex functions. Foundations of Computational Mathematics , 17(2):527–566, 2017. Vivak Patel, Shushu Zhang, and Bowen Tian. Global convergence and stability of stochastic gradient descent. 
+
+Advances in Neural Information Processing Systems , 35:36014–36025, 2022. Egor Petrov, Grigoriy Evseev, Aleksey Antonov, Andrey Veprikov, Nikolay Bushkov, Stanislav Moiseev, and Aleksandr Beznosikov. Leveraging coordinate momentum in signsgd and muon: Memory-optimized zero-order. arXiv preprint arXiv:2506.04430 , 2025. Boris T Polyak. Introduction to optimization . Optimization Software, New York, 1987. Michael JD Powell. The NEWUOA software for unconstrained optimization without derivatives. Large-scale nonlinear optimization , pp. 255–297, 2006. Ruizhong Qiu and Hanghang Tong. Gradient compressed sensing: A query-efficient gradient estimator for high-dimensional zeroth-order optimization. In Forty-first International Conference on Machine Learning ,2024. Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al. Language models are unsupervised multitask learners. OpenAI blog , 1(8):9, 2019. Rommel G Regis. The calculus of simplex gradients. Optimization Letters , 9(5):845–865, 2015. Mengye Ren, Simon Kornblith, Renjie Liao, and Geoffrey Hinton. Scaling forward gradient with local losses. In The Eleventh International Conference on Learning Representations , 2023. Tim Salimans, Jonathan Ho, Xi Chen, Szymon Sidor, and Ilya Sutskever. Evolution strategies as a scalable alternative to reinforcement learning. arXiv preprint arXiv:1703.03864 , 2017. Egor Shulgin, Sultan AlRashed, Peter Richtárik, and Francesco Orabona. Beyond the ideal: Analyzing the inexact muon update. In The 29th International Conference on Artificial Intelligence and Statistics , 2026. Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D. Manning, Andrew Ng, and Christopher Potts. Recursive deep models for semantic compositionality over a sentiment treebank. In Proceedings of the 2013 Conference on Empirical Methods in Natural Language Processing , pp. 1631–1642, Seattle, Washington, USA, October 2013. Association for Computational Linguistics. URL 
+
+https://www.aclweb.org/anthology/D13-1170 .Jared Tanner and Ke Wei. Normalized iterative hard thresholding for matrix completion. SIAM Journal on Scientific Computing , 35(5):S104–S125, 2013. Abiy Tasissa and Rongjie Lai. Exact reconstruction of Euclidean distance geometry problem using low-rank matrix completion. IEEE Transactions on Information Theory , 65(5):3124–3144, 2018. Stephen Tu, Ross Boczar, Max Simchowitz, Mahdi Soltanolkotabi, and Ben Recht. Low-rank solutions of linear matrix equations via procrustes flow. In Maria Florina Balcan and Kilian Q. Weinberger (eds.), 
+
+Proceedings of The 33rd International Conference on Machine Learning , volume 48 of Proceedings of Machine Learning Research , pp. 964–973, New York, New York, USA, 20–22 Jun 2016. PMLR. URL 
+
+https://proceedings.mlr.press/v48/tu16.html .15 Pierre Vernimmen and François Glineur. Worst-case convergence analysis of relatively inexact gradient descent on smooth convex functions. Neurocomputing , 660:131883, 2026. ISSN 0925-2312. doi: https:// doi.org/10.1016/j.neucom.2025.131883. URL https://www.sciencedirect.com/science/article/pii/ S092523122502555X .Roman Vershynin. High-dimensional probability: An introduction with applications in data science , vol-ume 47. Cambridge university press, 2018. Yining Wang, Simon Du, Sivaraman Balakrishnan, and Aarti Singh. Stochastic zeroth-order optimization in high dimensions. In International conference on artificial intelligence and statistics , pp. 1356–1365. PMLR, 2018. Pengyun Yue, Long Yang, Cong Fang, and Zhouchen Lin. Zeroth-order optimization with weak dimension dependency. In The Thirty Sixth Annual Conference on Learning Theory , pp. 4429–4472. PMLR, 2023. Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt: Open pre-trained transformer language models. arXiv preprint arXiv:2205.01068 , 2022. Yihua Zhang, Pingzhi Li, Junyuan Hong, Jiaxiang Li, Yimeng Zhang, Wenqing Zheng, Pin-Yu Chen, Jason D Lee, Wotao Yin, Mingyi Hong, et al. Revisiting zeroth-order optimization for memory-efficient LLM fine-tuning: A benchmark. arXiv preprint arXiv:2402.11592 , 2024. Jiawei Zhao, Zhenyu Zhang, Beidi Chen, Zhangyang Wang, Anima Anandkumar, and Yuandong Tian. Galore: Memory-efficient LLM training by gradient low-rank projection. In International Conference on Machine Learning , pp. 61121–61143. PMLR, 2024. 
+
+## A Convergence Lemmas 
+
+We provide two variants of the standard convergence-to-stationarity result for gradient descent, adapted to the two settings in which we analyze the convergence of RA-GD . Lemma 3 can be deduced from Bottou et al. (2018) (see their Thm. 4.8 and the discussion about assumptions at Eq. 4.9), though we give a proof because it introduces inequalities that will be useful in our later analysis. Note the improved convergence rate of O(1 /K ) compared to the standard rate of O(1 /√K) found for SGD methods based on subsampling (cf. Garrigos & Gower (2023); Patel et al. (2022)). 
+
+Lemma 3. Suppose that Assumptions 1 and 2(a) hold, and let G(X) be a unbiased gradient estimator for 
+
+∇f (X), that is, that E[G(X)|X] = ∇f (X) for any Rm×n-valued random matrix X. If there exists M > 0
+
+such that G satisfies the bound 
+
+E[∥G(X)∥2|X] ≤ M ∥∇ f (X)∥2,
+
+Algorithm 1 with Gk = G(Xk) and α = 1 
+
+> M L
+
+yields iterates satisfying 
+
+min  
+
+> 0≤k≤K−1
+
+E[∥∇ f (Xk)∥2] ≤ 2LM (f (X0) − flow )
+
+K .
+
+Proof of Lemma 3. For fixed k, L -smoothness gives 
+
+f (Xk+1 ) − f (Xk) ≤ ⟨∇ f (Xk), X k+1 − Xk⟩ + L
+
+2 ∥Xk+1 − Xk∥2 = −α(⟨∇ f (Xk), G k⟩ − αL 
+
+2 ∥Gk∥2).
+
+Taking a conditional expectation gives 
+
+E[f (Xk+1 )|Xk] − f (Xk) = E[f (Xk+1 ) − f (Xk)|Xk]
+
+≤ − α(∥∇ f (Xk)∥2 − αL 
+
+2 E[∥Gk∥2|Xk])
+
+≤ − α(∥∇ f (Xk)∥2 − αL 
+
+2 M ∥∇ f (Xk)∥2)
+
+= −α
+
+(
+
+1 − LM α 
+
+2
+
+)
+
+∥∇ f (Xk)∥2 = − 12LM ∥∇ f (Xk)∥2.
+
+16 Rearranging and taking an expectation reveals an inequality which telescopes: 
+
+E∥∇ f (Xk)∥2 ≤ 2LM (Ef (Xk+1 ) − Ef (Xk)) =⇒ 1
+
+K
+
+> K−1
+
+∑
+
+> k=0
+
+E∥∇ f (Xk)∥2 ≤ 2LM (f (X0) − f (XK )) 
+
+K
+
+=⇒ min  
+
+> 0≤k≤K−1
+
+E∥∇ f (Xk)∥2 ≤ 2LM (f (X0) − flow 
+
+K
+
+as the minimum is always less than or equal to the average, and also f (XK ) ≥ flow .Next we consider the variant where bounds on the gradient estimator hold with high probability. Such bounds based on relative error in the gradient have been known since at least Polyak (1987) (see Thm. 2 in Ch. 4), and been studied more recently in the zeroth-order community. In the deterministic case, the best known rates for the convex case, proven using computer-aided performance estimation techniques, are still 
+
+O(1 /K ) albeit with better constants and looser conditions on the stepsizes (Vernimmen & Glineur, 2026, Thm. 3.1). Recent work in the stochastic case (Hallak & Levy, 2025) has more refined bounds that are not needed for our analysis since we can avoid the union bound as discussed in Remark 4. 
+
+Lemma 4. Suppose Assumptions 1 and 2(a) hold and that the gradient estimator G(X) acquired in line 10 of Algorithm 1 satisfies 
+
+∥Gk − ∇ f (Xk)∥2 ≤ c2∥∇ f (Xk)∥2 for 1 ≤ k ≤ K (30) 
+
+with probability at least 1 − e−c1d. If α = 1 /L and c2 < 1 then 
+
+min  
+
+> 0≤k≤K−1
+
+∥∇ f (Xk)∥2 ≤ 2L (f (X0) − flow )(1 − c2)K
+
+with probability at least 1 − e−c1d.Remark 4. Note that we are assuming that with probability 1 − e−c1d all Gk are ‘good’. That is, they satisfy the error bound (30). A much weaker statement would be that with probability 1 − e−c1d a particular Gk is ‘good’. This type of strong guarantee is possible when using IHT (or AltMin , or BMGD ) for gradient recovery, as success is guaranteed as long as the sensing operator Z satisfies the RIP. As we only sample Z once, it either has the RIP for all iterates or it does not. The former holds with probability 1 − e−c1d.
+
+Proof of Lemma 4. By Lipschitz smoothness (equivalently, the standard descent lemma), for any 1 ≤ k ≤ K,
+
+f (Xk+1 ) ≤ f (Xk) − 1
+
+L ⟨∇ f (Xk), G k⟩ + 12L ∥Gk∥2.
+
+Combining this with the identity 12 ∥Gk∥2 − ⟨∇ f (Xk), G k⟩ = 12 ∥Gk − ∇ f (Xk)∥2 − 12 ∥∇ f (Xk)∥2
+
+and the gradient error bound (30), 
+
+f (Xk+1 ) ≤ f (Xk) − 12L ∥∇ f (Xk)∥2 + 12L ∥Gk − ∇ f (Xk)∥2 ≤ f (Xk) − 12L ∥∇ f (Xk)∥2 + c2
+
+2L ∥∇ f (Xk)∥2
+
+with probability at least 1 − e−c1d. Rearranging again yields an inequality that telescopes: (1 − c2)∥∇ f (Xk)∥2 ≤ 2L (f (Xk) − f (Xk+1 )) =⇒ 1
+
+K
+
+> K−1
+
+∑
+
+> k=0
+
+∥∇ f (Xk)∥2 ≤ 2L (f (X0) − f (XK )) (1 − c2)K
+
+=⇒ min  
+
+> 0≤k≤K−1
+
+∥∇ f (Xk)∥2 ≤ 2L (f (X0) − flow )(1 − c2)K
+
+17 B Convergence in the rank-agnostic case. 
+
+We analyze the RA = pseudoinverse and RA = adjoint cases, presenting proofs for the results of Section 5.1, as well as several auxiliary lemmas. Both recovery algorithms do not exploit, or benefit from, low-rank structure in ∇f (Xk). Consequently both algorithms may be analyzed by simply vectorizing the problem. Let Z ∈ Rd×mn be the matrix corresponding to Z. That is, Z has rows z⊤ 
+
+> i
+
+= vec( Zi)⊤.
+
+B.1 Intermediate lemmas 
+
+We start with the proof of Lemma 1 used for the RA = pseudoinverse case. 
+
+Proof of Lemma 1. The matrix corresponding to Z†Z is Z†Z, which we recognize as the projection onto the row space of Z, and RowSpace( Z) = Span( z1, . . . , zd) ∼= Span( Z1, . . . , Z d)where ∼= denotes the natural isomorphism corresponding to vectorization. To get our other results, we first note that by the rotational invariance of the Gaussian distribution, for every orthogonal matrix Q ∈ Rmn , we have 
+
+Q⊤Z†ZQ = ( ZQ)†ZQ d
+
+= Z†Z.
+
+It follows that Q⊤E[Z†Z]Q = E[Z†Z], i.e., that E[Z†Z] commutes with all orthogonal matrices, and thus one can show via using Householder transformations that every vector is an eigenvector and hence E[Z†Z] = aI 
+
+for some a ∈ R, where I is the mn × mn identity matrix. Noting that RowSpace( Z) almost surely has dimension min( d, mn ), it follows that, as Z†Z is a projection onto this space, trace Z†Z = min( d, mn ) almost surely, and therefore 
+
+a = 1
+
+mn trace E[Z†Z] = min( d, mn )
+
+mn .
+
+Thus, E[Z†Z] = min( d,mn ) 
+
+> mn
+
+I, so E[Z†Z] = min( d,mn ) 
+
+> mn
+
+Id , and 
+
+E[Gk|Xk] = E[Z†Z∇ f (Xk)|Xk] = min( d, mn )
+
+mn ∇f (Xk).
+
+Using the property that ( Z†Z)2 = Z†Z, we have 
+
+E[∥Gk∥2|Xk] = E[trace( ∇f (Xk)⊤(Z†Z)2∇f (Xk)) |Xk] = trace( ∇f (Xk)⊤E[Z†Z| Xk]∇f (Xk)) = min( d, mn )
+
+mn ∥∇ f (Xk)∥2.
+
+Next is the proof for Lemma 2, relevant for RA = adjoint , using the same notation Z as above, and let zij 
+
+denote the ( i, j ) entry of Z.
+
+Proof of Lemma 2. It is convenient to write gk = vec( Gk) ∈ Rmn and vk = vec( ∇f (Xk)) ∈ Rmn . Since 
+
+Gk := Z∗(y) for y = Z(∇f (Xk)), we can write gk = Z⊤Zvk. We have the following identities: 
+
+∥Gk∥2 = ∥gk∥2 and ∥∇ f (Xk)∥2 = ∥vk∥2 (31) 
+
+∥gk∥2 = g⊤ 
+
+> k
+
+gk = v⊤ 
+
+> k
+
+Z⊤ZZ ⊤Zvk. (32) Recall Z ∈ Rd×mn has i.i.d. entries sampled from N (0 , 1/d ) by Assumption 4, hence E [Z⊤Z] = I and so 
+
+E[gk] = E [Z⊤Z] vk = vk.
+
+18 Expand the ( i, j )-th entry of Z⊤ZZ ⊤Z as a sum: 
+
+E
+
+[[Z⊤ZZ ⊤Z]
+
+> ij
+
+]
+
+= E
+
+[ mn ∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+zℓi zℓk zpk zpj 
+
+]
+
+=
+
+> mn
+
+∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+E [zℓi zℓk zpk zpj ] . (33) Recall that all zi1i2 are sampled i.i.d. from N (0 , 1/d ). Analyzing the summands in (33) requires bounding fourth moments of Gaussian variables. This is done in Nesterov & Spokoiny (2017, Lemma 1) using the bound: 
+
+E [∥u∥p] ≤ (p + n)p/ 2 for v ∈ Rn with vi ∼ N (0 , 1) . (34) Instead, in order to get an exact equality, we use Isserlis’ theorem Isserlis (1916), 
+
+E [zℓi zℓk zpk zpj ] = E [zℓi zℓk ] E [zpk zpj ] + E [zℓi zpk ] E [zℓk zpj ] + E [zℓi zpj ] E [zℓk zpk ] .
+
+Each second moment is zero unless the indices coincide, in which case it is 1 /d . We deal with each term in the sum individually: 
+
+> mn
+
+∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+E [zℓi zℓk ] E [zpk zpj ] = δij d∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+E [zℓi zℓi ] E [zpj zpj ] = δij d∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+1
+
+d2 = δij 
+
+where δij =
+
+{ 1 if i = j
+
+0 otherwise is the Kronecker delta. Similarly 
+
+> mn
+
+∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+E [zℓi zpk ] E [zℓk zpj ] = δij d∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+E [zℓi zpi ] E [zℓj zpj ] = δij d∑
+
+> ℓ=1
+
+(E [zℓi zℓi ]) 2 =
+
+> d
+
+∑
+
+> ℓ=1
+
+1
+
+d2 = 1
+
+d δij 
+
+and mn ∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+> d
+
+∑
+
+> p=1
+
+E [zℓi zpj ] E [zℓk zpk ] = δij mn ∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+
+E [zℓi zℓi ] E [zℓk zℓk ] = δij mn ∑
+
+> k=1
+> d
+
+∑
+
+> ℓ=1
+
+( 1
+
+d2
+
+)
+
+= δij 
+
+mn d .
+
+Consequently 
+
+E
+
+[[Z⊤ZZ ⊤Z]
+
+> ij
+
+]
+
+=
+
+(
+
+1 + 1
+
+d + mn d
+
+)
+
+δij ⇐⇒ E [Z⊤ZZ ⊤Z] =
+
+(
+
+1 + mn + 1 
+
+d
+
+)
+
+I. 
+
+Recalling (32), we compute: 
+
+E∥gk∥2 = v⊤ 
+
+> k
+
+(EZ⊤ZZ ⊤Z)vk =
+
+(
+
+1 + mn + 1 
+
+d
+
+)
+
+v⊤ 
+
+> k
+
+vk =
+
+(
+
+1 + mn + 1 
+
+d
+
+)
+
+∥∇ f (Xk)∥2.
+
+B.2 Main results 
+
+Theorem 4. Suppose Assumptions 1–2 and 4 hold. Then, Algorithm 1 with RA = adjoint and 
+
+α = 1(1 + mn +1  
+
+> d
+
+)L
+
+satisfies 
+
+min  
+
+> 0≤k≤K−1
+
+E [∥∇ f (Xk)∥2] ≤ 2L(1 + mn +1  
+
+> d
+
+)( f (X0) − flow )
+
+K ,
+
+and consequently, visits an ε−stationary (in expectation) point after making 
+
+2L(d + mn + 1)( f (X0) − flow )
+
+ϵ
+
+19 directional derivative evaluations. Algorithm 1 with RA = pseudoinverse and α = 1 /L satisfies 
+
+min  
+
+> 0≤k≤K−1
+
+E
+
+[
+
+∥∇ f (Xk)∥2]
+
+≤ 2L( mn  
+
+> min( d,mn )
+
+) ( f (X0) − flow )
+
+K ,
+
+and consequently, visits an ε−stationary (in expectation) point after making 
+
+2L(d mn  
+
+> min( d,mn )
+
+)( f (X0) − flow )
+
+ϵ
+
+directional derivative evaluations. Proof of Theorem 4. The result for RA =adjoint follows directly from applying the result from Lemma 3 to the bounds in Lemma 2. The bounds in Lemma 1 for RA =pseudoinverse do not exactly match the hypotheses for Lemma 3. However, if we define Gk to be the pseudoinverse estimator applied to f and ˜Gk = mn  
+
+> min( d,mn )
+
+Gk, we can see that Algorithm 1 with step size α and gradient estimator Gk is equivalent to Algorithm 1 with step size ˜ α = 
+
+> min( d,mn )
+> mn
+
+α and gradient estimator ˜Gk. Furthermore, Lemma 1 implies that 
+
+E[ ˜Gk|Xk] = ∇f (Xk) and E[∥ ˜Gk∥2|Xk] = mn 
+
+min( d, mn ) ∥∇ f (Xk)∥2
+
+whence we may apply Lemma 3 with M = mn  
+
+> min( d,mn )
+
+and ˜ α = min( d,mn ) 
+
+> mnL
+
+, to get the desired convergence. 
+
+## C Convergence in the rank-aware case 
+
+We first establish conditions under which the RIP (Definition 1) holds, with high probability. 
+
+Lemma 5. Suppose Assumption 4 holds. Then there exist constants c0, c 1 > 0, depending only on δ, such that 
+
+δs(Z) ≤ δ with probability 1 − e−c1d (35) 
+
+whenever d ≥ c0s(m + n).
+
+See Candes & Plan (2011, Theorem 2.3) for a proof. We restate and then prove Thm. 1. 
+
+Theorem 1. Suppose Assumptions 2(a), 3, and 4 hold. Choose c0 in Lemma 5 large enough such that 
+
+δ2r (Z) < 1/3 holds with probability 1 − e−c1d. Suppose that ˆG = Gt where Gt is found using 
+
+t ≥ ˜D log 
+
+(
+
+∥y∥
+
+( ˜C mr + 2 ) δ2∥∇ f (Xk)∥2
+
+)
+
+iterations of IHT (see (19) ) with step-size η = 1 /(1 + δ2r (Z)) , where δ is the value occurring in the definition of (δ, r )-low-rank (see Assumption 3). Then 
+
+∥∇ f (Xk) − ˆG∥2 ≤
+
+(
+
+8C mr + 5 
+
+)
+
+δ2∥∇ f (Xk)∥2
+
+holds with probability 1 − e−c1d, for universal constants C, ˜C, and ˜D.Proof. Write G⋆ := ∇f (Xk) as G⋆ = G⋆r + G⋆c where G⋆r = Proj r(G⋆). Then 
+
+y = Z(G⋆) = Z(G⋆r ) + Z(G⋆c )20 Letting ∥ · ∥ ⋆ denote the nuclear norm (i.e., the sum of the singular values), 
+
+∥Z (G⋆c )∥ ≤ √1 + δr (Z)
+
+(
+
+∥G⋆c ∥ + 1
+
+√r ∥G⋆c ∥⋆
+
+)
+
+(36) 
+
+≤ 2
+
+√3
+
+(
+
+δ∥∇ f (Xk)∥ + 1
+
+√r
+
+(δ∥∇ f (Xk)∥√m − r) )
+
+(37) = 2δ
+
+√3
+
+(
+
+1 + 
+
+√ m − rr
+
+)
+
+∥∇ f (Xk)∥ (38) 
+
+≤ 4δ
+
+√3
+
+√ m
+
+2r ∥∇ f (Xk)∥ (39) Equation (36) follows from (Goldfarb & Ma, 2011, Prop. 2.8). Equation (37) follows from Assumption 3 and 
+
+∥G⋆c ∥⋆ =
+
+> m
+
+∑
+
+> i=r+1
+
+σi(G⋆) ≤ √m − r
+
+√√√√
+
+> m
+
+∑
+
+> i=r+1
+
+(σi(G⋆)) 2 ≤ (√m − r) (δ∥∇ f (Xk)∥) .
+
+Equation (39) follows from an application of Jensen’s inequality: 12
+
+√1 + 12
+
+√ m − rr ≤
+
+√
+
+1 + m−rr
+
+2 =
+
+√ m
+
+2r
+
+Appealing to Jain et al. (2010, Theorem 1.2), (with e = Z(G⋆c ), their b replaced by our y, and setting their 
+
+ϵ = δ2), we obtain 
+
+∥G⋆r − ˆG∥2 ≤ 11 − δ2r (Z)
+
+(
+
+C 8δ2∥∇ f (Xk)∥2
+
+3
+
+mr + δ2∥∇ f (Xk)∥2
+
+)
+
+(40) provided 
+
+t ≥ 1log(1 /D ) log 
+
+( ∥y∥2
+
+2( C∥Z (G⋆c )∥2 + δ2∥∇ f (Xk)∥2)
+
+)
+
+. (41) where C, D are universal constants. We simplify the error bound (40) first: 
+
+∥G⋆ − ˆG∥2 ≤ 2∥G⋆r − ˆG∥2 + 2 ∥G⋆c ∥2
+
+≤ 21 − δ2r (Z)
+
+(
+
+C 83
+
+mr + 1 
+
+)
+
+δ2∥∇ f (Xk)∥2 + 2 δ2∥∇ f (Xk)∥2
+
+≤
+
+(
+
+8C mr + 5 
+
+)
+
+δ2∥∇ f (Xk)∥2
+
+Next we simplify the iterate bound (41). Appealing to (39) and defining ˜C appropriately yields 2( C∥Z (G⋆c )∥2 + δ2∥∇ f (Xk)∥2) ≤ 2
+
+(
+
+C 16 δ2∥∇ f (Xk)∥2
+
+3
+
+m
+
+2r + δ2∥∇ f (Xk)∥2
+
+)
+
+=
+
+( ˜C mr + 2 
+
+)
+
+δ2∥∇ f (Xk)∥2.
+
+Finally we define ˜D = 1log(1 /D ) .
+
+Remark 5. Notice that the required number of iterates scales like − log ( ∥∇ f (Xk)∥), and consequently increases as ∥∇ f (Xk)∥ → 0. In practice, we fix the number of iterates equal to 20, which should suffice until 
+
+∥∇ f (Xk)∥ ≲ e−20 .Then using the above result, we are ready to state and prove our main convergence result in this setting: 21 Theorem 2. Suppose Assumptions 2(a), 3, and 4 hold and let d = c0r(m + n). After running K iterations of Algorithm 1, using IHT with step size α = 1 /L , we find 
+
+min  
+
+> 0≤k≤K−1
+
+∥∇ f (Xk)∥2 ≤ 2L(f (X0) − flow )(1 − δ2(8 C mr + 5)) K
+
+with probability at least 1 − e−c1d, where c0, c 1, and C are the constants specified in Theorem 1. Proof. By Theorem 1, we know 
+
+∥∇ f (Xk) − ˆG∥2 ≤
+
+(
+
+8C mr + 5 
+
+)
+
+δ2∥∇ f (Xk)∥2
+
+will hold for every iteration of Algorithm 1 with probability 1 − e−c1d. Thus, applying Lemma 4 with 
+
+c2 =
+
+(
+
+8C mr + 5 
+
+)
+
+δ2 := CIHT (m, r )δ2
+
+we have the desired result. 
+
+C.1 Proof of Theorem 3 
+
+Proof. Setting X+ = Xk+1 , M = Gk and η = αk in the descent lemma variant of He et al. (2025, Lemma 4) gives 
+
+f (Xk+1 ) ≤ f (Xk) − αk∥∇ f (Xk)∥⋆ + 2 αk∥Gk − ∇ f (Xk)∥⋆ + L⋆α2
+
+> k
+
+2 . (42) since our Assumptions 1 and 2(b) are equivalent to the assumptions of He et al. (2025, Lemma 4). Then 
+
+∥Gk − ∇ f (Xk)∥⋆ ≤ √m∥Gk − ∇ f (Xk)∥ ≤ √mC IHT (m, r )δ∥∇ f (Xk)∥ ≤ √mC IHT (m, r )δ∥∇ f (Xk)∥⋆
+
+with probability 1 − e−c1d by Theorem 1, having used the equivalence of norms ∥A∥ ≤ ∥ A∥⋆ ≤ √m∥A∥.Substituting this into (42), rearranging, and letting αk = 1 /√K gives 
+
+f (Xk+1 ) − f (Xk) ≤ − 1 − 2√mC IHT δ
+
+√K ∥∇ f (Xk)∥⋆ + L⋆
+
+2K ,
+
+for all 1 ≤ k ≤ K, with probability 1 − e−c1d. Telescoping and using Assumption 1: 1 − 2√mC IHT δ
+
+√K
+
+> K−1
+
+∑
+
+> k=0
+
+∥∇ f (Xk)∥⋆ ≤ f (X0) − flow + L⋆
+
+2K
+
+=⇒ 1
+
+K
+
+> K−1
+
+∑
+
+> k=0
+
+∥∇ f (Xk)∥⋆ ≤ 11 − 2√mC IHT δ
+
+( f (X0) − flow 
+
+√K + L⋆
+
+2K3/2
+
+)
+
+.
+
+The claim now follows by once more using the fact that the minimum is less than the mean. 
+
+## D Implementation of Recovery Algorithms 
+
+The precise implementation of all algorithms considered may be found in the accompanying codebase, see supplementary material. For each (optimizer, objective function) we selected the most performant value of 
+
+d, the number of samples per iteration, from {8, 32 , 64 , 128 , 256 , 512 }. The selected values are displayed in Table 2. We set the number of inner iterations for IHT , BM-GD , and AltMin to 20. Finally, we tune the rank of the sampling matrices in LOZO over {4, 8, 16 }. For frσ a rank of 16 was best, while for fmr a rank of 4 was best. 22 Table 2: Tuned number of samples per iteration ( d) for each algorithm. All recovery-based methods use 20 recovery iterations. Algorithm d for fmr d for frσ 
+
+IHT-SpecGD 256 512 
+
+adjoint 128 128 
+
+AltMin 256 512 
+
+BM-GD 256 512 
+
+IHT 256 512 
+
+LOZO 64 64 
+
+pseudoinverse 256 512 
+
+## E Connection to derivative-free optimization 
+
+In DFO, one only has access to function evaluations, not directional derivatives. As is well known, function evaluations can be used to approximate directional derivatives. Here we bound the error in this approxima-tion. 
+
+Lemma 6. Suppose Assumption 2(a) holds. Then 
+
+yi := f (X + hZ i) − f (X)
+
+h = DZi f (X) + hη i, (43) 
+
+where |ηi| ≤ L 
+
+> 2
+
+∥Zi∥2.
+
+Proof of Lemma 6. For any i ∈ { 1, . . . , d } define 
+
+ηi = f (X + hZ i) − f (X) − hD Zi f (X)
+
+h2
+
+so that f (X+hZ i)−f (X) 
+
+> h
+
+= DZi f (X) + hη i. To bound ηi, consider ϕ : R → R given by ϕ(α) = f (X + αhZ i) −
+
+f (X). Applying the fundamental theorem of calculus and the chain rule, we find that 
+
+f (X + hZ i) − f (X) = ϕ(1) − ϕ(0) = 
+
+∫ 10
+
+ϕ′(α)d α =
+
+∫ 10
+
+hD Zi f (X + αhZ i)d α. 
+
+Subtracting hD Zi f (X) from both sides, using the fact that 
+
+DZi f (X) = ⟨Zi, ∇f (X)⟩
+
+as f is continuously differentiable, and taking absolute values: 
+
+|f (X + hZ i) − f (X) − hD Zi f (X)| ≤ | h|
+
+∫ 10
+
+|⟨ Zi, (∇f (X + αhZ i) − ∇ f (X)⟩| dα
+
+≤ | h|
+
+∫ 10
+
+∥Zi∥∥∇ f (X + αhZ i) − ∇ f (X)∥dα
+
+≤ | h|
+
+∫ 10
+
+∥Zi∥(L∥αhZ i∥)d α
+
+= |h|2∥Zi∥2L
+
+∫ 10
+
+αdα = |h|2 L
+
+2 ∥Zi∥2,
+
+where we have applied the Cauchy-Schwarz inequality for the Frobenius inner product. Dividing by |h|2
+
+both sides, we find that |ηi| ≤ L 
+
+> 2
+
+∥Zi∥2.
+
+When Zi is drawn from the Gaussian ensemble, ∥Zi∥2 is easy to bound: 23 Lemma 7. Suppose that each entry of each Zi is chosen i.i.d from N (0 , 1/d ). Let η ∈ Rd have entries ηi
+
+as in Lemma 6. Then 
+
+|ηi| ≤ Lmn d with probability at least 1 − 2e−Cmn 
+
+Proof. Observe that 
+
+|ηi| ≤ L
+
+2 ∥Zi∥2 = L
+
+2
+
+> m,n
+
+∑
+
+> k,ℓ
+
+[Zi]2 
+
+> k,ℓ
+
+= L
+
+2d
+
+> m,n
+
+∑
+
+> k,ℓ
+
+˜Z2 
+
+> i,k,ℓ
+
+(44) where ˜Zi,k,ℓ iid 
+
+∼ N (0 , 1). Thus, 
+
+E
+
+
+
+> m,n
+
+∑
+
+> k,ℓ
+
+˜Z2
+
+> i,k,ℓ
+
+ = mn, 
+
+while 
+
+P
+
+∣∣∣∣∣∣
+
+> m,n
+
+∑
+
+> k,ℓ
+
+˜Z2 
+
+> i,k,ℓ
+
+− mn 
+
+∣∣∣∣∣∣ ≥ mn 
+
+ ≤ 2 exp( −Cmn )by standard concentration of measure (e.g. Bernstein’s inequality (Vershynin, 2018, Corollary 2.8.3)). Con-sequently 
+
+P
+
+
+
+> m,n
+
+∑
+
+> k,ℓ
+
+˜Z2 
+
+> i,k,ℓ
+
+≤ 2mn 
+
+ ≥ 1 − 2 exp( −Cmn ). (45) Combining this with (44) yields the stated bound. 
+
+Remark 6. In Lemma 6, it at first appears one could take h → 0 and make the error arbitrarily small, but it is well-known that floating point errors make this impractical. For forward finite differences, the best balance of truncation and floating point error is achieved with h ∼ √ϵmachine where ϵmachine is the machine epsilon (Gill et al., 1983). In more detail, using ˆ to denote floating point approximations, if we assume 
+
+| ˆf (X + hZ i) − f (X + hZ i)| ≤ ϵ and | ˆf (X) − f (X)| ≤ ϵ, and define ˆ yi := ˆf (X+hZ i)− ˆf (X) 
+
+> h
+
+, then the total error, including this floating point error (neglecting downstream floating point error, which is typically of smaller effect) and the truncation error of Lemma 6 gives 
+
+|ˆyi − DZi f (X)| ≤ hη i + 2 ϵh
+
+and this error bound is minimized by choosing h =
+
+√ 2ϵηi . If f (X) is O(1) then ϵ ≈ ϵmachine and 
+
+|ˆyi − DZi f (X)| ≲ 2√2ηiϵmachine .However, the presence of an error term complicates the analysis of several of our proposed methods. Conse-quently, we leave this setting for future work. 24

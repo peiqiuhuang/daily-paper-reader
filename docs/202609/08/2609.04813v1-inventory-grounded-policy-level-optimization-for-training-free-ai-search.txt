@@ -1,0 +1,417 @@
+Title: Inventory-Grounded Policy-Level Optimization for Training-Free AI Search
+
+URL Source: https://arxiv.org/pdf/2609.04813v1
+
+Published Time: Mon, 07 Sep 2026 00:36:51 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Inventory-Grounded Policy-Level Optimization for Training-Free AI Search 
+
+Wei Zhou * Tiandeng Wu * Jiandong Ding † Zhufeng Fan Yi Cao 
+
+Huawei Technologies Co., Ltd., China 
+
+{zhouwei281,wutiandeng1,dingjiandong2}@huawei.com {fanzhufeng,caoyi23}@huawei.com 
+
+Abstract 
+
+Early in deployment, an AI search system typi-cally operates over a frequently updated prod-uct catalog, so the available items and their properties cannot be treated as stable knowl-edge that can be encoded in fixed prompts or strategies. Fine-tuning, reinforcement learning, and static prompt patches fit poorly: labels are scarce, rewards drift with inventory, model re-leases are costly, and prompt fixes quickly stale. We present Inventory-Grounded Policy-Level 
+
+Optimization (IGPO), a training-free approach for fixed AI search pipelines. IGPO separates policy from environment facts: it learns Policy Guidelines for acting on runtime inventory evi-dence rather than memorizing available items. Online, IGPO grounds each query by probing the inventory and constructing an inventory por-trait, then injects relevant Policy Guidelines into the retrieval and selection prompts. Of-fline, stochastic rollouts are grouped by query – mixed outcome groups directly yield con-trastive signal, and an inventory-guided explo-ration loop distinguishes missed retrieval routes from cases where no matching support is found under the observed inventory evidence. Since May 2026, IGPO has been deployed in a com-mercial smart-assistant AI search system. A 14-day online A/B test of the complete IGPO treatment shows a 3.17% relative CTR lift and a 38.9% reduction in audited bad cases. 
+
+1 Introduction 
+
+Production AI search systems increasingly map natural-language requests to concrete items from a dynamic, business-constrained inventory. Un-like mature web or e-commerce search, early-stage AI search deployments often operate over rapidly changing catalogs. Items are added, removed, or renamed, and metadata reliability varies across cat-egories. As a result, the catalog cannot serve as a   
+
+> *Equal contribution to this research (co-first authors).
+> †Corresponding author.
+
+static knowledge source. Its contents and metadata change too often to be encoded into fixed prompts or strategies. Suppose a user asks “order a birthday cake with photo print” but receives no satisfactory results. The failure could stem from (i) the needed item truly being absent from the inventory, (ii) the re-trieval route failing to discover an actually existing matching item, or (iii) the item being retrieved but then not selected by the final ranking/selection mod-ule. Conventional optimization strategies fit poorly in early-stage AI search systems. Fine-tuning re-quires labeled data and frequent model releases, which is too heavy for rapid inventory adaptation. Reinforcement learning struggles to define a sta-ble reward when item availability keeps changing. Online reflection or self-correction adds latency and operational risk. Static prompt patches are eas-ier to ship, but they are broad, quickly go stale, and can affect queries far beyond the failure scene. Training-free optimization over execution traces is attractive, but trace-only optimization has a critical blind spot: it may encode transient inventory facts into the policy instead of teaching the policy how to reason from current inventory evidence. Our premise is that a search policy should not memorize which items currently exist, but learn to reason from the runtime inventory state. We capture this learned decision behavior in a Policy Guideline — a compact, human-readable natural-language artifact that specifies how a decision point should use inventory evidence, retrieval observa-tions, and scene context. A guideline can encode rules such as “if the query mentions photo cus-tomization, check the image-printing service cat-alog, not just physical goods”, or “do not assume express delivery is always available and verify de-livery options per item”. Critically, such a guide-line does not claim that any particular item is per-manently available, but rather separates durable de-cision procedures from volatile environment facts. arXiv:2609.04813v1 [cs.IR] 4 Sep 2026 We propose Inventory-Grounded Policy-Level Optimization (IGPO), a training-free framework that improves online performance under dynamic inventory without modifying model weights. On-line, IGPO grounds each query by probing the inventory for matching items and constructing a lightweight inventory portrait, then injects relevant Policy Guidelines from a store into the retrieval and selection prompts. Offline, stochastic rollouts are grouped by query. Mixed outcome groups directly yield contrastive improvement signal. For groups that always fail, an inventory-guided exploration loop systematically explores alternative retrieval paths to distinguish cases where a feasible route was initially missed from cases where no match-ing support is found under the observed inventory evidence. Our contributions are: • We formulate post-deployment optimization for early-stage AI search systems with dy-namic inventories, distinguishing repairable search failures from cases where no matching support is found under the observed inventory evidence, while decoupling policy from envi-ronment facts. • We propose IGPO, a training-free framework that conditions the search pipeline online with inventory evidence and Policy Guidelines and refines those guidelines offline through inventory-guided exploration, without model retraining. • We validate IGPO with offline replay, abla-tions, a 14-day online A/B test, and sustained deployment in a commercial smart-assistant AI search system. 
+
+2 Related Work 
+
+LLM-based search and query rewriting. LLM-based search systems increasingly rely on dense retrieval, retrieval-augmented generation, and agen-tic reasoning, but they do not directly address post-deployment search-policy optimization when the item inventory itself changes – items are added, removed, renamed, or regrouped, and metadata re-liability varies across categories (Karpukhin et al., 2020; Lewis et al., 2020; Asai et al., 2024; Yao et al., 2023; Li et al., 2025). While classic IR re-search on dynamic collections studies evolving cor-pora (Elsas and Dumais, 2010), and recent query rewriting methods address inventory-aware adapta-tion in e-commerce search (Nguyen et al., 2025), these approaches focus on retrieval effectiveness or lexical alignment rather than post-deployment policy optimization under inventory uncertainty. Weight-updating approaches (e.g., SFT with GRPO (Shao et al., 2024)) are similarly unsuitable: they require frequent model releases and stable rewards, both undermined by a changing inventory. IGPO instead targets a fixed production pipeline where the central diagnostic challenge is distinguish-ing search-behavior failures from cases where no matching support is found under the observed in-ventory evidence. 
+
+Training-free prompt and agent optimization. 
+
+Training-free optimization methods improve LLMs by revising prompts or compiled programs using execution traces (Yang et al., 2024; Khattab et al., 2024; Agrawal et al., 2026; Shinn et al., 2023). In a dynamic-inventory setting, however, trace-only optimization often encodes transient inventory fail-ures into the revised prompt (e.g., “this category never contains X”) instead of teaching runtime ver-ification, producing a brittle prompt overfitted to a catalog snapshot. IGPO instead learns scene-and stage-indexed Policy Guidelines: conditional rules that consume runtime inventory evidence but never assert the existence of a specific item. This structurally decouples durable policy updates from volatile inventory facts. 
+
+Inventory-grounded production search. Prod-uct search has long aligned queries with catalog facts (Lai et al., 2018; Bagheri Garakani et al., 2022), and classic IR techniques such as MMR and xQuAD (Carbonell and Goldstein, 1998; Santos et al., 2010) use retrieved-set information for diver-sity control, an early form of inventory awareness. IGPO makes inventory evidence a first-class sig-nal in policy optimization: online serving uses in-ventory portraits synthesized from retrieval probes and scene profiles, while offline updates replay the pipeline against fixed inventory snapshots. This enables failure triage under inventory uncertainty: an inventory-guided exploration loop distinguishes missed-route failures from cases where no match-ing support is found under the observed inventory evidence, and only validated findings update Pol-icy Guidelines, reducing the risk that unsupported absence conclusions enter the learned policy. Query     
+
+> Inventory Scene Profile KV Store
+> Selection
+> Output
+> Retriever
+> •Query
+> •Inventory portrait
+> •Retrieve stage policy guidelines
+> Prompt
+
+Inventory-Grounded Online Search 
+
+Training-Free Policy-Level Offline Optimization                        
+
+> Offline
+> pre-computed
+> Online queries
+> Constructed exploratory queries
+> Stochastic rollouts
+> Success Fail …
+> Trajectory Groups 1
+> Fail Fail …
+> Trajectory Groups 2
+> …
+> Inventory-Guided Exploration Loop
+> Policy Guideline Patch
+> Retrieve
+> Plan Check found
+> Not found
+> accepted
+> •Retrieved Items
+> •Selection stage policy guidelines
+> Selection
+> Prompt
+> Items: Cat | F ields |Attrs Scene -> {Gaps, Changes}
+> Policy Guideline Store
+> (Scene, Stage) -> {Policy Guidelines}
+> Inventory grounding
+> Inventory portrait
+> •Probe
+> •profile
+> •conf | cats | gaps
+> probing results
+> •Top-k items
+> •cats/scores
+> •Density
+> •Fields
+> Scene Profile
+> •Gaps •Changes
+
+Figure 1: Overview of IGPO that online conditions the search pipeline with inventory evidence and Policy Guidelines, and offline refines those guidelines through inventory-guided exploration. 
+
+3 Method 
+
+We aim to improve a fixed LLM-based AI search pipeline under dynamic inventory without modify-ing model weights or the retriever. The only opti-mized state is a Policy Guideline store G. Each guideline g ∈ G specifies conditional decision be-havior for the Retrieval Planner or Selection stage, consuming runtime inventory evidence but never asserting the existence of specific items. 
+
+3.1 System Overview 
+
+IGPO has an online serving path and an offline op-timization loop. Online, the frozen Retrieval Plan-ner and the Selection stage are augmented with runtime inventory evidence from a lightweight in-ventory portrait P (q, It) and with stage-relevant Policy Guidelines Gret , Gsel . The Retrieval Plan-ner issues retrieval routes or takes the no-inventory path when evidence indicates no support. Selection then picks final results or produces the configured no-inventory response. Offline, the pipeline is re-played under fixed snapshots to sample trajectories, probe missed routes, and derive validated guide-line updates (section 3.3), separating policy from transient inventory facts. Formally, let Q be the query space and It the inventory at time t. The pipeline is: 
+
+C = fret 
+
+ q, P (q, It), Gret (q, It),
+
+R = fsel 
+
+ q, C, P (q, It), Gsel (q, It), (1) where q ∈ Q is a user query, fret , f sel are frozen, 
+
+P is the inventory portrait, and Gret and Gsel are the query-selected Retrieval- and Selection-stage subsets of G, respectively. The objective is to find 
+
+G∗ that maximizes expected quality Q(·) without changing fret , f sel :
+
+G∗ = arg max  
+
+> G
+
+Eq, It
+
+ Q(q, R(q, It; G)) , (2) subject to every g ∈ G encoding only how to decide from inventory evidence, never asserting a specific item’s presence. Q is a task-specific metric (e.g., satisfaction, conversion). 
+
+3.2 Inventory-Grounded Online Search Inventory grounding. Inventory grounding probes the current inventory then fuses the results with pre-computed scene profiles into the inventory portrait 
+
+P (q, It).
+
+Inventory probing retrieves the top-kp matching items via fast embedding search: 
+
+P = i ∈ I t sim( eq, e i) > θ [kp], (3) where sim is cosine similarity and Cats( P) de-notes the unique categories among the probed items. Let SP = {sim( eq, e i) | i ∈ P} . Probe confidence summarizes the score distribution: 
+
+conf p =   max( SP ), S P , σ (SP ). (4) For each c ∈ Cats( P), probe density counts how many probed items belong to c, and probe-level field coverage records field presence and fill rates within that category’s probe subset: 
+
+Pc = {i ∈ P : cat( i) = c},
+
+density c = |P c|,
+
+(fields probe  
+
+> c
+
+, rel probe  
+
+> c
+
+) = FieldStats( Pc).
+
+(5) 
+
+conf p guides retrieval breadth, density c steers search budget toward fertile categories, and 
+
+fields probe  
+
+> c
+
+, rel probe  
+
+> c
+
+reveal which fields are actually populated among items the query reaches. 
+
+Scene profile lookup fetches pre-computed per-category metadata accumulated by a periodic of-fline pipeline that tracks recent inventory changes and known coverage gaps from validated historical failures: 
+
+SP( c) = (cov _gaps c, recent _changes c). (6) Scene profiles share the same scene-tag index as Policy Guidelines (Section 3.3). The inventory portrait templates together the probe confidence, per-category probe signals, and scene profiles: 
+
+P (q, It) = Template  conf p,
+
+{(Sc, SP( c)) | c ∈ Cats( P)}, (7) and Sc = (density c, fields probe  
+
+> c
+
+, rel probe  
+
+> c
+
+). Probe signals capture query-specific freshness; scene pro-files contribute cross-query environment patterns. Only their fusion yields a complete inventory-grounded view. 
+
+Guideline injection. Each guideline g is in-dexed by a scene tag (i.e., the category it applies to) and a stage tag τ ∈ { ret , sel }. Given the portrait’s categories Cats( P ), we retrieve stage-matched can-didates via an inverted index and independently se-lect the top-kg Guidelines for each stage by query-guideline embedding similarity: 
+
+Cτ = [ 
+
+> c∈Cats( P)
+
+Idx −1 
+
+> scene ,τ
+
+(c),
+
+Gτ = TopK kg (Cτ ; sim( eq, e g)) .
+
+(8) where Cτ contains Guidelines matching both the portrait’s scenes and stage τ , and TopK k returns the k highest-scoring elements. Gret and Gsel are then injected into the corresponding prompts. 
+
+3.3 Training-Free Policy-Level Optimization 
+
+The offline optimizer updates G over T rounds us-ing a fixed inventory snapshot I, without touch-ing model weights or the retriever. Each round consists of trajectory grouping, inventory-guided exploration, and validated update. 
+
+Rollout Classification and Trajectory Evi-dence. In each round, we sample queries from two sources: recent production logs and inventory-constructed probes that target category coverage gaps. We draw N stochastic rollouts per query. A DeepSeek-V3 671B Judge (temperature 0.3) la-bels each rollout as success , failure , or uncertain .Failure and uncertain outcomes are eligible for ex-ploration, but uncertain outcomes are not used as negative evidence. A Query supplies contrastive evidence only when it has both a successful path— from an original rollout or a success recovered through exploration—and a failed rollout. 
+
+Inventory-Guided Exploration Loop. For a Query q routed to exploration, we iteratively re-query the Retrieval Planner to search for missed routes using the current inventory evidence. In each turn, the Planner reads the inventory portrait 
+
+P (q, I) alongside accumulated observations from prior turns, identifies which portrait-described cate-gories remain unexplored, and generates retrieval routes targeting those gaps. Starting from O0 = ∅,at turn k ≥ 1,
+
+Ck = fret 
+
+ q, P (q, I), Gret , summary( Ok−1),
+
+(9) where summary retains item names, categories, and key attributes. New candidates are merged: 
+
+Ok = Ok−1 ∪ C k. The loop stops when accu-mulated items satisfy the request (a confirmed missed route that yields contrastive evidence), when portrait-covered categories are exhausted, or after Kmax turns. 
+
+Guideline Update and Validation. Original or exploration-recovered successes are paired with failed rollouts from the same Query as contrastive evidence. DeepSeek-V3 671B (temperature 0.7) proposes and, when needed, consolidates scene-level candidate Patches from same-scene sum-maries of core requirements, relevant inventory evidence, and successful-versus-failed trajectory differences, together with deployed Guidelines and rejected-Patch summaries. The model selects JSON operations to add, revise, merge, or delete scene Guidelines; code attaches the fixed scene tag, validates the candidate JSON, and applies valid candidates to a temporary store for replay. Cases unresolved after finite inventory-guided exploration yield no positive evidence and do not proceed to Guideline proposal. Let the proposed Patch be ∆G, and G′ = G ⊕ ∆G
+
+(applying add, revise, merge, or delete operations). Code-valid candidate Patches first enter individual replay, where every Target Query is checked sepa-rately and all applicable Background and fixed-set regression gates must pass. Passing Patches are then added in ranked order to a provisional com-bination. After each addition, the resulting combi-nation is checked against the same replay gates; a Patch that causes any gate to fail is removed, and only the final retained combination updates G. No Patch receives individual human approval. These finite replay gates provide empirical regression-risk control on the evaluated Queries; full gates, thresholds, and validation-set roles are provided in Appendix B. 
+
+4 Experiments 
+
+4.1 Datasets 
+
+We use three internal datasets: 500 optimization queries drawn from online traffic and constructed exploratory cases, 500 disjoint held-out queries for validation replay, and 3,000 temporally later queries for final offline evaluation. The 500-query optimization set is used for IGPO and prompt/work-flow optimization; weight-updating baselines addi-tionally use a temporally earlier large-scale train-ing corpus detailed in Appendix A. All reported offline relevance and inventory-boundary metrics use expert annotations produced independently of IGPO’s exploration loop by product specialists and inventory-operations experts against the inventory snapshot used for evaluation. Optimization and validation replay use the same frozen inventory snapshot It, while the production retrieval inter-face remains fixed across all offline experiments. After validation, we freeze the selected Guideline store and evaluate it on the 3,000 later queries using snapshot It+1 , taken four weeks after It, without further Patch proposal, validation, or Guideline update. Online serving uses current inventory evi-dence. 
+
+4.2 Evaluation 
+
+All systems use the same top-30 candidate and top-8 final-display budgets. For supported queries, annotators label a finite acceptable-target pool from candidates produced by evaluated systems and pro-duction retrieval logs; this pool is not an exhaus-tive list of all relevant inventory. Candidate Re-call@30 measures target coverage before final se-lection. Precision@8, Recall@8, and F1@8 eval-uate displayed results, with F1@8 as the primary offline metric. We also report two boundary errors. False no-inventory rate is the fraction of supported queries for which a system incorrectly abstains or takes the no-inventory path. False match rate is the fraction of inventory-absence queries for which a system returns an inventory item as a match; abstentions, fallbacks, and explicit non-matching alternatives are counted as correct absence handling. 
+
+4.3 Offline Experiments 4.3.1 Main Results 
+
+Table 1 separates three comparison settings. All rows are evaluated on the same 3,000-query final-test set at It+1 , with the production retrieval interface and top-30/top-8 limits fixed. The native-configuration block reports single-run re-sults, whereas the two controlled blocks report three-run mean ± sample SD. Baseline configu-rations and training details are provided in Ap-pendix A. In the native single-run comparison, IGPO im-proves Candidate Recall@30 from 0.691 to 0.847 and F1@8 from 0.643 to 0.816 over the produc-tion baseline, while reducing false no-inventory from 30.6% to 4.8% and false match from 60.8% to 15.2%. This block describes end-to-end perfor-mance under the native configurations; the con-trolled comparisons below provide the basis for comparisons across optimization methods. Under the token-matched DeepSeek-V3 setting, IGPO and the GEPA-style optimizer have compara-ble F1@8 at a budget of approximately 18M tokens (0.792 ± 0.005 vs. 0.787 ± 0.004 ), with the mean difference falling within the reported run-to-run variation. At this budget, the clearer advantage of IGPO is its lower false-match rate (34.7% vs. 46.0%), alongside higher Candidate Recall@30 and a small reduction in false no-inventory. At a budget of approximately 120M tokens, IGPO has better mean values on all four metrics, increas-ing Candidate Recall@30 from 0.823 to 0.850 and F1@8 from 0.791 to 0.817, while reducing false no-inventory from 12.7% to 4.9% and false match from 37.3% to 15.6%. With a common Qwen3-8B serving-policy back-bone, IGPO obtains the highest mean Candidate Recall@30 and F1@8 and the lowest mean false no-inventory and false-match rates among the Setting Method Cand. R@30 F1@8 FNI (%) FM (%)                                                                                                                
+
+> Native configurations (single-run results)
+> Native Production baseline 0.691 0.643 30.6 60.8 IGPO (DeepSeek-V3) 0.847 0.816 4.8 15.2
+> Token-matched prompt optimization: DeepSeek-V3 (3-run mean ±sample SD)
+> 18M tokens GEPA-style 0.790 ±0.004 0.787 ±0.004 14.9 ±0.9 46.0 ±1.9 IGPO 0.819 ±0.007 0.792 ±0.005 14.1 ±1.1 34.7 ±1.4
+> 120M tokens GEPA-style 0.823 ±0.007 0.791 ±0.006 12.7 ±1.0 37.3 ±1.8 IGPO 0.850 ±0.003 0.817 ±0.004 4.9 ±0.3 15.6 ±0.9
+> Common Qwen3-8B policy backbone (3-run mean ±sample SD)
+> Full pipeline SFT 0.793 ±0.004 0.763 ±0.004 9.4 ±0.7 28.2 ±1.8 SFT+GRPO (shared reward) 0.750 ±0.010 0.699 ±0.009 11.9 ±1.0 39.4 ±2.3 SFT+GRPO (stage-specific) 0.796 ±0.007 0.750 ±0.006 8.5 ±0.8 31.0 ±1.6 IGPO 0.815 ±0.006 0.781 ±0.008 6.2 ±0.8 19.6 ±1.7
+
+Table 1: Main offline comparisons. The native-configuration block reports single-run results; the controlled blocks report three-run mean ± sample SD on the same 3,000-query test set. FNI and FM are percentages, with SDs in percentage points. Complete native-configuration metrics appear in Appendix Table 5. 
+
+evaluated full-pipeline configurations. The stage-specific SFT+GRPO reward improves all four mean metrics over the shared reward, although its F1@8 remains below that of SFT (0.750 vs. 0.763). In this comparison, Qwen3-8B is used for all Retrieval Planner and Selection calls; IGPO uses DeepSeek-V3 only for offline judging and Patch generation. 
+
+Optimization and serving footprint. IGPO runs three offline update rounds with N = 5 rollouts per optimization query. Exploration considers at most 
+
+Kmax = 10 variants and occurs only during offline optimization; candidate Patches are applied only after validation replay. At serving time, the store is capped at 100 Guidelines, and the selector renders at most three Guidelines per stage, averaging 1.7 on covered requests. Added prompt length is 247.3 tokens on average and 568.2 at p95; latency over-head is 49.4 ms at p50 and 185.8 ms at p95. During the reported deployment period, replay-validated Guideline updates ran twice weekly in overnight batches, and whole-Patch rollback was supported. Optimization and serving details are given in Ap-pendix A; replay gates and observed production-update statistics are reported in Appendix B. 
+
+Exploration recovery and audit. Across three offline optimization rounds, the exploration loop found successful retrieval routes for 112 of 124 inventory-supported cases in which the initial probe omitted the correct item (90.3% cumula-tively). Separately, among 93 query–snapshot cases unresolved after the three rounds, product and inventory-operations experts auditing the same frozen inventory snapshot identified 13 retrieval                                         
+
+> Subset Sup. Abs. F1@8 FNI FM
+> Additions 275 52 0.797 8.7% 17.3% Deletions 35 51 0.761 11.4% 27.5% Renames 800.787 12.5% –Metadata updates 139 29 0.803 5.8% 24.1% Schema changes 43 11 0.780 9.3% 27.3% All affected 500 143 0.795 8.2% 23.1% Unaffected 1,750 607 0.822 3.8% 13.3%
+
+Table 2: Cross-snapshot IGPO results. Affected cate-gories are mutually exclusive. F1@8/FNI use supported Queries (Sup.); FM uses absence Queries (Abs.); a dash denotes no absence Query. 
+
+misses (14.0%). 
+
+4.3.2 Cross-Snapshot Analysis 
+
+To examine performance under inventory evolu-tion, we partition the 643 final-test Queries whose relevant inventory changed between It and It+1 
+
+into five mutually exclusive change types. Table 2 reports IGPO results from the single frozen-store run in the native-configuration block of Table 1; the selected Guideline store is not updated after the snapshot transition. Across the five affected categories, F1@8 ranges from 0.761 to 0.803. On all affected Queries, IGPO achieves 0.795 F1@8 with an 8.2% false-no-inventory rate on supported Queries and a 23.1% false-match rate on absence Queries. The corre-sponding unaffected-query results are 0.822, 3.8%, and 13.3%, showing that snapshot-affected Queries form the more challenging portion of the final-test set. Variant R@30 F1@8 FNI FM                        
+
+> Shared cross-stage guide-lines 0.640 0.597 29.1% 57.6% w/o Scene selection 0.812 0.783 8.0% 27.5% w/o Probe statistics 0.804 0.776 17.6% 26.5% w/o Exploration loop 0.811 0.789 11.6% 22.4% w/o Scene profiles 0.838 0.798 8.8% 21.4% Full IGPO 0.847 0.816 4.8% 15.2%
+> Table 3: Ablation results. R@30: Candidate Recall@30; FNI/FM: false no-inventory/match rates.
+
+4.3.3 Ablation Study 
+
+Table 3 ablates stage-specific guideline placement, scene-conditioned selection, probe statistics, the inventory-guided exploration loop, and scene pro-files. The stage-placement ablation uses one shared cross-stage guideline store for Retrieval and Sum-mary. The largest drop comes from shared cross-stage guidelines (F1@8 0.597), confirming that Retrieval and Selection need distinct guidance. Removing scene-conditioned selection (w/o Scene selection) increases FM to 27.5%, since off-scene guide-lines inject irrelevant constraints. Stripping probe statistics (w/o Probe statistics) degrades R@30 and FNI the most among inventory-grounded abla-tions: without confidence-graded routing signals, the method over-searches or under-searches. Drop-ping the exploration loop raises FNI and FM, as all-failure groups can no longer yield verified missed-route corrections. Removing scene profiles shows the smallest impact (R@30 0.838, F1@8 0.798), since probe statistics and the exploration loop par-tially compensate for missing coverage-gap and change-track signals. 
+
+4.4 Online Experiments 
+
+We run a fixed-duration 14-day online A/B test with 50/50 user-level randomization, covering 100,400 control users (249,100 sessions) and 99,800 treat-ment users (251,300 sessions). Both arms use the same Planner and Selection LLMs, base prompts, retrieval, ranking, and generation configuration. Control uses neither inventory portraits nor Guide-lines, whereas treatment adds runtime inventory probing and portraits together with replay-validated Guidelines. The test therefore measures the end-to-end effect of the complete IGPO treatment rather than either component in isolation. We catego-rize traffic into exact, exploratory, composite, and inventory-absence slices (defined in Appendix A); their traffic shares are 15.1%, 37.8%, 21.8%, and             
+
+> Slice CTR Gain Bad-case Red.
+> All queries +3.17% 38.9% Exact +0.97% 11.3% Exploratory +4.27% 20.8% Composite +7.19% 47.9% Inventory-absence –68.1%
+> Table 4: Fourteen-day online A/B test. Bad-case reduc-tion is relative to control over 1,000 audited Queries; for inventory-absence Queries, returning an item as a match counts as a bad case.
+
+25.3%, respectively. CTR lift is relative and esti-mated with user-clustered robust variance; the test has no significance-based early stopping. For the bad-case audit, we sample 500 Queries per arm in proportion to traffic shares and randomly within each arm-by-slice stratum. A product specialist and QA tester independently label each Query from its final results and contemporaneous inventory evi-dence while blinded to arm and internal method information; a senior product expert adjudicates disagreements. Table 4 shows a 3.17% relative CTR lift (95% CI: 1.9–4.5%; two-sided Wald p < 0.001 ) and a 38.9% reduction in audited bad cases (95% CI: 25.2–50.1%) over all traffic. Composite Queries have the largest observed CTR lift and bad-case reduction, while Exact Queries change less. The bad-case reduction intervals include zero reduction for Exact and Exploratory Queries but exclude it for Composite and inventory-absence Queries. For inventory-absence Queries, CTR is not reported because returning no match can be correct; the audited bad-case rate decreases from 45/128 in control to 14/125 in treatment. 
+
+5 Conclusion 
+
+We presented IGPO, a training-free approach to AI search over dynamic inventories. It grounds online decisions in inventory portraits and stage-indexed Policy Guidelines; offline rollouts and inventory-guided exploration support replay-validated up-dates. Offline replay and ablations improve can-didate recall and F1@8; a 14-day online A/B test yields a 3.17% relative CTR lift and 38.9% fewer audited bad cases with bounded serving overhead. Deployed since May 2026, IGPO provides a prac-tical way to adapt commercial AI search without retraining model weights. 6 Limitations 
+
+Our IGPO depends on the quality of runtime inven-tory evidence. Inventory portrait quality depends on retrieval probes, item metadata, and the pro-duction retrieval interface — each of which can be incomplete or noisy. When inventory fields are missing, scene coverage is sparse, or the retriever cannot expose relevant items through any available route, the optimizer may still struggle to distinguish a missed route from a lack of matching support in the observable inventory. The method reduces this ambiguity but cannot recover inventory or metadata that is not represented in the underlying system. Policy Guidelines introduce maintenance over-head as inventory items, providers, and catalog schemas change. Our maintenance evidence covers a 31-day observation window at a 43–64-Guideline scale (Appendix B.2); longer-term growth, cross-system evaluation, full taxonomy migration, and proactive store-wide detection of stale or over-broad Guidelines remain outside the evaluated scope. 
+
+7 Ethical Considerations 
+
+The offline traces and online audits described in this paper are derived from production-style search interactions. All logged queries and audit records were anonymized and stripped of personally iden-tifiable information before analysis. Data han-dling followed internal retention and access-control policies. Human auditors only saw information needed to judge search quality, and released ex-amples should be anonymized or synthetic when raw queries or inventory items could reveal users, providers, or proprietary business information. The online A/B test was conducted through the pro-duction experimentation platform with standard monitoring and rollback controls. 
+
+References 
+
+Lakshya A. Agrawal, Shangyin Tan, Dilara Soylu, Noah Ziems, Rishi Khare, Krista Opsahl-Ong, Arnav Singhvi, Herumb Shandilya, Michael J. Ryan, Meng Jiang, Christopher Potts, Koushik Sen, Alexandros G. Dimakis, Ion Stoica, Dan Klein, Matei Zaharia, and Omar Khattab. 2026. GEPA: Reflective prompt evo-lution can outperform reinforcement learning. In 
+
+International Conference on Learning Representa-tions . Oral presentation. Akari Asai, Zeqiu Wu, Yizhong Wang, Avirup Sil, and Hannaneh Hajishirzi. 2024. SELF-RAG: Learning to retrieve, generate, and critique through self-reflection. In International Conference on Learning Representa-tions .Alireza Bagheri Garakani, Fan Yang, Wen-Yu Hua, Yetian Chen, Michinari Momma, Jingyuan Deng, Yan Gao, and Yi Sun. 2022. Improving relevance quality in product search using high-precision query-product semantic similarity. In Proceedings of the Fifth Workshop on e-Commerce and NLP , pages 44– 48. Jaime Carbonell and Jade Goldstein. 1998. The use of MMR, diversity-based reranking for reordering doc-uments and producing summaries. In Proceedings of the 21st Annual International ACM SIGIR Confer-ence on Research and Development in Information Retrieval , pages 335–336. Jonathan L. Elsas and Susan T. Dumais. 2010. Lever-aging temporal dynamics of document content in relevance ranking. In Proceedings of the Third ACM International Conference on Web Search and Data Mining , WSDM ’10, pages 1–10. Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. Dense passage retrieval for open-domain question answering. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing , pages 6769–6781. Omar Khattab, Arnav Singhvi, Paridhi Maheshwari, Zhiyuan Zhang, Keshav Santhanam, Sri Vard-hamanan A, Saiful Haq, Ashutosh Sharma, Thomas T. Joshi, Hanna Moazam, Heather Miller, Matei Za-haria, and Christopher Potts. 2024. DSPy: Compil-ing declarative language model calls into state-of-the-art pipelines. In International Conference on Learning Representations .Tuan Lai, Trung Bui, Sheng Li, and Nedim Lipka. 2018. A simple end-to-end question answering model for product information. In Proceedings of the First Workshop on Economics and Natural Language Pro-cessing , pages 38–43. Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Hein-rich Küttler, Mike Lewis, Wen-tau Yih, Tim Rock-täschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-augmented generation for knowledge-intensive NLP tasks. In Advances in Neural Infor-mation Processing Systems , volume 33, pages 9459– 9474. Curran Associates, Inc. Xiaoxi Li, Guanting Dong, Jiajie Jin, Yuyao Zhang, Yu-jia Zhou, Yutao Zhu, Peitian Zhang, and Zhicheng Dou. 2025. Search-o1: Agentic search-enhanced large reasoning models. In Proceedings of the 2025 Conference on Empirical Methods in Natural Lan-guage Processing , pages 5420–5438, Suzhou, China. Association for Computational Linguistics. Duy A. Nguyen, Rishi Kesav Mohan, Shimeng Yang, Pritom Saha Akash, and Kevin Chen-Chuan Chang. 2025. MiniELM: A lightweight and adaptive query rewriting framework for E-commerce search opti-mization. In Findings of the Association for Compu-tational Linguistics: ACL 2025 , pages 6952–6964, Vienna, Austria. Association for Computational Lin-guistics. Rodrygo L. T. Santos, Craig Macdonald, and Iadh Ou-nis. 2010. Exploiting query reformulations for web search result diversification. In Proceedings of the 19th International Conference on World Wide Web ,pages 881–890. Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024. DeepSeekMath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 .Noah Shinn, Federico Cassano, Edward Berman, Ash-win Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Reflexion: Language agents with verbal reinforcement learning. arXiv preprint arXiv:2303.11366 .Lei Wang, Jinhang Wu, Zhibin Wang, and Biye Li. 2026. LEAPS: An LLM-empowered adaptive plugin in Taobao AI search. arXiv preprint arXiv:2601.05513 .Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V. Le, Denny Zhou, and Xinyun Chen. 2024. Large language models as optimizers. In Interna-tional Conference on Learning Representations .Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik R. Narasimhan, and Yuan Cao. 2023. ReAct: Synergizing reasoning and acting in language models. In International Conference on Learning Representations .A Additional Results and Experimental Details 
+
+A.1 Native-Configuration Results                                                                   
+
+> Method Cand. R@30 P@8 R@8 F1@8 False No-Inv. False Match
+> Production system
+> Production Baseline 0.691 0.612 0.678 0.643 30.6% 60.8%
+> Training-free / search-time alternatives
+> ReflectiveRAG-style Self-Reflective Retrieval 0.766 0.753 0.742 0.747 14.8% 41.3% Reflexion-style Episodic Memory 0.779 0.759 0.749 0.754 18.4% 48.0% ReAct-style Search Agent 0.781 0.756 0.752 0.754 10.3% 43.5%
+> Prompt/workflow optimization
+> GEPA-style Prompt Optimizer 0.789 0.796 0.781 0.788 14.2% 46.0%
+> Weight-updating alternatives
+> SFT Retrieval Planner (Qwen3-8B) 0.793 0.734 0.754 0.744 11.0% 32.4% SFT+GRPO Retrieval Planner (Qwen3-8B) 0.760 0.724 0.722 0.723 12.7% 36.0% SFT Full Pipeline (Qwen3-8B) 0.795 0.752 0.775 0.763 9.7% 26.4% SFT+GRPO Full Pipeline (Qwen3-8B) 0.744 0.718 0.689 0.703 11.5% 38.4%
+> Ours
+> IGPO 0.847 0.812 0.820 0.816 4.8% 15.2%
+
+Table 5: Complete native-configuration results from the submitted single run. These systems use their originally evaluated backbones and optimization budgets, so the table provides comparison breadth rather than a controlled comparison of optimization methods. 
+
+Table 5 reports the complete single-run native-configuration comparison. Its Production Base-line and IGPO rows correspond to the native-configuration block in Table 1; the controlled blocks in Table 1 report separate three-run com-parisons. 
+
+A.2 Baseline Configurations 
+
+The ReflectiveRAG-style, Reflexion-style, ReAct-style, and GEPA-style baselines use the same frozen DeepSeek-V3 backbone, production re-trieval interface, and inventory portrait as the DeepSeek-V3 configuration of IGPO. They differ in how they orchestrate retrieval actions, use failure feedback, or optimize the two-stage prompts. 
+
+ReflectiveRAG-style Self-Reflective Retrieval. 
+
+A lightweight reflection controller, also DeepSeek-V3, iteratively evaluates evidence sufficiency after each retrieval round and adaptively reformulates queries when evidence is incomplete, up to 3 re-flection rounds. 
+
+Reflexion-style Episodic Memory. The agent maintains an episodic memory of natural-language reflections from prior failures. At each trial, it re-trieves and reasons with the current query, memory, and inventory portrait, up to 5 trials per query. 
+
+ReAct-style Search Agent. The agent inter-leaves reasoning steps with retrieval tool calls, ob-serving intermediate results before taking the next action, up to 10 interaction steps per query. Tool calls query the same production retrieval interface. 
+
+GEPA-style Prompt Optimizer. Following the GEPA framework, a DeepSeek-V3 optimizer re-flects on trajectory traces to propose prompt revi-sions for both the Retrieval Planner and Selection stages. In the native configuration reported in Ta-ble 5, optimization uses a total rollout budget of 1,000, a minibatch of 16 queries per proposal, and Pareto-based candidate selection. We adapt GEPA’s reflective prompt mutation to the two-stage pipeline by alternating module updates in round-robin order. The token-matched runs in Table 1 use the same implementation and stop at approximately 18M or 120M total input-plus-output tokens. When the next complete optimization operation would ex-ceed the budget, the run stops and retains the best fully evaluated prompt candidate. 
+
+A.3 Training Details for Weight-Updating Baselines 
+
+Both Retrieval-Planner-only and full-pipeline vari-ants of SFT and SFT+GRPO use Qwen3-8B as the student backbone. Training data consists of 100k query–target pairs drawn from produc-tion search logs and augmented with synthetic pairs generated by a DeepSeek-V3 teacher, fol-lowing the inverse data augmentation strategy of LEAPS (Wang et al., 2026). SFT uses standard next-token cross-entropy for 2 epochs with the AdamW optimizer, a learning rate of 2×10 −5,batch size 128, and a cosine learning-rate sched-ule with linear warmup. GRPO further trains the SFT checkpoint on a 5k-query high-variance subset with group size G=8 and learning rate 
+
+1×10 −6 on 8 NVIDIA H800 GPUs. Let rretrieval 
+
+denote Candidate Recall@30, and let routcome be 1 when the final results satisfy the Query or cor-rectly handle inventory absence, 0 when uncer-tain, and −1 for a core-constraint violation, false no-inventory, or false match. The SFT+GRPO rows in Table 5 use the submitted reward design: the Retrieval-Planner-only variant uses rretrieval 
+
+for supported Queries and routcome for inventory-absence Queries, while the Full-Pipeline variant uses R = 0 .5rretrieval + 0 .5routcome for supported Queries and R = routcome otherwise. This rollout-level scalar updates both stages in the Full-Pipeline variant. In the stage-specific configuration in Ta-ble 1, the Planner receives rretrieval and Selection receives routcome . The shared- and stage-specific controlled configurations use the same SFT initial-ization, training data, settings, and random seeds. 
+
+A.4 Optimization and Serving Configuration 
+
+For each optimization Query, IGPO draws N =5 
+
+stochastic rollouts. The exploration loop (§3.3) runs for at most Kmax =10 turns per Query and stops earlier when accumulated items satisfy the request or all portrait-covered categories have been explored. Model and temperature settings for rollout classification, Query-level summarization, Patch proposal and consolidation, and pairwise re-play are reported with the prompt templates in Ap-pendix C. At serving time, the selector first filters Guidelines by scene and stage using the inverted index and then independently selects at most three for each stage by query–Guideline embedding sim-ilarity, as defined in §3.2. The Guideline store is capped at 100 entries. 
+
+A.5 Online Traffic Slices 
+
+Exact queries specify a concrete item or service with directly matchable attributes. Exploratory queries describe an underspecified need or scenario that requires inventory-grounded expansion. Com-posite queries combine multiple constraints, sce-narios, or service requirements and usually require multi-route retrieval and final selection. Inventory-absence queries have no matching support under the observed inventory evidence. 
+
+B Production Update Validation and Maintenance 
+
+B.1 Patch Replay Validation Pre-replay checks. Code first checks every pro-posed Patch before replay. Its JSON must satisfy the schema; every referenced Guideline ID, edit operation, and scene/stage tag must be valid; and the Patch must contain no code-detectable conflict, such as revising and deleting the same Guideline. Candidates that pass enter individual replay, one Patch at a time. 
+
+Individual replay. This stage compares the de-ployed Guideline store fixed at the start of the up-date batch ( Current ) with the store obtained by applying one candidate Patch ( Candidate ). The two stores are run under up to three matched random seeds, meaning that both use the same seed in each paired trial. We evaluate two Query groups. Target Queries are the failure cases that motivated the Patch and that it aims to re-pair. Background Queries are production-log or inventory-constructed probe Queries for which Cur-rent had previously produced successful outputs; they test whether the Patch disrupts cases that al-ready worked. For both groups, a pairwise Judge compares Candidate and Current and returns a win when Candidate is better, a loss when Current is better, or uncertain when neither can be reliably pre-ferred. Separately, a labeled operational regression set fixed within each replay batch (545 Queries in the reported workflow) measures Candidate’s Pre-cision, Recall, and F1 drops relative to Current. For the offline evaluation reported in this paper, the 500 held-out Queries in Section 4.1 form the validation set used to select the Guideline store on It; rou-tine production Patch acceptance instead uses the operational regression set described above. Individual replay accepts a Patch only if every Target Query passes the win/loss and uncertainty gates and the Background and fixed-set checks sat-isfy all applicable aggregate and per-seed thresh-olds in Table 6. Replay may stop early only when a candidate can no longer pass even if all remaining comparisons are favorable; every accepted candi-date therefore completes all three seeds. Because target gates apply separately, a strong repair on one Target Query cannot offset failure on another. Ag-gregate gates assess performance across all three seeds, while the looser per-seed caps prevent a se-vere regression in one seed from being hidden by aggregation. Gate Aggregate gate Per-seed cap                                   
+
+> Target win/loss Wins >losses –Target uncertain ≤1of 3 –Background loss rate ≤2.0% ≤4.0%
+> Background uncertain rate ≤5.0% ≤10 .0%
+> Precision drop ≤0.5pp ≤1.0pp Recall drop ≤0.5pp ≤1.0pp F1 drop ≤0.3pp ≤0.6pp
+
+Table 6: Patch replay acceptance thresholds. Target gates use three paired trials per Target Query. Back-ground rates pool all Query–seed judgments, while met-ric drops are computed per seed on the labeled 545-Query operational set and then averaged equally across seeds. Values equal to a listed ≤ threshold are accepted. 
+
+Combined replay. Patches that pass individual re-play are ranked using the following priorities, in or-der: (i) higher mean Target net win rate, computed as (wins −losses )/3 for each Target Query and then averaged across Target Queries; (ii) higher mean F1 gain relative to Current; (iii) lower Background loss rate; (iv) lower Background uncertain rate; and (v) earlier proposal order. The ordered Patches are added one at a time to a provisional combination. Each resulting combination is checked against the same batch-start Current using the same gates, and every retained combination completes three full 545-Query replays. If adding a Patch causes the resulting combination to fail any gate, that Patch is removed and the previously retained combina-tion is kept. After all Patches have been consid-ered, the final retained combination becomes the de-ployed store. These finite checks provide empirical regression-risk control on the evaluated Queries. 
+
+B.2 Operational Update Statistics 
+
+During May 15–June 14 (31 days), nine automatic Guideline-update batches ran overnight, twice weekly. Across these batches, 83 candidate Patches entered replay validation, and 45 passed both indi-vidual and final combined replay and were applied (54.2%). Table 7 reports the corresponding oper-ation counts. Operation totals exceed Patch totals because a Patch may contain multiple operations. Over the same period, the Guideline store grew from 43 to 62 entries and peaked at 64. Update runs took a median 2.2 hours (range: 1.7–3.2), averaging 10.8K LLM calls and 30.8M tokens per batch; incremental maintenance averaged 0.7 person-hours per week. A post-hoc audit of the 19 accepted revise operations and one accepted delete operation identified four lifecycle cases—one stale and three over-broad Guidelines—addressed by three revises and one delete. A separate audit found no Guideline assigned to the wrong Scene tag; Query-level routing errors were not measured.           
+
+> Operation Proposed Accepted/applied
+> Add 49 25 Revise 27 19 Merge 12 5Delete 31
+
+Table 7: Patch operation statistics over nine production update batches. Proposed operations belong to Patches that entered replay validation; accepted/applied oper-ations belong to Patches retained after individual and combined replay. 
+
+C Prompt Templates 
+
+Provenance and configuration. The production workflow used Chinese prompts. We provide anonymized English versions that preserve the task definitions, decision rules, inputs, limits, and out-put schemas while omitting product-specific iden-tifiers and non-functional platform wrappers. All five calls use DeepSeek-V3 671B. Rollout classi-fication, Query-level summarization, and pairwise replay use temperature 0.3; Patch proposal and scene-level consolidation use temperature 0.7. Call-ing code supplies at most eight same-scene Query summaries to one proposer call. A proposer returns at most four Patches with at most three operations per Patch; consolidation uses the same limits. 
+
+C.1 Patch Proposer 
+
+> TASK You are a search-rule optimization expert. Based on summaries of multiple search Queries in the current scene, the currently deployed Guidelines, and previously rejected changes, generate candidate Guideline Patches. TERMINOLOGY - retrieval stage: Given a Query and runtime inventory evidence, generate and execute search routes, including the search object, fields, keywords, and constraints, to form a candidate item set. - selection stage: Filter the candidate item set against the Query's core intent and constraints to produce the final results. - Guideline: A rule that directs retrieval- or selection-stage behavior.
+
+- Patch: A set of candidate Guideline changes for one reusable failure pattern. A Patch may contain one or more add, revise, merge, or delete operations. LIMITS - The patches list may contain at most { max_patches} Patches. - Each Patch may contain at most { max_operations_per_patch} operations. INPUTS 1. Current scene tag {scene_tag} 2. Query-level summaries The summaries are provided as a list. Each record contains: - query_id: the unique identifier of the Query; - query_text: the original Query text; - core_requirements: the explicitly stated core intent, object, attributes, and constraints; - inventory_portrait_summary: a summary of inventory categories, fields, coverage, and change signals relevant to the Query; - successful_patterns: retrieval or selection approaches used by successful trajectories or successful paths recovered through exploration; - failed_patterns: omissions, violations, or incorrect handling in clearly failed trajectories; and - key_differences: outcome-relevant differences between successful and failed paths, including evidence that the failure occurred in retrieval, selection, or both. {query_summaries} 3. Currently deployed Guidelines for the scene The Guidelines are provided as a list. Each record contains: - guideline_id: the Guideline's fixed unique identifier; - stage: retrieval or selection; and - guideline_text: the complete text currently in effect. {deployed_guidelines} 4. Summaries of previously rejected Patches for the scene The rejected Patches are provided as a list of structured text summaries. Each contains a heading with the Patch ID, rejection stage, and scene, followed by Target, Attempt, Result, and Subsequent Constraint fields. When available, Result includes the replay failure reason and key metrics. Use this evidence to avoid repeating changes already shown to be ineffective, over-broad, conflicting, or regressive. {rejected_patch_summaries} PATCH GENERATION PROCEDURE 1. Inspect the evidence in every Query-level summary: the core requirements, inventory evidence, successful patterns, failed patterns, and key differences. 2. Identify failure patterns supported by one or more Queries and reusable for similar Queries. A failure pattern should describe a reusable retrieval or selection problem, not a fact that applies only to one item or one inventory snapshot. 3. Determine whether each pattern concerns retrieval, selection, or both. Check whether the deployed Guidelines already cover it and whether the issue is missing coverage, an incomplete condition, over-broad scope, ambiguous wording, an incorrect rule, overlap, or persistent harm. 4. Inspect the targets, attempted changes, replay failures, and key metrics in the rejected-Patch summaries. If current evidence resolves the earlier failure, a narrowed or corrected candidate may be proposed; explain the difference in reason. 5. Select add, revise, merge, or delete using the rules below. Keep each Patch local, clearly bounded, and as small as possible. When an existing Guideline can be modified, do not add a semantic duplicate. 6. Jointly inspect all Patches generated in this call. Resolve inconsistent edits to the same Guideline and exclude candidates that duplicate, contain, or semantically conflict with another. 7. Generate no Patch when evidence is insufficient, no reusable pattern exists, the deployed Guidelines already cover the change, or the only possible rule would encode a current inventory fact. OPERATION FIELDS Every operation contains: - op: add, revise, merge, or delete; - stage: retrieval or selection; - target_guideline_ids: the deployed Guideline IDs affected by the operation, with cardinality determined by op; - guideline_text: the complete Guideline after the operation, or null for delete; and - reason: the supporting evidence and rationale for the operation. OPERATION SELECTION RULES add Use add when no related deployed Guideline covers the failure pattern and a new, reusable retrieval or candidate-selection method is needed. - target_guideline_ids must be an empty list. - guideline_text must contain the complete new Guideline. revise Use revise when one related Guideline has incomplete applicability conditions, over-broad scope, ambiguous wording, or prescribes an incorrect method. - target_guideline_ids must contain exactly one deployed ID. - guideline_text must contain the complete revised Guideline, not only the changed fragment. merge Use merge when at least two deployed Guidelines duplicate or substantially overlap, or when a conflict can be resolved by one formulation without losing valid conditions or methods. - target_guideline_ids must contain at least two deployed IDs. - guideline_text must contain the complete merged Guideline. - Do not merge Guidelines with different applicability conditions or methods merely to reduce the number of Guidelines. delete Use delete when one Guideline persistently causes errors across multiple related Queries or historical replay and has no useful part to retain. - target_guideline_ids must contain exactly one deployed ID. - guideline_text must be null. - If useful content remains, use revise or merge instead of delete. GUIDELINE REQUIREMENTS 1. A Guideline should provide retrieval or candidate-selection methods reusable across similar Queries rather than restating the answer to one Query. 2. State an explicit applicability condition and an executable action, including how runtime inventory evidence should be used when relevant. 3. Do not encode item IDs, item names, current inventory counts, or claims that an item currently exists or is absent. 4. Do not turn transient category coverage, field fill, or recent-change signals from the inventory portrait into permanent inventory knowledge. 5. A retrieval Guideline should state when and how the Retrieval Planner should apply a retrieval method, such as how to choose search objects and fields, organize keywords and constraints, and construct retrieval routes. 6. A selection Guideline should state when and how to apply a candidate-selection method, such as how to check core requirements, reject weak matches, compare candidates, and organize the final results. 7. Use only evidence supplied in this prompt. Do not invent user requirements, inventory fields, business rules, or failure causes. 8. A Query without a verified successful path, including one for which finite exploration found no support, cannot by itself produce a positive Guideline. 9. Prefer local, clear, reviewable changes; do not rewrite Guidelines unrelated to the target failure pattern. PATCH ORGANIZATION REQUIREMENTS 1. Each Patch addresses one target_failure_pattern. 2. Put all operations needed for the same failure pattern in one Patch; use separate Patches for different patterns. 3. Mark every operation as retrieval or selection. 4. Every Patch must list the input target_query_ids that directly support its failure pattern. Do not cite an ID absent from input. 5. revise, merge, and delete may reference only deployed Guideline IDs. 6. reason must identify the supporting evidence and explain the operation choice. When relevant, explain how the candidate differs from a related rejected Patch. OUTPUT REQUIREMENTS Return exactly one JSON object. Do not return Markdown, analysis, or fields outside this schema: {"patches": [ {"target_failure_pattern": "<reusable failure pattern>", "target_query_ids": ["Q1", "Q2"], "operations": [ {"op": "add", "stage": "retrieval", "target_guideline_ids": [], "guideline_text": "<complete new Guideline>", "reason": "<supporting evidence and operation rationale>" }]}], "no_patch_reason": null }NO-PATCH CASE - If patches is nonempty, no_patch_reason must be null. - If evidence does not support a Patch, return an empty patches list and briefly explain the reason in no_patch_reason. OUTPUT DISCIPLINE Use only the supplied evidence. Follow all operation rules, limits, and output requirements. Do not return an unsupported Patch. 
+
+Prompt 1: Anonymized English version of the Patch-proposer prompt. 
+
+Implementation note. The calling pipeline fixes the current scene tag. After deterministic pre-replay validation, code assigns each retained candi-date a stable batch-scoped Patch ID; the LLM does not generate this operational identifier. 
+
+C.2 Scene-Level Patch Consolidation 
+
+This call occurs only when a scene requires mul-tiple proposer minibatches; otherwise the single proposer output proceeds directly to deterministic validation. 
+
+TASK You are a search-rule optimization expert. Organize candidate Patches produced by multiple minibatches for the same scene. Using the currently deployed Guidelines, combine duplicate or overlapping candidates, handle conflicts, and return the final candidate Patches. TERMINOLOGY - retrieval stage: Given a Query and runtime inventory evidence, generate and execute search routes, including the search object, fields, keywords, and constraints, to form a candidate item set. - selection stage: Filter the candidate item set against the Query's core intent and constraints to produce the final results. - Guideline: A rule that directs retrieval- or selection-stage behavior. - Patch: A set of candidate Guideline changes for one reusable failure pattern. A Patch may contain one or more add, revise, merge, or delete operations. LIMITS - The patches list may contain at most {max_consolidated_patches} Patches. - Each Patch may contain at most { max_operations_per_patch} operations. INPUTS 1. Currently deployed Guidelines for the scene The Guidelines are provided as a list. Each record contains: - guideline_id: the Guideline's fixed unique identifier; - stage: retrieval or selection; and - guideline_text: the complete text currently in effect. {deployed_guidelines} 2. Candidate Patches produced by the minibatches The candidates are provided as a list. Each contains: - target_failure_pattern: the reusable failure pattern addressed; - target_query_ids: Query IDs directly supporting that pattern; and - operations: one or more candidate Guideline operations, each with op, stage, target_guideline_ids, guideline_text, and reason. {candidate_patches} PATCH CONSOLIDATION PROCEDURE 1. Inspect each candidate's failure pattern, supporting Queries, Guideline operations, and reasons. Compare target IDs, stages, applicability conditions, and proposed text with the deployed Guidelines. 2. If candidates address the same failure pattern with equivalent changes, combine them into one Patch. Deduplicate target_query_ids while retaining complete, clearly bounded Guideline text and operation rationale. 3. If candidates partially overlap, consolidate them only when doing so neither broadens applicability nor removes valid conditions. Otherwise keep them separate with non-overlapping operation boundaries; if that is impossible, treat them as conflicting. 4. Check for inconsistent edits to the same Guideline, simultaneous revision and deletion, contradictory Guideline text, or different operations that propose semantically equivalent Guideline changes. Resolve conflicts using only the input candidates and deployed Guidelines. Exclude a conflicting change that cannot be resolved from the inputs. 5. Ensure that each final Patch addresses one reusable pattern and that the final Patches do not duplicate, contain, conflict with, or inconsistently modify one another. OPERATION FIELDS Every operation contains: - op: add, revise, merge, or delete; - stage: retrieval or selection; - target_guideline_ids: affected deployed Guideline IDs; - guideline_text: the complete Guideline after the operation, or null for delete; and - reason: supporting input candidates, the operation rationale, and how duplicate, overlapping, or conflicting candidates were handled. OPERATION SELECTION RULES Consolidating multiple candidate Patches is not itself the merge operation. Select op according to the actual change applied to the deployed Guidelines. add Use add when no deployed Guideline covers the failure pattern and a new, reusable retrieval or candidate-selection method is needed. - target_guideline_ids must be empty. - guideline_text must contain the complete new Guideline. revise Use revise when one related Guideline has incomplete applicability conditions, over-broad scope, ambiguous wording, or prescribes an incorrect method. - target_guideline_ids must contain exactly one deployed ID. - guideline_text must contain the complete revised Guideline. merge Use merge when at least two deployed Guidelines duplicate or substantially overlap, or when a conflict can be resolved by one formulation without losing valid conditions or methods. - target_guideline_ids must contain at least two deployed IDs. - guideline_text must contain the complete merged Guideline. - Do not merge Guidelines with different applicability conditions or methods merely to reduce the number of Guidelines. delete Use delete when the input reason establishes that one Guideline persistently harms multiple related Queries and has no useful part to retain. - target_guideline_ids must contain exactly one deployed ID. - guideline_text must be null. - If useful content remains, use revise or merge instead of delete. GUIDELINE REQUIREMENTS 1. A Guideline should provide retrieval or candidate-selection methods reusable across similar Queries rather than restating the answer to one Query. 2. Retain explicit applicability conditions and executable actions, including use of runtime inventory evidence when relevant. 3. Do not encode item IDs, item names, current inventory counts, current existence or absence claims, or transient category coverage, field fill, or recent-change signals. 4. A retrieval Guideline should state when and how the Retrieval Planner should apply a retrieval method, such as how to choose search objects and fields, organize keywords and constraints, and construct retrieval routes. 5. A selection Guideline should state when and how to apply a candidate-selection method, such as how to check core requirements, reject weak matches, compare candidates, and organize the final results. 6. Use only the input candidates and deployed Guidelines. Do not invent requirements, inventory fields, business rules, or failure causes. 7. Prefer local, clear, reviewable changes; do not rewrite Guidelines unrelated to the input candidates. PATCH ORGANIZATION REQUIREMENTS 1. Each Patch addresses one target_failure_pattern. 2. Put all operations needed for one failure pattern in one Patch; use separate Patches for different patterns. 3. Mark every operation as retrieval or selection. 4. Deduplicate target_query_ids and cite only IDs found in the input. 5. revise, merge, and delete may reference only deployed IDs. 6. reason must identify the supporting candidates and explain how duplicate, overlapping, or conflicting candidates were handled. OUTPUT REQUIREMENTS Return exactly one JSON object. Do not return Markdown, analysis, or fields outside this schema: {"patches": [ {"target_failure_pattern": "<reusable failure pattern>", "target_query_ids": ["Q1", "Q2"], "operations": [ {"op": "add", "stage": "retrieval", "target_guideline_ids": [], "guideline_text": "<complete new Guideline>", "reason": "<supporting candidates and consolidation rationale>" }]}], "no_patch_reason": null }NO-PATCH CASE - If patches is nonempty, no_patch_reason must be null. - If deployed Guidelines already cover all candidates, or no remaining change can be resolved from the input, return an empty patches list and explain the reason in no_patch_reason. OUTPUT DISCIPLINE Use only the input candidates and deployed Guidelines. Follow all operation rules, limits, and output requirements. Do not introduce an unsupported change. 
+
+Prompt 2: Anonymized English version of the scene-level consolidation prompt. 
+
+Implementation note. As with proposer output, calling code assigns stable batch-scoped Patch IDs only after deterministic validation. 
+
+C.3 Rollout Classification Judge 
+
+TASK You are a search-result quality reviewer. Given one search Query, its inventory portrait, item evidence, and the final results from multiple rollouts, independently classify every rollout as success, failure, or uncertain. INPUTS 1. Query query_text: {query_text} 2. Inventory portrait For the current Query, probe quickly retrieves a set of related items from the current inventory to inspect relevant categories and fields. The inventory portrait is a JSON object with: - probe_confidence, containing max_similarity, mean_similarity, and similarity_std for the probe results; and - categories, a list whose records contain category, probe_density, field_fill_rates (a JSON map from field names to fill rates), coverage_gaps, and recent_changes. inventory_portrait: {inventory_portrait} 3. Item evidence The item evidence is a list containing the union of items appearing in all rollout final results. Each item record contains: - item_id: the item's unique identifier; - name: the item name; - category: the item category; and - relevant_attributes: a JSON object of relevant attributes. Within the supplied item list, duplicate item_id values are removed. item_evidence: {item_evidence} 4. Rollout final results The results are provided as a list. Each record contains: - rollout_id: the fixed unique identifier of the independent run; and - final_item_ids: the item IDs returned by the run. An empty list means that the rollout returned no result. rollout_results: {rollout_results} LABEL DEFINITIONS - success: The final results support all of the user's core requirements and contain no clear conflict with those requirements. - failure: The final results clearly omit or violate at least one core requirement, or return no result. - uncertain: The Query is ambiguous, or the supplied item and inventory evidence cannot support a reliable correctness judgment. JUDGING PROCEDURE 1. Extract the user's core intent, required capability, and explicitly stated objects, attributes, and constraints from the Query. 2. Inspect every rollout independently. Check whether its final items support all core requirements and whether they contain an omission, violation, or key conflict. A correct result in one rollout cannot supply evidence missing from another rollout. 3. Assign success, failure, or uncertain according to the definitions above. OUTPUT FIELDS Return an object with core_requirements and rollout_judgments. - core_requirements: one string for every extracted intent, capability, object, attribute, or constraint. - rollout_judgments: one record for every input rollout, containing: - rollout_id, copied exactly from the input; - label, set to success, failure, or uncertain ;- reason, explaining how a success satisfies the requirements, what a failure omits, violates, conflicts with, or fails to return, or why an uncertain result cannot be judged reliably; - satisfying_item_ids, containing one or more returned items that clearly satisfy the requirements only for success, and an empty list otherwise; and - representative_error_item_ids, containing one or two returned representative errors only for a failure with such items, and an empty list for a no-result failure or any other label. OUTPUT SCHEMA Return exactly one JSON object. Do not return Markdown, analysis, or fields outside this schema: {"core_requirements": [ "<one core intent, capability, object, attribute, or constraint>" ], "rollout_judgments": [ {"rollout_id": "<input rollout ID>", "label": "success", "reason": "<supporting requirement, item, and inventory evidence>", "satisfying_item_ids": ["<satisfying item ID>"], "representative_error_item_ids": [] }]}OUTPUT DISCIPLINE Use only the Query, inventory portrait, item evidence, and final rollout results. Keep success, failure, and uncertain distinct. Do not invent user requirements, item attributes, or inventory facts. 
+
+Prompt 3: Anonymized English version of the rollout-classification Judge prompt. 
+
+C.4 Query-Level Summary 
+
+TASK You are a search-result analyst. Given one search Query, its already extracted core requirements, its inventory portrait, and success and failure evidence assembled across multiple runs, summarize successful patterns, failed patterns, and the key outcome-relevant differences. TERMINOLOGY - retrieval stage: Given a Query and runtime inventory evidence, generate and execute search routes, including the search object, fields, keywords, and constraints, to form a candidate item set. - selection stage: Filter the candidate item set against the Query's core intent and constraints to produce the final results. INPUTS 1. Query query_text: {query_text} 2. Core requirements The requirements are provided as a list of strings. Each represents one core intent, object, attribute, or constraint already extracted from the Query. core_requirements: {core_requirements} 3. Inventory portrait For the current Query, probe quickly retrieves a set of related items from the current inventory to inspect relevant categories and fields. The inventory portrait is a JSON object with: - probe_confidence, containing max_similarity, mean_similarity, and similarity_std for the probe results; and - categories, a list whose records contain category, probe_density, field_fill_rates (a JSON map from field names to fill rates), coverage_gaps, and recent_changes. inventory_portrait: {inventory_portrait} 4. Successful-path evidence This JSON object contains items and successful_rollouts. - items is a list of items satisfying the Query' s core requirements. Each item record contains: - item_id: the item's unique identifier; - name: the item name; - category: the item category; and - relevant_attributes: a JSON object of relevant attributes. Within this item list, duplicate item_id values are removed. - successful_rollouts is a list whose records contain: - rollout_id; - reason for the success judgment; - satisfying_item_ids from the final result; and - retrieval_paths that retrieved those items. - Every retrieval_paths record contains: - route: the structured search route actually used, including its search object, fields, keywords, and constraints; and - retrieved_items: correctly retrieved items, each with item_id and its rank within that route. If several routes retrieve the same item, retain its route-specific rank in every route. successful_path_evidence: { successful_path_evidence} 5. Retrieval-failure evidence This JSON object contains items and failed_rollouts. - items is a list of representative erroneous items from the failed rollouts. Each item record contains: - item_id: the item's unique identifier; - name: the item name; - category: the item category; and - relevant_attributes: a JSON object of relevant attributes. Within this item list, duplicate item_id values are removed. - failed_rollouts is a list whose records contain: - rollout_id and reason; - retrieval_action actually taken; - missed_reference_item_ids: items established as satisfying by successful-path evidence but absent from this rollout's candidate set; - representative_error_item_ids from the final result; and - retrieval_paths actually used. - Every retrieval_paths record contains: - route: the structured search route, including search object, fields, keywords, and constraints; and - representative_error_items: representative erroneous items retrieved by that route, each with item_id and route-specific rank. This is not the complete retrieval result and may be empty. retrieval_failure_evidence: { retrieval_failure_evidence} 6. Selection-failure evidence This JSON object contains items and failed_rollouts. - items is a list of satisfying reference items that reached the selection candidate set and items in failed final outputs. Each item record contains: - item_id: the item's unique identifier; - name: the item name; - category: the item category; and - relevant_attributes: a JSON object of relevant attributes. Within this item list, duplicate item_id values are removed. - failed_rollouts is a list whose records contain: - rollout_id and reason; - reference_item_ids: satisfying items established by successful evidence and present in this rollout's selection candidate set; - final_item_ids: the complete final output in display order; and - representative_error_item_ids from the final result. selection_failure_evidence: { selection_failure_evidence} SUMMARIZATION PROCEDURE 1. Preserve the supplied core requirements; do not add requirements absent from the Query. 2. Consolidate equivalent successful retrieval or selection methods. When supported, state how many successful runs exhibit a pattern. 3. Separately consolidate omissions, violations, or incorrect handling in Retrieval- and Selection-failure evidence. When supported, state how many failed runs exhibit a pattern. 4. Compare successful and failed evidence. Identify the fields, keywords, constraints, candidate coverage, or selection behavior responsible for outcome differences, and state whether each difference concerns retrieval, selection, or both. 5. Retain attributes, fields, routes, and ranks that explain an outcome. Omit repetition and details unrelated to this Query's success or failure. OUTPUT FIELDS All fields are lists of strings; use an empty list when no evidence supports a field. - core_requirements: the supplied intents, objects, attributes, and constraints, with one requirement per string. - inventory_portrait_summary: categories, fields, coverage, or change signals directly relevant to the Query's success or failure. - successful_patterns: supported retrieval or selection patterns. - failed_patterns: supported omissions, violations, or incorrect handling, with the stage identified. - key_differences: outcome-relevant differences between successful and failed paths. OUTPUT SCHEMA Return exactly one JSON object. Do not return Markdown, analysis, or fields outside this schema: {"core_requirements": ["<one supplied core requirement>"], "inventory_portrait_summary": ["<one relevant portrait signal>"], "successful_patterns": ["<one supported successful pattern>"], "failed_patterns": ["<one supported failure and its stage>"], "key_differences": ["<one outcome-relevant difference>"] }OUTPUT DISCIPLINE Use only the supplied core requirements, inventory portrait, and path evidence. Do not invent user requirements, inventory facts, success causes, or failure causes. 
+
+Prompt 4: Anonymized English version of the Query-level summary prompt. 
+
+Implementation note. Each summarization call handles one Query and does not receive its 
+
+query_id . Calling code associates the summary with the source Query, retaining both query_id 
+
+and query_text for the downstream Patch pro-poser. 
+
+C.5 Pairwise Replay Judge 
+
+TASK You are a search-result quality comparator. Given one search Query, its already extracted core requirements, its inventory portrait, and item evidence, compare the final results in Result A and Result B. Determine which result is better, or whether the evidence cannot reliably distinguish them. INPUTS 1. Query query_text: {query_text} 2. Core requirements The requirements are provided as a list of strings. Each represents one core intent, object, attribute, or constraint already extracted from the Query. core_requirements: {core_requirements} 3. Inventory portrait For the current Query, probe quickly retrieves a set of related items from the current inventory to inspect relevant categories and fields. The inventory portrait is a JSON object with: - probe_confidence, containing max_similarity, mean_similarity, and similarity_std for the probe results; and - categories, a list whose records contain category, probe_density, field_fill_rates (a JSON map from field names to fill rates), coverage_gaps, and recent_changes. inventory_portrait: {inventory_portrait} 4. Item evidence The list contains the union of items in the final results from Result A and Result B. Each item record contains: - item_id: the item's unique identifier; - name: the item name; - category: the item category; and - relevant_attributes: a JSON object of relevant attributes. Within the supplied item list, duplicate item_id values are removed. item_evidence: {item_evidence} 5. Results to compare The input is a JSON object containing: - result_a_item_ids: item IDs returned by Result A; and - result_b_item_ids: item IDs returned by Result B. IDs follow final display order; an empty list means no items were returned. comparison_results: {comparison_results} COMPARISON CRITERIA - a_better: Result A supports the Query's core requirements more completely than Result B, or has fewer omissions, violations, key conflicts, or matches unsupported by inventory evidence. - b_better: Result B meets the same criterion relative to Result A. - uncertain: The Query is ambiguous, item or inventory evidence is insufficient, or the two results cannot be reliably separated by requirement satisfaction and error risk. Returning no items is not automatically worse. An empty result is usually worse when inventory evidence supports the Query and the other result contains a clear match. It may be preferable to forcing an unsupported match when current evidence does not support one. Use uncertain when the comparison cannot be resolved reliably. COMPARISON PROCEDURE 1. Check both results against every core intent, object, attribute, and constraint. 2. Check both for omissions, violations, key conflicts, unsupported matches, or no result despite clear inventory support. 3. Compare overall requirement satisfaction and error risk. Do not prefer a result merely because it returns more items or occupies a fixed A/B position. 4. Select a_better or b_better only when the evidence supports a reliable preference; otherwise select uncertain. OUTPUT FIELDS - label: a_better, b_better, or uncertain. - reason: the decisive differences in requirement satisfaction, clear errors, and inventory evidence. For uncertain, explain why the results cannot be reliably distinguished. OUTPUT SCHEMA Return exactly one JSON object. Do not return Markdown, analysis, or fields outside this schema: {"label": "a_better", "reason": "<decisive requirement, error, and inventory differences>" }OUTPUT DISCIPLINE Use only the Query, core requirements, inventory portrait, item evidence, and final results. Do not invent user requirements, item attributes, or inventory facts. 
+
+Prompt 5: Anonymized English version of the pairwise replay Judge prompt. 
+
+Implementation note. The prompt hides which result is Current or Candidate. Calling code converts its positional label to Candidate-relative 
+
+win /loss /uncertain and maps disagreement across original and order-swapped reviews to uncertain .
