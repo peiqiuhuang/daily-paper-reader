@@ -6,49 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-08
-- 运行时间：2026-09-08 21:46:49 UTC
+- 最新运行日期：2026-09-09
+- 运行时间：2026-09-09 21:07:16 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
-- 速读区：8
+- 本次总论文数：17
+- 精读区：6
+- 速读区：11
 
 ### 今日简报（AI）
-今日精选 9 篇前沿论文，重点解析了通过强化学习优化代码生成的 TIPCODER 模型。
-核心关注代码生成效率的提升，以及大模型在个性化微调与风格控制上的最新进展。
-建议开发者优先研读 TIPCODER，探索如何利用强化学习增强模型在复杂编程任务中的表现。
-- 详情：[/202609/08/README](/202609/08/README)
+今日精读双层优化前沿进展，深度解析非凸随机优化与零阶学习的最新突破。
+重点关注双层优化算法的收敛速率提升及非光滑响应处理，这两项研究为复杂模型训练提供了高效新范式。
+建议优先研读这两篇满分论文，掌握优化理论在复杂学习任务中的核心应用逻辑。
+- 详情：[/202609/09/README](/202609/09/README)
 
 ### 精读区论文标签
-1. [TIPCODER: Reinforcement Learning Boosted Test-time Instruction Proposer for Code Generation](/202609/08/2609.03309v1-tipcoder-reinforcement-learning-boosted-test-time-instruction-proposer-for-code-generation)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过强化学习优化的自动指令建议器
+1. [Stochastic Nonconvex Bilevel Optimization: Improved Rates Without Rare-Visit Assumption](/202609/09/2609.06580v1-stochastic-nonconvex-bilevel-optimization-improved-rates-without-rare-visit-assumption)  
+   标签：评分：10.0/10、query:bopl
+   evidence：随机非凸双层优化的收敛率
+2. [Bi-ZOL: Bilevel Zeroth-Order Learning with Nonsmooth Responses](/202609/09/2609.08021v1-bi-zol-bilevel-zeroth-order-learning-with-nonsmooth-responses)  
+   标签：评分：10.0/10、query:bopl
+   evidence：针对非平滑问题的双层零阶学习
+3. [DMRL: Document-Mediated Reinforcement Learning for Skill Optimization in Advertising Recommendation](/202609/09/2609.02170v1-dmrl-document-mediated-reinforcement-learning-for-skill-optimization-in-advertising-recommendation)  
+   标签：评分：9.0/10、query:bopl
+   evidence：上层智能体编辑文档，下层智能体进行评估
+4. [Vision-Guided Text Prompt Tuning for Multimodal Sentiment Analysis](/202609/09/2609.06497v1-vision-guided-text-prompt-tuning-for-multimodal-sentiment-analysis)  
+   标签：评分：9.0/10、query:bopl
+   evidence：参数高效的视觉引导文本提示微调
+5. [Mathematical Programming in Machine Learning and Artificial Intelligence: A Unified Taxonomy of Models and Applications](/202609/09/2609.07254v1-mathematical-programming-in-machine-learning-and-artificial-intelligence-a-unified-taxonomy-of-models-and-applications)  
+   标签：评分：9.0/10、query:bopl
+   evidence：包含双层优化和提示选择的分类体系
+6. [AgentGrad: Intervention-guided Prompt Optimization for Multi Agent Systems](/202609/09/2609.08572v1-agentgrad-intervention-guided-prompt-optimization-for-multi-agent-systems)  
+   标签：评分：9.0/10、query:bopl
+   evidence：多智能体系统的自动提示词优化
 
 ### 速读区论文标签
-1. [PLUME: Parameter-Efficient Personalization of Large Language Models via Low-Rank User Modulation in Shared Subspaces](/202609/08/2609.04715v1-plume-parameter-efficient-personalization-of-large-language-models-via-low-rank-user-modulation-in-shared-subspaces)  
+1. [Compositional Spectral Prompts for LLM-based Online Time Series Forecasting](/202609/09/2609.02093v1-compositional-spectral-prompts-for-llm-based-online-time-series-forecasting)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于高效在线适配的组合频谱提示词
+2. [GDB-Reward: From Evaluation Metrics to Training Rewards for Graphic Design](/202609/09/2609.02813v1-gdb-reward-from-evaluation-metrics-to-training-rewards-for-graphic-design)  
+   标签：评分：8.0/10、query:bopl
+   evidence：冻结图像生成器的提示优化
+3. [Unsupervised Transfer Clustering for Mitigating Cold Start in Active Prompt Learning](/202609/09/2609.05636v1-unsupervised-transfer-clustering-for-mitigating-cold-start-in-active-prompt-learning)  
+   标签：评分：8.0/10、query:bopl
+   evidence：视觉语言模型的主动提示学习
+4. [Data Efficient Sample Selection for In-Context Learning](/202609/09/2609.06670v1-data-efficient-sample-selection-for-in-context-learning)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于ICL样本选择的可微排序
+5. [Analysis of Prompt Engineering for Drug Toxicity Prediction](/202609/09/2609.03635v1-analysis-of-prompt-engineering-for-drug-toxicity-prediction)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过低秩调制实现参数高效的个性化适配
-2. [Can Activation Steering Capture Multidimensional Authorship Style?](/202609/08/2609.04792v1-can-activation-steering-capture-multidimensional-authorship-style)  
+   evidence：优化给大模型的提示以生成所需输出
+6. [The Role of Gradient Modification in Heavy-Tailed Nonconvex Stochastic Min-Max Optimization](/202609/09/2609.06064v1-the-role-of-gradient-modification-in-heavy-tailed-nonconvex-stochastic-min-max-optimization)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于大语言模型控制的结构化对比提示
-3. [Learning to Reason and Use Tools through Unsupervised Fine-Tuning in Task-Oriented Dialog Systems](/202609/08/2608.30426v1-learning-to-reason-and-use-tools-through-unsupervised-fine-tuning-in-task-oriented-dialog-systems)  
+   evidence：机器学习中的随机极小极大优化
+7. [ACE: Adapter Consolidation across Experts for Parameter-Efficient Fine-Tuning of MoE LLMs](/202609/09/2609.06072v1-ace-adapter-consolidation-across-experts-for-parameter-efficient-fine-tuning-of-moe-llms)  
+   标签：评分：7.0/10、query:bopl
+   evidence：MoE大语言模型的参数高效微调
+8. [Re-calibrated Contrastive Loss for Transformation-Aware Prompt Conditioning in Vision-Language Models](/202609/09/2609.06967v1-re-calibrated-contrastive-loss-for-transformation-aware-prompt-conditioning-in-vision-language-models)  
+   标签：评分：7.0/10、query:bopl
+   evidence：变换感知的提示词调节
+9. [Aplaud: Adaptive Personalized Low-Rank Decomposition for User-Specific LLM](/202609/09/2609.04738v1-aplaud-adaptive-personalized-low-rank-decomposition-for-user-specific-llm)  
    标签：评分：6.0/10、query:bopl
-   evidence：自动化的轨迹采集与提示词自我改进循环
-4. [One Adapter, Many Tasks: Task-Conditioned Feature Transformations for Continual Learning](/202609/08/2608.31096v1-one-adapter-many-tasks-task-conditioned-feature-transformations-for-continual-learning)  
+   evidence：扩展 LoRA 的轻量级可扩展大模型个性化框架
+10. [Hierarchical Prompt Injector for Domain Generalization Segmentation](/202609/09/2609.05864v1-hierarchical-prompt-injector-for-domain-generalization-segmentation)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于任务条件变换的参数高效适配
-5. [ContextPipe: Database-Inspired Context Assembly for Long-Horizon Agents](/202609/08/2609.00749v1-contextpipe-database-inspired-context-assembly-for-long-horizon-agents)  
+   evidence：用于领域泛化的提示学习
+11. [One Rate Is Not Enough: Adaptive Anisotropic Learning Rates for LoRA Fine-Tuning](/202609/09/2609.05885v1-one-rate-is-not-enough-adaptive-anisotropic-learning-rates-for-lora-fine-tuning)  
    标签：评分：6.0/10、query:bopl
-   evidence：智能体的运行时上下文组装与提示词优化
-6. [APEx: Distillation of Agent Procedural Experience for Adaptive Deep Research Question Answering](/202609/08/2609.02253v1-apex-distillation-of-agent-procedural-experience-for-adaptive-deep-research-question-answering)  
-   标签：评分：6.0/10、query:bopl
-   evidence：执行器、蒸馏器和规划器模块的交替优化
-7. [Gradient-Free Optimization for Matrix functions](/202609/08/2609.03170v1-gradient-free-optimization-for-matrix-functions)  
-   标签：评分：6.0/10、query:bopl
-   evidence：微调中矩阵函数的无梯度优化
-8. [Inventory-Grounded Policy-Level Optimization for Training-Free AI Search](/202609/08/2609.04813v1-inventory-grounded-policy-level-optimization-for-training-free-ai-search)  
-   标签：评分：6.0/10、query:bopl
-   evidence：针对运行时证据而非固定提示词的策略级优化
+   evidence：通过 LoRA 对大语言模型进行参数高效微调
 
 
 <div class="dpr-home-promo-card">
