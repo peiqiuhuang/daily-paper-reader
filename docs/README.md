@@ -6,49 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-10
-- 运行时间：2026-09-10 22:02:28 UTC
+- 最新运行日期：2026-09-11
+- 运行时间：2026-09-11 22:16:20 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：4
-- 速读区：5
+- 本次总论文数：6
+- 精读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-今日精选 9 篇前沿论文，重点解析视觉语言模型低秩提示学习与智能体演化搜索策略。
-视觉语言模型低秩提示学习与智能体搜索空间控制表现卓越，值得深入研读。
-建议优先关注这两项高分技术，它们为提升模型效率与智能体进化提供了极具价值的实践路径。
-- 详情：[/202609/10/README](/202609/10/README)
+今日精选 6 篇前沿论文，深度解析双层优化算法与视觉语言模型提示词优化。
+重点推荐单循环梯度算法在悲观双层优化中的突破，以及通过软提示词实现视觉语言模型的高效少样本适配。
+建议优先研读这两篇高分论文，掌握模型微调与优化策略的最新技术路径。
+- 详情：[/202609/11/README](/202609/11/README)
 
 ### 精读区论文标签
-1. [Low-Rank Prompt Learning for Vision-Language Models with Fixed-Token Bases](/202609/10/2609.09462v1-low-rank-prompt-learning-for-vision-language-models-with-fixed-token-bases)  
-   标签：评分：9.0/10、query:bopl
-   evidence：视觉语言模型的低秩提示词学习
-2. [RobustSGPO: Search-Space Control for Agent Harness Evolution](/202609/10/2609.09646v1-robustsgpo-search-space-control-for-agent-harness-evolution)  
-   标签：评分：9.0/10、query:bopl
-   evidence：基于语义梯度的提示优化
-3. [On the Tightness of Standard Relaxations for Mixed-Integer Bilevel Linear Programs](/202609/10/2609.10233v1-on-the-tightness-of-standard-relaxations-for-mixed-integer-bilevel-linear-programs)  
-   标签：评分：9.0/10、query:bopl
-   evidence：混合整数双层线性规划算法
-4. [Wasserstein Stability and Free Boundaries in Measure-Parameterized Bilevel Obstacle Problems](/202609/10/2609.08454v1-wasserstein-stability-and-free-boundaries-in-measure-parameterized-bilevel-obstacle-problems)  
+1. [Single-Loop Gradient Algorithms for Pessimistic Bilevel Optimization Problems](/202609/11/2609.11183v1-single-loop-gradient-algorithms-for-pessimistic-bilevel-optimization-problems)  
+   标签：评分：10.0/10、query:bopl
+   evidence：悲观双层优化的单层梯度算法
+2. [Your Model Already Knows Don't Teach It, Learn to Ask It: Soft Prompting for Few-Shot Adaptation of Vision-Language Models](/202609/11/2609.11310v1-your-model-already-knows-dont-teach-it-learn-to-ask-it-soft-prompting-for-few-shot-adaptation-of-vision-language-models)  
    标签：评分：8.0/10、query:bopl
-   evidence：测度参数化的双层障碍问题
+   evidence：优化连续提示词标记的软提示技术
 
 ### 速读区论文标签
-1. [DeepAffinity: Long-Term Aspect Preference Prediction in eCommerce using Small Language Models](/202609/10/2609.02468v2-deepaffinity-long-term-aspect-preference-prediction-in-ecommerce-using-small-language-models)  
+1. [In-Place Instruction Following in Diffusion Language Models](/202609/11/2609.07160v1-in-place-instruction-following-in-diffusion-language-models)  
+   标签：评分：7.0/10、query:bopl
+   evidence：扩散语言模型的原位提示词技术
+2. [Larger Context Window, Fewer Overcorrections: Optimizing Prompts and Batching for Minimal-Edit Grammatical Error Correction](/202609/11/2609.10810v1-larger-context-window-fewer-overcorrections-optimizing-prompts-and-batching-for-minimal-edit-grammatical-error-correction)  
+   标签：评分：7.0/10、query:bopl
+   evidence：优化用于语法纠错的提示词
+3. [Positional task conditioning for scalable defect detection across product families in large product catalogs](/202609/11/2609.09567v2-positional-task-conditioning-for-scalable-defect-detection-across-product-families-in-large-product-catalogs)  
    标签：评分：6.0/10、query:bopl
-   evidence：带有结构化提示的小型语言模型
-2. [The Impact of GenAI on the Future of Requirements Engineering](/202609/10/2609.05667v1-the-impact-of-genai-on-the-future-of-requirements-engineering)  
+   evidence：结构化提示边界的任务条件调节
+4. [ConvMem: Convolutional Memory for Long-Context Reasoning](/202609/11/2609.10441v1-convmem-convolutional-memory-for-long-context-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：提示编程与自动化软件工程代理综述
-3. [Training-Free Task Vectors for LLM Behavioral Control](/202609/10/2609.09054v1-training-free-task-vectors-for-llm-behavioral-control)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于模型编辑的免训练任务向量
-4. [Positional task conditioning for scalable defect detection across product families in large product catalogs](/202609/10/2609.09567v1-positional-task-conditioning-for-scalable-defect-detection-across-product-families-in-large-product-catalogs)  
-   标签：评分：6.0/10、query:bopl
-   evidence：在结构化提示边界强化任务标识
-5. [Beyond Surface Imitation: Contrastive Modeling for Reasoning Path Alignment in Multimodal In-Context Learning](/202609/10/2609.10177v1-beyond-surface-imitation-contrastive-modeling-for-reasoning-path-alignment-in-multimodal-in-context-learning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：具有对比演示建模的多模态ICL框架
+   evidence：将带有特定查询提示的LLM视为卷积核
 
 
 <div class="dpr-home-promo-card">
