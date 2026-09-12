@@ -1,0 +1,345 @@
+Title: SeGDeP: Semantic- and Geometric-Aware Decoupled Prompts for Reasoning Segmentation
+
+URL Source: https://arxiv.org/pdf/2609.08867v1
+
+Published Time: Wed, 09 Sep 2026 04:12:09 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# SeGDeP: Semantic- and Geometric-Aware Decoupled Prompts for Reasoning Segmentation 
+
+# Linnan Zhao, Xu Liu, Lingling Li, Licheng Jiao, Fang Liu, Wenping Ma 
+
+Xidian University Xi’an, China 
+
+Abstract 
+
+Reasoning segmentation converts an implicit linguistic con-clusion into a precise mask, requiring both semantic iden-tification and spatial grounding. Existing MLLM–segmenter interfaces either use a special trigger or compress both sig-nals into one context, although they receive different super-vision and fail differently. This coupling obscures whether a failure arises from target interpretation or from localization. We present SeGDeP, an explicit what–where interface . A semantic prompt branch and an independent geometric pro-jection path transform resolved MLLM states into seman-tic features and a DETR-predicted box, which jointly condi-tion a SAM 3 mask decoder. Training first aligns this exe-cutable interface, then uses group reward-decoupled policy optimization (GDPO) to balance format, box-IoU, and mask-IoU feedback. SeGDeP-4B reaches 82.7 average cIoU over eight RefCOCO-family splits and 66.0/59.6 gIoU on Reason-Seg val/test while adapting only 0.38% of Qwen3-VL parame-ters through LoRA. Controlled stage-wise ablations, gradient diagnostics, and prompt interventions further show that the two paths develop complementary semantic and geometric specialization rather than duplicating the same evidence. 
+
+# Introduction 
+
+Reasoning segmentation resolves an object described indi-rectly by function, relation, or likely action, then grounds it as a pixel mask (Shen et al. 2026). It couples what satisfies the instruction with where it lies: the former requires categorical, attribute, and relational evidence, whereas the latter requires localization and boundary recovery. MLLMs favor semantic inference (Liu et al. 2023; Dai et al. 2023; Gemini Team et al. 2023; Wang et al. 2024; Bai et al. 2025a,b), and promptable segmenters geometric execution (Kirillov et al. 2023; Ravi et al. 2025; Carion et al. 2026); their interface is therefore central. A useful interface must expose both signals in forms that the downstream segmenter can execute and supervise. This distinction becomes critical when visually similar in-stances satisfy only part of an indirect description. A single opaque context also obscures whether an error arose from interpreting the referent or locating it. Figure 1 contrasts implicit-trigger and coupled-context in-terfaces with our explicit decoupled design for segmentation. LISA-like systems use a special <SEG> token as an implicit trigger (Lai et al. 2024; Yang et al. 2023); LENS pools the reasoning trace into a richer context (Zhu et al. 2026). Both 
+
+Figure 1: Reasoning-to-segmentation interfaces. Trigger and coupled-context designs provide no explicit separation; SeGDeP emits complementary semantic and box prompts. require one latent stream to preserve identity and regress coordinates. Their heterogeneous supervision creates asym-metric errors: the correct role but wrong instance, or a plau-sible region obtained by misreading the target relation. In a controlled shared-context model, 37–46% of samples yield opposing semantic and geometric gradients, exposing data-induced demands that often compete at one bottleneck. We introduce SeGDeP, which makes both decisions ex-plicit and executable. A semantic context extractor produces role-typed prompt features, while an independent geometric projection preserves context tokens for localization. They jointly condition DETR, frozen image features refine its coarse box, and the mask decoder combines the resulting semantic and box prompts. Thus, prompt construction is sep-arated before downstream integration and supervised in each execution space. Training first aligns the interface, then optimizes reason-ing with format, box-IoU, and mask-IoU feedback normal-ized by GDPO (Liu et al. 2026). Matched coupled baselines, stage-wise checkpoints, gradient measurements, and prompt interventions test the mechanism. SeGDeP reaches 82.7 aver-age cIoU across eight RefCOCO-family splits and 66.0/59.6 gIoU on ReasonSeg val/test. Our main contributions are: 
+
+• An executable semantic–geometric interface converts re-arXiv:2609.08867v1 [cs.CV] 8 Sep 2026 solved MLLM states into specialized text and box prompts through semantic prompt refinement and geometric con-text projection. 
+
+• Comprehensive ablations verify the design, while gradi-ent diagnostics and prompt interventions expose comple-mentary semantic and geometric roles. 
+
+• Interface alignment and GDPO deliver strong RefCOCO and ReasonSeg results while adapting only 0.38% of Qwen3-VL parameters through LoRA. 
+
+# Related Work 
+
+Image reasoning segmentation. Referring image seg-mentation grounds explicit expressions at pixel level (Mao et al. 2016; Yu et al. 2016; Kazemzadeh et al. 2014). Meth-ods such as LAVT and ReLA improve cross-modal alignment (Yang et al. 2022; Liu, Ding, and Jiang 2023), while PixelLM, GLaMM, SAM4MLLM, and UniPixel connect MLLMs to pixel decoders (Ren et al. 2024; Rasheed et al. 2024; Chen et al. 2024; Liu et al. 2025a). Reasoning segmentation ex-tends this setting to implicit attributes, functions, and rela-tions. LISA and LISA++ use a segmentation token, Seg-Zero emits spatial prompts, ThinkFirst structures rationales, and LENS pools chain-of-thought states (Lai et al. 2024; Yang et al. 2023; Liu et al. 2025b; Kao, Tai, and Tang 2025; Zhu et al. 2026). These interfaces improve reasoning, but still en-code semantic identity and spatial support in a single implicit or coupled representation. Promptable segmenters expose executable controls: SAM and SAM 2 accept spatial prompts, and SAM 3 adds concept-aware text conditioning (Kirillov et al. 2023; Ravi et al. 2025; Carion et al. 2026); grounding models likewise demonstrate structured language alignment with box regression (Liu et al. 2024; Li et al. 2022). SeGDeP therefore translates resolved reasoning into separate text and box prompts, retaining se-mantic discrimination while making localization explicit and measurable. 
+
+Chain-of-thought and policy optimization. Chain-of-thought and its multimodal extensions externalize interme-diate decisions and visual evidence (Wei et al. 2022; Kojima et al. 2022; Zhang et al. 2024b; Rose et al. 2023). ThinkFirst structures rationales for reasoning segmentation (Kao, Tai, and Tang 2025); we use a Self-Ask-style QA trace to make intermediate conclusions parseable (Press et al. 2023). For dense prediction, a well-formed rationale may still select the wrong instance or yield an unusable prompt. GRPO uses within-group relative outcomes and requires no learned critic (Shao et al. 2024); Seg-Zero and LENS extend it to segmentation-aware reasoning. GDPO separately normalizes format, localization, and mask rewards before aggregation because their scales differ (Liu et al. 2026). 
+
+# Method 
+
+## Problem Formulation and Overview 
+
+Let x = ( I, q ) denote an image and a referring request, either explicit or implicit; the goal is to predict its binary mask M ∗.An MLLM produces a QA trace y and hidden states H, while the frozen SAM 3 image backbone extracts F . A semantic context-query extractor attends to H, and an independent projection retains the hidden-state sequence for geometric decoding: 
+
+Csem = Attn( Qsem , H, H ), Zgeo = Π geo (H). (1) 
+
+Csem represents the identity, attributes, and relations needed to resolve what , while Zgeo retains the multimodal evidence needed to determine where . The two parameterized paths specialize before integration. The semantic branch produces Psem = T (Csem ), while the geometric path predicts b = G(F, Z geo , P sem ). Their joint decoding is 
+
+ˆM = σ(D(F, P sem , b )) . (2) Here T translates semantic context into the SAM 3 prompt space, G denotes coarse-to-fine localization, and D is the mask decoder. The paths specialize before the decoder re-combines identity and spatial support. F is shared by ROI refinement and mask decoding. Psem enters both the DETR memory and the native text-prompt channel, whereas b is supplied through the spatial-prompt channel. 
+
+## Decoupled Prompt Connector 
+
+Semantic prompt: what to segment. The translator or-ganizes Csem with a role-typed bank B, projects its tokens into the SAM 3 text space, and applies a residual refiner: 
+
+P0 = Π text (B(Csem )) and Psem = P0 + Rtext (P0). The bank maps the reasoning context to a fixed prompt-token set whose learnable roles capture complementary attributes and relations. Πtext matches the SAM 3 prompt representa-tion, and the residual update refines the token content while preserving its initial projection. 
+
+Geometric prompt: coarse localization. The geometric projection in Eq. 1 maps the MLLM hidden-state sequence directly into localization tokens Zgeo , preserving its sequence for spatial selection by DETR. We concatenate it with the semantic prompt to form the text-aligned memory Ugeo =[Zgeo ; Psem ]. Using one referent query, the decoder produces a normalized coarse box 
+
+bc = Gc(Ugeo ). (3) 
+
+Zgeo carries MLLM spatial evidence, while Psem aligns the decoder with the resolved referent. Successive decoder layers refine the single-referent estimate, and the final bc enters ROI refinement. At each layer, the referent query cross-attends to 
+
+Ugeo and updates its reference box. 
+
+ROI box refinement. The coarse box selects local features 
+
+R = ROIAlign( F, b c). The ROI refiner combines these boundary-sensitive features with the semantic prompt and predicts the final box as 
+
+b = bc + R(R, P sem , b c). (4) Here R predicts a residual correction. Local visual ev-idence improves boundary alignment, while Psem distin-guishes nearby instances with similar spatial support. The two sources are fused during box refinement, while the up-stream semantic and geometric paths remain separately pa-rameterized. The coarse box initializes the refinement query, and the ROI tokens and Psem form its local visual–semantic memory. Figure 2: Architecture of the Qwen3-VL/SAM 3 instantiation of SeGDeP. A role-typed semantic branch produces Psem , while an independent projection produces geometric context Zgeo . Both condition DETR to predict bc, which selects frozen SAM 3 ROI features for residual refinement. The decoder combines semantic features, the refined box, and image features. Snowflakes and flames denote frozen base weights and trainable adapters or decoder components, respectively; all newly introduced modules are trainable. 
+
+Composite mask decoding. The refined box and semantic tokens enter the native spatial- and text-prompt channels of the SAM 3 mask decoder, which jointly conditions on the im-age features and both prompts. The box restricts the spatial support, whereas the semantic prompt preserves the identity cues needed to distinguish overlapping or visually similar instances. Mask gradients reach both prompt paths, which remain separately parameterized until their downstream in-tegration. The SAM 3 prompt transformer fuses these inputs before the segmentation head produces mask logits. 
+
+## Two-Stage Optimization 
+
+The two stages separate learning an executable prompt inter-face from adapting the reasoning policy that drives it. 
+
+Stage 1: interface alignment. We freeze the MLLM, the SAM 3 image backbone, and its mask decoder, and optimize the two prompt paths and coarse-to-fine localization modules in Fig. 2. A frozen SAM 3 text encoder maps the expression to teacher prompt P ∗
+
+> sem
+
+, while b∗ is derived from the target mask. Let V index the valid semantic-prompt tokens. The objective is 
+
+L1 = λs
+
+|V| 
+
+X
+
+> t∈V
+
+∥psem ,t − p∗
+
+> sem ,t
+
+∥22 + λbLbox ,
+
+Lbox = ∥b − b∗∥1 + LGIoU (b, b ∗).
+
+(5) The semantic term aligns the learned prompt with the SAM 3 text-prompt space, while the box terms supervise geomet-ric localization. Stage 1 establishes a stable mapping from MLLM hidden states to executable text and box prompts, pro-viding the initialization for policy optimization. The frozen text encoder supplies training targets, and inference uses the learned semantic path. 
+
+Stage 2: reasoning elicitation with GDPO. We activate LoRA in the MLLM (Hu et al. 2022), keep the image back-bone frozen, and update the connector and mask decoder. For each input, we sample G reasoning traces. Completion 
+
+i receives mask reward Rm,i = IoU( ˆMi, M ∗), box reward 
+
+Rb,i = IoU( bi, b ∗), and format reward Rf,i . These com-ponents score final mask quality, spatial localization, and structured reasoning with an explicit referent, respectively. These rewards differ in scale and variance. GDPO (Liu et al. 2026) standardizes each component within the comple-tions sampled for the same input before aggregation: 
+
+Ai = X 
+
+> j∈{ m,b,f }
+
+wj
+
+Rj,i − μg (Rj )
+
+σg (Rj ) + ϵ . (6) Component-wise standardization balances the contributions of format, localization, and mask quality to the group advan-tage. The final objective combines the advantage-weighted pol-icy loss with a KL constraint and supervised geometric and mask stabilization: 
+
+L2 = LPG (A)+ βLKL (πθ , π ref )+ λbLbox +λmLmask . (7) Here LPG increases the likelihood of sampled traces with positive Ai and suppresses those with negative Ai. The reference πref is the frozen policy at the start of Stage 2, and Lmask = LDice + LBCE (Milletari, Navab, and Ahmadi 2016). The box objective from Eq. 5 (Rezatofighi et al. 2019) and mask supervision preserve the executable interface dur-ing policy optimization. Stage 2 jointly updates the prompt translator, localization path, and mask decoder under this objective. Exact format scoring, sample-equal completion-token averaging, and the k3 estimator (Schulman 2020) used for LKL are detailed in Appendix B. 
+
+# Experiments 
+
+## Setup 
+
+Datasets and metrics. We evaluate explicit referring seg-mentation on RefCOCO and RefCOCO+ (Yu et al. 2016), and RefCOCOg (Mao et al. 2016), and implicit reasoning segmentation on ReasonSeg (Lai et al. 2024), using their of-ficial splits. GroundingSuite-Eval (GSEval) (Hu et al. 2025) is held out for zero-shot transfer. Cumulative IoU (cIoU) pools intersections and unions over a split and therefore gives larger masks more weight; generalized IoU (gIoU) averages per-image mask IoU. We follow the dominant protocol by using cIoU for the RefCOCO-series comparison and both metrics on ReasonSeg. 
+
+Models and comparison protocol. The main model pairs Qwen3-VL-4B-Instruct with SAM 3. Stage 1 trains the exe-cutable interface on the RefCOCO series; Stage 2 adds Rea-sonSeg, continues updating the connector, and activates 17M MLLM LoRA parameters (0.38% of Qwen3-VL) and the SAM 3 mask decoder while keeping the base MLLM and im-age backbone frozen. Both stages use AdamW (Loshchilov and Hutter 2019). GSEval is used for neither training nor model selection. An additional 2B variant replaces only the MLLM with Qwen3-VL-2B-Instruct and otherwise retains the segmenter, data, optimization, and evaluation protocol. Table 1 separates methods with and without active chain-of-thought reasoning, while Table 2 reports results on Rea-sonSeg. Prior-method scores are taken from their reported official-split results. Complete hyperparameters and train-able scopes are provided in Appendix A. 
+
+## Main Results 
+
+RefCOCO series. Table 1 reports the comparison over eight official splits. SeGDeP-4B obtains the best average cIoU of 82.7, exceeding LENS-3B by 1.5 points and ranking first on seven splits. The corresponding average per-image gIoU of SeGDeP-4B is 83.2, closely tracking its 82.7 cIoU. The largest cIoU margin is +5.3 on RefCOCO+ testB. Be-cause RefCOCO+ removes absolute-location words, its ex-pressions place greater weight on attributes, relations, and instance identity. Averaged over its three splits, SeGDeP im-proves over LENS by 3.4 points, compared with 0.7 on Ref-COCO. The larger gain under weaker spatial-language cues highlights the contribution of semantic prompting to instance discrimination. The compact models in the same CoT group show the same pattern. SeGDeP-2B outperforms Seg-Zero-3B on all three commonly reported splits, averages 77.8 versus 76.5 for LENS-2B, and leads LENS on seven of eight splits. Its average gain is 2.9 points on RefCOCO+ versus 0.6 on Ref-COCO, reaching +4.3 on RefCOCO+ testB. This cross-scale consistency shows that the benefit of the interface persists at smaller MLLM capacity. The context-plus-connector inter-face also uses 318.5M parameters versus 474.8M for LENS, a 32.9% reduction, while Stage 2 adapts 17M MLLM parame-ters through LoRA (Table C2). Higher accuracy with a lighter interface and limited MLLM adaptation further demonstrates the effectiveness of semantic–geometric prompt translation. 
+
+ReasonSeg. Table 2 reports single-pass results on both val-idation and test splits. SeGDeP ranks first on all four metrics; compared with LENS, it improves validation gIoU/cIoU by 3.9/0.4 points and test gIoU/cIoU by 2.4/0.8. The larger vali-dation gain in gIoU is informative: gIoU weights each image equally, whereas cIoU pools pixels over the dataset and is more influenced by large masks. Thus, the improvement is distributed across examples rather than being driven mainly by large objects. Relative to InstructSeg, the closest valida-tion cIoU competitor, SeGDeP gains only 0.1 cIoU but 4.1 gIoU, further indicating fewer severe per-image failures. The simultaneous test gains under both aggregations show that this behavior transfers beyond the validation split. Overall, the decoupled interface extends from direct referring expres-sions to implicit instructions requiring functional, relational, or action-based inference. 
+
+## Ablation Studies and Diagnostic Analysis 
+
+Controlled stage-wise ablation. Table 3(a) crosses inter-face structure with training stage. The coupled and decoupled models use the same foundations, data, trainable scope, and Stage-2 recipe; they differ only in whether semantic prompt formation and localization share one upstream connector. After Stage 1, the decoupled interface reaches 56.4 gIoU ver-sus 53.1 for the coupled interface, a 3.3-point gain with the foundation models frozen. Stage 2 raises the two variants by 11.2 and 9.6 points to 64.3 and 66.0, respectively. Outcome-oriented training therefore improves both interfaces, while specialized prompt construction supplies a consistent struc-tural gain before and after policy adaptation. This controlled comparison isolates prompt-path separation from the effect of reinforced reasoning; their combination achieves the high-est performance. 
+
+Gradient diagnostic. We next examine the supervisory de-mands placed on the shared context of the controlled coupled model. For each sample, the semantic and geometric losses are backpropagated separately and their context-gradient co-sine is measured. Table A4 reports negative cosines for 37.0%, 46.0%, and 44.5% of samples on RefCOCO val, ReasonSeg val, and GSEval, respectively; the corresponding mean cosines are 0.023, 0.006, and 0.004. The gradient-norm ratio remains 0.95 on all three datasets, so the two objectives RefCOCO RefCOCO+ RefCOCOg Method Venue val testA testB val testA testB val-u test-u Avg.                                                                                                                                                                           
+
+> Without active CoT reasoning
+> LAVT (Yang et al. 2022) CVPR’22 72.7 75.8 68.8 62.1 68.4 55.1 61.2 62.1 65.8 ReLA (Liu, Ding, and Jiang 2023) CVPR’23 73.8 76.5 70.2 66.0 71.0 57.7 65.0 66.0 68.3 LISA-7B (Lai et al. 2024) CVPR’24 74.1 76.5 71.1 62.4 67.4 56.5 66.4 68.5 67.9 PixelLM-7B (Ren et al. 2024) CVPR’24 76.9 78.5 74.4 69.2 72.1 64.5 70.7 72.4 72.3 PerceptionGPT (Pi et al. 2024) CVPR’24 75.1 78.6 71.7 68.5 73.9 61.3 70.3 71.7 71.4 OMG-LLaVA (Zhang et al. 2024a) NeurIPS’24 78.0 80.3 74.1 69.1 73.1 63.0 72.9 72.9 72.9 SAM4MLLM-8B (Chen et al. 2024) ECCV’24 79.8 82.7 74.7 74.6 80.0 67.2 75.5 76.4 76.4 VISA (Yan et al. 2024) ECCV’24 72.4 75.5 68.1 59.8 64.8 53.1 65.5 66.4 65.7 GLaMM-7B (Rasheed et al. 2024) CVPR’24 79.5 83.2 76.9 72.6 78.7 64.6 74.2 74.9 75.6 UniPixel-7B (Liu et al. 2025a) NeurIPS’25 80.8 83.0 77.4 75.3 80.1 70.0 76.4 77.1 77.5 SAM3-Agent-Gemini (Carion et al. 2026) ICLR’26 74.9 77.8 69.9 66.9 71.1 62.4 73.3 73.6 71.2
+> With active CoT reasoning
+> Seg-Zero-3B (Liu et al. 2025b) arXiv’25 –79.3 ––73.7 –71.5 ––Seg-Zero-7B (Liu et al. 2025b) arXiv’25 –80.3 ––76.2 –72.6 ––LENS-2B (Zhu et al. 2026) AAAI’26 80.7 82.7 77.1 73.8 78.0 67.3 75.7 76.4 76.5 LENS-3B (Zhu et al. 2026) AAAI’26 84.2 85.3 81.0 79.4 82.8 74.3 81.2 81.0 81.2
+> SeGDeP-2B –81.4 83.1 77.9 75.8 80.3 71.6 75.3 77.0 77.8
+> SeGDeP-4B –84.2 85.7 82.8 82.3 84.7 79.6 80.1 81.9 82.7
+
+Table 1: cIoU on the RefCOCO series. Avg. is the mean over eight splits and is unavailable for methods reporting only selected splits. Best and second-best complete results are marked in bold and underline; ranks are determined before one-decimal rounding.                                  
+
+> Val Test Method gIoU cIoU gIoU cIoU SAM4MLLM-8B (Chen et al. 2024) 58.4 60.4 ––HyperSeg-3B (Wei et al. 2025a) 59.2 56.7 ––InstructSeg-3B (Wei et al. 2025b) 61.9 65.2 ––LISA-7B (Lai et al. 2024) 52.9 54.0 55.6 56.9 Seg-Zero-3B (Liu et al. 2025b) 58.2 53.1 56.1 48.6 LENS-3B (Zhu et al. 2026) 62.1 64.9 57.2 58.0
+> SeGDeP-4B 66.0 65.3 59.6 58.8
+
+Table 2: Single-pass results on ReasonSeg. Best results are bold and second-best results are underlined. have similar average strength but often request different lo-cal updates. This pattern recurs across explicit expressions, implicit instructions, and zero-shot samples. Separately pa-rameterized semantic refinement and geometric projection paths let these requirements specialize before downstream integration, connecting the observed gradient behavior to the controlled performance gains in Table 3(a). 
+
+Prompt and segmenter ablations. Table 3(b) shows that learned text and box translation reach 63.1 and 63.8 gIoU, compared with 58.6 and 62.3 for direct outputs. Combin-ing both raises performance to 66.0, 2.2 points beyond the strongest single branch. The box connector also improves di-rect box prompting with SAM 2 (+1.4) and SAM 3 (+1.5), showing that geometric translation transfers across seg-menters. The complete interface uses SAM 3 because com-positional text and box channels are both required, whereas SAM 2 exposes only the spatial-prompt path.                       
+
+> (a) Interface structure across training stages
+> Interface Stage 1 only Full training Coupled context 53.1 64.3 Decoupled prompts 56.4 66.0
+> (b) Prompt and segmenter variants
+> Prompt/interface Segmenter Final gIoU MLLM box output SAM 2 61.0 Connector, box only SAM 2 62.4 MLLM text output SAM 3 58.6 Connector, text only SAM 3 63.1 MLLM box output SAM 3 62.3 Connector, box only SAM 3 63.8
+> SeGDeP, dual prompt SAM 3 66.0
+
+Table 3: Controlled ablations on ReasonSeg val (gIoU). (a) The coupled model instantiates a LENS-style shared context in our framework. (b) Prompt and segmenter variants are evaluated after Stage 2. Bold and underline mark the best and second-best results in panel (b); panel (a) marks only the better of its two settings. 
+
+Prompt-role analysis. For each image containing multiple candidate instances, we select a same-category, visually sim-ilar non-target. Its semantic prompt defines the semantic hard negative, whereas its box defines the geometric hard nega-tive; only the channel under test is replaced. Replacing the predicted box with the ground-truth box adds 4.8/7.0 cIoU, while the hard-negative box lowers cIoU by 83.0/81.0 points and has only 11.93/11.90 box IoU. Geometry is therefore an executable spatial prior. Substituting the frozen SAM 3 text feature lowers cIoU by 3.7/4.6, showing that Stage 1 Prompt intervention RefCOCO RefCOCO+ cIoU ( ∆) cIoU ( ∆)Predicted semantic + box 84.29 82.38 Box → ground truth 89.08 (+4 .79 ) 89.35 (+6 .97 )                  
+
+> Box →hard negative 1.28 (−83 .01 )1.34 (−81 .04 )
+> Semantic →SAM 3 text 80.57 (−3.72 )77.81 (−4.57 )
+> Semantic →hard negative 84.19 (−0.10 )82.17 (−0.21 )
+
+Table 4: Prompt intervention on a same-image multi-instance subset. Parentheses show the cIoU change from the predicted-prompt baseline. A hard negative swaps one chan-nel with that of a same-category, visually similar non-target in the same image; the other channel is held fixed. 
+
+Figure 3: Qualitative results on RefCOCOg. The examples require resolving spatial relations, appearance attributes, and interactions. Green denotes the reference mask and the red rectangle denotes the predicted geometric prompt. distillation is an anchor rather than the final representation. The semantic hard-negative has a smaller average effect because the predicted box is fixed and often contains only one dominant instance. This estimates the direct effect of the fi-nal semantic channel, not the total effect of semantic reason-ing: identity evidence influences localization through both the projected MLLM context and Psem in the DETR mem-ory before the box is produced. These results show that the decoupled prompt paths guide localization upstream, while the semantic prompt further resolves identity and bound-aries within the localized support. Semantics therefore con-tributes both before the box through DETR memory and after it through mask conditioning, whereas geometry pro-vides the decisive spatial constraint. Appendix C documents the multi-instance subset and the fixed-channel hard-negative construction used in Table 4. 
+
+Qualitative evidence on referring expressions. Figure 3 illustrates why the two prompts should be complementary rather than interchangeable. The four expressions stress dis-tinct cues: size and color for the smaller white skis, ap-pearance plus action for the dark-haired laptop user, relative distance for the dog closest to the man, and a two-object spa-tial relation for the fork on the napkin beside the pizza. The semantic branch must preserve the discriminative attribute, activity, or anchor relation rather than only the target noun. The geometric branch then turns that resolved description into a compact support region, preventing the decoder from drifting to another person, dog, utensil, or salient object else-where in the scene. The examples also expose different costs of localization error. The skis and fork are thin, so a modest box shift can remove a substantial fraction of their foreground pixels; the person and dog occupy larger regions but compete with same-category or interaction-related distractors. In all four cases, the predicted box selects the intended instance and the mask recovers its visible extent, connecting the qualitative behav-ior to the strong hard-negative-box effect in Table 4. Resid-ual discrepancies concentrate on thin structures and partially occluded extremities, complementing the localization slices analyzed below. 
+
+Qualitative evidence on implicit instructions. Figure 4 provides a harder diagnostic because the target, a tennis racket, is absent from the literal instruction. The trace first resolves the requested function—the object used to hit a ball across a net—and distinguishes the racket from the player, ball, net, court, and spectators. The geometric head then se-lects the compact racket support rather than the much larger player region, while the semantic prompt preserves the func-tional identity needed by the mask decoder. This sequence also explains why a correct-looking ratio-nale alone is insufficient: an imprecise spatial translation could include the player’s arm or exclude the racket head, whereas a plausible box around the wrong object cannot be repaired reliably by boundary decoding. Conversely, the dis-played agreement among the resolved referent, box, and mask makes the intermediate interface inspectable. The example therefore connects the quantitative intervention in Table 4 to observable behavior rather than treating the reasoning trace as post-hoc prose. Appendix E extends this evidence with five additional successful cases spanning functional, causal, role-specific, and set-level reasoning. 
+
+## Additional Empirical Studies 
+
+Reward aggregation. On ReasonSeg val, Stage 1 obtains 56.4 gIoU, and full Stage-2 training with summed-reward GRPO reaches 63.7. Replacing summed aggregation with component-normalized GDPO raises performance to 66.0 (+2.3) with all other Stage-2 settings fixed. Because GRPO and GDPO share the data, trainable modules, and supervised losses, this comparison isolates the effect of component-wise reward normalization. Appendix B and Table B1 further show that format success rises from 96.0% to 97.5%, while average QA pairs fall from 4.92 to 4.63, completion length falls from 367 to 318 tokens, and low-IoU formatted outputs fall from 26.2% to 21.5%. The accuracy gain is therefore accompanied by more concise trajectories and fewer formally valid but visually poor outputs. 
+
+Zero-shot transfer and efficiency. Without GSEval train-ing or model selection, SeGDeP obtains 68.4 gIoU and 75.2 cIoU, compared with 67.0 and 78.3 for LENS (Table C1). Its 1.4-point gIoU advantage indicates more reliable per-image transfer across unseen instructions. Because gIoU gives ev-ery instruction equal weight, this gain shows that the transfer benefit is distributed across samples rather than concentrated in large foreground regions; pooled cIoU remains 3.1 points below LENS. Figure 4: A reasoning-to-segmentation example on ReasonSeg. The instruction, concise resolution process, predicted box prompt, and final mask jointly expose how functional knowledge is translated into an executable spatial prompt. On one NVIDIA A800, context extraction and the connec-tor consume 2.8 ms, only 0.14% of the 2.0009 s end-to-end time. Table C2 provides the complete cost decomposition. Since SeGDeP and LENS use different MLLM and seg-menter foundations, these measurements characterize where runtime is spent rather than rank the two complete systems by speed. 
+
+Error analysis. On 2,573 RefCOCOg val-u samples, the overall box and mask IoUs are 81.51 and 80.88 (Table 5). We further evaluate two overlapping hard subsets: targets occupying 5–10% of the image and scenes containing more than ten objects. Their box/mask IoUs are 73.75/71.82 and 76.70/75.17, respectively, showing that localization is most sensitive to target scale and scene density. Across all samples, mask IoU trails box IoU by only 0.63 points. The gap widens to 1.93 points for small targets and 1.53 points in crowded scenes, suggesting that localization imprecision propagates into mask decoding under harder ge-ometry. Together with the hard-negative-box collapse in Ta-ble 4, this identifies prompt localization as the dominant residual bottleneck. Small targets provide limited detail for box regression and ROI refinement, while crowded scenes in-tensify single-query instance competition, motivating higher-resolution localization and explicit multi-instance reasoning. The lowest-performing object categories—ties, skis, back-packs, and books—fit the same pattern: they are commonly thin, small, or partially occluded. Thus the RefCOCOg gap is better characterized as a failure to preserve fine spatial support under crowding.         
+
+> Slice Box IoU Mask IoU All samples 81.51 80.88 Target area 5–10% 73.75 71.82 More than 10 objects 76.70 75.17
+
+Table 5: RefCOCOg val-u diagnostics over 2,573 samples (IoU in percentages). The two hard subsets are selected in-dependently and may overlap. 
+
+# Conclusion 
+
+SeGDeP reframes reasoning segmentation as explicit what– where prompt translation. Its decoupled semantic and ge-ometric branches produce native text and box prompts for SAM 3, while GDPO aligns reasoning with localization and mask quality. Consistent gains across RefCOCO and Reason-Seg, supported by matched ablations, gradient diagnostics, and prompt interventions, validate this interface. Errors on small, crowded targets motivate stronger localization and multi-instance support. References 
+
+Bai, S.; Chen, K.; Liu, X.; et al. 2025a. Qwen2.5-VL Tech-nical Report. arXiv preprint arXiv:2502.13923 .Bai, S.; et al. 2025b. Qwen3-VL Technical Report. arXiv preprint arXiv:2511.21631 .Carion, N.; Gustafson, L.; Hu, Y.-T.; et al. 2026. SAM 3: Seg-ment Anything with Concepts. In International Conference on Learning Representations .Chen, Y.-C.; Li, W.-H.; Sun, C.; Wang, Y.-C. F.; and Chen, C.-S. 2024. SAM4MLLM: Enhance Multi-Modal Large Language Model for Referring Expression Segmentation. In 
+
+European Conference on Computer Vision , 323–340. Dai, W.; Li, J.; Li, D.; et al. 2023. InstructBLIP: Towards General-Purpose Vision-Language Models with Instruction Tuning. In Advances in Neural Information Processing Sys-tems , volume 36, 49250–49267. Gemini Team; Anil, R.; Borgeaud, S.; et al. 2023. Gemini: A Family of Highly Capable Multimodal Models. arXiv preprint arXiv:2312.11805 .Hu, E. J.; Shen, Y.; Wallis, P.; et al. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations .Hu, R.; Zhu, L.; Zhang, Y.; Cheng, T.; Liu, L.; Liu, H.; Ran, L.; Chen, X.; Liu, W.; and Wang, X. 2025. GroundingSuite: Measuring Complex Multi-Granular Pixel Grounding. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , 23105–23114. Kao, S.-h.; Tai, Y.-W.; and Tang, C.-K. 2025. Think Before You Segment: High-Quality Reasoning Segmentation with GPT Chain of Thoughts. arXiv preprint arXiv:2503.07503 .Kazemzadeh, S.; Ordonez, V.; Matten, M.; and Berg, T. 2014. ReferItGame: Referring to Objects in Photographs of Natural Scenes. In Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing , 787–798. Kirillov, A.; Mintun, E.; Ravi, N.; et al. 2023. Segment Anything. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 4015–4026. Kojima, T.; Gu, S. S.; Reid, M.; Matsuo, Y.; and Iwasawa, Y. 2022. Large Language Models are Zero-Shot Reason-ers. In Advances in Neural Information Processing Systems ,volume 35, 22199–22213. Lai, X.; Tian, Z.; Chen, Y.; Li, Y.; Yuan, Y.; Liu, S.; and Jia, J. 2024. LISA: Reasoning Segmentation via Large Language Model. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 9579–9589. Li, L. H.; Zhang, P.; Zhang, H.; et al. 2022. Grounded Language-Image Pre-Training. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 10965–10975. Liu, C.; Ding, H.; and Jiang, X. 2023. GRES: General-ized Referring Expression Segmentation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 23592–23601. Liu, H.; Li, C.; Wu, Q.; and Lee, Y. J. 2023. Visual Instruc-tion Tuning. In Advances in Neural Information Processing Systems , volume 36, 34892–34916. Liu, S.; Zeng, Z.; Ren, T.; et al. 2024. Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection. In European Conference on Computer Vision , 38–55. Liu, S.-Y.; Dong, X.; Lu, X.; Diao, S.; Belcak, P.; Liu, M.; Chen, M.-H.; Yin, H.; Wang, Y.-C. F.; Cheng, K.-T.; Choi, Y.; Kautz, J.; and Molchanov, P. 2026. GDPO: Group reward-Decoupled Normalization Policy Optimization for Multi-reward RL Optimization. arXiv preprint arXiv:2601.05242 .Liu, Y.; Ma, Z.; Pu, J.; Qi, Z.; Wu, Y.; Shan, Y.; and Chen, C. W. 2025a. UniPixel: Unified Object Referring and Seg-mentation for Pixel-Level Visual Reasoning. In Advances in Neural Information Processing Systems , volume 38. Liu, Y.; Peng, B.; Zhong, Z.; Yue, Z.; Lu, F.; Yu, B.; and Jia, J. 2025b. Seg-Zero: Reasoning-Chain Guided Seg-mentation via Cognitive Reinforcement. arXiv preprint arXiv:2503.06520 .Loshchilov, I.; and Hutter, F. 2019. Decoupled Weight Decay Regularization. In International Conference on Learning Representations .Mao, J.; Huang, J.; Toshev, A.; Camburu, O.; Yuille, A. L.; and Murphy, K. 2016. Generation and Comprehension of Unambiguous Object Descriptions. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recogni-tion , 11–20. Milletari, F.; Navab, N.; and Ahmadi, S.-A. 2016. V-Net: Fully Convolutional Neural Networks for Volumetric Medi-cal Image Segmentation. In International Conference on 3D Vision , 565–571. Pi, R.; Yao, L.; Gao, J.; Zhang, J.; and Zhang, T. 2024. Per-ceptionGPT: Effectively Fusing Visual Perception into LLM. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 27124–27133. Press, O.; Zhang, M.; Min, S.; Schmidt, L.; Smith, N. A.; and Lewis, M. 2023. Measuring and Narrowing the Com-positionality Gap in Language Models. In Findings of the Association for Computational Linguistics: EMNLP , 5687– 5711. Rasheed, H.; Maaz, M.; Shaji, S.; et al. 2024. GLaMM: Pixel Grounding Large Multimodal Model. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 13009–13018. Ravi, N.; Gabeur, V.; Hu, Y.-T.; et al. 2025. SAM 2: Segment Anything in Images and Videos. In International Conference on Learning Representations .Ren, Z.; Huang, Z.; Wei, Y.; Zhao, Y.; Fu, D.; Feng, J.; and Jin, X. 2024. PixelLM: Pixel Reasoning with Large Multi-modal Model. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 26374–26383. Rezatofighi, H.; Tsoi, N.; Gwak, J.; Sadeghian, A.; Reid, I.; and Savarese, S. 2019. Generalized Intersection over Union: A Metric and a Loss for Bounding Box Regression. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 658–666. Rose, D.; Himakunthala, V.; Ouyang, A.; He, R.; Mei, A.; Lu, Y.; Saxon, M.; Sonar, C.; Mirza, D.; and Wang, W. Y. 2023. Visual Chain of Thought: Bridging Logical Gaps with Multimodal Infillings. arXiv preprint arXiv:2305.02317 .Schulman, J. 2020. Approximating KL Divergence. http: //joschu.net/blog/kl-approx.html. Shao, Z.; Wang, P.; Zhu, Q.; et al. 2024. DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Lan-guage Models. arXiv preprint arXiv:2402.03300 .Shen, Y.; Li, C.; Xiong, F.; Jeong, J.-O.; Wang, T.; Lat-man, M.; and Unberath, M. 2026. Reasoning Segmentation for Images and Videos: A Survey. International Journal of Computer Vision , 134: 321. Wang, P.; Bai, S.; Tan, S.; et al. 2024. Qwen2-VL: Enhancing Vision-Language Model’s Perception of the World at Any Resolution. arXiv preprint arXiv:2409.12191 .Wei, C.; Zhong, Y.; Tan, H.; Liu, Y.; Hu, J.; Li, D.; Zhao, Z.; and Yang, Y. 2025a. HyperSeg: Hybrid Segmentation Assis-tant with Fine-grained Visual Perceiver. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 8931–8941. Wei, C.; Zhong, Y.; Tan, H.; Zeng, Y.; Liu, Y.; Wang, H.; and Yang, Y. 2025b. InstructSeg: Unifying Instructed Visual Segmentation with Multi-modal Large Language Models. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , 20193–20203. Wei, J.; Wang, X.; Schuurmans, D.; et al. 2022. Chain-of-Thought Prompting Elicits Reasoning in Large Language Models. In Advances in Neural Information Processing Sys-tems , volume 35, 24824–24837. Yan, C.; Wang, H.; Yan, S.; et al. 2024. VISA: Reasoning Video Object Segmentation via Large Language Models. In 
+
+European Conference on Computer Vision , 98–115. Yang, S.; Qu, T.; Lai, X.; Tian, Z.; Peng, B.; Liu, S.; and Jia, J. 2023. LISA++: An Improved Baseline for Reasoning Segmentation with Large Language Model. arXiv preprint arXiv:2312.17240 .Yang, Z.; Wang, J.; Tang, Y.; Chen, K.; Zhao, H.; and Torr, P. H. S. 2022. LAVT: Language-Aware Vision Trans-former for Referring Image Segmentation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 18155–18165. Yu, L.; Poirson, P.; Yang, S.; Berg, A. C.; and Berg, T. L. 2016. Modeling Context in Referring Expressions. In Euro-pean Conference on Computer Vision , 69–85. Zhang, T.; Li, X.; Fei, H.; et al. 2024a. OMG-LLaVA: Bridg-ing Image-Level, Object-Level, Pixel-Level Reasoning and Understanding. In Advances in Neural Information Process-ing Systems , volume 37, 71737–71767. Zhang, Z.; Zhang, A.; Li, M.; Zhao, H.; Karypis, G.; and Smola, A. 2024b. Multimodal Chain-of-Thought Reasoning in Language Models. Transactions on Machine Learning Research .Zhu, L.; Ouyang, B.; Zhang, Y.; Cheng, T.; Hu, R.; Shen, H.; Ran, L.; Chen, X.; Yu, L.; Liu, W.; and Wang, X. 2026. LENS: Learning to Segment Anything with Unified Rein-forced Reasoning. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 13952–13960. A Training and Implementation Details 
+
+Stage 1: executable interface alignment. Stage 1 freezes Qwen3-VL and the SAM 3 image, text, and mask modules, and trains the prompt interface and coarse-to-fine localiza-tion path on RefCOCO, RefCOCO+, and RefCOCOg. This isolates executable prompt alignment before policy adapta-tion. AdamW is used on eight NVIDIA A800 GPUs (80 GB each) for eight epochs with global batch size 128, cosine decay, 1,000 warm-up steps, and seed 42. Both stages use bf16 and PyTorch DDP on Ubuntu. The software stack in-cludes Python 3.11.15, PyTorch 2.8.0+cu128, CUDA 12.8, Transformers 5.6.2, PEFT 0.19.1, DeepSpeed 0.19.2, and TRL 0.29.1. The semantic branch uses the valid-token distillation in Eq. 5, with padding excluded, while the geometric path is su-pervised by box regression and GIoU. The semantic extractor uses 64 queries and a 32-token role-typed prompt bank. In parallel, the selected context is projected directly into DETR memory; one object query and three decoder layers predict a coarse box, which is then refined from ROI-aligned SAM 3 features. Ground-truth boxes are derived from masks, and the frozen SAM 3 text encoder provides training targets only. Stage 1 uses λs = 0 .5 and λb = 1 .0, with equal ℓ1 and GIoU terms; no segmentation loss is applied. ReasonSeg and GSEval are excluded. For the 2B variant, only the MLLM and input projection change. Table A1 lists the remaining settings. 
+
+Stage 2: reinforced reasoning elicitation. Stage 2 adds ReasonSeg to the RefCOCO mixture and updates the prompt interface and SAM 3 mask decoder. Each sampled comple-tion ends with a JSON answer containing bbox_2d and 
+
+label ; the prompt and completion are then concatenated for a second MLLM forward pass that supplies the hidden states used by the prompt interface. The serialized box is contextual evidence, not the final prediction: the executable box is produced by DETR and the ROI refiner. Qwen is adapted with 17M plain-LoRA parameters (0.38% of the 4B backbone), using rank 32, alpha 64, and dropout 0.05 in the language attention and MLP projec-tions and the visual-merger projections; the base weights remain frozen. Table A2 gives the optimization settings. Un-less stated otherwise, accuracy results use one complete run with seed 42; latency uses five warm-ups and twenty mea-sured runs (Appendix C). Format, box, and mask rewards are weighted equally and normalized component-wise before aggregation. Supervised box and mask losses remain active during RL to preserve the executable interface learned in Stage 1. The 0.38% figure refers only to the adapted fraction of Qwen3-VL; the prompt interface and mask decoder are also trainable. 
+
+Semantic context slot-count ablation. We ablate the se-mantic context-query budget while keeping the 32-token role-typed prompt bank, geometric projection, single-query DETR head, ROI refiner, training data, and Stage-1 schedule fixed. Table A3 shows that increasing the slot budget from 16 to 64 improves RefCOCO val cIoU from 72.2 to 76.6, whereas 128 slots yield no further gain. We therefore use 64              
+
+> Configuration Value Epochs / global batch 8 / 128 Learning rate / scheduler 10 −4/ cosine Warm-up steps / seed 1,000 / 42 SAM 3 image resolution 1008 ×1008
+> MLLM image resolution smart resize Semantic context / prompt-bank slots 64 / 32 Semantic refiner layers 2DETR object queries / layers 1 / 3 Semantic / box-objective weights 0.5 / 1.0
+
+Table A1: Stage-1 configuration for interface alignment.              
+
+> Configuration Value Epochs / global batch 8 / 64 Learning rate / scheduler 3×10 −6/ linear Group samples G/ KL coefficient 8 / 0.005 Maximum prompt / completion length 2,048 / 512 Format / box / mask reward weights 1 / 1 / 1 Box / segmentation loss weights 1 / 1 Trainable MLLM parameters 17M (0.38%)
+
+Table A2: Stage-2 configuration for reinforced reasoning elicitation. semantic context slots. This small ablation changes seman-tic extraction capacity rather than the number of prompts delivered to the segmenter.         
+
+> Semantic context slots 16 32 64 128 cIoU 72.2 74.7 76.6 76.4
+
+Table A3: Stage-1 RefCOCO val ablation on the semantic context slot budget. 
+
+## Shared-Bottleneck Gradient Diagnostic 
+
+We compute the diagnostic on the controlled coupled base-line reported under Ablation Studies and Diagnostic Analy-sis . Its context extractor is called once, and the downstream semantic and geometric paths receive the same upstream context C(x). For each evaluated sample x, the two losses are backpropagated separately to that tensor, 
+
+gsem (x) = ∇C(x)Lsem , ggeo (x) = ∇C(x)Lgeo . (A1) Here Lsem is the masked distillation term in Eq. 5, and 
+
+Lgeo contains the box-regression and GIoU terms. Their cosine measures whether the two signals request compat-ible local updates. We report its sample mean, the frac-tion with negative cosine (Neg.), and the conflict intensity 
+
+E[max(0 , − cos( gsem , g geo ))] (Conf.). Norm balance is the reported ratio between the two dataset-average ℓ2 gradient norms; a value near one means that their average scales are comparable. This protocol probes the supervision induced by the same samples at a deliberately shared bottleneck; it is not derived from the final performance difference. Dataset Cos. Neg. Conf. Norm balance RefCOCO val 0.023 37.0% 0.022 0.95 ReasonSeg val 0.006 46.0% 0.020 0.95 GSEval 0.004 44.5% 0.042 0.95 
+
+Table A4: Gradient interaction at the shared context of the controlled coupled baseline. Table A4 supplies the per-dataset values behind the 37– 46% range quoted in the introduction. The mean cosine re-mains close to zero on all three datasets, yet a substantial subset of samples produces directly opposing gradients while norm balance stays at 0.95. The disagreement is therefore di-rectional rather than a consequence of a large average scale mismatch. The pattern appears on explicit RefCOCO expres-sions, implicit ReasonSeg instructions, and GSEval, which is held out from both training and model selection. Together with the matched architecture comparison, this diagnostic motivates separating the upstream contexts before each sig-nal is translated into an executable prompt. It characterizes this controlled shared-bottleneck construction and does not assert that every coupled architecture must exhibit the same interaction. The corresponding 95% intervals for the negative-gradient rate are 31.5–45.0% on RefCOCO, 39.0–52.5% on Reason-Seg, and 37.5–51.5% on GSEval. GSEval has no benchmark overlap with the training mixture but exhibits the same pat-tern. These intervals support the cross-dataset recurrence of the diagnostic while preserving its intended scope: they quan-tify the controlled coupled bottleneck rather than serving as a universal property of all coupled connectors. 
+
+# B Additional GDPO Details 
+
+Format reward. Let ni be the number of well-formed 
+
+<question> –<answer> pairs in completion i, and let vi
+
+indicate a valid, nonempty <final_answer> span. The format reward is 
+
+Rf,i = vi +
+
+> ni
+
+X
+
+> k=1
+
+2− max(0 ,k −4) . (B1) Thus the first four valid QA pairs each receive one point, while the fifth and later pairs receive 1/2, 1/4, . . . . The final-answer point checks parseability rather than target cor-rectness; box and mask rewards supply the outcome signal. This soft cap discourages repetition without imposing a hard reasoning-length cutoff. 
+
+## Decoupled Advantage Estimation 
+
+For each reward component j and sampled completion i, the normalized component advantage is 
+
+Aj,i = Rj,i − μg (Rj )
+
+σg (Rj ) + ϵ , Ai = X
+
+> j
+
+wj Aj,i . (B2) The statistics are computed over the G completions sampled for the same input, rather than across unrelated prompts in a batch. We set ϵ = 10 −8 to avoid division by zero when all completions receive the same component reward. The ag-gregated advantage is detached before it multiplies policy log-probabilities, so gradients do not propagate through re-ward computation. Consequently, GDPO changes credit as-signment among observed trajectories without treating the non-differentiable IoU and format evaluators as trainable modules. Component-wise normalization also makes the update ap-proximately invariant to positive rescaling of an individual reward source away from the zero-variance case. This matters for format reward, whose raw range depends on the number of valid QA pairs. Under summed-reward normalization, that range can change the effective balance even when the explicit weights are fixed; GDPO removes this accidental dependence before applying wj .In the observed training trajectories, the raw format re-ward is typically four to five times larger than either the box or mask reward because several valid structural events can be accumulated in one completion. This numerical dis-parity motivates normalizing the three components before aggregation. When every completion in a group receives the same value for one component, its centered numerator is zero and that component contributes no relative preference for that prompt, while the remaining components can still distinguish the sampled trajectories. 
+
+## Token-Level Objective with KL Regularization 
+
+For token yi,t , the policy-gradient term is 
+
+LPG  
+
+> i,t
+
+= − sg[ Ai] log πθ (yi,t | x, y i,<t ). (B3) Let ∆i,t = log πref − log πθ for the sampled token. We use the non-negative k3 estimator cited above, 
+
+dKL  
+
+> i,t
+
+= exp(∆ i,t ) − ∆i,t − 1. (B4) The estimator is zero when the policy matches the reference and grows smoothly as the sampled-token probabilities di-verge. It therefore supplies a stable local constraint. Sample-equal averaging prevents longer traces from dominating: 
+
+LGDPO = 1
+
+G
+
+> G
+
+X
+
+> i=1
+
+1
+
+T ′
+
+> iTi
+
+X
+
+> t=1
+
+mi,t 
+
+ LPG  
+
+> i,t
+
++ βd KL 
+
+> i,t
+
+ . (B5) Here T ′ 
+
+> i
+
+counts only valid completion tokens and mi,t is zero at prompt and padding positions. Averaging within each completion before averaging over the group assigns equal mass to sampled trajectories, rather than rewarding a trace merely because it contains more tokens. Table B1 tests whether component-wise normalization improves visual out-comes without inducing longer or less structured traces. Thus Eq. 7 can be written as L2 = LGDPO + λbLbox + λmLmask .With the same data, trainable modules, and supervised losses, component-normalized GDPO improves gIoU by 2.3 points over summed-reward GRPO. Format success rises by 1.5 points even as the mean number of QA pairs decreases from 4.92 to 4.63 and the completion length decreases from 367 to 318 tokens. The reported rate of formally valid but low-IoU traces also falls from 26.2% to 21.5%. Taken to-gether, the changes indicate that the additional task accuracy Method gIoU Format QA pairs Tokens Low-IoU GRPO 63.7 96.0% 4.92 367 26.2%      
+
+> GDPO 66.0 97.5% 4.63 318 21.5%
+
+Table B1: Accuracy and output behavior under summed-reward GRPO and GDPO on ReasonSeg val. Low-IoU de-notes the reported rate of well-formed completions with mask IoU below 30%. is accompanied by more concise trajectories and fewer visu-ally poor outputs, rather than by accumulating extra format events. 
+
+# C Additional Diagnostics and Transfer Results 
+
+Hard-negative construction for Table 4. The prompt-intervention results and their role analysis are reported above; here we document the construction used for that experiment. From an image with multiple annotated instances, we choose a same-category, visually similar non-target instance as the distractor. Its semantic prompt and box form a paired seman-tic and geometric hard negative. When replacing the seman-tic prompt, we keep the original predicted box fixed; when replacing the box, we keep the original predicted semantic prompt fixed. Thus the two interventions use the same dis-tractor and change only the channel under test. The ground-truth-box row measures mask-decoding headroom after cor-recting localization, whereas the SAM 3-text row replaces the learned semantic prompt with the frozen text-encoder feature of the original expression. 
+
+Zero-shot transfer. GSEval is used for neither training nor model selection, and evaluation produces one mask per instruction without iterative candidate checking. Table C1 compares the complete SeGDeP-4B and LENS-3B systems under this held-out protocol. Their MLLM and segmenter foundations are not scale matched, so the table measures end-to-end transfer rather than isolating the connector as in the controlled ablation above. SeGDeP leads by 1.4 gIoU, indicating that its transfer benefit is distributed more reliably across unseen instructions rather than concentrated in large foreground regions; LENS retains a 3.1-point advantage in pooled cIoU.       
+
+> Method gIoU cIoU LENS-3B 67.0 78.3 SeGDeP-4B 68.4 75.2
+
+Table C1: Zero-shot transfer on GSEval. Best results are bold; all values are percentages. 
+
+Cost decomposition. We measure a single RefCOCO val image with the same prompt template on one NVIDIA A800 in bf16, using five warm-up runs followed by twenty mea-sured runs. Table C2 decomposes the mean end-to-end la-tency. Within SeGDeP, context extraction and the connector                          
+
+> SeGDeP LENS Component Param. (M) Sec. Param. (M) Sec. MLLM 4454.8 1.8520 3754.6 1.0951 Context query 4.2 0.0003 0.1 0.0001 Connector 314.3 0.0025 474.7 0.0027 Segmenter 840.5 0.1461 217.1 0.0238 Total 5613.8 2.0009 4446.6 1.1218
+
+Table C2: Component-wise parameters and single-image in-ference latency on one NVIDIA A800 (bf16; five warm-up and twenty measured runs). require 0.0003 + 0 .0025 = 0 .0028 seconds, or 0.14% of the 2.0009-second total. LENS also spends 2.8 ms on these two interface components. The explicit semantic–geometric structure therefore does not form an inference-time bottle-neck. The 0.8791-second total difference is almost completely accounted for by the unmatched foundations. The MLLM difference is 0.7569 seconds and the segmenter differ-ence is 0.1223 seconds, summing to 0.8792 seconds up to rounding. Parameter allocation shows a complementary effect: although the complete SeGDeP system is larger, its context-plus-connector interface has 318.5M parameters ver-sus 474.8M for LENS, a 32.9% reduction. These interface parameters account for 5.67% and 10.68% of their respective complete systems. The measurement supports component-level attribution under this single-image protocol. Training cost, peak mem-ory, and batched throughput depend on scheduling and caching and are not estimated from these latency numbers. The parameter columns count resident rather than trainable parameters. They are therefore distinct from the 17M LoRA figure: the MLLM base weights and SAM 3 image backbone remain frozen, while the connector and mask decoder are also updated in Stage 2. 
+
+# D Limitations and Future Work 
+
+Very small, thin, or heavily occluded targets remain the clear-est limitation. The geometric head depends on spatial detail preserved by the frozen SAM 3 backbone; higher-resolution features and stronger ROI refinement may improve localiza-tion and boundary fidelity, but increase memory and latency. In Table 5, the box IoU for 5–10% targets is 7.8 points below the overall value, and scenes with more than ten objects show a 4.8-point drop. Typical difficult referents include thin ob-jects such as ties and skis and partially occluded items such as backpacks and books, pointing to spatial resolution and instance competition as the main residual bottlenecks. Our next extension is multi-target reasoning segmentation. The current single-query head predicts one referred mask, which may contain several disconnected components for a set-valued referent (Figure E5) but cannot emit or rank in-dependent instance hypotheses. Supporting genuinely multi-target instructions will require multiple coordinated queries together with instance-level supervision and evaluation. E Additional Qualitative Examples 
+
+We retain five representative ReasonSeg examples. Across them, the QA trace follows a common pattern: it con-verts an implicit request into a concrete function, role, causal object, or state; enumerates visually plausible can-didates; eliminates distractors; and writes a concise referent in <final_answer> . Displaying the trace, box, and mask together makes semantic resolution, geometric localization, and final mask quality separately inspectable instead of pre-senting only an apparently correct output. Viewed jointly, the cases expose two distinct dependen-cies. Figures E1 and E4 require instance selection under strong distractor pressure: semantic resolution identifies the functional role, but the target occupies a compact region and therefore still requires a precise box. Figures E2 and E3 in-stead stress spatial extent. Selecting the correct category is insufficient if the prompt covers only the visible flames rather than the complete stove, or the bar center while truncating its plates. Figure E5 tests a composite referent: one output mask covers the union implied by a shared state, but it does not amount to independently ranking the individual animals. Across all five panels, the close agreement between the dis-played box support and the final mask is consistent with the quantitative prompt intervention and RefCOCOg error slices reported above. The trace–box–mask presentation also provides a prac-tical error taxonomy. A wrong resolved referent indicates semantic failure; the right referent paired with misplaced or incomplete support indicates geometric translation failure; and a correct box with poor contours isolates the remaining mask-decoding error. These examples are selected successful cases spanning functional, causal, role-specific, and set-level reasoning, rather than an estimate of failure frequency. Their purpose is to make the interface inspectable; the quantitative slices and hard-negative interventions measure how often its stages become limiting. Each panel exposes three checkpoints that are otherwise collapsed into a single IoU score. The generated QA trace records which visual evidence is considered and how the in-struction is reduced to a concrete referent; the final-answer span shows the identity ultimately passed to the prompt in-terface; and the displayed box reveals the spatial support available to the mask decoder. Agreement across all three is more informative than a plausible rationale alone. A flu-ent trace followed by a box on the wrong instance indicates that semantic resolution was not translated into geometry, whereas a correct compact box with a clean mask shows that the two prompt channels converged on the same object. We therefore use the visualizations as an interface audit, not as proof that every sentence in the generated trace is causally necessary. The controlled prompt interventions in Table 4 provide the complementary causal evidence. The cases also vary beyond what an average score exposes. Figures E1 and E2 contrast a tiny fixture with a complete ap-pliance; Figure E3 stresses an elongated causal object; Fig-ure E4 requires same-category role selection; and Figure E5 changes the output from a compact instance to a disconnected set. Together they test geometric preservation of scale, extent, identity, and set membership. Figure E1: Functional object disambiguation. SeGDeP distinguishes the fire alarm from structural background elements by reasoning about the function of alerting others. Figure E1 illustrates the decomposition on a functional re-quest. The trace resolves “alert others” to a fire alarm rather than a wall hook or structural fixture, the box confines the relevant wall-mounted region, and the mask follows the com-pact alarm instead of leaking into its support. This example is deliberately more demanding than nam-ing a visually salient object. The instruction specifies an intended function, while the image contains several small wall-mounted structures with similar local appearance. A plausible answer phrase is therefore insufficient unless its hidden states preserve the functional distinction and the ge-ometric branch converts it into the correct compact support. The displayed box makes this dependency visible: shifting it toward either hook would give the mask decoder a locally plausible but semantically wrong region, whereas an overly broad box would mix the alarm with its marble and painted-wall surroundings. Figures E2 and E3 isolate two forms of implicit grounding. In the heat-source example, flames, firewood, and a teapot are all locally relevant, but only the stove denotes the appli-ance that generates warmth for the room. The trace resolves this category-level ambiguity before the geometric branch selects the complete stove rather than its bright interior. The weightlifting example instead requires causal action infer-ence: “put down” refers to the barbell producing the visible effort, not to the athlete or to an individual weight plate. Its long horizontal support is also a useful stress test for box refinement because a center-biased or overly tight prompt would truncate the plates and propagate an incomplete sup-port region to the mask decoder. The two cases also clarify why semantic and geometric prompts are complementary rather than interchangeable. The semantic prompt carries the resolved appliance or causal-object identity into mask decoding, but it does not specify whether the required support is the flame, the stove body, one plate, or the full barbell. Conversely, a box can restrict the support yet cannot by itself explain which overlapping object within that support satisfies the instruction. Their agreement is especially important for elongated or nested structures, where a coarse location can be approximately correct while still omitting task-relevant extent. Figures E4 and E5 move from object function to instance and set discrimination. The goalkeeper occupies few pixels in a crowded line-up, so the answer must combine the role prior with the contrasting jersey rather than select the most central player. The final example refers to several upright pigs as one semantic set. A single localization query can represent this composite referred region without becoming a bank of independently ranked object proposals; the text prompt preserves the shared biological-state criterion while the box supplies the common spatial support. These panels should therefore be read at the level of the requested output rather than the number of visible instances. For the goalkeeper, the output is one role-specific instance under strong same-category competition. For the pigs, the output is one set-valued region defined by a shared state. The latter demonstrates that one query need not imply one connected component: the predicted mask may contain sev-eral disconnected components when the instruction denotes their union. It does not, however, provide separate confi-dence scores or identities for each animal, which is the multi-hypothesis limitation discussed in Section D. Figure E2: Implicit contextual reasoning. The model identifies the wood-burning stove from the requested source of heat and corroborating fire evidence. 
+
+Figure E3: Causal action inference. The instruction put down is linked to the barbell responsible for the person’s physical struggle. Figure E4: Role-specific identification. The goalkeeper is separated from teammates through the contrasting jersey and role cues. 
+
+Figure E5: Biological-state discrimination. Upright and lying postures are used to distinguish the animals likely to be alive.
