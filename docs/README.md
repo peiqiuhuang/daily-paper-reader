@@ -6,50 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-12
-- 运行时间：2026-09-12 20:57:51 UTC
+- 最新运行日期：2026-09-13
+- 运行时间：2026-09-13 21:17:54 UTC
 - 运行状态：成功
-- 本次总论文数：9
+- 本次总论文数：6
 - 精读区：0
-- 速读区：9
+- 速读区：6
 
 ### 今日简报（AI）
-今日精选 9 篇大模型优化前沿论文，聚焦高效微调与参数优化技术。
-重点关注贝叶斯视角下的统一学习框架及无导数微调方法，为模型训练提供新思路。
-建议关注参数高效微调（PEFT）的最新进展，以降低大模型落地门槛。
-- 详情：[/202609/12/README](/202609/12/README)
+今日精选 6 篇前沿论文，涵盖智能体技能进化、机器翻译对抗攻击及零样本结构设计等领域。
+重点关注 SkillAdam 算法在智能体技能演化中的稳定性提升，以及 GRPO 在生成对抗文本中的应用潜力。
+建议优先阅读 SkillAdam 论文，深入了解如何通过高效演化机制增强智能体在复杂任务中的表现。
+- 详情：[/202609/13/README](/202609/13/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Unifying ICL, SFT, KL-Regularized RL Through a Bayesian Lens](/202609/12/2609.05111v1-unifying-icl-sft-kl-regularized-rl-through-a-bayesian-lens)  
+1. [SkillAdam: Stable and Efficient Skill Evolution for Agents](/202609/13/2609.08944v1-skilladam-stable-and-efficient-skill-evolution-for-agents)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过贝叶斯视角统一上下文学习与监督微调
-2. [MpSub: A Momentum $p$-Dimensional Subspace Trust-Region Method for Derivative-Free Fine-Tuning of Large Language Models](/202609/12/2609.07666v1-mpsub-a-momentum-p-dimensional-subspace-trust-region-method-for-derivative-free-fine-tuning-of-large-language-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：大语言模型的无导数微调与参数高效优化
-3. [Adaptively Incorporating Directional Hints into Zeroth-Order Optimization](/202609/12/2609.08277v1-adaptively-incorporating-directional-hints-into-zeroth-order-optimization)  
-   标签：评分：7.0/10、query:bopl
-   evidence：非凸函数的零阶优化
-4. [A Better Spur Should Start From Each Objective](/202609/12/2609.08211v1-a-better-spur-should-start-from-each-objective)  
+   evidence：利用反馈自动迭代优化智能体技能的闭环方法
+2. [Generating Adversarial Texts for Machine Translation via GRPO](/202609/13/2609.06048v1-generating-adversarial-texts-for-machine-translation-via-grpo)  
    标签：评分：6.0/10、query:bopl
-   evidence：强化学习中的梯度约束与自提示优化
-5. [Suan: Rectifying Direct Preference Safety Alignment in Large Language Models](/202609/12/2609.08634v1-suan-rectifying-direct-preference-safety-alignment-in-large-language-models)  
+   evidence：利用奖励信号微调大模型进行文本重写
+3. [Zero-shot rib design: merging training-free generative prior with topology optimization](/202609/13/2609.10643v1-zero-shot-rib-design-merging-training-free-generative-prior-with-topology-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：梯度层面的优化目标
-6. [SeGDeP: Semantic- and Geometric-Aware Decoupled Prompts for Reasoning Segmentation](/202609/12/2609.08867v1-segdep-semantic--and-geometric-aware-decoupled-prompts-for-reasoning-segmentation)  
+   evidence：将文本提示作为优化的机器可解释表示
+4. [Preference Optimization with LALM Feedback for Continuous Autoregressive Non-Verbal Vocalization Generation](/202609/13/2609.11260v1-preference-optimization-with-lalm-feedback-for-continuous-autoregressive-non-verbal-vocalization-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：语义与几何解耦的提示词
-7. [Deterministic Prompting for Speaker-Stable Low-Resource Greek TTS](/202609/12/2609.10022v1-deterministic-prompting-for-speaker-stable-low-resource-greek-tts)  
+   evidence：使用 LLM 生成的提示和反馈进行偏好优化
+5. [Beyond Confidence: Stability-Aware Test-Time Adaptation for LLM Reasoning](/202609/13/2609.11393v1-beyond-confidence-stability-aware-test-time-adaptation-for-llm-reasoning)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于稳定 TTS 的确定性提示和 LoRA
-8. [Understanding In-Context Multimodal Jailbreaks via Posterior Reweighting](/202609/12/2609.10613v1-understanding-in-context-multimodal-jailbreaks-via-posterior-reweighting)  
+   evidence：通过置信度优化进行推理的测试时自适应
+6. [LOCUS: Task-Aware Low-Rank Post-Training for Token-Efficient Language Generation](/202609/13/2609.11739v1-locus-task-aware-low-rank-post-training-for-token-efficient-language-generation)  
    标签：评分：6.0/10、query:bopl
-   evidence：多模态大模型的上下文学习与基于提示的行为转变
-9. [Downstream-Task-Aware Unified Source Separation](/202609/12/2609.11092v1-downstream-task-aware-unified-source-separation)  
-   标签：评分：6.0/10、query:bopl
-   evidence：任务感知统一源分离的提示词扩展框架
+   evidence：任务感知的低秩后训练，用于高效 Token 生成
 
 
 <div class="dpr-home-promo-card">
