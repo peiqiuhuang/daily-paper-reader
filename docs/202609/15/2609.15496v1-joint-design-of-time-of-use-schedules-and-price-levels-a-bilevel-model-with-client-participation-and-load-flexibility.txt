@@ -1,0 +1,3987 @@
+Joint Design of Time-of-Use Schedules and Price Levels: a Bilevel
+Model with Client Participation and Load Flexibility∗
+Abdellah Bulaich Mehamdi1, 2, 3, Wim van Ackooij2, Luce Brotcorne3, St´ephane
+Gaubert1, 3, and Quentin Jacquet2
+1CMAP, ´Ecole polytechnique, Institut Polytechnique de Paris, Palaiseau, France.
+2EDF Lab Paris-Saclay, OSIRIS department, Palaiseau, France.
+3Institut National de Recherche en Informatique et en Automatique (Inria), France.
+Abstract
+We study the joint design of a time-of-use (ToU) tariff (the partition of the day into pricing
+blocks and the price level attached to each block) by a profit-maximizing electricity retailer
+facing flexible clients who may refuse the offer in favour of an outside option. The problem is
+modeled as a bilevel program in which each client, at the lower level, reshapes its consumption
+under pointwise bounds and a fixed daily energy total, and simultaneously chooses a participa-
+tion level penalized by a quadratic regularizer. We prove the client’s best response is computable
+in loglinear time. We derive two equivalent single-level reformulations: a closed-form continuous
+one tackled via stochastic gradient ascent (using a continuous reparametrization of block start
+times and durations) and a mixed-integer nonlinear program solved via dedicated solvers. The
+stochastic ascent scheme provides Clarke-critical accumulation points almost surely, in a scalable
+way. On a case study from the French retail electricity market with 5000 simulated households,
+the gradient method matches a commercial mixed-integer solver on the pointwise problem to
+within 0.3% of the optimal profit while running two to eight times faster on 100 representative
+clients. Restricting unconstrained pointwise prices to admissible ToU schedules yields an esti-
+mated profit loss of 1.3%- 13.8% for two-period tariffs and 0.6%-6.6% for three-period tariffs on
+the instances considered.
+Keywords: Bilevel optimization; Time-of-use pricing; Demand response; Electricity retail;
+Nonsmooth optimization; Stochastic gradient ascent; Mixed-integer nonlinear programming.
+1
+Introduction
+1.1
+Context and motivation
+The opening of electricity markets to competition has altered the management problems faced
+by retailers. In particular, where tariffs were once set by regulators on the basis of average costs,
+retailers must now actively design pricing schemes that simultaneously recover procurement costs,
+attract and retain clients, and comply with an evolving regulatory landscape. As in other businesses,
+the announced prices will have a significant impact on both the retailer and various customers with
+this difference that electricity is a vital resource that one can not go without. One way to create a
+pricing menu is to temporally differentiate prices.
+∗This work was supported by the D´efi Inria-EDF.
+1
+arXiv:2609.15496v1  [math.OC]  14 Sep 2026
+
+
+One such instrument is the time-of-use (ToU) tariff, which divides the day into a small number of
+periods (peak and off-peak being the canonical example) and charges a different price in each. This
+temporal differentiation serves a dual purpose. From the retailer’s perspective, it reflects the varying
+cost of procuring electricity on wholesale markets, where prices can fluctuate substantially between
+daytime and nighttime hours.
+From the system’s perspective, it sends a price signal that can
+discourage consumption during periods of high network stress, reducing the need for costly peaking
+capacity. The practical appeal of ToU tariffs lies precisely in their simplicity: unlike real-time
+pricing, which exposes clients to continuous price fluctuations, a two- or three-period ToU schedule
+is transparent, predictable, and easy to bill. It is therefore no coincidence that ToU structures
+form the backbone of most residential demand response programs worldwide [AE08; VZV15], e.g.,
+the long-established heures pleines, heures creuses schedule in the French retail electricity market
+(peak and off-peak hours).
+Properly setting ToU prices requires anticipating how clients will respond and how far they
+will shift consumption away from expensive periods, given that each has only a limited capacity
+to adjust. This behavioral response, known as demand response [AE08; VZV15], is both the point
+of the tariff and its main complication from the retailer’s perspective.
+A retailer who ignores
+it will systematically overestimate revenues in peak periods and underestimate them in off-peak
+periods. Furthermore, the notions of peak and off-peak periods are implicitly linked to high and
+low consumption periods, thus implicitly “redefined” under significant tariff changes. Modelling
+this faithfully, however, forces one to confront a hierarchical decision problem: the retailer chooses
+prices knowing that clients will re-optimize their own consumption in response, subject to their
+own constraints and preferences. Such a hierarchy is captured by so called bilevel optimization,
+e.g., [Bar13; Dem02; Dem+15; CMS05; Kle+21]. This class of optimization problems allows one to
+represent so called leader-follower games. At the upper (or leader) level, the retailer selects both
+the temporal structure of the tariff (which hours belong to which pricing block) and the price level
+associated with each block, with the objective of maximizing profit. At the lower (or follower) level,
+each client decides how to allocate their electricity usage across the day. Load shifting is possible
+but not free: deviating from one’s baseline (ideal) consumption profile carries a cost, which can
+be modeled through a quadratic disutility that penalizes the magnitude of the shift. Consumption
+must also respect physical bounds; there is a minimum and a maximum load in each period, and the
+total daily energy consumption cannot be changed. Beyond these operational constraints, clients
+retain the option to simply reject the proposed tariff and fall back on a default external offer. This
+participation constraint ensures that the retailer’s pricing strategy must be competitive against the
+outside option, which could be a regulated tariff or a competitor’s offer.
+The resulting problem adds a coupling on top of the inherent difficulty of each level individ-
+ually, making it algorithmically more challenging. Indeed, the retailer’s optimization problem is
+nonconvex and nonsmooth since the client’s response is, in general, a nonsmooth function of the
+announced prices, while the partitioning of the day into pricing blocks introduces a combinatorial
+aspect. This work proposes a comprehensive modelling framework covering this situation as well
+as effective solution methods.
+1.2
+Contribution
+We study the design of time-of-use (ToU) prices in which a profit-maximizing retailer faces a
+set of flexible clients who each decide whether to accept the proposed offer and, if they do, optimize
+2
+
+
+their consumption to minimize the sum of their bill and the discomfort of shifting consumption.
+The main results are the following.
+• Model. We formulate the ToU pricing problem as a bilevel program in which the retailer chooses
+both the partition of the day into pricing blocks and the price level of each block, while every client
+decides whether to accept the offer and how to reshape its consumption under pointwise bounds
+and a fixed daily energy total.
+• Follower’s optimal response. We characterize the follower’s optimal response in closed-form: it
+decouples into a consumption choice and a participation choice, each a Euclidean projection com-
+putable in O(T log T) operations (Theorem 3.1, Corollary 3.2). Theorem 3.6 derives a sufficient
+equilibrium system with explicit big-M bounds on all multipliers under a mild non-degeneracy con-
+dition (Assumption 2), yielding two equivalent single-level reformulations: a closed-form one (CF-SLF)
+and a mixed-integer one (MINLP-SLF).
+• Leader’s problem theory. The upper level objective is proven to be an elementary selection in the
+sense of Bolte and Pauwels [BP20], and its selection derivative is evaluable in O(T log T) operations
+(Theorem 4.1), when the time-of-use constraints are dropped or relaxed through reparametrization.
+Consequently, any accumulation point of the stochastic gradient ascent algorithm is almost surely
+Clarke critical (Corollary 4.3).
+• Price of representability. To quantify the performance gap between the schedule-free pointwise
+model and the time-of-use model, we estimate the price of representability, defined as the profit
+loss incurred by restricting unconstrained pointwise prices to admissible ToU schedules.
+• Case study: French retail electricity market. We conduct numerical experiments on datasets gen-
+erated by EDF R&D’s SMACH simulator [Hur+15], which simulates 5,000 residential households
+clustered into distinct profiles, with a distribution based on real data. On 100 representative clients,
+our gradient-based method matches the profit obtained by a commercial mixed-integer solver on
+the pointwise problem to within 0.3% of optimality, while running two to eight times faster. We
+further quantify the cost of restricting unconstrained pointwise prices to ToU tariffs: on the in-
+stances considered, this restriction induces an estimated profit loss of 1.3%–13.8% for two-period
+tariffs and 0.6%–6.6% for three-period tariffs. We report the price menus obtained by the model
+and compare the solution methods across different cluster sizes, flexibility parameters, and numbers
+of ToU blocks.
+1.3
+Related Work
+The design of time-of-use tariffs requires understanding how clients respond to prices, and
+casting that response within a hierarchical optimization. This has been approached from different
+angles:
+1. Demand response. Broadly defined as the adjustment of end-use consumption to time-varying
+prices, both motivates ToU tariffs and complicates their design. The surveys of Albadi and El-
+Saadany [AE08] and Vardakas et al. [VZV15] emphasize that the benefit a tariff extracts de-
+pends on demand elasticity, flexible-load availability, and metering sophistication. They also note
+that ignoring this response systematically misestimates revenue across peak and off-peak periods.
+Flath [Fla13] proposed a mixed-integer program to mitigate the complexity arising from hourly
+real-time prices while retaining the flexibility to match the underlying market dynamics. He cast
+the design of time-of-use tariffs as the projection of consumption costs onto a discrete set of time
+blocks, treating the partition of the day as a decision, whereas Yang et al. [YTN12] took the
+periods as exogenous and adopted a game-theoretic view of the utility–client interaction. This
+3
+
+
+contrast between periods as a decision and periods as data is one axis along which we positioned
+our contribution.
+2. Bilevel optimization and Stackelberg games. The retailer commits to a tariff and the clients
+optimize in response; this hierarchy is naturally a Stackelberg game and, in optimization terms, a
+bilevel program [VT52]. Bilevel optimization has several applications in different domains, including
+transportation, energy, and machine learning, the interested reader is referred to [Bar13; SMD17;
+Dem20] for further details. Such models are NP-hard even in the case of linear lower and upper
+levels [Buc23]. Several bilevel models of pricing with and without ToU have been proposed. They
+differ by their description of the leader and follower, and by their solution approaches.
+(a) Leader’s model. Since Zugno et al. [Zug+13] embedded tariff design in a demand-response
+market this way, the leader–follower lens has become standard, and prior work divides according to
+what the retailer may decide. The larger group fixes the partition and optimizes only price levels,
+most often by replacing the lower level with its KKT conditions: Kov´acs [Kov16; Kov19] gave early
+formulations for time-variant tariffs and a day-ahead multi-follower extension with battery-equipped
+prosumers; Besan¸con et al. [Bes+20] and Anjos et al. [ABG21] treated time-and-level-of-use tariffs
+via mixed-integer reformulations; and Grimm et al. [Gri+21] and Abate et al. [ARR25] compared
+pricing schemes and market structures within the same framework. A smaller group co-designs peri-
+ods and prices, but only heuristically, through evolutionary or genetic algorithms [AAS20; Ven+22],
+while other studies relax lower-level global optimality [SAA20] or add a regulatory tier [Aus+20];
+broader surveys are given in [HAE20; HMW25]. The bilevel ToU model is thus mature in its treat-
+ment of price optimization, yet the combinatorial design of the temporal partition has not been
+optimized jointly with price levels inside an exact single-level reformulation.
+(b) Follower’s model. Beyond what the retailer decides, a further question is whether the client
+accepts the tariff at all. Within these models the client decides only how to consume, not whether to
+participate; yet it is the outside option that makes the problem economically meaningful, as a client-
+level individual-rationality constraint. This is usually left implicit, the follower being assumed to
+stay while the average price is below a threshold [Kov19; SAA20]. The closest explicit precedent is
+Crowley et al. [CKM24], who enforce budget balance and individual rationality as leader constraints
+in an energy community, later relaxing perfect leader knowledge through online learning [Cro+25].
+Methodologically, Jacquet et al. [Jac+24] study quadratic regularization of the follower’s contract
+choice, providing the smoothed responses on which we build without considering the flexibility
+and the time-of-use schedules. An explicit, client-level acceptance decision has not, however, been
+combined with a combinatorially designed ToU tariff.
+(c) Solution approaches. Because bilevel models embed an optimization problem as a constraint,
+they resist standard solvers, and the literature offers two remedies. The first replaces the lower
+level with its Karush-Kuhn-Tucker (KKT) conditions to yield a single-level Mathematical Program
+with Complementarity Constraints (MPCC); this underlies most of the ToU works cited above
+and our indirect method, and once the leader also partitions the day it falls under mixed-integer
+bilevel programming [Kle+21]. The second is gradient-based: when the lower-level solution varies
+smoothly with the leader’s decision, one differentiates through its optimality conditions to obtain
+a hypergradient of the upper-level objective [Gou+16]. This route classically requires lower-level
+strong convexity, which our nested lower problem lacks because of its bilinear terms; Chen et
+al. [CXZ23] delineate where hypergradient methods break down once this assumption is dropped,
+while penalty- and envelope-based approaches recover convergence guarantees for merely convex or
+nonconvex lower levels [SXC25; LM24; Liu+24]. Our follower problem is likewise nonconvex, but its
+4
+
+
+solution is a composition of projections onto boxed simplices, which are piecewise differentiable and
+evaluable in log-linear time; this structure lets us appeal to Bolte and Pauwels [BP20] to guarantee
+that almost surely any accumulation point of our stochastic gradient scheme is Clarke critical.
+Table 1 summarizes the position of this work relative to the models discussed above, along
+the dimensions that define our contribution. To the best of our knowledge, no prior work has
+considered the interaction between the three ingredients (the partition of the day into pricing
+blocks, the optimization of the price level of each block, the participation and the flexibility of
+clients) within a single model.
+Reference
+Partition
+Price levels
+Participation
+Lower-level treatment
+Exact
+decided?
+decided?
+modelled?
+single-level?
+Flath [Fla13]
+Yes
+Yes
+No
+clustering / projection
+No
+Yang et al. [YTN12]
+No
+Yes
+No
+game-theoretic best response
+No
+Zugno et al. [Zug+13]
+No
+Yes
+No
+KKT
+Yes
+Kov´acs [Kov16; Kov19]
+No
+Yes
+Implicit
+KKT
+Yes
+Besan¸con et al. [Bes+20]
+No
+Yes
+No
+KKT / mixed-integer
+Yes
+Anjos et al. [ABG21]
+No
+Yes
+No
+KKT / mixed-integer
+Yes
+Grimm et al. [Gri+21]
+No
+Yes
+No
+KKT
+Yes
+Abate et al. [ARR25]
+No
+Yes
+No
+KKT
+Yes
+Alves et al. [AAS20]
+Yes
+Yes
+No
+heuristic (evolutionary)
+No
+Venkatraman et al. [Ven+22]
+Yes
+Yes
+No
+heuristic (genetic)
+No
+Soares et al. [SAA20]
+No
+Yes
+Implicit
+relaxed optimality
+No
+Crowley et al. [CKM24]
+No
+Yes
+Community-level
+KKT
+Yes
+This work
+Yes
+Yes
+Client-level, explicit
+closed form and optimality system
+Yes
+Table 1: Positioning against the closest bilevel time-of-use pricing models. “Partition decided?”
+indicates whether the assignment of time steps to pricing periods is a decision variable rather than
+data; “Participation modelled?”
+whether the client’s accept/reject decision appears explicitly.
+“Exact single-level?” indicates whether the bilevel problem is replaced by an equivalent single-level
+program, not whether that program is solved to global optimality.
+The remainder of the paper is organized as follows. Section 2 formalizes the bilevel model, and
+its components. Section 3 derives the client response mappings and the retailer’s problem, and
+presents the reformulations of the bilevel problem. Section 4 describes our solution methodology,
+including the descent algorithm for pointwise pricing and the projection procedure for ToU sched-
+ules. Section 5 reports the numerical experiments and sensitivity analysis. Section 6 concludes
+with implications, limitations, and directions for future research.
+2
+Electricity pricing model
+Building on the bilevel perspective introduced in Section 1, we now formalize the electricity
+pricing model used throughout this paper. The complete notation is summarized in Appendix A.
+5
+
+
+2.1
+Retailer’s optimization problem
+The electricity retailer maximizes its profit by jointly determining the price levels q = (qn)n∈JNK ∈
+RN and the time-of-use schedule h = (ht,n)t∈JTK,n∈JNK ∈{0, 1}T×N, while accounting for each client’s
+best response to the proposed prices. A pair (q, h) is seen by the clients only through the effective
+price vector p(q, h) ∈RT
++ it induces, obtained by aggregating the price levels along the schedule:
+pt(q, h) := PN
+n=1 qnht,n,
+∀t ∈JTK,
+(1)
+where ht = (ht,n)n∈JNK denotes the t-th row of the schedule. The retailer’s optimization problem
+reads:
+max
+q,h,x,y
+PK
+k=1 [B(p(q, h), xk) −C(xk)] ykwk
+(BOP)
+s.t.
+q ∈Q,
+h ∈H,
+(xk, yk) solves (CPk(p)) at p = p(q, h),
+∀k ∈JKK.
+The optimization variables are the price levels q, constrained to lie in the feasible set Q, and
+the schedule h, constrained to lie in the schedule set H; both sets are defined in Section 2.3
+and encode, respectively, the bounds and the ordering imposed on individual prices, and the
+institutional and operational constraints the schedule must satisfy.
+The problem is subject to
+the clients’ best responses, captured by the lower-level problem (CPk(p)) through the variables
+ xk = (xt,k)t∈JTK, yk
+
+∈RT × [0, 1], which denote, respectively, the optimal consumption xt,k at
+each instant t ∈JTK and the participation decision yk of client k. The retailer must anticipate
+these responses when setting prices, which is what makes the problem bilevel. The functions B
+and C denote, respectively, the client’s bill and the retailer’s supply cost. The bill is the total
+amount paid by the client, that is the inner product of the effective price vector p = p(q, h) and
+the consumption vector xk:
+B(p, x) := ⟨p, x⟩= PT
+t=1 ptxt.
+(2)
+The parameter wk is the weight of client k in the profit function, interpreted as a measure of the
+client’s importance or market share. The supply cost C is left unspecified, subject to the following
+standing hypotheses.
+Assumption 1 (Standing hypotheses on the supply cost). The supply cost C : RT →R satisfies:
+1. C is continuous;
+2. C is Lipschitz continuous on the consumption box [xlb
+k , xub
+k ], with constant LC
+k, for every k ∈JKK;
+3. C is an elementary selection with a known selection derivative computable in O(T) elementary
+operations (see Appendix B for the definitions).
+Item (1) is used for the existence result of Corollary 3.3, item (2) for the Lipschitz estimates of
+the hyper-objective, and item (3) for the elementary-selection property of Theorem 4.1. A linear
+cost C(x) = PT
+t=1 ctxt, which is the specification used in the numerical experiments of Section 5,
+satisfies all three with LC
+k = ∥c∥.
+Following the usual convention for bilevel programs, (BOP) is written in its optimistic form, in
+which the leader may select among the lower-level’s optimal responses, the one that aligns with the
+upper-level objective; Corollary 3.3 shows that this choice is immaterial here, since the optimistic
+and pessimistic formulations coincide.
+6
+
+
+2.2
+Client’s optimization problem
+Given the effective price signal p = p(q, h) induced by the period prices q ∈Q and the schedule
+h ∈H defined above, each client k jointly determines its optimal consumption profile xk and decides
+whether to accept the proposed offer p (modeled by the variable yk) by solving:
+min
+xk,yk
+
+B(p, xk) + Dk(xk, x0
+k)
+
+yk + V0
+k(1 −yk) +
+1
+2βk y2
+k
+(CPk(p))
+s.t.
+xk ∈Xk,
+0 ≤yk ≤1,
+where Xk is the consumption feasible set given by the boxed simplex:
+Xk =
+(
+xk ∈RT
+
+PT
+t=1 xt,k = PT
+t=1 x0
+t,k,
+xlb
+t,k ≤xt,k ≤xub
+t,k,
+∀t ∈JTK
+)
+.
+(3)
+The variable xk is the consumption profile of client k, with xt,k denoting the consumption at time
+t. The bounds xlb
+t,k and xub
+t,k, which satisfy 0 ≤xlb
+t,k ≤xub
+t,k, limit how far the consumption may be
+shifted at each time step, while the equality constraint ensures that the total consumption matches
+a baseline (ideal) consumption profile, denoted by x0
+k. The disutility of load shifting is the nominal
+(quadratic) distance to x0
+k:
+Dk(xk, x0
+k) =
+1
+2αk ∥xk −x0
+k∥2
+2,
+where ∥· ∥2 is the Euclidean norm and αk > 0 is a flexibility parameter: the smaller αk, the larger
+the penalty on deviations, and hence the less flexible the client. For the discomfort to be expressed
+in e, the parameter αk carries units of kWh2/ e; equivalently, αk is the amount of energy that
+client k is willing to displace in response to a unit price differential, which is exactly the reading
+given by the closed-form of Theorem 3.1.
+The variable yk is the participation decision, with yk = 1 meaning that the offer is accepted and
+yk = 0 that it is refused in favor of the outside option. The constant V0
+k is the value of that outside
+option, that is, the optimal value of the client k’s problem under the outside tariff p0
+k, discomfort
+included:
+V0
+k = min
+xk∈Xk
+
+B(p0
+k, xk) + Dk(xk, x0
+k)
+	
+.
+Client k compares the reference value V0
+k with the value of the proposed offer, which is the optimal
+value of the client k’s problem under the proposed tariff p, discomfort included:
+Vk(p) = min
+xk∈Xk
+
+B(p, xk) + Dk(xk, x0
+k)
+	
+.
+(CCOk(p))
+Since yk ≥0, the inner minimization over xk in (CPk(p)) may be carried out independently of yk
+and absorbed into Vk(p), so that the participation decision is the solution of the one-dimensional
+problem
+min
+yk∈[0,1]
+Vk(p)yk + V0
+k(1 −yk) +
+1
+2βk y2
+k.
+(CCHk(p))
+Problems (CCOk(p)) and (CCHk(p)) are the two components of the sequential decomposition on
+which the whole analysis rests; Theorem 3.1 makes this precise.
+7
+
+
+The quadratic term
+1
+2βk y2
+k, with βk > 0, regularizes the accept/reject decision, replacing a
+binary choice by a continuous participation level yk ∈[0, 1]. The parameter βk carries units of 1/ e,
+equivalently, 1/βk is a monetary quantity, namely the width of the band over which acceptance
+moves from 0 to 1. Client k refuses outright when the offer is worse, accepts with certainty once
+the offer undercuts the outside option by more than 1/βk, and is hesitant in between; see Figure 1.
+A larger βk therefore yields a sharper, more deterministic decision, and βk →∞recovers the hard
+individual-rationality constraint.
+0
+1
+2
+3
+4
+0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+V0
+k −1
+βk
+V0
+k
+Client participation level
+Client bill and discomfort
+Figure 1: Client k’s participation level yk as a function of the value Vk(p) of the offer, for V0
+k = 3
+and βk = 0.5.
+The client’s problem therefore couples the choice of consumption profile with the participation
+decision, balancing cost minimization, disutility from load shifting, and the attractiveness of the
+offer relative to the outside option.
+2.3
+Feasible pricing strategies
+Under time-of-use (ToU) pricing, a price scheme is described by two ingredients: a set of period
+prices q = (qn)n∈JNK and a schedule h that assigns each time step t ∈JTK to one period n ∈JNK.
+The effective price seen by a client at time t is then the price pt(q, h) of the period active at t, as
+defined in (1). We now specify the two feasible sets Q and H from which these ingredients are
+drawn.
+The periods n ∈JNK are ordered from the cheapest to the most expensive, so that the set of
+admissible price levels takes the form:
+Q :=
+
+q ∈RN  plb ≤q1 ≤· · · ≤qN ≤pub	
+,
+(4)
+where plb and pub are the regulatory bounds on the unit price, assumed to satisfy 0 ≤plb < pub;
+we write P := [plb, pub]T for the corresponding box of effective price vectors. The schedule set H,
+on the other hand, groups time steps into periods and must respect institutional and operational
+constraints, for example: regulatory off-peak windows, fixed period durations, a limited number of
+switches per day, or minimum block lengths. Admissible schedules must in addition assign exactly
+8
+
+
+one period to each time step. We consider the following model:
+H =
+
+
+
+
+
+
+
+h ∈{0, 1}T×N
+
+PN
+n=1 ht,n = 1,
+∀t ∈JTK,
+PT
+t=1 |ht,n −ht−1,n| ≤2Sn,
+∀n ∈JNK,
+PT
+t=1 ht,n = Ln,
+∀n ∈JNK
+
+
+
+
+
+
+
+,
+(5)
+where each period n ∈JNK is characterized by its length Ln and its maximum number of subperiods
+Sn. Throughout, the time index is understood cyclically: we identify T with the discrete torus
+Z/TZ, so that t −1 is taken modulo T and, in particular, h0,n = hT,n. This reflects the daily
+periodicity of the tariff and makes the switch count below consistent across the day boundary: a
+period that is active at the end of the day and at its beginning forms a single subperiod rather
+than two. The linking constraint PN
+n=1 ht,n = 1 ensures that exactly one period is active at each
+time step t; the constraint PT
+t=1 |ht,n −ht−1,n| ≤2Sn counts the switches in and out of period n
+and hence ensures that period n consists of at most Sn subperiods; and the last constraint fixes
+its total duration to Ln. Introducing the auxiliary variables δt,n, the switch-counting constraint is
+equivalent to the following linear inequalities:
+ht,n −ht−1,n ≤δt,n,
+ht−1,n −ht,n ≤δt,n,
+∀t ∈JTK, n ∈JNK,
+(6)
+T
+X
+t=1
+δt,n ≤2Sn,
+∀n ∈JNK.
+The data are assumed to satisfy 1 ≤Sn ≤Ln and the consistency condition PN
+n=1 Ln = T,
+which is necessary for H to be nonempty and which we assume throughout; it is also sufficient,
+since assigning the periods in index order as N consecutive cyclic blocks of respective lengths Ln
+produces an element of H.
+Example 2.1. Figure 2 models the schedule h as a partition of the time axis into periods, each of
+which has at most two subperiods S1 = S2 = S3 = 2 with the lengths L1 = L2 = 9 and L3 = 6,
+where period (1) represents the off-peak hours, period (2) the shoulder hours, and period (3) the
+peak hours. The figure illustrates how the time steps are allocated to each period and how the
+subperiods are distributed within each period and notes the fact that the period between 21:00 and
+3:00 is a single subperiod considering that time is seen as periodic.
+t
+0
+3
+6
+9
+12
+15
+18
+21
+24
+Off-peak period (1)
+Shoulder period (2)
+Peak period (3)
+Figure 2: Example assignment; N = 3, S1 = S2 = S3 = 2, L1 = L2 = 9, and L3 = 6.
+Pointwise pricing, in which the retailer is free to propose a distinct price at each instant t ∈JTK,
+is the special case obtained by taking one period per time step, i.e. N = T with Ln = Sn = 1 for
+9
+
+
+every period n ∈JNK, so that h is a permutation matrix and p(q, h) ranges over the whole box
+P: the ordering imposed in (4) is then a mere labeling convention, absorbed by the choice of the
+permutation.
+3
+Mathematical properties and single-level reformulation
+For a given price signal p, the client’s problem (CPk(p)) is a nested optimization problem: the
+client chooses its consumption profile xk and decides whether to accept the retailer’s offer or take
+the outside option. The two decisions are coupled through the product Vk(p)yk, so the program
+is nonconvex. Nevertheless, it decomposes into two subproblems: a consumption choice problem
+and a participation choice problem. The former is a quadratic program with linear constraints; the
+latter is a one-dimensional quadratic problem given the consumption choice. Theorem 3.1 provides
+closed-form characterizations of their solutions.
+Assumption 2. For all t ∈T and k ∈K, we assume that the baseline consumption x0
+k satisfy
+xlb
+t,k ≤x0
+t,k ≤xub
+t,k, and satisfy:
+T
+X
+t=1
+xlb
+t,k < PT
+t=1 x0
+t,k < PT
+t=1 xub
+t,k.
+The condition xlb
+t,k ≤x0
+t,k ≤xub
+t,k ensures that the baseline consumption is feasible, and the
+second condition ensures that there are more than one point in the set. Throughout the remainder
+of this paper, we suppose that Assumption 2 remains satisfied.
+Theorem 3.1. Given a client k and a price signal p, (CPk(p)) admits an optimal solution, satis-
+fying the following.
+1. The optimal participation choice is unique and admits the closed-form:
+y⋆
+k(p) = Π[0,1]
+ βk
+ V0
+k −Vk(p))
+
+,
+where Vk(p) is defined in (CCOk(p)).
+2. The minimizer of the consumption choice problem (CCOk(p)), whose optimal value is Vk(p), is
+unique and admits the closed-form:
+x⋆
+k(p) = ΠXk
+ x0
+k −αkp
+
+.
+3. If y⋆
+k(p) > 0, then (x⋆
+k(p), y⋆
+k(p)) is the unique optimal solution of (CPk(p)). If y⋆
+k(p) = 0, the
+set of optimal solutions is Xk × {0}, and (x⋆
+k(p), 0) is one of its elements.
+4. The decision x⋆
+k(p) is piecewise affine on a polyhedral subdivision of RT , and the decision y⋆
+k(p)
+is piecewise quadratic on a semi-algebraic refinement of that subdivision.
+Proof. The proof exploits the nested structure of (CPk(p)): the client first minimizes B(p, xk) +
+Dk(xk, x0
+k) over xk, independently of the participation decision yk, and then chooses yk giving the
+resulting value Vk(p).
+1. The participation decision yk is nonnegative, hence the part of the objective of the client’s
+problem (CPk(p)) that depends on xk can be embedded into the value function Vk(p) defined in
+(CCOk(p)), and the problem (CPk(p)) becomes solely the participation problem (CCHk(p)). The
+choice of yk is therefore a one-dimensional quadratic program with linear constraints, which has a
+unique solution denoted by y⋆
+k(p) and it is given by the projection of βk(V0
+k −Vk(p)) onto [0, 1].
+10
+
+
+2. The problem (CCOk(p)) is a quadratic program with linear constraints, which has a unique
+solution denoted by x⋆
+k(p) and it is given by the projection of x0
+k −αkp onto the convex set Xk.
+3. Going back to the (CPk(p)), we distinguish two cases. If y⋆
+k(p) > 0, the variable xk must be
+chosen to minimize the objective function, which is achieved by x⋆
+k(p), and it is unique by the
+previous argument. If y⋆
+k(p) = 0, then the objective function is independent of xk, and any choice
+of xk ∈Xk yields the same optimal value. In particular, (x⋆
+k(p), 0) is an optimal solution.
+4. Piecewise polynomial property. The projection onto the polyhedron Xk is piecewise affine over
+polyhedral regions [FP03, Proposition 4.1.4], so x⋆
+k(p) is piecewise affine. Since y⋆
+k(p) is the projec-
+tion of a piecewise quadratic function of p onto [0, 1], it is piecewise quadratic. More precisely, since
+the projection onto [0,1] can be obtained by comparing that function to 0 and 1 (which delimit
+semi-algebraic regions), it is piecewise quadratic on algebraic regions.
+Corollary 3.2. Given a client k and a price signal p, the projection x⋆
+k(p) can be computed in
+O(T log T) elementary operations, and given x⋆
+k(p), the participation decision y⋆
+k(p) can be computed
+in O(T) elementary operations.
+Overall, the pair (x⋆
+k(p), y⋆
+k(p)) can be computed in O(T log T)
+elementary operations.
+Proof. The projection onto Xk can be computed by a sorting-based algorithm in O(T log T) oper-
+ations; see, e.g., Condat [Con16] and Jacquot [Jac+19, Section 1.C]. The projection onto [0, 1] is
+O(1). Computing x⋆
+k(p) first, then βk(V0
+k −Vk(p)) in O(T), and finally projecting onto [0, 1] yields
+an overall O(T log T) complexity.
+Corollary 3.3. The optimistic and pessimistic formulations of (BOP) coincide, and they admit a
+solution.
+Proof. Client k’s contribution to the leader’s objective function is given by [B(p, xk) −C(xk)]ykwk,
+which vanishes on the set Xk × {0}. Consequently, the optimistic and pessimistic formulations
+of (BOP) coincide. Indeed, when yk > 0, the lower-level solution is unique; when yk = 0, the
+objective term vanishes, making any choice of xk yield the same upper-level payoff. Thus, the
+response map p 7→(x⋆
+k(p), y⋆
+k(p)) defines a valid single-valued selection for the upper-level problem.
+Substituting these closed-form solutions into (BOP) reduces it to a maximization of a continuous
+function of (q, h), by Theorem 3.1 and continuity of the projections involved, and continuity of the
+cost function (item (1) of Assumption 1). The feasible set is compact: Q is a closed bounded subset
+of RN, and H is a finite set, being a subset of {0, 1}T×N. Weierstrass’s theorem therefore applies
+and a maximizer exists.
+Consider the function F defined on RT by:
+F(p) := PK
+k=1 Fk(p)wk,
+(HO)
+where Fk(p) := [B(p, x⋆
+k(p)) −C(x⋆
+k(p))] y⋆
+k(p).
+Corollary 3.4 (Closed-form single-level reformulation). The bilevel problem (BOP) is equiva-
+lent to the single-level problem obtained by substituting the closed-form solutions (x⋆
+k(p), y⋆
+k(p)) of
+Theorem 3.1 into the upper-level objective, which yields the closed-form single-level reformulation
+(CF-SLF):
+max
+q∈Q,h∈H
+F(p(q, h)),
+(CF-SLF)
+11
+
+
+where F is the hyper-objective defined in (HO), and p(q, h) is the effective price signal defined
+in (1). Equivalence is understood in the sense that the two problems have the same optimal value
+and the same set of optimal pairs (q, h).
+Proof. By Theorem 3.1, (x⋆
+k(p), y⋆
+k(p)) is optimal for (CPk(p)) at every p = p(q, h), so every feasible
+point of (CF-SLF) is feasible for (BOP) with the same objective value. Conversely, by Corollary 3.3
+any other selection of lower-level optima yields the same upper-level value, so no feasible point
+of (BOP) attains more than (CF-SLF).
+Proposition 3.5 (Lipschitz continuity of the hyper-objective). Assume item (2) of Assumption 1.
+Then F in (HO) is Lipschitz on P = [plb, pub]T with constant LF = P
+k∈JKK LF
+k wk, where LF
+k is
+given by:
+LF
+k = LG
+k + βk∥xub
+k ∥
+
+pub√
+T∥xub
+k ∥+
+max
+x∈[xlb
+k ,xub
+k ] |C(x)|
+
+.
+where LG
+k := ∥xub
+k ∥+ αkpub√
+T + αkLC
+k.
+Proof. Fix k ∈JKK and p, q ∈P. The sign conditions on the boxes give the two bounds used
+repeatedly below:
+∥p∥≤pub√
+T
+for p ∈P,
+∥x⋆
+k(p)∥≤∥xub
+k ∥.
+(7)
+• The participation level. Danskin’s theorem applies at every p ∈P and gives ∇Vk(p) = x⋆
+k(p),
+whence ∥∇Vk∥≤∥xub
+k ∥on P by (7). Since P is convex, the mean value inequality upgrades this
+gradient bound to
+|Vk(p) −Vk(q)| ≤∥xub
+k ∥∥p −q∥.
+As Π[0,1] is nonexpansive, composing it with the βk∥xub
+k ∥-Lipschitz map p 7→βk(V0
+k −Vk(p)) shows
+that y⋆
+k is βk∥xub
+k ∥-Lipschitz, with 0 ≤y⋆
+k ≤1.
+• The pure profit. Write Gk(p) := B(p, x⋆
+k(p)) −C(x⋆
+k(p)). Inserting ⟨q, x⋆
+k(p)⟩and using Cauchy–
+Schwarz, (7) and the αk-Lipschitzness of x⋆
+k,
+|⟨p, x⋆
+k(p)⟩−⟨q, x⋆
+k(q)⟩| ≤∥x⋆
+k(p)∥∥p −q∥+ ∥q∥∥x⋆
+k(p) −x⋆
+k(q)∥
+≤
+ ∥xub
+k ∥+ αkpub√
+T
+
+∥p −q∥,
+while C ◦x⋆
+k is αkLC
+k-Lipschitz as a composition. Adding the two constants gives that Gk is LG
+k -
+Lipschitz with LG
+k = ∥xub
+k ∥+ αkpub√
+T + αkLC
+k. Moreover, the function Gk is bounded by: |Gk| ≤
+pub√
+T∥xub
+k ∥+ maxx |C(x)|.
+• Conclusion.
+Both factors of Fk = Gky⋆
+k are Lipschitz and bounded, so, using Lip(fg) ≤
+Lip(f) sup |g| + sup |f| Lip(g) with f = Gk and g = y⋆
+k, and 0 ≤y⋆
+k ≤1, the function Fk is
+Lipschitz with constant LF
+k :
+LF
+k = LG
+k + βk∥xub
+k ∥
+
+pub√
+T∥xub
+k ∥+
+max
+x∈[xlb
+k ,xub
+k ] |C(x)|
+
+.
+Finally F is Lipschitz with constant LF = PK
+k=1 LF
+k wk as a weighted sum of Lipschitz functions.
+Theorem 3.1 characterizes each client’s optimal response to a price signal in closed-form. The
+bilevel problem can alternatively be reformulated by replacing the lower level with an optimality
+system, so that it can be solved with standard mixed-integer techniques. Corollary 3.3 ensures that
+12
+
+
+the selection (x⋆
+k(p), y⋆
+k(p)) is valid for the upper-level problem, so that the bilevel problem can be
+equivalently reformulated as a single-level problem, which is continuous but nonconvex. The next
+theorem provides an optimality system for this selection.
+Theorem 3.6. Let Assumption 2 hold, and let k ∈JKK and a price signal p ∈P be given. Consider
+the system:
+αkpt +
+ xt,k −x0
+t,k
+
++ λx
+t,k −µx
+t,k −γx
+k = 0,
+∀t ∈JTK,
+(8)
+B(p, xk) + Dk(xk, x0
+k) −V0
+k + 1
+βk yk +
+1
+αk λy
+k −
+1
+αk µy
+k = 0,
+(9)
+0 ≤λx
+t,k ⊥(xub
+t,k −xt,k) ≥0,
+∀t ∈JTK,
+(10)
+0 ≤µx
+t,k ⊥(xt,k −xlb
+t,k) ≥0,
+∀t ∈JTK,
+(11)
+0 ≤λy
+k ⊥(1 −yk) ≥0,
+(12)
+0 ≤µy
+k ⊥yk ≥0,
+(13)
+T
+X
+t=1
+xt,k = PT
+t=1 x0
+t,k.
+(14)
+Then the following hold.
+(a) Sufficiency. If (xk, yk) together with some multipliers (λx
+k, µx
+k, γx
+k, λy
+k, µy
+k) satisfies (8)–(14) and
+xlb
+k ≤xk ≤xub
+k , 0 ≤yk ≤1, then (xk, yk) is optimal for (CPk(p)), whatever the value of yk.
+(b) Necessity in the accepting regime. If (xk, yk) is optimal for (CPk(p)) and yk > 0, then it
+satisfies the system for some such multipliers.
+(c) The refusing regime. If yk = 0, the system is satisfied by (x⋆
+k(p), 0) but not, in general, by
+every optimal point of (CPk(p)): the argmin set is then Xk × {0}, whereas the system forces
+xk = x⋆
+k(p). Necessity therefore fails in this regime, by design; as explained above, the imposed
+selection is optimal and costs nothing at the upper level.
+Moreover, the multipliers are bounded by:
+γx
+k ∈[Mµ
+k , Mλ
+k ],
+0 ≤λx
+t,k, µx
+t,k ≤Mλ
+k −Mµ
+k ,
+0 ≤λy
+k ≤V0
+k,
+0 ≤µy
+k ≤Mk,
+where Mk := αkpub PT
+t=1 xub
+t,k + αkDk(xub
+k , xlb
+k ) and:
+Mλ
+k = αkpub + max
+t∈JTK
+
+xub
+t,k −x0
+t,k
+
+,
+Mµ
+k = αkplb + min
+t∈JTK
+
+xlb
+t,k −x0
+t,k
+
+.
+Here, λx
+t,k, µx
+t,k, and γx
+k are the multipliers associated with the upper bounds, lower bounds, and
+equality constraint of the consumption choice problem, respectively, while λy
+k and µy
+k are the multi-
+pliers associated with the upper and lower bounds of the participation choice problem.
+Proof. As in Theorem 3.1, the client’s problem decomposes into the consumption choice prob-
+lem (CCOk(p)) and the participation choice problem (CCHk(p)), treated sequentially. We first
+show that the stated system is exactly the optimality system of that decomposition, which gives
+sufficiency in both regimes and necessity when yk > 0; the failure of necessity when yk = 0 is the
+content of item (c) of the statement and is immediate, since every xk ∈Xk is then optimal while
+the system selects x⋆
+k(p). We then derive the multiplier bounds.
+13
+
+
+1. Optimality conditions. Problem (CCOk(p)) minimizes a strongly convex quadratic function over
+the polyhedron Xk, which is nonempty under Assumption 2. It therefore admits a unique minimizer,
+and since all constraints are affine the KKT conditions are necessary and sufficient. Using λx
+t,k, µx
+t,k,
+γx
+k for the multipliers of the upper bounds, lower bounds, and the equality constraint, respectively,
+stationarity reads:
+pt +
+1
+αk
+ xt,k −x0
+t,k
+
++
+1
+αk λx
+t,k −
+1
+αk µx
+t,k −
+1
+αk γx
+k = 0,
+∀t ∈JTK,
+together with the complementarity conditions stated in the theorem. Likewise, (CCHk(p)) min-
+imizes the strongly convex function yk 7→
+1
+2βk y2
+k + (Vk(p) −V0
+k)yk over [0, 1], where Vk(p) :=
+B(p, x⋆
+k(p)) + Dk(x⋆
+k(p), x0
+k), so its KKT conditions:
+Vk(p) −V0
+k + 1
+βk yk +
+1
+αk λy
+k −
+1
+αk µy
+k = 0,
+0 ≤λy
+k ⊥(1 −yk) ≥0,
+0 ≤µy
+k ⊥yk ≥0,
+are necessary and sufficient as well. This establishes the KKT system.
+2. Bounds on γx
+k. Under Assumption 2, the equality P
+t xt,k = P
+t x0
+t,k together with P
+t xlb
+t,k <
+P
+t x0
+t,k < P
+t xub
+t,k prevents all components from being at their upper (resp. lower) bound. Hence
+there exist t, t ∈JTK with xt,k < xub
+t,k and xt,k > xlb
+t,k. Complementarity constraints (10) and (11)
+give λx
+t,k = 0 and µx
+t,k = 0, so stationarity constraint (8) at these indices yields:
+γx
+k = αkpt + (xt,k −x0
+t,k) −µx
+t,k ≤αkpt + (xub
+t,k −x0
+t,k) ≤Mλ
+k ,
+γx
+k = αkpt + (xt,k −x0
+t,k) + λx
+t,k ≥αkpt + (xlb
+t,k −x0
+t,k) ≥Mµ
+k .
+Thus γx
+k ∈[Mµ
+k , Mλ
+k ].
+3. Bounds on λx
+t,k and µx
+t,k. Let ut := αkpt + (xt,k −x0
+t,k), we have that every ut lies in [Mµ
+k , Mλ
+k ].
+Moreover, since xlb
+t,k < xub
+t,k, the bounds cannot be active simultaneously, so λx
+t,k and µx
+t,k are not
+both positive:
+• if µx
+t,k = 0, then stationarity (8) reads as λx
+t,k = γx
+k −ut ≤Mλ
+k −Mµ
+k ;
+• if λx
+t,k = 0, then stationarity (8) reads as µx
+t,k = ut −γx
+k ≤Mλ
+k −Mµ
+k .
+In either case 0 ≤λx
+t,k, µx
+t,k ≤Mλ
+k −Mµ
+k , and Mλ
+k −Mµ
+k ≥0 since M λ
+k ≥Mµ
+k .
+4. Bounds on λy
+k and µy
+k. If λy
+k > 0, complementarity (12) forces yk = 1 and µy
+k = 0, and the
+participation stationarity gives
+1
+αk λy
+k = V0
+k −Vk(p) −
+1
+βk ≤V0
+k, using Vk(p) ≥0 and βk > 0;
+the bound λy
+k ≤αkV0
+k holds trivially when λy
+k = 0. If instead µy
+k > 0, then by complementarity
+constraint (13) yk = 0 and λy
+k = 0, whence
+1
+αk µy
+k = Vk(p)−V0
+k ≤Vk(p), using V0
+k ≥0. It remains to
+bound Vk(p) = B(p, x⋆
+k(p)) + Dk(x⋆
+k(p), x0
+k). Since prices are nonnegative and bounded from above
+by pub, and consumption is bounded from above by xub
+t,k, it follows that B(p, x⋆
+k(p)) ≤pub PT
+t=1 xub
+t,k.
+Moreover x⋆
+t,k, x0
+t,k ∈[xlb
+t,k, xub
+t,k], so componentwise (x⋆
+t,k −x0
+t,k)2 ≤(xub
+t,k −xlb
+t,k)2 and therefore
+Dk(x⋆
+k(p), x0
+k) ≤Dk(xub
+k , xlb
+k ). Combining this leads to µy
+k ≤αkVk(p) ≤Mk := αkpub PT
+t=1 xub
+t,k +
+αkDk(xub
+k , xlb
+k ), which also covers the case µy
+k = 0.
+Remark 3.7. The system we use is not the Karush–Kuhn–Tucker (KKT) system of the joint
+program (CPk(p)). Writing the KKT conditions of (CPk(p)) directly would carry a factor yk on
+the terms coming from [B + Dk]yk, and would therefore place no restriction at all on xk when
+yk = 0. We instead state the optimality system of the sequential decomposition established in
+Theorem 3.1: the conditions of the consumption choice problem (CCOk(p)), followed by those of
+14
+
+
+the participation choice problem (CCHk(p)). This system pins down xk = x⋆
+k(p) even for clients who
+refuse the offer, and Corollary 3.3 guarantees that doing so loses nothing: those clients contribute
+zero to the leader’s objective, so selecting x⋆
+k(p) among their optima is without loss of generality.
+Corollary 3.8 (MINLP single-level reformulation). Let Assumption 2 hold. Then the bilevel prob-
+lem (BOP) is equivalent to the mixed-integer program obtained by replacing the lower level with
+the optimality system of Theorem 3.6 and encoding the complementarity conditions through big-M
+disjunctions, leading to the following single-level reformulation (MINLP-SLF):
+max
+q,h,p,x,y,λx,µx,γx,λy,µy,
+zx,+,zx,−,zy,+,zy,−
+K
+X
+k=1
+[B(p, xk) −C(xk)] ykwk
+(MINLP-SLF)
+s.t.
+q ∈Q,
+h ∈H,
+pt −qn −(pub −plb)(1 −ht,n) ≤0,
+∀t ∈JTK, ∀n ∈JNK,
+pt −qn −(plb −pub)(1 −ht,n) ≥0,
+∀t ∈JTK, ∀n ∈JNK,
+αkpt +
+ xt,k −x0
+t,k
+
++ λx
+t,k −µx
+t,k −γx
+k = 0,
+∀t ∈JTK, ∀k ∈JKK,
+B(p, xk) + Dk(xk, x0
+k) −V0
+k + 1
+βk yk +
+1
+αk λy
+k −
+1
+αk µy
+k = 0,
+∀k ∈JKK,
+PT
+t=1 xt,k = PT
+t=1 x0
+t,k,
+∀k ∈JKK,
+xlb
+t,k ≤xt,k ≤xub
+t,k,
+∀t ∈JTK, ∀k ∈JKK,
+0 ≤yk ≤1,
+∀k ∈JKK,
+λx
+t,k −
+ Mλ
+k −Mµ
+k
+
+zx,+
+t,k ≤0,
+∀t ∈JTK, ∀k ∈JKK,
+xub
+t,k −xt,k −
+ xub
+t,k −xlb
+t,k
+ 1 −zx,+
+t,k
+
+≤0,
+∀t ∈JTK, ∀k ∈JKK,
+µx
+t,k −
+ Mλ
+k −Mµ
+k
+
+zx,−
+t,k ≤0,
+∀t ∈JTK, ∀k ∈JKK,
+xt,k −xlb
+t,k −
+ xub
+t,k −xlb
+t,k
+ 1 −zx,−
+t,k
+
+≤0,
+∀t ∈JTK, ∀k ∈JKK,
+λy
+k ≤V0
+kzy,+
+k
+,
+yk ≥zy,+
+k
+,
+∀k ∈JKK,
+µy
+k ≤Mkzy,−
+k
+,
+yk ≤1 −zy,−
+k
+,
+∀k ∈JKK,
+λx
+t,k ≥0,
+µx
+t,k ≥0,
+∀t ∈JTK, ∀k ∈JKK,
+λy
+k ≥0,
+µy
+k ≥0,
+Mµ
+k ≤γx
+k ≤Mλ
+k ,
+∀k ∈JKK,
+zx,+
+t,k + zx,−
+t,k ≤1,
+∀t ∈JTK, ∀k ∈JKK,
+zy,+
+k
++ zy,−
+k
+≤1,
+∀k ∈JKK,
+zx,+, zx,−∈{0, 1}T×K,
+zy,+, zy,−∈{0, 1}K,
+where “h ∈H” is understood as the linear description (6), and the constants Mk, Mλ
+k and Mµ
+k
+are those of Theorem 3.6. Equivalence is understood in the following sense: the two problems have
+the same optimal value, and from any solution of (MINLP-SLF) one recovers a solution (q, h)
+of (BOP) together with an associated optimal client response (xk, yk)k∈JKK.
+Proof. The constraints pt −qn ≤(pub −plb)(1 −ht,n), and pt −qn ≥(plb −pub)(1 −ht,n), for all
+t ∈JTK, and for all n ∈JNK ensures that p = p(q, h) since h is a vector of binary variables and
+PN
+n=1 ht,n = 1, for all t ∈JTK.
+15
+
+
+1. The big-M constraints encode the complementarity conditions. Consider the pair
+ λx
+t,k, xub
+t,k −
+xt,k
+
+; the three others are treated identically. Both quantities are nonnegative, and the binary zx,+
+t,k
+forces one of them to vanish: if zx,+
+t,k = 0 then λx
+t,k = 0, and if zx,+
+t,k
+= 1 then xt,k = xub
+t,k. This is
+exactly 0 ≤λx
+t,k ⊥(xub
+t,k −xt,k) ≥0. Conversely, any point satisfying the complementarity condition
+admits an admissible value of zx,+
+t,k provided the coefficients multiplying the binary are valid upper
+bounds on the two quantities. This is the case here: λx
+t,k ≤Mλ
+k −Mµ
+k and µx
+t,k ≤Mλ
+k −Mµ
+k by
+Theorem 3.6, λy
+k ≤V0
+k and µy
+k ≤Mk by the same theorem, while xub
+t,k−xt,k and xt,k−xlb
+t,k are bounded
+by xub
+t,k −xlb
+t,k and 1 −yk, yk by 1, since xk ∈Xk and yk ∈[0, 1]. The disjunctive constraints are
+therefore exact, and no optimal solution of the lower level is cut off. The inequalities zx,+
+t,k +zx,−
+t,k ≤1
+and zy,+
+k
++ zy,−
+k
+≤1 are valid rather than restrictive: under Assumption 2 one has xlb
+t,k < xub
+t,k, so
+the two consumption bounds cannot be active at the same t, and yk cannot equal both 0 and 1.
+2. Every feasible point of (MINLP-SLF) is feasible for (BOP). By the previous paragraph, for
+each k ∈JKK the pair (xk, yk) satisfies the system of Theorem 3.6, which is sufficient for optimality
+in (CPk(p)) both when yk > 0 and when yk = 0. Hence (xk, yk) solves (CPk(p)), the point is
+feasible for (BOP), and the two objectives agree. The optimal value of (MINLP-SLF) is therefore
+at most that of (BOP).
+3. Conversely. Let (q, h) be feasible for (BOP) and let
+ x⋆
+k(p), y⋆
+k(p)
+
+be the client responses of The-
+orem 3.1. Under Assumption 2 the consumption problem (CCOk(p)) is a strongly convex quadratic
+program with affine constraints, so x⋆
+k(p) admits multipliers (λx
+k, µx
+k, γx
+k) satisfying stationarity, com-
+plementarity and marginality. For the participation variable, write Vk = B(p, x⋆
+k(p))+Dk(x⋆
+k(p), x0
+k)
+and recall that y⋆
+k(p) = Π[0,1]
+ βk(V0
+k −Vk)
+
+. Setting:
+λy
+k = αk max
+
+0, V0
+k −Vk −1
+βk
+
+,
+µy
+k = αk max
+ 0, Vk −V0
+k
+
+,
+at most one of the two is positive and the participation stationarity and complementarity conditions
+hold: λy
+k > 0 forces βk(V0
+k−Vk) > 1, hence y⋆
+k(p) = 1, while µy
+k > 0 forces V0
+k < Vk, hence y⋆
+k(p) = 0.
+Choosing the binaries as the indicators of the active constraints, that is zx,+
+t,k
+= 1 if and only if
+x⋆
+t,k(p) = xub
+t,k and likewise for the three other families, all big-M constraints are satisfied, since the
+multipliers obey the bounds of Theorem 3.6. The point is thus feasible for (MINLP-SLF) with the
+same objective value, so the optimal value of (BOP) is at most that of (MINLP-SLF). The two
+values coincide.
+Finally, by Corollary 3.3 the optimistic and pessimistic readings of (BOP) coincide, so no ambiguity
+arises from the clients for which the lower-level solution is not unique, namely those with yk = 0.
+4
+Solution methods
+Section 2 introduced the time-of-use (ToU) pricing design problem as a bilevel optimization
+model: the retailer chooses a price scheme, while each client reacts by adjusting its consumption and
+deciding whether to accept the offer or revert to an outside option. The resulting problem is mixed-
+integer, nonconvex, and nonsmooth. It can be tackled either by using the reformulation (CF-SLF)
+based on Corollary 3.4, or by using the reformulation (MINLP-SLF) based on Corollary 3.8.
+We first study pointwise pricing (Section 4.1), in which the retailer may set an independent
+price at each time step. This is the least-constrained version of the problem: it ignores the schedule
+16
+
+
+constraints H and is therefore easier to solve. Its optimal value serves two purposes. First, it
+upper-bounds the optimal ToU profit, which allows us to estimate the potential profit loss induced
+by restricting the tariffs to be ToU, and to estimate the price of representability (Definition 1).
+Second, after projection onto H, it may provide a starting point for certain ToU methods. We then
+study ToU pricing (Section 4.2), the regulator-admissible restriction obtained by grouping time
+steps into periods. Both models share the same lower level, so the structural results of Section 3
+apply throughout.
+Definition 1 (Price of representability). Let F denote the leader’s hyper-objective (the expected
+profit from proposing a price scheme), let F ⋆
+pw := maxp∈P F(p) be the optimal pointwise profit,
+and let F ⋆
+ToU := maxq∈Q,h∈H F(p(q, h)) be the optimal profit attainable with an admissible schedule.
+Assuming that the pointwise profit is positive (F ⋆
+pw > 0), the price of representability of the schedule
+set H is defined as:
+PoR(Q, H) := F ⋆
+pw −F ⋆
+ToU
+F ⋆pw
+.
+Since P(Q, H) := {p(q, h) : q ∈Q, h ∈H} ⊆P, we have F ⋆
+ToU ≤F ⋆
+pw and hence PoR(H) ∈[0, 1].
+Note that the definition is precise only when both the numerator and denominator are computed
+exactly, which is not always the case in practice, because the problem is numerically challenging.
+4.1
+The pointwise pricing problem
+In pointwise pricing the retailer sets a price at each time step; equivalently, as noted in Sec-
+tion 2.3, N = T and the constraints on (q, h) can be discarded, and it suffices to optimize the
+effective price on the box P = [plb, pub]T . We shall refer to this problem as pw-BOP, as it is a
+relaxation of the original time-of-use model, (BOP). Depending on how the lower level is reformu-
+lated, we consider two methods:
+1. a direct method: using Corollary 3.4, we apply first-order ascent algorithm to the obtained
+single-level nonconvex nonsmooth optimization problem.
+2. an indirect method: using Corollary 3.8, we hand the mixed-integer nonlinear program (MINLP-SLF)
+to a standard solver.
+Each reformulation opens up a different family of solution methods: the nonsmooth program
+of the direct route can be tackled with nonsmooth first-order methods, such as stochastic gradient
+ascent, while the mixed-integer program of the indirect route can be handled by dedicated nonlinear
+solvers. We focus here on the direct method and establish that almost surely any accumulation
+point of the SGA recursion is a genuine Clarke critical point of the hyper-objective. We place
+the objective in the framework of [BP20]: it admits an elementary selection (Definition 4), and
+consequently, under mild assumptions, almost every accumulation point of the SGA recursion is
+a genuine Clarke critical point of the hyper-objective rather than an artifact of differentiating
+through a particular program [BP20, Theorem 4]. We recall the relevant definitions from [BP20]
+in Appendix B.
+Assumption 3. For all k ∈JKK, suppose that the baseline consumption x0
+k and the bounds satisfy:
+X
+t∈T
+xlb
+t,k + P
+t∈JTK\T xub
+t,k̸ = PT
+t=1 x0
+t,k,
+∀T ⊆JTK.
+17
+
+
+The assumption is a non-degeneracy condition: it ensures that any element xk ∈Xk has a
+component strictly inside the bounds, which is what guarantees that the free set Ik(p) used in
+Theorem 4.1 is never empty and that the multiplier γx
+k is well defined. This condition will allow us
+to simplify the presentation of the algorithms and their proofs. From the modelling perspective, it is
+inessential, in particular, it can be ensured by adding an arbitrarily small perturbation. Assumption
+3 is assumed to hold from here on. The next theorem shows that F admits an elementary selection
+whose selection derivative is cheap to evaluate.
+Theorem 4.1. Let item (3) of Assumption 1 hold. Then the hyper-objective (HO), F, is an ele-
+mentary selection, and its selection derivative can be evaluated in O(T log T) elementary operations
+for each Fk.
+Proof. Elementary selection. By Theorem 3.1, the maps p 7→(x⋆
+k(p), y⋆
+k(p)) are continuous and
+piecewise polynomial over semi-algebraic regions.
+Such maps are elementary selections in the
+sense of Definition 4, understood componentwise for the vector-valued map x⋆
+k: polynomials are
+obtained from affine maps by finitely many products and sums, hence lie in the class of elementary
+selections S (Definition 4), and a semi-algebraic region is by definition the solution set of finitely
+many polynomial equalities and inequalities, hence of finitely many relations between elements
+of S, so the associated index map lies in I (Definition 3). The box constraint is incorporated
+by precomposing with the clipping Π[plb,pub], itself an elementary selection; by stability of S under
+composition, sum, and product [BP20, Proposition 1], and since C ∈S by item (3) of Assumption 1,
+each Fk, and hence F = P
+k Fkwk, is an elementary selection. We now exhibit such a selection
+explicitly, which also yields the complexity bound.
+Given the price signal p, client k’s optimal consumption takes the form
+x⋆
+t,k(p) = min
+n
+xub
+t,k, max
+n
+xlb
+t,k, x0
+t,k −αk(pt −γx
+k(p))
+oo
+,
+where γx
+k(p) is the multiplier of the equality constraint. It is computed from the ordered partition
+of JTK into the lower-saturated, free, and upper-saturated coordinates of x⋆
+k(p), denoted by the
+active sets (Lk(p), Ik(p), Uk(p)), as:
+γx
+k(p) =
+1
+αk|Ik(p)|
+hPT
+t=1 x0
+t,k −P
+t∈Ik(p)
+
+x0
+t,k −αkpt
+
+−P
+t∈Uk(p) xub
+t,k −P
+t∈Lk(p) xlb
+t,k
+i
+,
+Assumption 3 ensures that the free set Ik(p) is never empty, so that the expression is well-defined.
+The optimal participation y⋆
+k(p) is then obtained by comparing zk = βk(V0
+k −Vk(p)) to 0 and 1,
+where Vk(p) := B(p, x⋆
+k(p)) + Dk(x⋆
+k(p), x0
+k): it equals 0 if zk < 0, equals 1 if zk > 1, and equals
+βk(V0
+k −Vk(p)) otherwise.
+Enumerating the finitely many combinations of active sets and participation states leads to the
+notion of a phase (denoted θ, see Appendix A): a pair θ = (π, q) with π = (Lθ, Iθ, Uθ) the partition
+(lower-saturated, free, upper-saturated) and r ∈{0, ⋆, 1} the participation state (clamped at 0,
+interior, clamped at 1). There are at most m = 3T ·3 phases, labelled θ = 1, . . . , m. For each phase,
+define the consumption map ξθ
+k by:
+ξθ
+t,k(p) =
+
+
+
+
+
+xlb
+t,k,
+t ∈Lθ,
+x0
+t,k −αk(pt −γθ
+k(p)),
+t ∈Iθ,
+xub
+t,k,
+t ∈Uθ,
+18
+
+
+and the participation map ηθ
+k by:
+ηθ
+k(p) =
+
+
+
+
+
+0,
+r = 0,
+βk
+ V0
+k −[B(p, ξθ
+k(p)) + Dk(ξθ
+k(p), x0
+k)]
+
+,
+r = ⋆,
+1,
+r = 1,
+where the multiplier γθ
+k(p) is given by:
+γθ
+k(p) =
+1
+αk|Iθ|
+h P
+t∈JTK x0
+t,k −P
+t∈Iθ
+ x0
+t,k −αkpt
+
+−P
+t∈Uθ xub
+t,k −P
+t∈Lθ xlb
+t,k
+i
+.
+The function Fk can then be expressed as an elementary function Fk,θ over each phase θ, defined
+by:
+Fk,θ(p) =
+
+B(p, ξθ
+k(p)) −C(ξθ
+k(p))
+
+ηθ
+k(p).
+Since ξθ
+k and γθ
+k are affine in p and B, C, Dk ∈E, each Fk,θ ∈E. Define σk(p) = θ on the region
+Rθ cut out by the saturation conditions: writing vθ
+t,k(p) := x0
+t,k −αk(pt −γθ
+k(p)) and zθ
+k(p) :=
+βk
+ V0
+k −[B(p, ξθ
+k(p)) + Dk(ξθ
+k(p), x0
+k)]
+
+,
+Rθ =
+
+
+
+
+
+
+
+p
+
+vθ
+t,k(p) ≤xlb
+t,k,
+t ∈Lθ,
+xlb
+t,k ≤vθ
+t,k(p) ≤xub
+t,k,
+t ∈Iθ,
+vθ
+t,k(p) ≥xub
+t,k,
+t ∈Uθ
+
+
+
+
+
+
+
+∩Y θ,
+where Y θ = {zθ
+k(p) ≤0}, {0 ≤zθ
+k(p) ≤1}, or {zθ
+k(p) ≥1} when r = 0, ⋆, 1. Each Rθ is the
+solution set of finitely many inequalities between elementary functions, so σk is an elementary
+selection (σk ∈I). When ties occur at phase boundaries and multiple phases are valid, we break
+them using a fixed lexicographic rule. Since p 7→(x⋆
+k(p), y⋆
+k(p)) is continuous, the competing pieces
+coincide in value at these points, making the tie-breaking choice inconsequential with respect to
+the value. On Rθ the active-set optimality conditions give x⋆
+k(p) = ξθ
+k(p) and y⋆
+k(p) = ηθ
+k(p), hence
+Fk(p) = Fk,σk(p)(p), and the selection derivative is b∇σkFk(p) = ∇Fk,σk(p)(p).
+Complexity. Evaluating the selection derivative splits into identifying the active phase θ = σk(p)
+and differentiating the selected piece Fk,θ. Identifying θ is exactly the active-set computation of
+(x⋆
+k(p), y⋆
+k(p)): the sorting-based algorithm of [Jac+19, Section 1.C] returns Lk(p), Ik(p), Uk(p) in
+O(T log T), after which a single O(T) pass evaluates zθ
+k(p) (a dot product for B, a separable sum
+for Dk) and fixes r; the algorithm never enumerates the m phases. With θ fixed, Fk,θ is a single
+elementary expression whose evaluation costs O(T): the maps p 7→γθ
+k(p) 7→ξθ
+k(p) are affine with a
+Jacobian (∂ξθ
+t,k/∂ps = −αk1[s=t] + αk1[s, t ∈Iθ]/|Iθ|), B, Dk each cost O(T), and C has a known
+selection derivative. The input clipping Π[plb,pub] is also O(T). Through the chain rule, we can
+evaluate b∇σkFk(p) in O(T log T).
+We handle the box constraints by composition rather than by projecting the iterate, we optimize
+the unconstrained function:
+eF(p) = F
+ Π[plb,pub](p)
+
+,
+(A-HO)
+whose maximization is equivalent to that of F over the box. The stochastic gradient ascent (SGA)
+recursion is then:
+pi+1 = pi + ηi b∇σ eFBi(pi),
+(15)
+19
+
+
+where ηi is the step size, b∇σ the selection derivative, and eFBi := P
+k∈Bi eFk(p) the mini-batch
+estimate built from the batch Bi, with eFk(p) = Fk
+ Π[plb,pub](p)
+
+. The selection from Theorem 4.1
+is augmented with the clipping onto the box to yield a selection for eFk. The selection derivative is
+then:
+b∇σ eFk(p) = b∇σ Π[plb,pub](p) · b∇σFk
+ Π[plb,pub](p)
+
+,
+where the selection for the projection is:
+ b∇σ Π[plb,pub](p)
+
+t =
+(
+0,
+pt < plb or pt > pub,
+1,
+otherwise.
+Algorithm 1 implements (15).
+Algorithm 1 Stochastic gradient ascent for pointwise pricing
+Require: initial effective prices p0 ∈RT ; price bounds plb, pub; client data; step sizes (ηi)i≥0; batch
+size b; number of iterations Nit
+Ensure: an iterate sequence whose accumulation points are almost surely Clarke critical for eF
+(Corollary 4.3); the last iterate is returned
+1: for i = 0, . . . , Nit −1 do
+2:
+sample a mini-batch Bi ⊆JKK uniformly without replacement, |Bi| = b
+3:
+g ←0
+4:
+ˆp ←Π[plb,pub](p)
+5:
+for k ∈Bi do
+6:
+compute the active sets (Lk, Ik, Uk) of x⋆
+k(ˆp) and the multiplier γx
+k(p)
+7:
+x⋆
+k ←ΠXk(x0
+k −αk ˆp);
+y⋆
+k ←Π[0,1]
+ βk(V0
+k −Vk(ˆp))
+
+8:
+compute the phase σk(p) and the selection derivative b∇σk eFk(p)
+9:
+g ←g + b−1Kwk b∇σk eFk(p)
+10:
+end for
+11:
+p ←p + ηig
+12: end for
+13: return p
+Proposition 4.2. The iterate sequence (pi)i≥0 generated by Algorithm 1 is bounded for every choice
+of p0.
+Proof. Recall the update of Algorithm 1,
+pi+1 = pi + ηig,
+g =
+X
+k∈Bi
+b−1Kwk b∇σ
+ Fk ◦Π[plb,pub]
+
+(pi),
+where Bi ⊆JKK is the batch drawn at iteration i and b is its size.
+• Step 1: outside the box the selection gradient vanishes in the corresponding coordinate.
+The
+projection acts coordinatewise, Π[plb,pub](p)t = π(pt) with π(u) = min{pub, max{plb, u}}.
+The
+selection breaks ties at the nonsmooth points and the chain rule applies to selection derivatives, for
+every p ∈RT , k ∈JKK and every coordinate t:
+ b∇σ(Fk ◦Π[plb,pub])(p)
+
+t = b∇σπ(pt)
+ b∇σFk(Π[plb,pub](p))
+
+t.
+20
+
+
+Fix a coordinate t and set Ot := {p ∈RT | pt /∈[plb, pub]}. If p ∈Ot, then pt lies strictly outside
+[plb, pub], and π is constant on a neighbourhood of pt, so b∇σπ(pt) = 0 irrespective of the values
+assigned to the selection at plb, pub. Hence:
+ b∇σ(Fk ◦Π[plb,pub])(p)
+
+t = 0
+∀p ∈Ot, k ∈JKK,
+and, gi being a linear combination of these vectors, (gi)t = 0 whenever pi ∈Ot, whatever the batch
+Bi.
+• Step 2: a coordinate leaving the box is frozen. Suppose pi0 ∈Ot. By Step 1, (gi0)t = 0, so
+pi0+1,t = pi0,t; membership in Ot depends on the t-th coordinate only, whence pi0+1 ∈Ot. By
+induction, pi ∈Ot and pi,t = pi0,t for all i ≥i0.
+• Step 3: conclusion. Fix t and distinguish two cases. If pi /∈Ot for all i ≥0, then pi,t ∈[plb, pub]
+for all i. Otherwise let i0 such that pi0 ∈Ot. Then, pi,t = pi0,t for i ≥i0 by Step 2. Either
+way, {pi,t}i≥0 is bounded. Since there are finitely many coordinates, the iterate {pi}i≥0 remains
+bounded.
+Corollary 4.3. Let for all i, ηi = cri, and ri = o(1/ log i). Then, for almost every c ∈(0, 1],
+almost surely every accumulation point of the sequence generated by Algorithm 1 is Clarke critical
+for the augmented hyper-objective (A-HO), eF.
+Proof. The proof follows from Theorem 4.1, Proposition 4.2 and [BP20, Theorem 4], which states
+that any accumulation point of the SGD recursion is almost surely Clarke critical point of the
+objective, provided that the objective is an elementary selection and the iterates remain bounded
+almost surely. Note that here, we considered the term b−1Kwk in the gradient computation because
+our initial objective is a weighted sum of the individual client objectives.
+4.2
+Time-of-use pricing
+We now return to the ToU problem, in which the retailer is constrained to choose a price scheme
+that is constant over each period. The integrality of H makes the problem combinatorial, so the
+direct gradient approach of Section 4.1 no longer applies unchanged. We present four methods,
+trading computational cost against profit:
+1. a complete enumeration method: which enumerates all admissible schedules and solves the re-
+sulting problem for each schedule;
+2. an approximation rounding method: which projects a pointwise solution onto H and re-optimizes
+the period prices over the recovered schedule;
+3. an indirect method: which augments the mixed-integer reformulation with the integer schedule
+variables and solves the resulting single-level program;
+4. a direct method: which reparametrizes the schedule by continuous start instants and lengths and
+applies the gradient machinery of Section 4.1 to the relaxed problem (Algorithm 2), recovering a
+feasible schedule at the end by using the second method (Approximation rounding method).
+4.2.1
+Complete enumeration method
+The complete enumeration method is the most straightforward: it simply enumerates every
+admissible schedule h ∈H and solves the inner continuous problem over q ∈Q for each.
+max
+h∈H
+h
+max
+q∈Q F
+ p(q, h)
+i
+.
+21
+
+
+The inner problem falls into the pointwise pricing problem studied in Section 4.1, and the outer
+enumeration can be parallelized. The method grows linearly in |H|, which can be large depending
+on the regulatory constraints considered and on (N, S, L). When available, we use it as a baseline:
+it yields the value F ⋆
+ToU of Definition 1 up to the accuracy of the inner solves, and it therefore serves
+as a benchmark for the methods below.
+This does not make the remaining methods redundant, but it does determine what they are
+for. The cardinality of H grows quickly with the number of time periods and the complexity of the
+regulatory constraints. Refining the time grid below the hour multiplies the number of admissible
+boundary positions; adding periods multiplies the number of subperiod orderings; and moving from
+a single representative day to a seasonal or weekday/weekend calendar composes the schedule sets
+multiplicatively across days (cf. Appendix C.5).
+Remark 4.4. Given the schedule, one needs around three minutes to solve the inner problem for
+a single representative day with K = 100 clients on a standard laptop. The enumeration method is
+therefore inefficient for the experiments of Section 5, which consider just one typical day and basic
+regulatory constraints: at that rate, using the experimental setup of Section 5 and the cardinalities
+in Table 2, complete enumeration per choice of parameters would take approximately 1284 × 2 :
+16 = 2910 minutes (about 2 days) for the two-period schedule, and about 29016 × 2 : 37 = 75925
+minutes (about 53 days) for the three-period schedule.
+4.2.2
+Approximation rounding method
+The approximation rounding method reuses the pointwise solution as a starting point. Let p⋆
+be the price vector returned by the pointwise problem (Section 4.1). Since p⋆is not necessarily
+representable by any admissible schedule, we first project it onto H:
+(q⋆, h⋆) ∈argmin
+q∈Q,h∈H
+∥p⋆−p(q, h)∥2
+2.
+The bilinear terms in p(q, h) are linearized exactly by the big-M indicator constraints already used
+in Corollary 3.8, namely pt −qn ≤(pub −plb)(1 −ht,n) and pt −qn ≥(plb −pub)(1 −ht,n), which
+are exact because h is binary with P
+n ht,n = 1 and q is bounded. With the squared Euclidean
+distance the projection is therefore a mixed-integer quadratic program, which is how it is solved in
+Section 5; replacing ∥· ∥2
+2 by ∥· ∥1 or ∥· ∥∞would give a mixed-integer linear program instead, at
+the cost of no longer being a Euclidean projection.
+Corollary 4.5. Let ϵ = LF ∥p⋆−p(q⋆, h⋆)∥where LF is a Lipschitz constant of F over the box
+[plb, pub], we have F(p(q⋆, h⋆)) is an ϵ-approximation of F(p⋆).
+The projection minimizes the distance to p⋆, not profit, so its profit may be markedly below
+the pointwise benchmark. We therefore fix the recovered schedule h⋆and re-optimize the period
+prices alone:
+max
+q∈Q F
+ p(q, h⋆)
+
+.
+At fixed h⋆the map q 7→p(q, h⋆) is linear, so q 7→F(p(q, h⋆)) is again an elementary selection [BP20,
+Stability of S, Proposition 1] and is solved by the methods of Section 4.1.
+22
+
+
+4.2.3
+Indirect method
+The indirect method solves the ToU problem as a single-level problem, using the formulation of
+Corollary 3.8 with the schedule variables h left free and the switch constraint written in the linear
+form (6). Unlike the rounding method, it optimizes the schedule and the price levels jointly and
+fixes nothing a priori; The price to pay is a much larger search space: the model gains T · N binary
+variables and the constraints regulating the schedule.
+4.2.4
+Direct method
+The direct method optimizes the schedule by gradient descent, which requires a continuous
+parametrization of the schedule: one in which period boundaries may fall at real instants rather
+than integer time steps.
+We first introduce a low-dimensional parametrization of H, and then
+exploit it in the same way as in Section 4.1 to compute a selection derivative of the hyper-objective
+with respect to the schedule parameters.
+Proposition 4.6 (Lower-dimensional schedule representation). Let M be the set of triples (s, ω, l)
+such that:
+1. s ∈{1, . . . , T};
+2. ω : {1, . . . , ¯m} →JNK for some m ∈NN, with 1 ≤mn = |ω−1(n)| ≤Sn for every n ∈JNK,
+¯m = PN
+n=1 mn, ω(1) = 1, and with no two cyclically consecutive values equal, i.e. ω(s)̸ = ω[(s +
+1) mod ¯m] for all s; The set of such maps is denoted Om.
+3. l = (ls)1≤s≤¯m with ls ∈N, ls ≥1, and P
+s∈ω−1(n) ls = Ln for every n ∈JNK;
+4. (cyclic anchoring) s = min{as : ω(s) = 1}, where as :=
+ s+P
+r<s lr
+
+mod T
+
+is the start instant
+of the s-th subperiod; that is, s is the smallest start instant, in {1, . . . , T}, among the subperiods of
+period 1.
+Then the map Ψ sending (s, ω, l) ∈M to the schedule that assigns period ω(s) to the ls consecutive
+cyclic time steps starting at as, for s = 1, . . . , ¯m, is a bijection from M onto H.
+Proof. • Ψ maps into H. Since consecutive segments carry distinct labels, the number of subperi-
+ods n is exactly |ω−1(n)| ≤Sn by (2); The length of period n is equal to Ln by (3); Each instant t
+is assigned a period by exactly one segment, by the cyclic construction;
+• Injectivity. Let (s, ω, l) and (s′, ω′, l′) have the same image h.
+– Start instant. The start instant s is the smallest start instant of a subperiod of period 1. Hence,
+s = s′ = min{t ∈JTK | ht,1 = 1 and h(t−1) mod T,1 = 0}.
+– Period order. The cyclic sequence of blocks of h is determined by the sequence of labels of the
+blocks, which is exactly ω up to a cyclic rotation. Condition (4) fixes the rotation: it forces the
+indexing to begin at the block of period 1 whose start instant is smallest in {1, . . . , T} (s = s′), and
+by (2) that block is unique since distinct blocks have distinct start instants. Hence ω = ω′.
+– Block lengths. The length of each block is determined by h, since we have already established
+that s = s′ and ω = ω′, we iterate over the blocks in the same order and find that l = l′.
+• Surjectivity. Given h ∈H, consider the start instant s of the subperiod of period 1 that is:
+s = min{t ∈JTK | ht,1 = 1 and h(t−1) mod T,1 = 0}.
+Then define ω as the sequence of labels of the blocks of h starting from the block that contains s,
+and define l as the lengths of those blocks. By construction, (s, ω, l) satisfies (1)–(4) and Ψ(s, ω, l) =
+h.
+23
+
+
+For the two instances used in Section 5, namely T = 24, S ≡2 and L = (8, 16) or L = (8, 4, 12),
+we have that |H| = 1284 and |H| = 29016, respectively (Table 2). Nevertheless, the number of
+admissible orders ω is much smaller than the number of admissible schedules h: for the same two
+instances |O| = 2 and |O| = 24, so that the orders account for a factor of 642 and 1209 less than the
+schedules themselves (the cardinalities were computed by brute enumeration). Here, we suggest
+to exploit that fact by enumerating the admissible orders ω and optimizing over the continuous
+relaxation of the lengths and starting instant for each order. Hence, the direct method is a hybrid:
+it is continuous in the lengths and starting instant, but discrete in the order. From here onward,
+we fix the subperiod order ω and relax the integrality of the starting instant and the lengths. The
+feasible set of the starting instant is [0, T], and the feasible set of lengths is:
+L(ω) =
+n
+{ls}s∈ω−1(n),n∈N ⊆[1, ∞)
+
+P
+s∈ω−1(n) ls = Ln, ∀n ∈JNK
+o
+,
+which factorizes by period.
+Lemma 4.7. The Euclidean projection onto Q = {q ∈RN | plb ≤q1 ≤· · · ≤qN ≤pub} can be
+computed in O(N) operations, and the Euclidean projection onto L(ω) in O( ¯S log ¯S) operations.
+Proof. • Projection onto Q. The set Q is the intersection of the isotonic cone C := {q ∈RN |
+q1 ≤· · · ≤qN} with the box [plb, pub]N. The Euclidean projection onto C alone is the isotonic
+regression of the point to be projected, and is computed exactly by the pool-adjacent-violators
+algorithm (PAVA) in O(N) operations ([DHM10]). For an isotonic cone intersected with a box
+whose bounds are the same in every coordinate, the projection is obtained from the isotonic so-
+lution by componentwise clipping to [plb, pub]; note that clipping preserves monotonicity, since
+u 7→min{pub, max{plb, u}} is nondecreasing, so the clipped vector is indeed feasible. The total cost
+is O(N).
+• Projection onto L(ω). The set L(ω) is a Cartesian product of N boxed simplices, the n-th one
+carrying the mn coordinates indexed by ω−1(n), lower bounded by 1 and that sum up to Ln. The
+projection therefore decomposes across periods, and the projection onto a boxed simplex of size
+mn ≤Sn is computed in O(Sn log Sn) operations by the algorithm of [Con16]. Summing over n
+gives O
+  P
+n Sn log Sn
+
+= O( ¯S log ¯S).
+Let ω be fixed, and let s and l be continuous start instant and lengths, respectively. The s-th
+subperiod interval is defined as:
+I(s, l)(s) =
+
+
+
+ s + P
+r<s lr, s + P
+r≤s lr
+
+,
+if s + P
+r≤s lr ≤T,
+ s + P
+r<s lr, T
+
+∪
+
+0, s + P
+r≤s lr −T
+
+,
+otherwise,
+and the price map G : Q × [0, T] × L(ω) →RT ,
+G(q, s, l)t = P ¯S
+s=1 qω(s)
+(t −1, t] ∩I(s, l)(s)
+.
+The relaxed price at instant t is thus a convex combination of the period prices, with weights given
+by the fraction of the hour (t −1, t] spent in each subperiod. This is a meaningful object in its own
+right, and it is what makes the relaxation continuous in the boundary positions.
+Lemma 4.8 (The price map is an elementary selection). Given the subperiod order ω, the price
+map G : (q, s, l) 7→
+ G(q, s, l)t
+
+t∈JTK is an elementary selection whose selection derivative can be
+computed in O(T ¯S2).
+24
+
+
+Proof. Write the endpoints of the s-th subperiod, as as(l) = s+P
+r<s lr and bs(l) = as(l)+ls, both
+affine in l. The actual arc of subperiod s on the cycle [0, T] is (s + as, s + bs] taken modulo T, as
+in I(s, l)(s). The overlap of this arc with the t-th cell (t −1, t], os
+t(s, l) =
+(t −1, t] ∩I(s, l)(s)
+, is
+equal to:
+os
+t(s, l) = (min{bs, t} −max{as, t −1})+ + (min{bs −T, t} −max{as −T, t −1})+.
+where (·)+ denotes the positive part, i.e., (x)+ = max{0, x}. Each term is a composition of min,
+max, the positive part and affine maps of (s, l), all of which are elementary selections; by stability
+of S under composition, sum and product [BP20, Proposition 1], so is G(q, s, l)t = P
+s qω(s)os
+t(s, l),
+componentwise in t. The overlaps os
+t are piecewise affine in (s, l), so the selected pieces are affine
+and their derivatives are read off directly. Computing all T ¯S overlaps and the associated derivatives
+naively costs O(T ¯S2), since each as is a prefix sum of l and each os
+t depends on all lr with r ≤s.
+Before stating the algorithm we must address a point on which the pointwise case and the
+ToU case genuinely differ. The boundedness argument of Proposition 4.2 rests on the projection
+onto a box being locally constant outside that box, so that a coordinate which leaves it has zero
+selection derivative and freezes. The projections ΠQ and ΠL(ω) are onto polyhedra that are not
+boxes: outside the set, such a projection varies with the iterate in every direction except the normal
+ones, so its selection derivative does not vanish and no freezing occurs. The argument therefore
+does not extend, and without a further device the iterates (q, s, l) could drift without bound. We
+restore boundedness at negligible cost by composing with an outer clipping onto a box.
+Given ω ∈O, write u := (q, s, l) ∈RN × R × R ¯S for the decision vector of the relaxed problem,
+and let B := [−Λ, Λ]N+1+ ¯S be any box with Λ large enough that Q × [0, T] × L(ω) ⊆B; taking
+Λ ≥max{p, T} suffices. The relaxed time-of-use pricing problem is:
+eF(u) := F
+
+G
+ ΠQ(ˆuq), Π[0,T](ˆus), ΠL(ω)(ˆul)
+
+,
+(RToU)
+where ˆu := ΠB(u). Since Q × [0, T] × L(ω) ⊆B and the inner projections are the identity on their
+own sets, every admissible triple is attained by some u ∈B, so maximizing (RToU) over RN+1+ ¯S
+is equivalent to maximizing F(G(·)) over Q × [0, T] × L(ω).
+Corollary 4.9. Given the subperiod order ω ∈O, the relaxed time-of-use pricing problem (RToU)
+is equivalent to maximizing an elementary selection whose selection derivative can be computed in
+O(T( ¯S2 + log T)).
+Proof. The relaxed objective is (q, s, l) 7→F
+ G(ΠQ(q), Π[0,T](s), ΠL(ω)(l))
+
+. Its three constituents
+lie in S: the projections ΠQ, Π[0,T], and ΠL(ω) are projections onto polyhedra, hence piecewise
+affine and elementary selections, as in Theorem 3.1; the price map G is an elementary selection
+(Lemma 4.8); and the pointwise objective F is an elementary selection in p (Theorem 4.1). Since
+S is closed under composition [BP20, Proposition 1], the relaxed objective belongs to S.
+Proposition 4.10. The iterate sequence (ui)i≥0 generated by Algorithm 2 applied to the objec-
+tive (RToU) is bounded for every initial point.
+Proof. The outermost operation applied to the iterate in (RToU) is the clipping ΠB onto a box,
+which acts coordinatewise and is locally constant at every point lying strictly outside B in the
+corresponding coordinate. The three steps of the proof of Proposition 4.2 therefore apply verbatim,
+with Π[p,p] replaced by ΠB: a coordinate that leaves B has zero selection derivative and is frozen
+thereafter, and every coordinate is consequently bounded.
+25
+
+
+The safeguard makes the guarantee available at the price of an absorbing set, and it is only
+informative at accumulation points lying in B. Since B can be taken as large as desired with-
+out affecting the value of the problem, this is a mild price; but the safeguard must actually be
+implemented, and its activation monitored, for Corollary 4.11 to apply to a given run.
+Algorithm 2 Stochastic gradient ascent for time-of-use pricing
+Require: subperiod order ω ∈O; initial start instant s, lengths l and level prices q0; safeguard
+box B; price bounds plb, pub; client data; step sizes (ηi)i≥0; batch size b; number of iterations
+Nit;
+Ensure: an iterate sequence whose accumulation points are almost surely Clarke critical for the
+objective (RToU)
+1: for i = 0, . . . , Nit −1 do
+2:
+sample a mini-batch Bi ⊆JKK uniformly without replacement, |Bi| = b
+3:
+g ←0
+4:
+ˆp ←G
+ ΠQ(q), Π[0,T](s), ΠL(ω)(l)
+
+5:
+for k ∈Bi do
+6:
+compute the active sets (Lk, Ik, Uk) of x⋆
+k(p) and the multiplier γx
+k(p)
+7:
+x⋆
+k ←ΠXk(x0
+k −αk ˆp);
+y⋆
+k ←Π[0,1]
+ βk(V0
+k −Vk(ˆp))
+
+8:
+compute the phase σk(p) and the selection derivative b∇σk eFk(p)
+9:
+g ←g + b−1Kwk b∇σk eFk(p)
+10:
+end for
+11:
+s ←s + ηigs, l ←l + ηigl, q ←q + ηigq
+12: end for
+13: return s, l, q
+Corollary 4.11. Fix ω ∈O. Let for all i, ηi = cri, and ri = o(1/ log i). Then, for almost every
+c ∈(0, 1], almost surely every accumulation point of the sequence generated by Algorithm 2 is Clarke
+critical for the objective (RToU).
+5
+Numerical experiments
+We apply our model and solution methods to a realistic case study inspired by the French retail
+electricity market. The numerical experiments pursue four goals: (i) to validate the gradient-based
+solver against a commercial solver on the pointwise problem; (ii) to quantify how the retailer’s
+prices, the induced consumption shifts, and client participation respond to the flexibility of the
+clients; (iii) to measure the price of representability (PoR) of Definition 1, that is, the profit the
+retailer forgoes when unconstrained pointwise prices are restricted to admissible time-of-use (ToU)
+schedules; and (iv) to compare the ToU methods that remain tractable at this scale, namely the
+rounding method of Section 4.2.2, the direct method of Section 4.2.4 and, in the configurations
+where it terminates, the indirect method of Section 4.2.3.
+As established in Remark 4.4, the
+complete enumeration benchmark of Section 4.2.1 is out of reach for the instances considered here,
+so the optimal ToU profit F ⋆
+ToU entering Definition 1 is replaced by the best value found by those
+three methods; every price of representability reported below is therefore an upper estimate of the
+true one, and the comparison between methods is a comparison of local optima of a nonconvex
+problem rather than of certified optima.
+26
+
+
+5.1
+Experimental setup
+We describe in turn the dataset, the model parameters, the schedule constraints, and the com-
+putational environment.
+5.1.1
+Dataset
+Data were generated by the SMACH simulator of EDF R&D [Hur+15], which simulates 5000
+residential households (clients). Each household is described by numerical attributes: number of
+occupants, average consumed power, subscribed power (PS), and an electric domestic-hot-water
+indicator (ECS); and categorical attributes: dwelling surface, dwelling type, electric heating, air
+conditioning, and electric-vehicle ownership. The numerical attributes are standardized to zero
+mean and unit variance and the categorical attributes are one-hot encoded, after which the feature
+vectors are partitioned by k-means into K ∈{10, 50, 100} clusters. For each cluster, the client clos-
+est (in Euclidean distance) to the centroid is retained as the representative load profile x0
+k, and the
+cluster cardinality, normalized so that P
+k wk = 1, is used as the weight wk; the retailer’s objective
+is therefore the population-weighted average yearly profit per representative client. Because the
+weights sum to one, profits obtained for different values of K are directly comparable: they all
+estimate the same population average, with an accuracy that improves as the clustering becomes
+finer. The experiments reported below use K ∈{10, 50, 100}, which is the range over which the
+indirect method remains solvable within the time budget. Figure 3 displays the resulting weighted-
+average reference load, which exhibits the two consumption peaks typical of a French residential
+day, around 8–10, and a nightly trough between 22 and 24.
+1
+5
+10
+15
+20
+24
+0.5
+0.6
+0.7
+0.8
+0.9
+Instant t
+x0
+Figure 3: The weighted-average reference consumption PK
+k=1 x0
+kwk (in kWh per hour).
+5.1.2
+Parameters
+The consumption data were aggregated into one-hour intervals over a full day, so T = 24. All
+monetary quantities are expressed in e/kWh for unit prices and e for bills and profit per year
+(365.25 days). For simplicity, we considered a linear cost function C:
+C(x) = PT
+t=1 ctxt,
+where the marginal cost ct was computed from spot prices, transmission tariffs, and French taxes.
+The value V0
+k of the outside offer was set to be equal to Vk((1 + ξ)c) (pointwise prices equal to
+costs inflated by a margin ξ). Client flexibility is encoded through the bounds xlb
+k = (1−fk)x0
+k and
+27
+
+
+1
+5
+10
+15
+20
+24
+0.1
+0.12
+0.14
+0.16
+0.18
+0.2
+Instant t
+ct
+Figure 4: The cost profile ct in e/kWh.
+xub
+k = (1+fk)x0
+k, where fk is the fraction of consumption movable at each hour. The admissible price
+range is [plb, pub] = [0.05, 0.35] e/kWh. Unless stated otherwise we set, for every client k, ξ = 0.05,
+βk = 365.25/100, and fk = 0.1, and we vary a single common flexibility level αk ≡α ∈{0.1, 1, 10}.
+Thus the outside offer is 5% above cost, each client can shift up to 10% of its hourly consumption,
+and 100 e is the width of the participation transition region per year: a client’s participation level yk
+rises from 0 to 1 as the accepted bill undercuts the outside option V0
+k by up to 100 e (cf. Figure 1).
+5.1.3
+Schedule constraints
+We consider two scheduling models that instantiate the set H of Section 2. Both mirror the
+structure of the regulated French heures pleines / heures creuses tariff.
+• Two-period. Two periods (off-peak, on-peak), each split into at most 2 subperiods; 8 off-peak
+hours and 16 on-peak hours: N = 2, S = 2, L1 = 8, L2 = 16.
+• Three-period. Three periods (off-peak, mid-peak, on-peak), each split into at most 2 subperiods;
+8 off-peak, 4 mid-peak, and 12 on-peak hours: N = 3, S = 2, L1 = 8, L2 = 4, L3 = 12.
+The cardinalities of the two schedule sets are reported in Table 2: the extra period enlarges the
+schedule space by a factor 29016/1284 ≈22.6, even though only one additional block boundary is
+introduced. This combinatorial growth motivates the algorithmic choices of Section 4, especially
+when considering the multi-day scenario (cf. Appendix C.5).
+Two-period schedules
+Three-period schedules
+Cardinality
+1284
+29016
+Table 2: Cardinality of the schedule sets for the two-period and three-period models.
+5.1.4
+Computational setup
+The experiments were conducted on a 13th Gen Intel® Core™i5-13600H CPU (up to 4.8 GHz)
+with 32 GB of RAM. The single-level mixed integer program (MINLP-SLF) was formulated in
+AMPL and solved with Knitro on the NEOS Server; being a local solver applied to a nonconvex
+mixed-integer quadratically constrained program, it returns a feasible incumbent and a local op-
+timum rather than a global certificate. The direct, closed-form formulation (the maximization of
+28
+
+
+F(p) from Theorem 4.1) was implemented in Python using PyTorch and optimized with stochastic
+gradient ascent. For reproducibility we report the solver settings. The recursion was run from the
+initial point p0 = 0.12 with learning rate 5 × 10−5 for the pointwise and 5 × 10−6 for the ToU
+version, with a scaling of 106 for the gradient with respect to the continuous start instant and the
+lengths, mini-batch size b = 10, and Nit = 105 iterations; unless stated otherwise a single start
+was used. The rounding step of Section 4.2 was solved as a mixed-integer quadratic program using
+CPLEX with default parameters.
+5.2
+Pointwise pricing
+In the current section, we treat the pointwise model (cf. Section 4.1). First, to validate the
+direct method by comparison with the indirect method, we report the relative profit difference and
+the CPU time. Then, we analyze how the retailer’s prices, the induced consumption shifts, and
+client participation respond to the flexibility of the clients.
+5.2.1
+Profit
+Table 3 compares the direct method that implements Algorithm 1 with the indirect method that
+solves the single-level reformulation of Corollary 3.8 using Knitro. The purpose of the compar-
+ison is validation: since neither route certifies global optimality, agreement between two methods
+that treat the optimization problem from different perspectives (closed-form differentations, and
+MINLP) is an important sign that both approaches are reliable.
+The two methods agree closely: over the nine configurations the relative gap ∆lies between
+−0.13% and 0.29%, i.e. at most three cents on a profit of about 10 e per representative client. The
+results read as both methods reaching comparable local optima of a nonconvex objective rather
+than as a systematic advantage of either. Two regularities are visible across the table. First, profit
+decreases with the number of representative clients, from 10.26 e at K = 10 to 9.98 e at K = 100
+for α = 0.1: a coarse clustering concentrates the population on a few profiles that the retailer
+can target precisely, whereas a finer one exposes the heterogeneity that a single tariff must serve
+simultaneously. Second, and more surprisingly at first sight, profit decreases as clients become
+more flexible, from 10.26 e to 10.05 e at K = 10 and from 9.98 e to 9.74 e at K = 100 when
+α moves from 0.1 to 10. Flexibility is valuable to the retailer only through the load it displaces
+towards cheap hours, but it is equally available to the client under the outside option, whose value
+V0
+k = Vk((1 + ξ)c) decreases with α, i.e. becomes more attractive to the client; the second effect
+dominates here, so flexibility mostly strengthens the client’s fallback position.
+5.2.2
+Computational time
+Table 4 reports CPU time (hh:mm:ss).
+The two methods scale in opposite ways.
+The in-
+direct method solves a mixed-integer program whose size grows linearly in K: the reformula-
+tion (MINLP-SLF) carries 2TK binary variables for the consumption bounds and 2K for the
+participation bounds, so at T = 24 the model grows from 500 to 5000 binaries between K = 10
+and K = 100, which makes the branch-and-bound more demanding. The direct method, by con-
+trast, performs a fixed number Nit of iterations whose cost is O(bT log T) by Corollary 3.2, hence
+independent of K once the mini-batch size b is fixed.
+29
+
+
+10
+50
+100
+α
+Direct
+∆
+Direct
+∆
+Direct
+∆
+0.1
+10.26
+0.09%
+10.18
+-0.13%
+9.98
+0.11%
+1
+10.20
+0.16%
+10.08
+0.07%
+9.88
+0.29%
+10
+10.05
+0.08%
+9.87
+0.16%
+9.74
+0.07%
+Table 3: Pointwise pricing model profit comparison using the direct and the indirect methods.
+For each client count: Profit is the weighted-average profit per representative client ( e); ∆is the
+relative profit difference versus the indirect method.
+The indirect method is essentially instantaneous at K = 10 (1 to 11 seconds) but requires
+between 8 and 20 minutes at K = 100, a growth of three orders of magnitude for a tenfold increase
+in the number of clients. The direct method stays between 2 and 9 minutes throughout, with no
+trend in K. Since the retailer’s interest lies in fine clusterings, the flat profile of the direct method
+is the operationally relevant property, and it is what makes the closed-form route the method of
+choice for such models.
+10
+50
+100
+α
+Direct
+Indirect
+Direct
+Indirect
+Direct
+Indirect
+0.1
+02:19
+00:01
+05:18
+01:51
+09:00
+16:06
+1
+02:19
+00:11
+03:03
+03:54
+02:34
+20:13
+10
+07:56
+00:01
+02:05
+03:49
+02:55
+08:32
+Table 4: Pointwise pricing model CPU time comparison using the direct and the indirect methods.
+5.2.3
+Prices
+Figure 5 shows the hourly pointwise prices for K = 50 clients, obtained by both methods and
+for the three flexibility levels. At low flexibility (α = 0.1) the price profile is highly variable and
+tracks the cost profile of Figure 4. As α increases to 1 and then 10 the profile flattens markedly. At
+several off-peak hours the optimal price falls below the marginal cost ct of Figure 4: the retailer uses
+loss-leading off-peak prices to induce load shifting and recovers margin at peak, which is possible
+precisely because the daily energy total is conserved by the constraint defining Xk. The direct and
+the indirect methods yield visually similar profiles, hour by hour and at all three flexibility levels,
+which is the qualitative counterpart of the profit gap of Table 3: the two methods do not merely
+reach the same value, they reach nearly the same price vector.
+5.2.4
+Load shifting
+Figure 6 shows the relative consumption shift (x⋆−x0)/x0 induced by the direct method’s
+pointwise prices, for K = 50 clients. At low flexibility (α = 0.1) clients barely move load: the shift
+30
+
+
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+Figure 5: Pointwise prices for 50 clients by the direct method (top) and the indirect method
+(bottom); α = 0.1 (blue, left), α = 1 (red, middle), α = 10 (green, right). Prices are in e/kWh.
+stays within a few percentage points of the baseline across the day. As α increases to 1 and 10,
+the shift widens until it is pinned at the ±10% bounds over most of the day, and its shape mirrors
+the price profile of Figure 5, with consumption drawn away from the priciest hours and into the
+cheapest ones.
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+Figure 6: Average relative consumption shift PK
+k=1
+x⋆
+k−x0
+k
+x0
+k
+wk in % for 50 clients under the direct
+method; α = 0.1 (blue, left), α = 1 (red, middle), α = 10 (green, right).
+5.2.5
+Participation
+Table 5 reports the average participation level PK
+k=1 y⋆
+kwk of the clients. The direct and the
+indirect methods again agree, the largest discrepancy is 1% (at K = 10, α = 1), which corroborates
+once again the reading of Table 3. Participation lies in a narrow band, between 18.2% and 21.3%
+31
+
+
+over all 18 entries, and moves in two systematic ways. It decreases with the number of representative
+clients, from 21.3% to 19.1% at α = 0.1 between K = 10 and K = 100, for the same reason that
+profit does: a single price vector cannot be equally attractive to a more heterogeneous population.
+It also decreases with flexibility, by 0.4 to 1.3 percentage points between α = 0.1 and α = 10
+depending on K. The latter effect is the participation counterpart of the profit erosion noted in
+Section 5.2.1: a more flexible client also reshapes its consumption more aggressively under the
+outside offer, so V0
+k falls and the proposed tariff must concede more to close the same gap. This
+shows that the proposed offer has the potential to attract around 20% of customers, given the
+parameters chosen.
+10
+50
+100
+α
+Direct
+Indirect
+Direct
+Indirect
+Direct
+Indirect
+0.1
+21.30 %
+20.68 %
+19.47 %
+18.85 %
+19.11 %
+19.01 %
+1
+21.27 %
+20.27 %
+18.91 %
+18.88 %
+18.73 %
+18.69 %
+10
+20.57 %
+19.89 %
+18.22 %
+18.43 %
+18.73 %
+18.50 %
+Table 5: Pointwise pricing model participation comparison using the direct and the indirect meth-
+ods.
+5.3
+Relaxed time-of-use pricing
+In the current section, we treat the relaxed time-of-use model (RToU), a middle ground between
+the pointwise pricing and the binary time-of-use pricing, where the start instant and the lengths
+are not necessarily integers, and where Algorithm 2 was run for all ω ∈O.
+5.3.1
+Profit
+Table 6 reports, for each configuration, the price of representability PoRN of the relaxed profit
+with respect to the pointwise profit obtained by the indirect method, where N is the number of
+periods. Looking at Table 6, we see that PoRN increases with the flexibility in all six columns, from
+1.37% to 27.19% for the two-period model at K = 10 and from 1.23% to 2.56% for the three-period
+model at K = 100. The interpretation is similar to the one given for the prices in Section 5.2.1:
+a flexible client reacts to the shape of the price signal, and a pointwise signal can be shaped hour
+by hour (which is the case for the outside option), whereas a ToU signal (which is the case for the
+proposed offer) is constant on each period. When α is small the client barely moves, the shape
+hardly matters and the two models nearly coincide; when α is large the shape is what produces
+the profit, and the loss caused by flattening it grows accordingly. In addition, we note that the
+three-period model dominates the two-period one in eight of the nine cells, the only exception being
+K = 10, α = 0.1, where the two are within 0.23 percentage points of each other.
+5.3.2
+Computational Time
+Table 7 reports the cumulative CPU time of Algorithm 2 over all orders.
+Recall that the
+two-period model has |O| = 2 orders while the three-period model has |O| = 24, so the three-
+32
+
+
+10
+50
+100
+α
+PoR2
+PoR3
+PoR2
+PoR3
+PoR2
+PoR3
+0.1
+1.37%
+1.60%
+3.89%
+1.66%
+1.72%
+1.23%
+1
+2.84%
+2.83%
+4.57%
+1.96%
+2.67%
+1.46%
+10
+27.19%
+2.83%
+10.26%
+2.93%
+8.01%
+2.56%
+Table 6: Relaxed time-of-use pricing model profit for the two-period and the three-period models.
+For each client count: PoRN is the relative profit difference versus the pointwise profit obtained
+for the indirect method.
+period runs are expected to be roughly an order of magnitude more expensive than the two-period
+ones. The measured ratio ranges from 9.37 (10 clients, α = 0.1) to 17.66 (100 clients, α = 0.1),
+with an average of 13.97. Moreover, the per-order computation time is essentially identical for
+the two schedule models and remains comparable to that of the pointwise model, as predicted
+by Corollary 4.9. The most expensive component of the direct method is the projection of the
+optimal consumption onto each client’s feasible set Xk, which requires O(T log T) time. Since b
+projections are performed per iteration and the algorithm runs for Nit iterations, the total cost is
+O(b T log T Nit); in practice, the stopping criterion terminates the algorithm well before this bound.
+10
+50
+100
+α
+N = 2
+N = 3
+N = 2
+N = 3
+N = 2
+N = 3
+0.1
+03:57
+37:01
+03:44
+01:00:06
+04:56
+01:27:07
+1
+03:40
+42:13
+03:54
+01:03:37
+05:13
+01:15:34
+10
+03:38
+52:37
+04:20
+01:05:02
+07:39
+01:22:33
+Table 7: Relaxed time-of-use pricing model CPU time using Algorithm 2 for all orders.
+5.3.3
+Prices
+Figure 7 shows the relaxed hourly prices for K = 50 clients. We note that most hours carry
+one of the period levels exactly, but a few carry an intermediate value. Those are the hours that
+fall between two periods, in which, the effective price is the convex combination of the period levels
+weighted by the fraction of the hour spent in each subperiod.
+For the two-period case: the off-peak level is close to 0.12 e/kWh and the on-peak level to
+0.167 e/kWh at all three flexibilities; four hours are fractional, and the off-peak weights they carry,
+added to the fully off-peak hours, return exactly L1 = 8, as the projection onto L(ω) of Lemma 4.7
+enforces. The two off-peak subperiods so recovered sit on the two low points of the cost profile of
+Figure 4.
+For the three-period case: we note that even though the three levels are available, only two were
+used in the solution, and the off-peak level accounts for twelve hours, which is exactly L1+L2 = 8+4.
+33
+
+
+The optimizer therefore sets q1 = q2: the mid-peak period is priced at the off-peak level, and the
+third level is never used. The constraint q1 ≤q2 of Q is thus active at the solution, so the isotonic
+part of the projection of Lemma 4.7 pools the two coordinates. Adding the third period did not
+create a third distinct price level (q1 = q2), but it expanded the cheap period from 8 to 12 hours
+(L1 + L2 = 12). Finally, all levels lie strictly inside [plb, pub] = [0.05, 0.35].
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+Figure 7: Relaxed time-of-use prices for 50 clients under the two-period model (top) and the three-
+period model (bottom); α = 0.1 (blue, left), α = 1 (red, middle), α = 10 (green, right). Prices are
+in e/kWh.
+5.3.4
+Load shifting and participation
+The load-shifting and participation results for the relaxed time-of-use model closely mirror those
+of the pointwise model. To avoid repetition, we present them in Appendix D.1, where the interested
+reader will find the full set of figures.
+5.4
+Time-of-use pricing
+In the current section, we treat the time-of-use model (cf. Section 4.2). We compare the three
+methods that remain tractable at this scale, the rounding method of Section 4.2.2 (denoted by R),
+the direct method of Section 4.2.4 and the indirect method of Section 4.2.3, on the two schedule
+families of Section 5.1.3. An entry N/A means that the solver returned no feasible incumbent within
+the time budget. We first compare profits and derive the price of representability, then describe
+the resulting tariffs.
+34
+
+
+5.4.1
+Profit
+Table 8 reports the profits and Table 9 the associated prices of representability, that is, the
+relative loss of each ToU profit with respect to the pointwise profit of the indirect method. Since
+no method certifies global optimality, the price of representability of a configuration is more of an
+estimate than a precise measure.
+The estimated price of representability lies between 1.31% and 13.83% for the two-period family
+and between 0.59% and 6.55% for the three-period one. In absolute terms the two-period tariff
+returns between 8.43 e and 10.14 e per representative client against a pointwise benchmark of
+9.74 e to 10.27 e.
+Restricting a retailer that could price every hour separately to a regulator-
+admissible two-block schedule therefore costs on average 6.85% in the two-period case and 3.63%
+in the three-period case. The estimate increases with α in every column, and this is consistent with
+the trend already recorded on the relaxed one in Table 6. The three-period estimate is below the
+two-period, which was expected, since the three-period family reproduces every two-period tariff.
+Indeed, choosing q1 equal to the off-peak price and q2 = q3 equal to the on-peak price is admissible
+for Q and induces the same effective price vector.
+N = 2
+N = 3
+Clients
+α
+Direct Indirect
+R
+Direct Indirect
+R
+0.1
+10.07
+10.14
+9.82
+9.93
+10.21
+9.87
+10
+1
+9.84
+9.87
+9.84
+9.47
+9.91
+9.70
+10
+7.30
+8.89
+8.87
+9.39
+9.49
+9.33
+0.1
+9.69
+9.69
+9.30
+9.68
+9.96
+9.79
+50
+1
+9.48
+7.48
+9.34
+9.50
+9.02
+9.57
+10
+8.52
+3.90
+8.41
+9.24
+N/A
+9.24
+0.1
+9.70
+9.69
+9.69
+9.75
+9.88
+9.46
+100
+1
+9.47
+N/A
+9.37
+9.60
+N/A
+9.59
+10
+8.43
+6.14
+8.43
+9.21
+6.76
+9.21
+Table 8: Time-of-use pricing model profit ( e per representative client) for the two-period (N = 2)
+and the three-period (N = 3) models. For each number of clients: Direct, Indirect and R are the
+profits for the direct (SGA), indirect (Knitro) and rounding methods, respectively; the best value
+of each block is in bold and N/A marks a run that returned no incumbent.
+5.4.2
+Computational time
+Table 10 reports CPU time. The rounding method is the cheapest and by far the most stable.
+Its cost is essentially independent of the schedule family because it never enumerates schedules: it
+performs one pointwise solve, one projection onto H written as a mixed-integer quadratic program,
+and one price re-optimization at the fixed schedule h⋆, and only the middle step sees H at all. The
+direct method costs on average 10:08 for N = 2, and on average 1:51:28 for N = 3. The ratio of the
+35
+
+
+N = 2
+N = 3
+Clients
+α
+Direct
+Indirect
+R
+Direct
+Indirect
+R
+0.1
+1.96%
+1.31%
+4.37%
+3.35%
+0.59%
+3.94%
+10
+1
+3.66%
+3.40%
+3.66%
+7.31%
+2.98%
+5.02%
+10
+27.40%
+11.55%
+11.77%
+6.64%
+5.62%
+7.18%
+0.1
+4.75%
+4.69%
+8.57%
+4.81%
+2.10%
+3.75%
+50
+1
+5.99%
+25.81%
+7.34%
+5.84%
+10.55%
+5.13%
+10
+13.83%
+60.59%
+14.94%
+6.55%
+N/A
+6.55%
+0.1
+2.91%
+2.96%
+2.98%
+2.38%
+1.11%
+5.31%
+100
+1
+4.43%
+N/A
+5.43%
+3.13%
+N/A
+3.19%
+10
+13.50%
+37.01%
+13.50% 5.43%
+30.65%
+5.43%
+Table 9: Time-of-use pricing model PoR for the two-period (N = 2) and the three-period (N = 3)
+models.
+For each number of clients: Direct, Indirect and R correspond to the direct (SGA),
+indirect (Knitro) and rounding methods, respectively; the smallest entry of each block, in bold,
+is the estimate of PoR(Q, H) retained for that configuration.
+two averages is 11.0, which is close to the ratio |O3|/|O2| = 24/2 = 12 of the numbers of admissible
+subperiod orders, the per-order cost being the same for the two families by Table 7.
+The indirect method is the only one whose cost grows with the number of clients, and it is the
+only one that fails. The reformulation (MINLP-SLF) already carries 2TK + 2K binaries for the
+lower level, as noted in Section 5.2.1, and the schedules add T · N more integer variables together
+with the switch-counting constraints (6). As a result, the solver may struggle to find a solution
+within the allotted time, hence the N/A entries in the table.
+5.4.3
+Prices
+Figure 8 shows the ToU tariffs for K = 50 clients. We note that the same schedule is selected at
+all three flexibility levels for the two-period model, whereas for the three-period model the schedule
+differs at α = 10; in each period configuration the tariff catches the off-peak periods of the cost
+profile of Figure 4.
+For the two-period case: off-peak hours are 2 to 6 and 14 to 16, on-peak elsewhere, with levels
+close to 0.123 e/kWh and 0.166 e/kWh. Unlike the pointwise prices of Figure 5, which range from
+about 0.11 to 0.19 e/kWh and at several hours fall below the marginal cost, the ToU levels follow
+the cost profile far more coarsely: the tariff prices the whole 7–13 stretch at a single level although
+ct varies from 0.132 to 0.171 e/kWh over it.
+For the three-period case: the collapse observed on the relaxed solutions persists, as the tariff
+again shows two levels only (q1 = q2), close to 0.128 e/kWh and 0.176 e/kWh, and the cheap
+plateau covers twelve hours (L1 + L2 = 12). All the levels lie strictly inside [plb, pub] = [0.05, 0.35],
+so the regulatory bounds are inactive and it is the ordering constraint of Q, active through q1 = q2,
+36
+
+
+N = 2
+N = 3
+Clients
+α
+Direct
+Indirect
+R
+Direct
+Indirect
+R
+0.1
+05:59
+00:40
+04:58
+1:05:10
+14:08
+05:26
+10
+1
+05:07
+02:05
+03:12
+57:17
+02:54
+03:24
+10
+05:31
+11:38
+04:44
+1:09:51
+40:10
+05:30
+0.1
+09:19
+28:38
+10:33
+2:04:24
+2:17:13
+08:32
+50
+1
+07:59
+24:33
+05:50
+2:03:04
+20:45
+05:18
+10
+10:52
+1:37:42
+06:45
+2:15:59
+N/A
+07:49
+0.1
+12:52
+1:47:03
+13:16
+2:31:38
+2:28:54
+16:07
+100
+1
+10:30
+N/A
+13:55
+2:09:54
+N/A
+14:09
+10
+23:00
+1:46:16
+08:53
+2:25:53
+2:10:59
+09:11
+Table 10: Time-of-use pricing model CPU time for the two-period (N = 2) and the three-period
+(N = 3) models. For each number of clients: Direct and Indirect are the cumulative CPU time for
+the direct (SGA) and the CPU time of the indirect (Knitro) methods, respectively, and R that of
+the rounding method.
+that binds in the three-period model.
+5.4.4
+Load shifting and participation
+Once again, the load-shifting and participation results for the relaxed time-of-use model closely
+mirror those of the pointwise model. To avoid repetition, we present them in Appendix D.1, where
+the interested reader will find the full set of figures.
+6
+Concluding observations and perspectives
+We have studied the joint design of the temporal structure and the price levels of a time-of-use
+tariff, in a bilevel model in which each client both reshapes its consumption and decides whether
+to accept the offer. The three ingredients (a combinatorial schedule, continuous price levels, and
+an explicit client-level participation decision) have been treated within a single model.
+The analysis rests on one structural fact: although the client’s program is nonconvex, because
+the participation level multiplies the value of the consumption problem, it decomposes sequentially
+into two Euclidean projections (Theorem 3.1) evaluable in O(T log T) operations (Corollary 3.2).
+Two consequences follow. First, the optimality system of that decomposition, rather than the KKT
+system of the joint program, yields an exact single-level mixed-integer reformulation with instance-
+computable big-M bounds on every multiplier (Theorem 3.6, Corollary 3.8). Second, the leader’s
+objective is an elementary selection in the sense of Bolte and Pauwels, so a stochastic gradient
+ascent driven by a cheap selection derivative has almost surely Clarke critical accumulation points
+(Theorem 4.1, Corollary 4.3), and the same holds for the schedule once it is reparametrized by
+37
+
+
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+1 5
+10 15 20 24
+0.1
+0.15
+0.2
+0.25
+Instant t
+Figure 8: Time-of-use prices for 50 clients under the two-period model (top) and the three-period
+model (bottom); α = 0.1 (blue, left), α = 1 (red, middle), α = 10 (green, right). Prices are in
+e/kWh.
+continuous start instants and lengths (Proposition 4.6, Corollary 4.11).
+The experiments on the French residential case study support three conclusions. The gradient
+route is a valid alternative to a commercial mixed-integer solver on the pointwise problem: the two
+agree within 0.3% on profit and yield visually indistinguishable price vectors, while their compu-
+tational costs scale in opposite directions, the direct method being independent of the number of
+clients by construction and two to eight times faster already at K = 100. On the ToU problem,
+the mixed-integer route is the best of the three on the small instances, but lags behind for larger
+instances. The price of representability of a two-period tariff is estimated at 6.85% and that of a
+three-period tariff at 3.63%, which is consistent with the fact that the three-period family domi-
+nates the two-period tariff. Finally, the ToU tariffs are much coarser than the pointwise ones, and
+they do not follow the cost profile as closely, but they still capture the off-peak periods.
+Three limitations should be kept in mind. The reported prices of representability are upper
+estimates: complete enumeration is out of reach at this scale (Remark 4.4), so both the numer-
+ator and the denominator of Definition 1 come from local solves of a nonconvex problem. The
+experiments cover a single representative day, a single population, and a single calibration of the
+participation sensitivity βk and of the flexibility envelope fk; the levels of participation reported
+here are consequences of that calibration and are meaningful only as comparisons across pricing
+schemes at fixed βk. Finally, the guarantee of Corollary 4.11 is a criticality guarantee, not a global
+one, and it is informative only at accumulation points interior to the safeguard box (which was the
+case in our experiments).
+Several extensions preserve the structure on which the analysis rests, and are developed in
+38
+
+
+Appendix C: an anisotropic discomfort matrix, a cost that is nonseparable across clients, a general
+strictly convex regularizer of the participation decision, a menu of several offers, and day-dependent
+schedules for seasonal or weekday/weekend tariffs. The last two are the most consequential, since
+they multiply the schedule space by I offers or D days and therefore remove any remaining hope
+of enumeration, leaving the gradient-based methods as the only practicable route.
+References
+[ARR25]
+A. G. Abate, R. Riccardi, and C. Ruiz. “Dynamic tariff-based demand response in retail
+electricity market under uncertainty”. In: OR Spectrum 47 (2025), pp. 1011–1045.
+[AE08]
+M. H. Albadi and E. F. El-Saadany. “A summary of demand response in electricity
+markets”. In: Electric power systems research 78.11 (2008), pp. 1989–1996.
+[AAS20]
+M. J. Alves, C. H. Antunes, and I. Soares. “Optimizing prices and periods in time-of-
+use electricity tariff design using bilevel programming”. In: European Conference on
+Evolutionary Computation in Combinatorial Optimization (Part of EvoStar). Springer.
+2020, pp. 1–17.
+[ABG21]
+M. F. Anjos, L. Brotcorne, and J. A. Gomez-Herrera. “Optimal setting of time-and-
+level-of-use prices for an electricity supplier”. In: Energy 225 (2021), p. 120517.
+[Aus+20]
+D. Aussel, L. Brotcorne, S. Lepaul, and L. von Niederh¨ausern. “A trilevel model for best
+response in energy demand-side management”. In: European Journal of Operational
+Research 281.2 (2020), pp. 299–315.
+[Bar13]
+J. F. Bard. Practical bilevel optimization: algorithms and applications. Vol. 30. Springer
+Science & Business Media, 2013.
+[Bes+20]
+M. Besan¸con, M. F. Anjos, L. Brotcorne, and J. A. Gomez-Herrera. “A bilevel approach
+for optimal price-setting of time-and-level-of-use tariffs”. In: IEEE Transactions on
+Smart Grid 11.6 (2020), pp. 5462–5465.
+[BP20]
+J. Bolte and E. Pauwels. “A mathematical model for automatic differentiation in ma-
+chine learning”. In: Advances in Neural Information Processing Systems 33 (2020),
+pp. 10809–10819.
+[Buc23]
+C. Buchheim. “Bilevel linear optimization belongs to NP and admits polynomial-size
+KKT-based reformulations”. In: Operations Research Letters 51.6 (2023), pp. 618–622.
+[CXZ23]
+L. Chen, J. Xu, and J. Zhang. “On bilevel optimization without lower-level strong
+convexity”. In: arXiv preprint arXiv:2301.00712 (2023).
+[CMS05]
+B. Colson, P. Marcotte, and G. Savard. “Bilevel programming: A survey”. In: 4or 3.2
+(2005), pp. 87–107.
+[Con16]
+L. Condat. “Fast projection onto the simplex and the l 1 ball”. In: Mathematical Pro-
+gramming 158.1 (2016), pp. 575–585.
+[CKM24]
+B. Crowley, J. Kazempour, and L. Mitridati. “How can energy communities provide
+grid services? A dynamic pricing mechanism with budget balance, individual rational-
+ity, and fair allocation”. In: Applied Energy 356 (2024), p. 122398.
+39
+
+
+[Cro+25]
+B. Crowley, J. Kazempour, L. Mitridati, and M. Alizadeh. “Learning prosumer behav-
+ior in energy communities: Integrating bilevel programming and online learning”. In:
+Applied Energy 392 (2025), p. 125932.
+[DHM10]
+J. De Leeuw, K. Hornik, and P. Mair. “Isotone optimization in R: pool-adjacent-
+violators algorithm (PAVA) and active set methods”. In: Journal of statistical software
+32 (2010), pp. 1–24.
+[Dem02]
+S. Dempe. Foundations of bilevel programming. Springer, 2002.
+[Dem20]
+S. Dempe. “Bilevel optimization: theory, algorithms, applications and a bibliography”.
+In: Bilevel optimization: advances and next challenges. Springer, 2020, pp. 581–672.
+[Dem+15]
+S. Dempe, V. Kalashnikov, G. A. P´erez-Vald´es, and N. Kalashnykova. “Bilevel pro-
+gramming problems”. In: Energy Systems. Springer, Berlin 10.978-3 (2015), pp. 53–
+56.
+[FP03]
+F. Facchinei and J.-S. Pang. Finite-dimensional variational inequalities and comple-
+mentarity problems. Springer, 2003.
+[Fla13]
+C. M. Flath. “An optimization approach for the design of time-of-use rates”. In: IECON
+2013-39th Annual Conference of the IEEE Industrial Electronics Society. IEEE. 2013,
+pp. 4727–4732.
+[Gou+16]
+S. Gould, B. Fernando, A. Cherian, P. Anderson, R. S. Cruz, and E. Guo. “On dif-
+ferentiating parameterized argmin and argmax problems with application to bi-level
+optimization”. In: arXiv preprint arXiv:1607.05447 (2016).
+[Gri+21]
+V. Grimm, G. Orlinskaya, L. Schewe, M. Schmidt, and G. Z¨ottl. “Optimal design of
+retailer-prosumer electricity tariffs using bilevel optimization”. In: Omega 102 (2021),
+p. 102327.
+[HAE20]
+C. Henggeler Antunes, M. J. Alves, and B. Ecer. “Bilevel optimization to deal with de-
+mand response in power grids: models, methods and challenges”. In: TOP 28.3 (2020),
+pp. 814–842.
+[HMW25]
+H. Huang, P. Miao, and Q. Wei. “Bilevel optimization in smart grid operations: A
+review of real-time electricity pricing strategies and future directions”. In: Electric
+Power Systems Research (2025).
+[Hur+15]
+T. Huraux, N. Sabouret, Y. Haradji, and F. Semp´e. “Simulations multi-agents de
+l’activit´e humaine: application dans le contexte ´energ´etique r´esidentiel fran¸cais”. In:
+Jan. 2015.
+[Jac+24]
+Q. Jacquet, W. van Ackooij, C. Alasseur, and S. Gaubert. “Quadratic regularization
+of bilevel pricing problems and application to electricity retail markets”. In: European
+Journal of Operational Research 313.3 (2024), pp. 841–857.
+[Jac+19]
+P. Jacquot et al. Game theory and Optimization Methods for Decentralized Electric
+Systems. Tech. rep. Universite Paris-Saclay, Ecole Doctorale No. 574-Mathematiques
+Hadamard-EDMH . . ., 2019.
+[Kle+21]
+T. Kleinert, M. Labb´e, I. Ljubi´c, and M. Schmidt. “A survey on mixed-integer pro-
+gramming techniques in bilevel optimization”. In: EURO Journal on Computational
+Optimization 9 (2021), p. 100007.
+40
+
+
+[Kov16]
+A. Kov´acs. “Bilevel programming approach to optimizing a time-variant electricity
+tariff for demand response”. In: 2016 IEEE International Conference on Smart Grid
+Communications (SmartGridComm). IEEE. 2016, pp. 674–679.
+[Kov19]
+A. Kov´acs. “Bilevel programming approach to demand response management with
+day-ahead tariff”. In: Journal of Modern Power Systems and Clean Energy 7.6 (2019),
+pp. 1632–1643.
+[Liu+24]
+R. Liu, Z. Liu, W. Yao, S. Zeng, and J. Zhang. “Moreau envelope for nonconvex bi-level
+optimization: A single-loop and Hessian-free solution strategy”. In: Proceedings of the
+41st International Conference on Machine Learning. PMLR. 2024, pp. 31566–31596.
+[LM24]
+Z. Lu and S. Mei. “First-order penalty methods for bilevel optimization”. In: SIAM
+Journal on Optimization 34.2 (2024), pp. 1937–1969.
+[SXC25]
+H. Shen, Q. Xiao, and T. Chen. “On penalty-based bilevel gradient descent method”.
+In: Mathematical Programming (2025), pp. 1–51.
+[SMD17]
+A. Sinha, P. Malo, and K. Deb. “A review on bilevel optimization: From classical
+to evolutionary approaches and applications”. In: IEEE transactions on evolutionary
+computation 22.2 (2017), pp. 276–295.
+[SAA20]
+I. Soares, M. J. Alves, and C. H. Antunes. “Designing time-of-use tariffs in electricity
+retail markets using a bi-level model–Estimating bounds when the lower level problem
+cannot be exactly solved”. In: Omega 93 (2020), p. 102027.
+[VZV15]
+J. S. Vardakas, N. Zorba, and C. V. Verikoukis. “A survey on demand response pro-
+grams in smart grids: Pricing methods and optimization algorithms”. In: IEEE Com-
+munications Surveys & Tutorials 17.1 (2015), pp. 152–178.
+[Ven+22]
+A. Venkatraman, G. Hug, C. Schaffner, and M. G. Vay´a. “Optimal design of time-
+of-use tariffs using bilevel optimization”. In: 2022 IEEE PES innovative smart grid
+technologies conference Europe (ISGT-Europe). IEEE. 2022, pp. 1–5.
+[VT52]
+S. H. Von and P. A. T. Theory of The Market Economy. 1952.
+[YTN12]
+P. Yang, G. Tang, and A. Nehorai. “A game-theoretic approach for optimal time-of-use
+electricity pricing”. In: IEEE Transactions on Power Systems 28.2 (2012), pp. 884–892.
+[Zug+13]
+M. Zugno, J. M. Morales, P. Pinson, and H. Madsen. “A bilevel model for electricity
+retailers’ participation in a demand response market environment”. In: Energy Eco-
+nomics 36 (2013), pp. 182–197.
+A
+Notation
+Symbol
+Description
+Sets and indices
+Indices and cardinalities
+continued on the next page
+41
+
+
+Table 11 continued from the previous page.
+Symbol
+Description
+JAK
+Set of integers {1, 2, . . . , A}.
+t ∈JTK
+Index of time steps.
+T
+Number of time steps; a time step typically corresponds to one hour, but may be a
+finer subdivision.
+k ∈JKK
+Index of clients.
+K
+Number of clients.
+n ∈JNK
+Index of period types (e.g. off-peak, shoulder, peak).
+N
+Number of period types.
+s ∈J ¯SK
+Index of subperiods.
+Model sets
+Q
+Set of admissible price-level vectors q = (qn)n∈JNK, see (4).
+P
+Set of admissible pointwise price vectors, P := [plb, pub]T .
+H
+Set of admissible schedules h = (ht,n), see (5).
+M
+Set of lower-dimensional representations of the set H, see Proposition 4.6.
+O
+Set of admissible order maps.
+L(ω)
+Relaxed set of admissible subperiod-length vectors associated with the order map
+ω.
+Xk
+Consumption feasible set of client k (a boxed simplex), see (3).
+Parameters
+Schedule structure
+Ln
+Prescribed total duration (number of time steps) of period type n.
+Sn
+Maximum number of subperiods (contiguous cyclic blocks) of period type n.
+¯S
+Maximum total number of subperiods of a schedule, ¯S = PN
+n=1 Sn.
+Prices and supply cost
+plb, pub
+Minimum and maximum admissible price, respectively, in e/kWh.
+ct
+Marginal cost of supplying electricity at time step t in e/kWh.
+Client demand data (kWh)
+x0
+t,k
+Baseline consumption of client k at time step t.
+xlb
+t,k, xub
+t,k
+Minimum and maximum consumption of client k at time step t, respectively.
+fk
+Fraction of hourly consumption that client k can shift; used to set xlb
+k , xub
+k
+in Sec-
+tion 5.
+Client preferences and outside option
+continued on the next page
+42
+
+
+Table 11 continued from the previous page.
+Symbol
+Description
+wk
+Weight of client k in the retailer’s objective.
+αk
+Flexibility of client k, i.e. willingness to deviate from the baseline x0
+k.
+βk
+Choice sensitivity of client k in 1/ e; 1/βk is the width, in e, of the band over which
+acceptance moves from 0 to 1.
+p0
+k
+Price vector of the outside option of client k in e/kWh.
+V0
+k
+Value of the outside option of client k in e (e.g. a current contract or a regulated
+default tariff), including the associated discomfort.
+Big-M constants
+Mk, Mλ
+k , Mµ
+k
+Instance-computable big-M constants bounding the multipliers of client k, see The-
+orem 3.6.
+Decision variables
+Upper level (retailer): schedule
+ht,n
+Binary variable equal to 1 if time step t belongs to period type n, and 0 otherwise.
+ω ∈O
+Order map assigning each subperiod index to a period type.
+s
+Starting time step of the anchoring subperiod, see Proposition 4.6.
+ls
+Length of subperiod s.
+Upper level (retailer): prices
+qn
+Continuous variable representing the price of period type n in e/kWh.
+Lower level (clients)
+xt,k
+Continuous variable representing the consumption of client k at time step t in kWh.
+yk
+Participation level of client k, yk ∈[0, 1]: probability (equivalently, within a cluster,
+fraction) of client k accepting the retailer’s offer rather than the outside option.
+Dual variables of the lower-level problem
+λx
+t,k, µx
+t,k
+Multipliers of the upper and lower consumption bounds of client k at time step t,
+respectively.
+γx
+k
+Multiplier of the daily energy equality constraint of client k.
+λy
+k, µy
+k
+Multipliers of the upper and lower bounds on yk, respectively.
+Auxiliary quantities
+pt
+Pointwise (effective) price at time step t in e/kWh, pt = PN
+n=1 ht,nqn.
+x⋆
+k(p)
+Optimal consumption of client k under the price signal p.
+y⋆
+k(p)
+Optimal participation level of client k under the price signal p.
+θ
+Phase label: a pair of an active-set partition and a participation state, see Sec-
+tion 4.1.
+continued on the next page
+43
+
+
+Table 11 continued from the previous page.
+Symbol
+Description
+Functions and operators
+B(p, x)
+Bill incurred by the consumption profile x under the prices p in e: B(p, x) =
+PT
+t=1 ptxt.
+Dk(x, x0
+k)
+Discomfort of client k when consuming x instead of the baseline x0
+k, in e.
+Vk(p)
+Value to client k of accepting the offer p, i.e. bill plus discomfort at its optimal
+consumption, in e: Vk(p) = B(p, x⋆
+k(p)) + Dk(x⋆
+k(p), x0
+k).
+C(x)
+Cost incurred by the retailer to supply the consumption x, in e.
+F(p), Fk(p)
+Retailer’s hyper-objective at the price signal p and its per-client contribution, see
+Section 4.1.
+ΠC
+Euclidean projection onto a convex set C.
+σk
+Phase-index map p 7→θ of client k, see Section 4.1.
+b∇σ
+Selection derivative associated with an elementary selection of index map σ.
+E, I, S
+Classes of elementary log-exp functions, elementary index functions, and elementary
+selections, respectively, see Appendix B.
+Table 11: Summary of notation
+B
+Background: elementary selections
+Definition 2 (Elementary log-exp functions). A function f : Rp →R is elementary (log-exp) if
+it admits a finite compositional expression involving +, −, ×, /, affine maps, exp and log, on its
+domain of definition. We denote by E the set of such functions.
+Definition 3 (Elementary index). A function σ : Rp →{1, . . . , m} is an elementary index if, for
+every i, the set {x ∈Rp : σ(x) = i} is the solution set of finitely many equalities and inequalities
+involving elementary functions on Rp. We denote by I the set of elementary index functions.
+Definition 4 (Elementary selection). A continuous function f : Rp →R has an elementary selec-
+tion (σ, f1, . . . , fm) if σ ∈I and f1, . . . , fm ∈E satisfy f(x) = fσ(x)(x) for all x. We denote by S
+the set of elementary selections.
+Definition 5 (Selection gradient). Given f ∈S with selection (σ, f1, . . . , fm), the selection deriva-
+tive of f with respect to σ is:
+b∇σf : x 7→∇fσ(x)(x).
+C
+Further extensions
+The model studied here can be extended in several directions without losing the structure on
+which the analysis rests, namely the closed-form follower response and the elementary-selection
+44
+
+
+property of the leader’s objective. The following extensions are direct applications of the current
+framework.
+C.1
+Intra-time discomfort
+In (CCOk(p)), we considered a quadratic discomfort function Dk(xk, x0
+k) =
+1
+2αk ∥(xk −x0
+k)∥2. A
+natural extension is to consider a diagonal discomfort function of the form:
+Dk(xk, x0
+k) =
+1
+2αk ∥Ak(xk −x0
+k)∥,
+where αk is the flexibility parameter of client k, and Ak is an invertible matrix that models the
+intra-time discomfort. The consumption best response remains in closed form, and it is given by:
+x⋆
+k(p) = A−1
+k
+ΠXk
+ Akx0
+k −αkp
+
+.
+The participation best response remains unchanged, using the value function Vk(p) = B(p, x⋆
+k(p))+
+Dk(x⋆
+k(p), x0
+k), and the leader’s objective remains an elementary selection.
+C.2
+Nonseparable cost
+In the study we conducted so far, we assumed that the retailer’s cost function is separable in
+clients, the total cost is given by the sum over clients weighted by their participation and weights:
+C((xk), (yk)) = PK
+k=1 C(xk)ykwk. A natural extension is to consider a cost function that is non-
+separable in clients, but considers just the total load at each instant:
+C((xk), (yk)) = C
+
+
+ K
+X
+k=1
+xt,kykwk
+!
+t∈JTK
+
+,
+The consumption and participation best responses are unchanged, and the leader’s objective re-
+mains an elementary selection, so the analysis of Section 4.1 applies only with a gradient ascent
+and not stochastic gradient ascent, since the leader’s objective is no longer separable in clients.
+C.3
+Beyond the quadratic penalization
+In (CPk(p)), we choose a quadratic regularization for the participation level. Nevertheless, we
+can always replace
+1
+2βk y2
+k by
+1
+βk ψ(yk), where ψ: R →R ∪{+∞} is proper, lower semicontinuous
+and strictly convex with dom ψ ⊆[0, 1]; the model of Section 2 is the case ψ = 1
+2(·)2 + δ[0,1] with
+δ[0,1] is equal to zero inside [0, 1] and equal to +∞outside [0, 1]; the consumption best response is
+unchanged, since ψ does not involve xk, and after eliminating the additive term V0
+k the participation
+subproblem is:
+min
+yk
+1
+βk ψ(yk) +
+ Vk(p) −V0
+k
+
+yk,
+whose unique solution is
+yk = ∇ψ∗ βk(V0
+k −Vk(p))
+
+,
+(16)
+where ψ∗is the Legendre–Fenchel conjugate of ψ, the indicator δ[0,1] being included in ψ when the
+box constraint is imposed separately.
+45
+
+
+Two hypotheses are needed for (16) to be usable. First, ψ∗must be differentiable. Since dom ψ
+is bounded, ψ∗is finite on all of R, and it is differentiable there as soon as ψ is strictly convex.
+Second, ∇ψ∗must be available in closed form for the complexity statements to survive.
+Note
+that ∇ψ∗is automatically nondecreasing and, because dom ψ ⊆[0, 1], takes values in [0, 1]: the
+best response is feasible by construction and remains monotone in the surplus V0
+k −Vk(p), so the
+qualitative reading of the model is preserved. For the elementary-selection property (Theorem 4.1),
+it suffices in addition that ∇ψ∗be an elementary selection; the rest of the proof is obtained by
+stability of S.
+Example C.1 (Logit model). Taking ψ to be the negative entropy of the accept/reject choice,
+ψ(y) = y log y + (1 −y) log(1 −y),
+y ∈[0, 1],
+is a case of interest, because its conjugate gradient is the logit map ∇ψ∗(s) = (1 + e−s)−1, so that
+yk =
+ 1 + exp(−βk(V0
+k −Vk(p)))
+−1,
+with βk playing the role of an inverse temperature: entropic regularization of the accept/reject
+choice induces logit (softmax) acceptance probabilities, whereas the quadratic regularization induces
+the truncated-linear probabilities of Figure 1.
+C.4
+Time-of-use menu design
+We have so far considered that the retailer proposes a single offer (q, h) to all clients.
+We
+now consider the case where the retailer instead proposes a menu (qi, hi)i∈JIK of I offers, where
+each client has the right to select the offer or fractions of the offers they prefer. In this case, the
+lower-level problem of client k can be described by:
+min
+xk,yk
+PI
+i=1
+
+B(pi, xi
+k) + Dk(xi
+k, x0
+k)
+
+yi
+k + V0
+k(1 −PI
+i=1 yi
+k) +
+1
+2βk ∥yk∥2
+(17)
+s.t.
+xi
+k ∈Xk,
+∀i ∈JIK,
+yk ∈Y,
+where pi = p(qi, hi) for all i ∈JIK, and where the set Y is given by:
+Y = {y ∈[0, 1]I | PI
+i=1 yi ≤1}.
+The variable yi
+k is the fraction of client k selecting offer i, or equivalently, is the probability of client
+k selecting offer i, with the convention that i = 0 represents the outside option. The variable xi
+k is
+the consumption profile of client k if they select offer i.
+The leader’s model in this case is:
+max
+q,h
+PI
+i=1
+PK
+k=1
+
+B(p(qi, hi), xi
+k) −C(xi
+k)
+
+yi
+kwk
+s.t.
+qi ∈Q,
+hi ∈H,
+∀i ∈JIK,
+(xk, yk) solves (17),
+∀k ∈JKK,
+The lower-level problem inherits the nonconvexity from the original model CPk(p), nevertheless,
+the nested nature survives. Each inner minimization over xi
+k may be carried out independently of
+46
+
+
+yk, and the outer problem in yk is a strongly convex quadratic program over the simplex. The best
+responses, in this case, are:
+xi
+k = ΠXk
+ x0
+k −αk p(qi, hi)
+
+,
+yk = ΠY
+ βk(V0
+k1 −ˆVk)
+
+,
+where ˆVk = (Vk(pi))i∈JIK, and where Vk(p) was introduced in (CCOk(p)). Only offers with yi
+k > 0
+have a determined consumption profile; for the others (where yi
+k = 0), the formula above is a
+valid selection, as the objective does not depend on xi
+k. Projection onto Y costs O(I log I), so
+the follower oracle costs O(I T log T + I log I). The structure of the analysis is unchanged, with
+complexity scaling in I. The leader’s variable count is multiplied by I, so the schedule set becomes
+HI and complete enumeration is no longer a viable option, as it was already too costly to use
+even in the single-offer case. Consistently with Section C.3, the quadratic regularizer makes the
+projection onto Y sparse, so offers dominated by more than a threshold receive exactly zero share,
+whereas the entropic regularizer would spread strictly positive shares over the whole menu.
+C.5
+Day-dependent time-of-use pricing
+We now extend the model, moving from the single typical day considered so far to a setting with
+multiple days, each with its own schedule and price. This is relevant for seasonal pricing, where
+the retailer may want to propose different offers for different seasons or day types (e.g., weekdays
+vs weekends). Let’s consider D representative days, and for each day d ∈JDK, the retailer proposes
+a schedule hd and a price vector qd. The consumption of client k on day d is denoted by xd
+k, and
+the participation variable yk is now a single variable that represents the probability of client k
+accepting the offer across all days. For each day d, the baseline profile of client k is denoted x0,d
+k
+and its consumption feasible set is:
+Xd
+k := {x ∈RT | PT
+t=1 xt = PT
+t=1 x0,d
+t,k, xlb,d
+t,k ≤xt ≤xub,d
+t,k , ∀t ∈T}.
+So the lower-level problem for client k becomes a multi-day problem, where the client chooses
+consumption profiles xd
+k for each day d and a single participation variable yk:
+min
+xk,yk
+nPD
+d=1
+h
+B(p(qd, hd), xd
+k) + Dk(xd
+k, x0,d
+k )
+i
+wdo
+yk + V0
+k(1 −yk) +
+1
+2βk y2
+k,
+s.t.
+xd
+k ∈Xd
+k ,
+∀d ∈JDK,
+yk ∈[0, 1],
+where yk is the probability (or fraction) of client k accepting the offer as a whole, and wd ≥0 with
+PD
+d=1 wd = 1 weights day d (its frequency in the horizon). The same reasoning as in Section 3
+applies, and the best responses can be computed in closed form:
+xd
+k = ΠXd
+k
+ x0,d
+k
+−αk p(qd, hd)
+
+,
+yk = Π[0,1]
+
+βk
+
+V0
+k −PD
+d=1 wdVd
+k
+
+,
+where Vd
+k = B(p(qd, hd), xd
+k)+Dk(xd
+k, x0,d
+k ). The follower oracle costs scales with the number of days,
+and the participation response is again a truncated affine function, now of the aggregated value
+47
+
+
+P
+d wdVd
+k, so Theorem 4.1 and the complexity statements still hold. The retailer’s optimization
+problem is now:
+max
+q,h
+PK
+k=1
+PD
+d=1
+
+B(p(qd, hd), xd
+k) −C(xd
+k)
+
+ykwdwk
+s.t.
+qd ∈Q,
+hd ∈H,
+∀d ∈JDK,
+(xk, yk) solves the multi-day lower-level problem,
+∀k ∈JKK.
+The consumption responses decompose across days, but the participation decision does not: a
+single yk aggregates all days, so an offer that is unattractive on one day can be compensated on
+another, and the leader’s problem does not separate into D independent single-day problems. This
+coupling, rather than the dimension, is what distinguishes the day-dependent model from D copies
+of the one-day model. The price to pay is that the admissible schedule set becomes HD, so the
+enumeration baseline of Section 4.2.1 is not practical, and the gradient-based methods become the
+only ones that remain practicable. The two extensions above combine without difficulty: a multi-
+day multi-offer is obtained by letting yk range over the simplex Y and aggregating Vi
+k = P
+d wdVi,d
+k
+over days before projecting.
+D
+Supplementary experimental results
+In this appendix, we report additional experimental results that complement the results pre-
+sented in Section 5.3 and in Section 5.4.
+D.1
+Relaxed time-of-use pricing
+Figure 9 represents the average relative consumption shift under the relaxed time-of-use pricing
+model studied in Section 5.3, while Table 12 represents the average participation in the same setting.
+48
+
+
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+Figure 9: Average relative consumption shift PK
+k=1
+x⋆
+k−x0
+k
+x0
+k
+wk in % for 50 clients under the two-
+period model (top) and the three-period model (bottom); α = 0.1 (blue, left), α = 1 (red, middle),
+α = 10 (green, right).
+10
+50
+100
+α
+N = 2
+N = 3
+N = 2
+N = 3
+N = 2
+N = 3
+0.1
+20.99%
+22.78%
+20.66%
+19.70%
+19.56%
+19.67%
+1
+20.08%
+22.55%
+20.12%
+19.62%
+19.33%
+19.62%
+10
+23.05%
+21.45%
+19.10%
+19.70%
+18.14%
+19.16%
+Table 12: Relaxed time-of-use pricing model participation, for the two-period (N = 2) and the
+three-period (N = 3) models, obtained with Algorithm 2.
+D.2
+Time-of-use pricing
+Figure 10 represents the average relative consumption shift under the time-of-use pricing model
+studied in Section 5.4, while Table 13 represents the average participation in the same setting.
+49
+
+
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+1 5
+10 15 20 24
+−10
+−5
+0
+5
+10
+Figure 10: Average relative consumption shift PK
+k=1
+x⋆
+k−x0
+k
+x0
+k
+wk in % for 50 clients under the two-
+period model (top) and the three-period model (bottom); α = 0.1 (blue, left), α = 1 (red, middle),
+α = 10 (green, right).
+10
+50
+100
+α
+N = 2
+N = 3
+N = 2
+N = 3
+N = 2
+N = 3
+0.1
+20.55%
+20.49%
+21.31%
+19.11%
+19.29%
+19.87%
+1
+20.77%
+26.23%
+20.84%
+19.30%
+19.54%
+20.01%
+10
+24.19%
+23.11%
+19.73%
+18.92%
+18.90%
+18.56%
+Table 13: Time-of-Use pricing model participation comparison using the direct method.
+50

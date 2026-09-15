@@ -6,41 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-14
-- 运行时间：2026-09-14 22:38:28 UTC
+- 最新运行日期：2026-09-15
+- 运行时间：2026-09-15 22:02:13 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：0
-- 速读区：6
+- 本次总论文数：8
+- 精读区：6
+- 速读区：2
 
 ### 今日简报（AI）
-今日速读 6 篇前沿论文，聚焦 Transformer 上下文采样机制与 VLA 模型闭环纠错技术。
-重点关注 Transformer 作为上下文采样器的理论突破，以及 VLA 模型在复杂任务中的状态感知与纠错能力。
-建议优先研读采样机制相关论文，以理解大模型在推理阶段的动态优化潜力。
-- 详情：[/202609/14/README](/202609/14/README)
+今日精选 8 篇前沿论文，重点聚焦大模型技能演进与云边端协同优化。
+SkillLift 提出的稀疏预言机技能演进方案与 CIDERS 的云边协同优化模型，是本期最具技术突破性的核心成果。
+建议优先研读这两篇满分论文，深入理解大模型在复杂环境下的高效进化与个性化学习路径。
+- 详情：[/202609/15/README](/202609/15/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [SkillLift: Learning Dense Rubrics from Sparse Oracles for Efficient Skill Evolution](/202609/15/2609.15396v1-skilllift-learning-dense-rubrics-from-sparse-oracles-for-efficient-skill-evolution)  
+   标签：评分：10.0/10、query:bopl
+   evidence：将技能演化形式化为双层优化问题
+2. [CIDERS: Cloud-Edge LLM Collaborative Learning via Accelerating Personalized Bilevel Optimization](/202609/15/2609.15664v1-ciders-cloud-edge-llm-collaborative-learning-via-accelerating-personalized-bilevel-optimization)  
+   标签：评分：10.0/10、query:bopl
+   evidence：云边LLM协作的个性化双层优化
+3. [MOSCOPT: Mixture-of-Skills Collective Optimization for LLM Agents](/202609/15/2609.14399v1-moscopt-mixture-of-skills-collective-optimization-for-llm-agents)  
+   标签：评分：9.0/10、query:bopl
+   evidence：联合优化技能池和门控技能
+4. [Failure-Guided Co-Evolution of Prompts and Training Data](/202609/15/2609.15209v1-failure-guided-co-evolution-of-prompts-and-training-data)  
+   标签：评分：9.0/10、query:bopl
+   evidence：自动提示词优化与协同演化
+5. [Not All Prompts Are Equal: Exploration-Guided Prompt Scaffolding for Multimodal Reinforcement Post-Training](/202609/15/2609.15051v1-not-all-prompts-are-equal-exploration-guided-prompt-scaffolding-for-multimodal-reinforcement-post-training)  
+   标签：评分：8.0/10、query:bopl
+   evidence：自动提示词脚手架与分布优化
+6. [CWM: Controllable White-Box Meta-Prompting for Adaptive Retrieval-Augmented Generation and Reasoning Ability](/202609/15/2609.15234v1-cwm-controllable-white-box-meta-prompting-for-adaptive-retrieval-augmented-generation-and-reasoning-ability)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于自适应任务的可控白盒元提示
 
 ### 速读区论文标签
-1. [Transformers as In-Context Samplers: From Closed-Form Diffusion to Estimation-Free Sampling](/202609/14/2609.08981v1-transformers-as-in-context-samplers-from-closed-form-diffusion-to-estimation-free-sampling)  
+1. [Joint Design of Time-of-Use Schedules and Price Levels: a Bilevel Model with Client Participation and Load Flexibility](/202609/15/2609.15496v1-joint-design-of-time-of-use-schedules-and-price-levels-a-bilevel-model-with-client-participation-and-load-flexibility)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用提示中提供的示例进行上下文学习
-2. [Transformers as In-Context Samplers: From Closed-Form Diffusion to Estimation-Free Sampling](/202609/14/2609.08981v2-transformers-as-in-context-samplers-from-closed-form-diffusion-to-estimation-free-sampling)  
-   标签：评分：7.0/10、query:bopl
-   evidence：无需参数更新的上下文学习与提示
-3. [VLA-Corrector: Stage-Aware Observable State Understanding for Prompt-Based Closed-Loop Recovery of Vision-Language-Action Policies](/202609/14/2609.06508v1-vla-corrector-stage-aware-observable-state-understanding-for-prompt-based-closed-loop-recovery-of-vision-language-action-policies)  
+   evidence：用于联合设计和客户响应的双层规划
+2. [Towards Evolving Context Parameterization for Large Language Models](/202609/15/2609.14168v1-towards-evolving-context-parameterization-for-large-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：基于提示的VLA策略闭环恢复
-4. [CoRL: Co-Evolutionary Reinforcement Learning for Adaptive Indirect Prompt-Injection Attacks and Defenses](/202609/14/2609.07529v1-corl-co-evolutionary-reinforcement-learning-for-adaptive-indirect-prompt-injection-attacks-and-defenses)  
-   标签：评分：6.0/10、query:bopl
-   evidence：自适应提示词注入攻击与防御的协同演化
-5. [How to Make the Gradient Mapping Small for Constrained Stochastic Min-Max Problems and Beyond](/202609/14/2609.08380v1-how-to-make-the-gradient-mapping-small-for-constrained-stochastic-min-max-problems-and-beyond)  
-   标签：评分：6.0/10、query:bopl
-   evidence：随机极小极大优化与梯度映射
-6. [AudioICL-Bench: A Benchmark for Large Audio Language Model In-Context Learning](/202609/14/2609.11252v1-audioicl-bench-a-benchmark-for-large-audio-language-model-in-context-learning)  
-   标签：评分：6.0/10、query:bopl
-   evidence：音频语言模型的上下文学习 (ICL)
+   evidence：将上下文内化为大语言模型的可重用参数
 
 
 <div class="dpr-home-promo-card">
