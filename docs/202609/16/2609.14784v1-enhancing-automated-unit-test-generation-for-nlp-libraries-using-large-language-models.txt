@@ -1,0 +1,594 @@
+Title: Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models
+
+URL Source: https://arxiv.org/pdf/2609.14784v1
+
+Published Time: Tue, 15 Sep 2026 01:39:25 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 
+
+## AMIRHOSSEIN DELJOUYI, Delft University of Technology, The Netherlands 
+
+## ANNIBALE PANICHELLA, Delft University of Technology, The Netherlands 
+
+## ANDY ZAIDMAN, Delft University of Technology, The Netherlands 
+
+Automated unit test generation tools like EvoSuite perform well on general-purpose software but often struggle with domain-specific software such as Natural Language Processing (NLP) libraries, where inputs must follow semantic, syntactic, and structural constraints. Large Language Models (LLMs) can generate domain-relevant test code, but tests produced by LLMs alone often fail to compile or achieve sufficient coverage. We propose LLMSuite, a hybrid test generation framework that integrates self-refinement prompting with class-level LLM reasoning into the search-based testing process. In this mechanism, the LLM iteratively improves its test snippets based on feedback from previous generations. This enables the model to produce increasingly precise, domain-consistent code fragments that steer the evolutionary search toward exercising complex and otherwise hard-to-reach behaviors. When no objective improves over multiple generations in the underlying evolutionary algorithm, these refined snippets are parsed and injected into EvoSuite’s population to expand the search space. To support our evaluation, we constructed a new dataset comprising 100 classes drawn from five widely used Java NLP projects. We also re-implemented CodaMOSA, a recent hybrid SBST–LLM technique, in Java to enable a direct comparison. Across this dataset, LLMSuite improves branch and line coverage by approximately 10% and 8%, respectively, and achieves an 11% higher mutation score than CodaMosa-J. Compared to EvoSuite, LLMSuite yields roughly 15% higher branch and line coverage and 5% higher mutation score. Against an LLM-only baseline, it improves structural coverage by 36% and mutation score by about 24.7 percentage points. Finally, LLMSuite complements manually written test suites by exercising domain-specific behaviors that are often left untested. CCS Concepts: • Software and its engineering → Software testing and debugging .Additional Key Words and Phrases: Automated Test Generation, Large Language Models, Unit Testing, Search-Based Algorithms 
+
+1 Introduction 
+
+In today’s software-driven world, ensuring software reliability and correctness is critical [6, 52]. As a result, automated (unit) testing has become a fundamental practice for software engineers aiming to deliver high-quality software [13, 50, 51]. However, writing tests is a tedious and time-consuming task [7, 14]. To reduce this burden, a variety of automated test generation techniques have been proposed [4, 12, 16, 26, 32, 38]. Notable tools in this area include Randoop [70] and EvoSuite [32]. EvoSuite, for instance, is a search-based software testing (SBST) tool that leverages evolutionary algorithms to create test suites [37], and has demonstrated strong performance in terms of code coverage [34, 73], detecting software bugs [36, 88], and helping developers during debugging [75]. Although these tools are effective for general-purpose software, their applicability to specialized domains like natural language processing (NLP) and machine learning (ML) libraries remains largely unexplored [93]. This gap is especially concerning given the growing use of ML components in safety-critical systems, such as autonomous vehicles [39] and legal document pipelines [2]. NLP libraries are central to tasks like named entity recognition, sentiment analysis, and text classification, and are embedded in widely used frameworks such as Hugging Face Transformers. These libraries differ significantly from traditional software in structure, input expectations, and behavior [77]. As a result, existing test generation tools often fail to produce effective test cases in these settings [93]. 
+
+Motivating Example. Consider the MorphaAnnotator class from Stanford’s CoreNLP 1 in Listing 1, which processes phrasal verbs such as gave_up . These cases require specific annotations that distinguish verb components. EvoSuite fails to generate test cases due to the: (1) difficulty in constructing required objects, (2) lack of awareness of domain-specific input formats, and (3) inability to combine multiple relevant input properties. Hence, approaches sensitive to domain-specific constraints are needed for such scenario. Large Language Models (LLMs) have shown strong generative capabilities across both code and natural language [57, 63, 87, 92, 97]. However, their ability to generate high-coverage, compilable unit tests for complex systems remains 
+
+> 1https://github.com/stanfordnlp/CoreNLP/blob/v4.5.7/src/edu/stanford/nlp/pipeline/MorphaAnnotator.java Authors’ Contact Information: Amirhossein Deljouyi, a.deljouyi@tudelft.nl, Delft University of Technology, Delft, The Netherlands; Annibale Panichella, a.panichella@tudelft.nl, Delft University of Technology, Delft, The Netherlands; Andy Zaidman, a.e.zaidman@tudelft.nl, Delft University of Technology, Delft, The Netherlands.
+
+1arXiv:2609.14784v1 [cs.SE] 13 Sep 2026 2 Deljouyi et al. limited [1, 31, 89]. In contrast, SBST tools excel at systematically exploring execution paths, but lack semantic and contextual understanding [1]. Together, these limitations reveal an opportunity for a complementary hybrid approach. The goal of our study is to understand where and how LLM-generated snippets contribute most effectively in the context of NLP libraries, whose inputs must satisfy strict linguistic and structural invariants (e.g., grammatically well-formed sentences, valid parse trees, and coherent annotation pipelines). We propose LLMSuite, a hybrid framework that integrates LLMs into the SBST pipeline. The key idea is to leverage the complementary strengths of both approaches: LLMs provide contextual insights and semantically meaningful inputs, while SBST ensures systematic exploration through evolutionary search. LLMSuite employs class-level prompting combined with a self-refinement strategy, in which the LLM iteratively improves its outputs based on feedback from previous generations. We hypothesize that this design enables the LLM to generate increasingly precise, domain-consistent test snippets that guide SBST toward exercising complex and otherwise hard-to-reach behaviors. Our study is guided by the following research questions: 
+
+RQ 1 How does LLMSuite compare to CodaMosa-J, standalone SBST and LLM-based methods in terms of code coverage and mutation score in NLP libraries? 
+
+RQ1 investigates whether combining LLMs with SBST leads to more effective test generation than either technique alone. To enable a fair comparison with a recent hybrid LLM–SBST approach, we reimplemented CodaMosa in Java and evaluated it alongside standalone SBST and LLM-based baselines. This RQ examines whether integrating LLM-generated snippets into the search process improves structural coverage and mutation score–areas where traditional tools often struggle in the context of NLP and machine learning libraries [93]. 
+
+RQ 2 How do the individual components of LLMSuite influence the coverage of generated tests for NLP libraries? 
+
+RQ2 analyzes how LLMSuite’s design choices, e.g., the prompting strategy, choice of LLM model, refinement of string inputs, frequency of LLM test-generation calls, and using different context levels (method vs. class), affect coverage. 
+
+RQ 3 How do SBST, LLM-based tests, and LLMSuite perform across different functional categories of NLP libraries, and in what ways can LLMSuite complement SBST? 
+
+NLP libraries implement a diverse set of functionalities —such as tokenization, part-of-speech tagging, etc.— each with distinct input constraints and structural characteristics. In RQ3 we examine whether LLMs can assist SBST in overcoming domain-specific challenges and local optima by generating more semantically relevant and diverse test inputs tailored to specific NLP tasks. We analyze the effectiveness of each approach across these categories. 
+
+RQ 4 To what extent can LLMSuite complement manually written test cases in NLP libraries? 
+
+RQ4 explores whether LLMSuite-generated tests cover scenarios not exercised by human-written tests. The key contributions of this paper are as follows: 
+
+• We propose LLMSuite , a multi-mode hybrid test generation framework that integrates LLMs with SBST for domain-specific software testing. 
+
+• We conduct the first systematic evaluation of hybrid SBST/LLM test generation approach in the context of domain-specific libraries, focusing on NLP software. 
+
+• We construct a benchmark of 100 classes drawn from five widely used NLP libraries in Java to support evaluation of test generators in this setting. 
+
+• We release a public replication package with implementation, benchmarks, and results [58]. 
+
+2 Background 
+
+Search-Based Software Testing. Automated test generation tools like EvoSuite [32] and Randoop [70] generate test suites from Java code using search-based or random strategies [34, 73]. Search-Based Software Testing (SBST) formulates test generation as an optimization problem, using meta-heuristic algorithms guided by search objectives to maximize code coverage [73, 83]. Seeding techniques, which inject prior knowledge (e.g., hard-coded constants strings from the class under test), can further improve effectiveness [83]. While Randoop uses feedback-directed random testing and scales well [93], SBST generally achieves higher coverage, especially for hard-to-reach code [73]. 
+
+Natural Language Processing Libraries. Natural Language Processing (NLP), a branch of Artificial Intelligence (AI), enables computers to understand and generate human language by converting text into structured data [21, 23, 41]. Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 3                                       
+
+> 1// A. a part of the method under test
+> 2private static String phrasalVerb (Morphology morpha, String word, String tag) {
+> 3// must be a verb and contain an underscore
+> 4if (!tag.startsWith("VB") || !word.contains("_")) return null ;
+> 5// check whether the last part is a particle
+> 6String[] verb = word.split("_");
+> 7if (verb.length != 2)return null ;
+> 8String particle = verb[ 1];
+> 9if (particles.contains(particle)) {
+> 10 String base = verb[ 0];
+> 11 String lemma = morpha.lemma(base, tag);
+> 12 return lemma + '_' + particle;
+> 13 }
+> 14 return null ;
+> 15 }
+> 16 -------------------------------------------------------------------------------
+> 17 // B. ChatGPT Testcase
+> 18 @Test
+> 19 public void testPhrasalVerbLemmatization () {
+> 20 MorphaAnnotator annotator = new MorphaAnnotator( false );
+> 21 CoreLabel token = new CoreLabel();
+> 22 token.set(TextAnnotation.class, "gave_up");
+> 23 token.set(PartOfSpeechAnnotation.class, "VBD");
+> 24 ...
+> 25 annotator.annotate(annotation);
+> 26 String lemma = token.get(LemmaAnnotation.class);
+> 27 assertEquals("give_up", lemma);
+> 28 }
+
+Listing 1. Motivating Example 
+
+NLP has evolved from rule-based systems to statistical models, and more recently to machine learning (ML) and deep learning (DL), driven by advances in computing power and data availability [27, 100]. Core tasks include part-of-speech tagging, named entity recognition, machine translation, and question answering [21, 27]. Libraries like Stanford CoreNLP 
+
+and NLTK provide tools and APIs for these tasks, often using embeddings or contextual models [15, 61]. 
+
+Large Language Models. Large Language Models (LLMs) are AI systems based on the transformer architecture [91], trained on vast datasets to learn patterns in text, code, and dialogue [67]. They generate responses through autoregressive token prediction. Prompt design plays a critical role in LLM effectiveness. Techniques like Chain of Thought (CoT) reasoning improve performance [55, 62, 94], Still, prompt construction often remains an empirical challenge [99]. LLMs have been increasingly applied in software engineering [3, 44, 45], with models like Code Llama [84], Star-Coder [56], Codex [19], and GPT-4 [67] tailored for code-related tasks. Recent work explores their role in unit test generation [82, 87, 89], either as support in search-based testing [54] or full automation [87]. Gu et al. have recently combined LLM-based test generation with static control flow analysis to address under-tested areas [40]. 
+
+3 The LLMSuite Approach 
+
+Figure 1 presents an overview of our LLMSuite approach. It consists of two main components: 𝛼 the Search Process and 𝛽 LLM-Based Test Generation. LLMSuite extends EvoSuite [32], a search-based test generation framework, by integrating an LLM at key stages of the generation process. In particular, the LLM is invoked to generate diverse candidate test cases when the search process stagnates (highlighted in purple). The integration is facilitated by additional components that ensure seamless interaction between EvoSuite and the LLM. We also incorporate a self-refinement prompting strategy [60] —originally shown to improve performance by 20% across seven tasks—, which we adapt to test generation to promote the generation of more diverse test cases (highlighted in blue). The objective of LLMSuite is to generate test cases that are either challenging or time-intensive to produce using conventional search-based techniques such as DynaMOSA [73]. LLMSuite test generation is expected to provide advantages in scenarios involving: (1) constructing complex test setups, (2) targeting edge cases and potential failure points, and (3) generating test cases that require domain-specific knowledge, such as NLP libraries. 4 Deljouyi et al. LLM-Test-Generation l = 1, 2, ..., L 
+
+Search-Process p = 1, 2, ..., P   
+
+> 1) Stall
+> Check
+> 6) Parse LLM-
+> generated Test
+> Cases
+> Input class under test
+> MorphaAnnotaterClass
+> MorphaAnnotaterFinal
+> LLMTest
+> Output test class
+> α
+> β
+> The LLM
+> 3) Initial Test
+> Generation
+> 4) Reformat
+> Test cases
+> testLemmaAnnotationSimpleVerb()
+> testLemmaAnnotationNoun()
+> ...
+> MorphaAnnotaterLLMTest (i)
+> The LLM
+> MorphaAnnotater
+> InitialLLMTest
+> 5) List edge cases
+> and generate edge
+> test cases
+> The LLM
+
+Self-Re fi ne      
+
+> iterate
+> t = 0, 1, ..., T
+> Input
+> Test Population
+> Output fi ttest Test
+> Population
+> 2) Call
+> 8) breed next
+> generation
+> 7) union, update
+> fi tness and
+> population
+> βMorphaAnnotater
+> FinalLLMTest
+> MorphaAnnotater
+> Evosuite-Tests
+> EvoSuite-Format
+> Tests
+> iterate
+> LLMSuite - SB LLMSuite - LLM EvoSuite Test
+
+Fig. 1. Overview of the LLMSuite approach 
+
+In our approach, when the fitness of the population does not improve for a certain number of generations ( 𝑆 = 20), we consider this a stagnation point (as in 1 ). At this stage, we trigger the LLM-Test-Generation process to introduce new test snippets ( 2 ). These snippets are expected to bring in domain-specific knowledge that helps diversify the test pool and guide the search out of local optima. To promote variety, the LLM is prompted multiple times with different goals. First, the LLM-Test Generation component generates the foundation of a test case ( 3 ), then refactors it into the desired format ( 4 ), and finally adds edge cases to target uncovered or hard-to-reach scenarios, resulting in more diverse and rich test cases in terms of coverage ( 5 ). These generated test cases are then parsed into a format compatible with search-based test generation ( 6 ) and merged with the existing population ( 7 ). In the following iterations, the search process can make use of these new, LLM-generated test cases —which now embed domain knowledge— to evolve additional tests that eventually reach new branches or exercise edge behaviors ( 8 ). Once the search completes, all test cases are compiled to ensure they are compilable and stable, meaning they should only fail due to assertion violations and not other issues (e.g., due to hallucinated code). We now explain the LLM-test generation and search process. 
+
+3.1 LLM-Test Generation 
+
+We use the GPTx-4o model from OpenAI [67] as the default LLM in the test generation component of LLMSuite. However, LLMSuite is designed with a modular architecture, allowing it to easily replace the LLM with any other model. In Section 5.2, we explore the effect of replacing ChatGPT with an alternative model, specifically, the open source code-llama:13b-instruct from Meta [84], accessed via the Ollama framework 2.LLMSuite prompts the LLM in three sequential stages: (1) generating the initial test class, (2) converting the generated test cases into the desired format, and (3) refining the tests to capture additional edge cases. For each stage, we crafted specialized prompts based on best practices from recent prompt engineering research [25, 55, 62, 94]. As illustrated in Listing 2, these guidelines emphasize: adopting a clear developer persona ( 1 ), using actionable and precise task 
+
+> 2Ollama: https://ollama.com/
+
+Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 5 
+
+> <<SYS>> You are a (ADJECTIVE) developer focusing on (TASK AT HAND) <</SYS>> [INST] 2Your task is to (TASK) while strictly following the guidelines below: ### Guidelines: [For self-refinement:] 1. Examine the existing test cases to identify untested scenarios. 2. Clearly list these untested cases. 3. Generate additional test cases to improve coverage, especially targeting boundary conditions, corner cases, and potential failure points. ### Output format: Your response should be placed between [TEST] and [/TEST]. ### Code to Test: [CODE]{content}[/CODE]
+> Listing 2. Prompt template for LLMSuite
+
+instructions ( 2 ), enabling deeper reasoning through techniques such as Chain-of-Thought and tailored guidance for each task ( 3 ), and standardizing the input/output formats( 4 ). We intentionally separate the stages of initial test generation and refactoring. This is because EvoSuite supports a specific format for test cases, which must be self-contained — excluding constructs such as loops, external method calls, or helper utilities. Our trials showed that separating these two stages works better in practice; enforcing formatting constraints in the initial test generation process often reduces the LLM’s creativity and leads to guideline violations. After receiving a response from the LLM, we apply post-processing steps, including syntax validation using ANTLR and automatic repair of common issues such as missing commas or brackets. We note that these repairs are performed at the LLM-based test generation stage, before any integration with EvoSuite, and should not be confused with the subsequent search process. The LLM-Test-Generation component begins at step 2 in Figure 1, where it takes a class or method under test and generates corresponding test cases. By default, LLMSuite uses the self-refinement prompting strategy with class-level prompting, which gives the LLM more context. Figure 2 illustrates this process using the MorphaAnnotator class: in Step I, the LLM produces an initial test case for lemmatizing the verb “giving”, tagged as VBG. This test uses two external helper methods — generateToken and generateSentence — which need to be inlined into the test code during step 4 to match the format compatible with EvoSuite. In step 5 , we initiate a self-refinement loop that runs for 𝑇 iterations (default 𝑇 = 5). In each iteration 𝑡 , the LLM is prompted using a prompt template similar to Listing 2. It is asked to analyze which scenarios have not yet been covered and then generate new edge test cases to fill those gaps. To enable this feedback loop, we maintain the conversational history and include it in the prompt so the LLM can reason over past test cases. All generated tests are added to a shared pool, and only unique cases — based on their test names — are retained. Unlike Madaan et al.’s work [60], which separates the feedback and refinement steps into two separate prompts, we unify them into a single prompt in order to reduce the number of prompts. In Step III of Figure 2, a test case for the phrasal verb case (“give_up”) is generated as the initial test case. 
+
+> 134
+
+3.2 Search-Process 
+
+EvoSuite generates test cases using a search-based approach guided by genetic algorithms. Among its algorithms, DynaMOSA has shown strong performance [18, 59, 73]. However, the search can stagnate in local optima — particularly when test inputs require domain-specific knowledge, as seen in our motivating example. To address this, we extend DynaMOSA by using LLM-generated tests to get unstuck from stagnation: When no improvement is observed across any objective for 20 consecutive generations—a scenario DynaMOSA identifies using its many-objective optimiza-tion mechanism— LLMSuite invokes an LLM to generate new test cases. These LLM-generated tests inject domain semantics into the test population — semantic knowledge that is difficult for the search alone to infer. This phase represents a key moment where domain semantics meet search. While inspired by prior work [54], our approach differs 6 Deljouyi et al. I. Initial LLM-Test Generation          
+
+> public void testVerbLemmatization () {CoreLabel token = generateToken("giving", "VBG"); CoreMap sentence =generateSentence(token); Annotation annotation = wrapAnnotation(Collections.singletonList(sentence)); annotator.annotate(annotation); String lemma = token.get(LemmaAnnotation.class); assertEquals("give", lemma); }
+
+II. Reformat Test Cases           
+
+> CoreLabel token =generateToken("giving", "VBG"); CoreMap sentence =generateSentence(token); CoreLabel token = new CoreLabel(); token.set(TextAnnotation.class, "giving"); token.set(PartOfSpeechAnnotation.class, "VBG"); ↪→
+> CoreMap sentence =new ArrayCoreMap(); ...
+
+III. Self-Refine Test Cases          
+
+> @Test public void testPhrasalVerbLemmatization () {... CoreLabel token =new CoreLabel(); token.set(TextAnnotation.class, "gave_up"); token.set(PartOfSpeechAnnotation.class, "VBD"); ... }
+
+IV. Parse To EvoSuite Format         
+
+> @Test public void testCreatesMorphaAnnotator () {... coreLabel0.set(class0, "gave_up"); Class<PartOfSpeechAnnotation> class1 =PartOfSpeechAnnotation.class; coreLabel0.set(class1, "VBD"); ... }
+
+V. Search Process   
+
+> ... coreLabel0.set(class1, "VBD"); ... ... coreLabel0.set(class1, "NN"); ...
+
+Fig. 2. Running Example 
+
+substantially in both design and execution. Unlike CodaMOSA’s one-shot queries without advanced prompt engineer-ing, LLMSuite guides the LLM through an iterative self-refinement process, where candidate tests are revised using feedback about uncovered scenarios; this search-like mechanism—drawing on the self-refine paradigm [60]—enables the generation of more complex, domain-consistent inputs that SBST can exploit more effectively. LLMSuite also adopts class-level prompting, in contrast to CodaMOSA’s method-level design, reducing the number of prompts while providing richer context for reasoning about interactions across methods. In addition, LLMSuite integrates with DynaMOSA and introduces a custom parsing and validation pipeline that supports nested invocations, varargs, multi-dimensional arrays, assignments, and mock statements, thereby allowing LLMSuite to use most LLM-generated code snippets. The generated test cases are parsed into EvoSuite compatible code by LLM2EvoSuiteParser ; our custom parser uses Spoon [78] for static analysis and converts the textual code generated by LLM into the internal representation of EvoSuite. For instance, a line like token.set(..., "VBD") becomes an object initialization and method call, such as class1 and coreLabel0.set(...) . The parser supports a wide range of constructs, including nested invocations, varargs, multi-dimensional arrays, and assignments. When encountering unsupported constructs in EvoSuite during the search phase (e.g., loops, lambdas, try-catch blocks), the parser selectively extracts valid subcomponents, such as expressions in assertions or try-block statements. It also tries to skip the errors of hallucinated lines. For example, if token.set(...) has three parameters in the LLM-generated test snippet but only two are valid, the parser retains the first two and discards the rest by loose parameter matching. Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 7                        
+
+> Table 1. Overview of NLP Libraries Used in the Experiment
+> Project Description Version Java #Classes CoreNLP [61] Full-featured NLP toolkit with parsing, NER, and coref 4.5.7 11 42 OpenNLP [69] Basic NLP tasks like tokenization and POS tagging 2.3.3 17 17 Mallet [64] Text classification and sequence tagging 2.1.0 816 GATE [49] Rule-based and ML-based NLP pipeline 9.1.0 811 CogCompNLP [49] Semantic and coreference analysis toolkit 4.0.15 814
+
+After parsing, valid LLM-generated tests are unioned with the current population. EvoSuite ranks and updates the population before proceeding to the next generation. This LLM integration can occur up to L times (default L = 5), and LLM-generated tests can participate in genetic operations such as crossover and mutation. As a result, EvoSuite can explore test inputs it could not have evolved alone, e.g., in Example V of Figure 2, a phrasal verb like “give_up” is crossed with another test tagged “NN”, producing a variant that triggers an exception on line 11 of Listing 1. These hybrid cases demonstrate the value of integrating LLM-generated content into search-based testing for broader coverage. 
+
+4 Experiment Setup 
+
+In this section we describe the methodology of evaluation of our approach considering the RQs introduced in Section 1. 
+
+RQ 1 How does LLMSuite compare to CodaMosa-J, standalone SBST, and LLM-based methods in terms of code coverage, mutation score in NLP libraries? 
+
+RQ 2 How do the indivual components of LLMSuite the individual components of our design influence the coverage of generated tests for NLP libraries? 
+
+RQ 3 How do LLMSuite tests perform across different functional categories of NLP libraries, and in what ways can LLMSuite complement SBST? 
+
+RQ 4 To what extent can LLMSuite complement manually written test cases in NLP libraries? 
+
+Baselines Selection . RQ1 and RQ3. We consider three baselines for comparison in RQ1 and RQ3: (1) EvoSuite [32], configured with the DynaMosa search strategy [73], (2) LLMOnly , which consists of test cases generated solely by ChatGPT-4o-latest-2025-07-12, [67], and (3) CodaMosa-J [54], using our Java re-implementation of the approach. Since the original CodaMosa was designed for Python, we reimplemented the high-level algorithmic logic as closely as possible– including the walkthrough procedure, the focus on low-coverage test targets, method level prompting, and the use of MOSA as the underlying SBST strategy. However, several components necessarily differ from the original implementation: CodaMosa’s study used OpenAI Codex [19], while we use ChatGPT-4o-latest, and we rely on our own Java parser in place of the Python-specific tooling used originally. LLMOnly test cases are similar to those used in LLMSuite but are not processed by our parser. As a result, this baseline may achieve higher raw coverage, due to the parser’s limitations in supporting certain code constructs. 
+
+RQ2. For RQ2, we conduct a systematic analysis of how individual components of our approach affect test coverage. Specifically, we examine: (1) the choice of LLM model, as well as the level of contextual information provided (method vs. class), (2) the prompting strategy, including the use of self-refinement, (3) techniques for refining string inputs, (4) the frequency of invoking LLM-based test generation. To isolate the effect of each factor, we design four experimental variants, each modifying a single component while holding others fixed. We evaluate test coverage of each variant in relation to both EvoSuite and the default LLMSuite configuration. 
+
+RQ4. In RQ4, we compare the test coverage achieved by LLMSuite with that of manually written test cases. This comparison is limited to the subset of classes in the dataset for which manually written tests are available. 
+
+Dataset and NLP Projects . We have collected 100 classes from five widely-used Java-based NLP libraries: CoreNLP [61], OpenNLP [69], MALLET [64], CogCompNLP [49], and GATE [24]. Table 1 summarizes key statistics for these libraries. We adapted our approach and tooling to be compatible with Java 8, 11, and 17. 
+
+Collecting Target Classes from NLP Libraries . To collect classes from the selected NLP libraries, we followed several steps (Filtering, Classifying & Collecting, and Categorization) to ensure a balanced and representative dataset. 
+
+• Filtering: (1) We filter out all static, abstract, private classes from our search. (2) For each remaining class, we computed three metrics: (a) Weighted Methods per Class (WMC), (b) Number of branches, and (c) Number of 8 Deljouyi et al. 
+
+Table 2. Functional categories in NLP software         
+
+> Coreference covers components that detect and resolve references to the same entity, like mention detection and coreference resolution Data Structures includes core data classes used to represent text, e.g., documents and corpora, and supporting utility functions. Information Extraction components that extract specific information from text—such as quotes, names, gender, or relational features — often rule-based without relying on external models. Linguistic Labeling tasks like assigning labels to text, such as NER, POS tagging, sentiment analysis, gender recognition, and wikification ML Algorithms learning algorithms like classifiers and clustering, often used to power labeling and coreference modules. Normalization covers standard text normalization processes like stemming and lemmatization. Parser components that analyze the syntactic structure of text — such as dependency or constituency parsing — and generate tree or graph representations that support downstream tasks. Segmentation involves breaking down text into units, e.g., tokenization, sentence splitting, and chunking. Topic Modeling focuses on uncovering latent topics in text using probabilistic models like LDA.
+
+Table 3. NLP Functional Category Distribution of Dataset                                                              
+
+> Category CoreNLP OpenMLP Mallet Gate CogCompNL Total Coreference 700018DataStructure & Utils 3027113 Information Extraction 510017Linguistic Labeling 9200415 ML Algorithms 0191314 Normalization 350019Parser 8203215 Segmentation 7300111 Topic Modeling 035008Total 42 17 16 11 14 100
+
+non-static methods. These metrics were normalized and combined into a single score. (3) Based on this score, we ranked the classes and selected the top 50 classes for each project. 
+
+• Classifying & Collecting: (1) We manually reviewed their JavaDoc documentation to assign a functional category, based on the categorization scheme from [49]. (2) From this set, we selected 100 classes that together represent a diverse range of functionalities. 
+
+• Categorization: We grouped the functional categories into broader semantic categories for analysis. Finally, we organized the dataset into nine functional categories, see Table 2. To reduce the number of runs in RQ2, we randomly selected 60 of the 100 target classes. 
+
+Metrics for Evaluating Effectiveness . To assess the quality of a unit test suite for a given project, we use code coverage and mutation score. For coverage, we use metrics inspired by EvoSuite, which include instruction and branch coverage. Instruction coverage corresponds to Java bytecode instructions and is roughly equivalent to statement coverage at the source code level. Branch coverage measures whether both outcomes (true and false) of each conditional statement have been executed, effectively covering the edges in the program’s control flow graph. For mutation score, we utilize JUGE [28], a benchmarking infrastructure for evaluating Java unit test generators and it has been widely used in the yearly SBFT tool competitions [46, 65]. JUGE internally uses PITest [79] to compute mutation scores, which quantify the ability of a test suite to detect injected faults (mutants). We extended JUGE to support Java versions 11 and 17 to ensure compatibility with our benchmark. 
+
+Analysis Method . To compare the test effectiveness of LLMSuite against the baseline tools across all target classes, we used a repeated-measures design, following established evaluation guidelines for search-based techniques[10] and studies involving LLMs [85]. Each tool was executed five times per class to capture variability arising from inherent non-determinism in both LLM-based and SBST approaches. For the LLM component, we used the default temperature of 1.00 (range [0,2]). Lower temperatures make outputs more deterministic, while higher ones introduce more randomness. Although prior work shows that temperature does not correlate with output quality [22], using the default value offers a consistent and reasonable level of stochasticity for evaluating LLM-based test generation. To compare each tool on a per-class basis, we applied the Wilcoxon signed-rank test ( 𝛼 = 0.05), which is suitable for paired, non-normally distributed data. To compare LLMSuite against the other baselines across all CUTs, we first computed, for each metric (branch coverage, line coverage, and mutation score), the median over the five runs as the representative performance value. We then used the Friedman test to assess whether the tools differ significantly in Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 9their median scores, followed by Conover’s post-hoc test for pairwise multiple comparisons. To quantify the magnitude of differences, we computed Vargha and Delaney’s 𝐴 12 effect size [90], which represents the probability that one method outperforms another. 𝐴 12 values are interpreted as small (0 .56 ≤ 𝐴 12 < 0.64), medium (0 .64 ≤ 𝐴 12 < 0.71), and large (𝐴 12 ≥ 0.71) effects [90]. Finally, to assess the robustness of the effect-size estimates, we computed 95% bias-corrected bootstrap confidence intervals (CI) over the per-class 𝐴 12 values, following Efron’s bootstrap technique [29]. A 95% confidence interval provides an uncertainty range within which the true effect size would fall in 95% of repeated samples, offering a distribution-free way to account for randomness inherent in both LLM-based and search-based test generation. For each class, we generated thousands of bootstrap resamples and recalculated 𝐴 12 ; the lowest and highest bootstrap estimates form the CI bounds. We determined per-class significance by checking whether the CI lies entirely above 0.5 (LLMSuite wins), entirely below 0.5 (baseline wins), or crosses 0.5 (tie). 
+
+Experimental Protocol . We configured EvoSuite with its default parameters, which have shown good performance in prior work [11]. To allow more time for generating high-quality test cases, we increased the test budget ( max_time ) from 60 to 900 seconds. To ensure reliable statistical comparisons across the seven test generators — EvoSuite, CodaMosa-J, LLMSuiteand its four variants — we repeated each run five times, totaling 3300 runs ( (100 × 3 + 60 × 6) × 5), where 100 classes were tested with LLMSuite and EvoSuite and 60 classes with 6 variants, each repeated 5 times. We ran experiments on a server with a 64-core AMD EPYC processor and 256 GB RAM. We used Docker to parallelize execution, allocating 6 CPU cores and 16 GB RAM per container. LLMSuite uses ChatGPT-4o-latest-2025-07-12 3 as its primary LLM (see Section 3.1). To evaluate the impact of model choice, we also ran code-llama:13b-instruct [84] on an NVIDIA L40S GPU. 
+
+Manual Analysis . For RQ3 and RQ4, we conducted a manual analysis of test coverage. For RQ3, we examined classes with notable coverage differences between EvoSuite and LLMSuite, spanning various NLP functionalities. By identifying which parts of each class were covered by one approach but missed by the other, we gained insights into their relative strengths and limitations across different NLP tasks. For RQ4, we analyzed 27 classes that had both manually written test cases and were part of our dataset. For these classes, we first calculated branch coverage and mutation score for manually written tests, LLMSuite, and their combination. We then identified code blocks left uncovered by both the manual tests and LLMSuite, and investigated the underlying reasons for these gaps. Since the dataset was not very large, involving multiple coders was unnecessary. Instead, we followed Hoda’s guidance for single-analyst studies [42, p. 260]. The primary analyst conducted the coding, and the emerging codes and interpretations were regularly reviewed with the other researchers to ensure consistency and refine the analysis where needed. 
+
+5 Result 
+
+In this section, we present and discuss the results for each research question. 
+
+5.1 RQ1: Effectiveness of LLMSuite vs. Baselines 
+
+Figure 3 (a–b) shows box plots comparing line and branch coverage across the evaluated tools. LLMSuite consistently outperforms all three CodaMosa-J, EvoSuite and LLMOnly in terms of median coverage. For branch coverage, LLM-Suite reaches a median of 68.60%, versus 58.03% for CodaMosa-J 53.33% for EvoSuite and 32.64% for LLMOnly. Line coverage follows a similar trend: LLMSuite achieves 73.49%, compared to 65.62%, 57.66% and 35.94% for CodaMosa-J, EvoSuite and LLMOnly, respectively. These results correspond to improvements of 10.57% in branch coverage and 7.87% in line coverage over CodaMosa-J. Compared to EvoSuite, the gains are 15.27% for branch coverage and 15.94% for line coverage, on average. Project-level results for branch coverage, line coverage, and mutation score are reported in Table 4. The improvements are consistent across all projects, though the gains for CoreNLP are particularly pronounced. We used the Wilcoxon signed-rank test to evaluate statistical significance. The results show that LLMSuite-generated test cases achieve significantly higher branch and line coverage than those generated by CodaMosa-J and EvoSuite (𝑝 -value ≪ 0.05), and also significantly outperform LLMOnly ( 𝑝 -value ≪ 0.05). The exact values are reported in Table 5. The 𝐴 12 effect sizes are large when comparing LLMSuite with CodaMosa-J (0.73) and EvoSuite (0.72), and even larger when compared to LLMOnly (0.85), with confidence intervals consistently above 0.5. Since each tool was run five times per class, we performed per-class significance testing. Figure 3(d–f) shows the resulting win-rate patterns. The analysis reveals a clear trend: LLMSuite achieves higher branch coverage in 38 classes compared to CodaMosa-J (and lower in only 3), in 36 classes compared to EvoSuite (lower in just 2), and in 59 classes compared to LLMOnly (lower in only 3). 
+
+> 3https://platform.openai.com/docs/models/chatgpt-4o-latest
+
+10 Deljouyi et al. EvoSuite LLMOnly LLMSuite CodaMosa-J 0.0 0.2 0.4 0.6 0.8 1.0 Coverage                        
+
+> (a) Branch Coverage
+> EvoSuite LLMOnly LLMSuite CodaMosa-J 0.0 0.2 0.4 0.6 0.8 1.0 (b) Line Coverage
+> EvoSuite LLMOnly LLMSuite CodaMosa-J 020 40 60 80 100 (c) Mutation Score
+> 0.0 0.2 0.4 0.6 0.8 1.0 EvoSuite 0.0 0.2 0.4 0.6 0.8 1.0 LLMSuite
+> (d) LLMSuite vs EvoSuite
+> 0.0 0.2 0.4 0.6 0.8 1.0 LLMOnly 0.0 0.2 0.4 0.6 0.8 1.0 LLMSuite
+> (e) LLMSuite vs LLMOnly
+> 0.0 0.2 0.4 0.6 0.8 1.0 CodaMosa-J 0.0 0.2 0.4 0.6 0.8 1.0 LLMSuite
+> (f) LLMSuite vs CodaMosa-J
+
+Fig. 3. Comparison of test effectiveness across LLMSuite and the baseline tools. (a) Branch coverage, (b) line coverage, and (c) mutation score distributions across all classes, shown as box plots. (d–f) Scatter plots comparing per-class coverage between LLMSuite (y-axis) and each baseline (x-axis): EvoSuite (d), LLMOnly (e), and CodaMosa-J (f). Points on the diagonal indicate identical coverage, points above the diagonal represent classes where LLMSuite achieves higher coverage, and points below denote baseline wins. 
+
+.In Figure 3(d), we observe that LLMSuite consistently outperforms CodaMosa-J, EvoSuite, and LLMOnly in terms of mutation score, although the effect sizes are more moderate than those seen for structural coverage. At the median, LLMSuite achieves a mutation score of 63.0%, compared to 52.0% for CodaMosa-J, 58.0% for EvoSuite, and 38.26% for LLMOnly. This corresponds to improvements of 11% over CodaMosa-J, 5% over EvoSuite, and an approximately 24.7 percentage-point gain over LLMOnly. These differences are statistically significant: the Wilcoxon signed-rank test reveals p-values of 0.0003 (vs. CodaMosa-J), 0.007 (vs. EvoSuite), and 0.002 (vs. LLMOnly). The 𝐴 12 effect sizes–0.58, 0.57, and 0.64, respectively– indicate consistent, if more modest, advantages, with all 95% confidence intervals remaining above 0.5. Taken together, these results indicate that LLMSuite achieves higher mutant-kill rates than the baselines, although the magnitude of improvement is more modest compared to structural coverage metrics. Despite these gains, we observe that LLMSuite does not gain as much benefit in mutation score as it does in structural coverage. We attribute this to the fact that LLMSuite relies on EvoSuite for assertion generation, which prevents it from exploiting the more semantically accurate assertions that LLMs can produce. It is also worth noting that neither 
+
+Table 4. Comparison of Median Branch Coverage, Median Line Coverage, and Median Mutation Score Across Projects 
+
+Project # Branch Coverage Line Coverage Mutation Score LLS CM ES LLM LLS CM ES LLM LLS CM ES LLM 
+
+CoreNLP 42 48.5% 33.69% 29.8% 16.01% 61.62% 42.03% 41.66% 28.47% 43.08% 17.39% 35.47% 33.25% OpenNLP 17 88.84% 82.47% 81.97% 47.7% 92.37% 86.77% 86.58% 62.37% 70.0% 68.0% 60.50% 39.5% Mallet 16 78.79% 72.84% 77.62% 44.97% 84.03% 78.88% 82.12% 56.77% 89.82% 81.69% 80.21% 26.37% Gate 11 53.32% 52.61% 49.3% 27.82% 58.09% 57.20% 54.72% 25.87% 73.0% 70.0% 72.5% 59.0% CogCompNLP 14 37.63% 35.48% 31.71% 17.95% 44.27% 42.99% 43.31% 25.82% 62.0% 52.0% 62.0% 38.0% Overall 100 68.60% 58.03% 53.33% 32.64% 73.49% 65.62% 57.50% 43.00% 63.0% 52.0% 58.0% 38.26% Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 11 LLMSuite , nor CodaMosa-J, nor EvoSuite were configured for strong or weak mutation due to time constraints. Nonetheless, LLM-generated test snippets could effectively enhance assertion quality of EvoSuite. 
+
+Answer to RQ1: LLMSuite outperforms CodaMosa-J, EvoSuite, and LLMOnly in terms of median branch cov-erage, line coverage, and mutation score. However, the gains in mutation score are more modest compared to the improvements observed for branch and line coverage. 
+
+5.2 RQ2: Effect of Design Choices 
+
+This RQ examines how different design decisions affect the effectiveness of our approach, measured in terms of branch coverage. Specifically, we analyze the impact of varying the LLM, using different search-based strategy, using different context levels (method vs. class), prompting strategy, and number of LLM calls. The CodaMosa-J baseline could also be considered a variant, as it uses a different search-based algorithm and prompting strategy. However, we exclude it from this RQ since it was already examined in detail in RQ 1. Table 6 reports the mean and median coverage for each variant, along with their differences compared to EvoSuite. To evaluate the contribution of each design choice, we compute the performance delta ( Δ) relative to EvoSuite as the baseline, and compare these results to the default configuration of LLMSuite, introduced in the previous section. Figure 4 shows the distribution of Δ-coverage across individual classes for each variant. Statistical analysis confirms that the default LLMSuite configuration achieves significantly higher coverage than each variant ( 𝑝 -value ≪0.05), with a large effect size ( 𝐴 12 > 0.71) in all comparisons except against the Zero-Shot variant, where the effect size is smaller (𝐴 12 = 0.60). 
+
+Effect of Different Context Levels . Unlike the default LLMSuite, which employs class-level prompting, this variant uses method-level prompting to assess the impact of context level (method vs. class) with the same underlying LLM (ChatGPT). On average, branch coverage improves by +3.76% compared to EvoSuite, although the difference is not statistically significant ( 𝑝 = 0.4). However, the default class-level configuration of LLMSuite significantly outperforms the method-level variant ( 𝑝 ≪ 0.05), highlighting the benefit of richer, class-level context. 
+
+Effect of Using a Local LLM with Different Context Levels . We replaced ChatGPT with CodeLLaMA 13B to examine the effect of using a different LLM and different context level (method vs class). Due to the context-window limitations of CodeLLaMA, it was prompted at the method level instead of the class level, though the same parser was used. On average, branch coverage drops by 8.6% compared to EvoSuite, with most classes showing lower coverage and only a few seeing slight improvements (Figure 4). Compared to ChatGPT, we hypothesize that CodeLLaMA is 
+
+Table 5. Effect size and significance of LLMSuite compared to the baselines (per metric).                                                                  
+
+> Comparison Metric P-Value Significant A12 95% CI
+> LLMSuite vs. CodaMosa-J Branch 1.6×10 −9Yes 0.73 [0.66, 0.78] Line 3.9×10 −11 Yes 0.74 [0.68, 0.80] Mutation 0.0003 Yes 0.58 [0.53, 0.65] LLMSuite vs. EvoSuite Branch 5.5×10 −9Yes 0.72 [0.68, 0.80] Line 3.7×10 −10 Yes 0.80 [0.60, 0.92] Mutation 0.007 Yes 0.57 [0.50, 0.63] LLMSuite vs. LLMOnly Branch 1.9×10 −21 Yes 0.85 [0.79, 0.90] Line 1.6×10 −29 Yes 0.85 [0.79, 0.90] Mutation 0.002 Yes 0.64 [0.54, 0.74] In terms of branch coverage: No. cases LLMSuite better than CodaMosa-J (Lowest 95% CI >0.5) 38 (38%) No. cases LLMSuite worse than CodaMosa-J (Highest 95% CI <0.5) 3 (3%) No. cases LLMSuite better than LLMOnly (Lowest 95% CI >0.5) 59 (59%) No. cases LLMSuite worse than LLMOnly (Highest 95% CI <0.5) 3 (3%) No. cases LLMSuite better than EvoSuite (Lowest 95% CI >0.5) 36 (36%) No. cases LLMSuite worse than EvoSuite (Highest 95% CI <0.5) 2 (2%)
+
+12 Deljouyi et al. 40 20 0 20 40 60 80 100                                     
+
+> Coverage (%)
+> 0510 15 20 25 30 35
+> Number of Classes
+> LLMSuite vs LLM-generated-StaticPool
+> LLMSuite LLM-generated-StaticPool
+> 40 20 020 40 60 80 100
+> Coverage (%)
+> LLMSuite vs LLMSuite-using-LLM-1x
+> LLMSuite LLMSuite-using-LLM-1x
+> 60 40 20 020 40 60 80 100
+> Coverage (%)
+> LLMSuite vs LLMSuite-Llama
+> LLMSuite LLMSuite-Llama
+> 40 20 020 40 60 80 100
+> Coverage (%)
+> 0510 15 20 25 30 35
+> Number of Classes
+> LLMSuite vs LLMSuite-zero-shot
+> LLMSuite LLMSuite-zero-shot
+> 40 20 020 40 60 80 100
+> Coverage (%)
+> LLMSuite vs LLMSuite-Method-Level
+> LLMSuite LLMSuite-Method-Level
+> 40 20 020 40 60 80 100
+> Coverage (%)
+> LLMSuite vs LLMSuite-Mosa
+> LLMSuite LLMSuite-Mosa
+
+Fig. 4. Histogram of Per-Class Branch Coverage Improvement ( Δ) for Different LLMSuite Variants Compared to EvoSuite 
+
+less effective at generating test cases that improve coverage. This may be due to the fact that the response time of CodeLLaMA is much slower than ChatGPT, leaving less time for the search process to explore the test space. 
+
+Effect of Prompting Strategy . We evaluated a zero-shot prompting variant, 0-Shot , to assess the impact of prompting strategy. Unlike the default LLMSuite , which uses a self-refinement mechanism, this variant generates test cases in a single pass without iterative refinement. 0-Shot achieved a mean branch coverage improvement of +4.82% over the baseline (EvoSuite), with statistical significance ( 𝑝 -value=0.004). However, the default LLMSuite still significantly outperforms the zero-shot variant ( 𝑝 -value=0.019), confirming the benefit of self-refinement in prompt generation. 
+
+Effect of Reducing the Number of LLM-Test-Generation Calls . To assess the role of repeated LLM interactions, we compared the default LLMSuite, which makes five LLM calls per target ( 𝐿 = 5), with a simplified variant using only one call ( 𝐿 = 1), denoted as 1x . This variant achieved a branch coverage improvement of +5.37% over EvoSuite, with statistical significance ( 𝑝 -value=0.002). These results show that even a single LLM call can yield significant coverage gains. However, multiple calls further improve performance ( 𝑝 -value ≪0.05), demonstrating the benefit of iterative prompting. 
+
+Effect of Improving Only String Inputs . We examined whether enhancing only the string inputs affects coverage. EvoSuite generates strings using a static pool of random values, along with values collected through instrumentation. In this variant, we replaced the static pool with LLM-generated strings tailored to the class under test, without using LLM-generated tests to guide the search process. The results show that this change alone does not significantly improve coverage; in fact, branch coverage dropped slightly by 1.4% compared to EvoSuite. This suggests that improving string inputs in isolation is insufficient — other aspects of the test generation process also need to be addressed. 
+
+Effect of Using a Different SBST Strategy . Unlike the default LLMSuite, which uses DynaMOSA as its search algorithm together with the standard prompting and self-refinement strategy, this variant replaces DynaMOSA with 
+
+Table 6. Branch Coverage Metrics Across All Variants 
+
+Metric EvoSuite LLMSuite Variants Orig. S. Pool 1x Llama 0-Shot Mosa M. Level 
+
+Mean 56.48% 63.39% 55.08% 61.85% 47.82% 61.29% 60.22% 60.23% Median 60.12% 74.81% 58.80% 70.00% 42.65% 67.67% 68.60% 62.53% 
+
+Δ Mean – +6.91% -1.40% +5.37% -8.66% +4.82% +3.74% +3.76% 
+
+Δ Median – +14.70% -1.32% +9.88% -17.46% +7.56% +8.49% +2.42% Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 13 ML Algorithms Topic Modelling DataStructure Linguistic Labeling Normalizer Coreference Parser Segmentation Information Extraction    
+
+> Functionality
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Branch Coverage
+> Tool EvoSuite LLMOnly LLMSuite CodaMosa
+
+Fig. 5. Coverage Comparison per Different Functionality 
+
+MOSA to assess the impact of the underlying SBST algorithm. On average, branch coverage improves by +3.74% compared to EvoSuite, although the difference is not statistically significant ( 𝑝 = 0.3). However, the default LLMSuite configuration significantly outperforms the MOSA-based variant ( 𝑝 ≪ 0.05), suggesting that the stronger search strategy is better able to exploit the LLM-generated code snippets and translate them into additional coverage gains. 
+
+Answer to RQ2: The default LLMSuite configuration outperforms the 6 variants – featuring a different LLM, a different context level, different prompting strategy, a reduced number of prompts to the LLM, only improving string inputs, and a different SBST strategy – that we have investigated. 
+
+5.3 RQ3: Improvement over SBST Approach 
+
+We analyzed which components of NLP libraries are highly covered by EvoSuite-generated tests, LLM-based tests, and LLMSuite. Figure 5 shows that LLMSuite consistently outperforms both baselines — EvoSuite and LLM-Tests — across all categories, except for Machine Learning, where it shows a marginal decline of 0.1%. The mean branch coverage improvements achieved by LLMSuite across functionality categories are: Information Extraction (18%), Coreference (8%), Segmentation (7%), Normalization (5%), and Linguistic Labeling (3%). The gains are especially prominent in classes that are text-heavy and involve language-specific processing, as opposed to those focused on numeric computation, data structures, or utility logic. To better understand this, we analyzed classes where the differences were most pronounced. 
+
+How Using LLM can improve search-based test generation . Our analysis reveals three main ways in which LLMs enhances coverage in LLMSuite compared to traditional search-based methods: 
+
+A. Test Data and sequence of object calls. In many test cases, LLMs provide useful guidance for constructing objects and invoking them in the correct order. This is particularly important in classes that require complex setup, where uninformed search may get stuck in local optima due to the size of the search space. For example, for three classes in the CoreNLP 
+
+project, in QuoteAnnotator (64% improvement), EntityMentionsAnnotator (41%), and WordsToSentencesAnnotator 
+
+(39%), the improvements mainly come from LLMs generating correct sequences of instantiations and method calls. Listing 3 in item B shows a representative example for EntityMentionsAnnotator . The test constructs a CoreLabel 
+
+token, assigns entity type probabilities (e.g., PERSON at 0.95), wraps it in an ArrayCoreMap , and invokes the target method. EvoSuite struggles with such setup due to the specificity and inter-dependencies among objects. Such guidance also enables the exploration of behavior-dependent branches, such as error handling for invalid probabilities, as illustrated in item A of Listing 3. 
+
+B. Generating Domain-Specific Text Inputs. Many NLP classes rely on structured or linguistically rich inputs that random generation fails to trigger. We observe that LLM-generated test snippets enable LLMSuite to better exercise 14 Deljouyi et al. parsing, segmentation, and normalization logic. For example, OpenNLP’s Parser class expects Treebank-style input structures. LLMSuite was able to generate such input, as in the example below, which activates branches missed by EvoSuite: 
+
+> Parse parse0 = Parse.parseParse("(TOP (NP (NN -LRB-) (NN book) (NN -RRB-)))");
+
+C. Inferring Configuration and Property Settings. Some classes rely on external properties or configuration to activate certain branches. For example, in WordsToSentencesAnnotator , certain HTML boundary handling logic is only triggered when the appropriate configuration is set, which is shown in Listing 4. 
+
+Where LLM-Tests Provide Less Guidance . LLMSuite shows limited benefit in classes dominated by numeric computation or algorithmic logic, such as KMeans. In these scenarios, LLMs often fail to generate effective numeric inputs or encounter hallucinations, which we hypothesize can mislead the test generation process or trap it in local optima. As a result, the added value of LLM guidance is minimal, and in some cases, test quality may degrade slightly. 
+
+Answer to RQ3: LLMSuite improves upon SBST when it comes to providing test data, getting the sequence of object calls right, and inferring configuration and property settings. LLMSuite shows limited benefits in classes dominated by numeric computation and algorithmic logic. 
+
+5.4 RQ4: Improvement over manual tests 
+
+Out of the 100 classes in our dataset, only 27 had dedicated manually written test cases; the remaining 73 may have been indirectly covered by other tests. Manual tests in GATE use JUnit 3, those in OpenNLP use JUnit 5, and the three remaining projects — CoreNLP, Mallet, and CogCompNLP — primarily use JUnit 4. Because of this, we ran each project’s own setup with JaCoCo and PITest, rather than through our unified coverage tool. We first examine how LLMSuite-generated tests compare with manually written tests in terms of branch coverage and mutation score, as well          
+
+> // A. An invalid behavior in the EntityMentionsAnnotator class - CoreNLP Project // if anything is still at 1.1, set it to -1.0
+> for (String label : entityLabelProbVals.keySet()) {
+> if (entityLabelProbVals.get(label) >= 1.1 ) { entityLabelProbVals.put(label, -1.0 ); }}// ----------------------------------------------------------------------------// B. An LLM-generated test case that contributed to LLMSuite’s improved coverage.
+> @Test public void testDetermineEntityMentionConfidences () { CoreLabel token = new CoreLabel(); token.setWord("Barack"); token.set(NamedEntityTagProbsAnnotation.class, Map.of("PERSON", 0.95 , "LOCATION", 0.05 )); CoreMap entityMention = new ArrayCoreMap(); entityMention.set(TokensAnnotation.class, List.of(token)); EntityMentionsAnnotator.determineEntityMentionConfidences(entityMention); ... }
+
+Listing 3. Example Scenario for EntityMentionsAnnotator   
+
+> // A. LLMSuite-generated test case line properties0.setProperty("ssplit.htmlBoundariesToDiscard", "div,be"); // -----------------------------------------------------------------------------// B. CoreNLP Project - WordsToSentencesAnnotator.java // HTML boundaries which are discarded bounds = properties.getProperty("ssplit.htmlBoundariesToDiscard");
+> if (bounds != null ) { String[] elements = bounds.split(","); htmlElementsToDiscard = Generics.newHashSet(Arrays.asList(elements)); }
+
+Listing 4. Example Scenario for WordsToSentencesAnnotator Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 15 Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100 
+
+> Branch Coverage (%)
+
+Overall Branch Coverage 
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+> Mutation Score (%)
+
+Overall Mutation Score 
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+> Branch Coverage (%)
+
+CoreNLP  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+OpenNLP  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+GATE  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+Mallet  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+CogComp-NLP 
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+> Mutation Score (%)
+
+CoreNLP  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+OpenNLP  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+GATE  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+Mallet  
+
+> Manually-Written LLMSuite Manual+LLMSuite 020 40 60 80 100
+
+CogComp-NLP   
+
+> Manually-Written LLMSuite Manual+LLMSuite
+
+Fig. 6. Comparison of Branch Coverage and Mutation Score Achieved by Manually Written and LLMSuite-Generated Test Cases Across Projects. 
+
+as how they complement the existing manual test suites. We then analyze the areas missed by manually written tests through a categorization of those gaps, from which we derive a taxonomy. 
+
+5.4.1 Incremental Coverage and Mutation Score. Figure 6 compares the branch coverage and mutation score achieved by manually written test cases and those generated by LLMSuite, as shown in the box plots. As reported in Table 7, manually written tests achieve a mean branch coverage of 33.99%, whereas LLMSuite-generated tests achieve 68.49%. When combined, the two test suites reach 74.55%, corresponding to an improvement of 27.7%. 
+
+Table 7. Comparison of branch coverage and mutation score across projects for manually written tests, LLMSuite-generated tests, and their combination 
+
+Project # Branch Coverage Mutation Score Man LLS Man+LLS Δ Man LLS Man+LLS Δ
+
+CoreNLP 7 47.53% 76.42% 85.60% +38.08% 43.02% 62.42% 67.37% +24.35% OpenNLP 7 55.67% 76.57% 86.63% +30.97% 47.63% 59.11% 65.37% +17.75% GATE 6 20.61% 61.69% 64.82% +44.21% 25.82% 54.79% 56.22% +30.40% Mallet 5 18.49% 86.47% 86.55% +68.06% 26.47% 76.04% 79.03% +52.56% CogCompNLP 2 17.6% 22.65% 29.56% +11.96% 27.51% 31.03% 47.49% +19.98% Overall 27 33.99% 68.49% 74.55% +40.55% 38.1% 58.06% 63.54% +25.44% 16 Deljouyi et al. A similar pattern can be observed for mutation score. Manually written tests achieve 38.1%, LLMSuite-generated tests achieve 58.06%, and the combined suite reaches 63.54%, corresponding to an improvement of 25.44%. Overall, LLMSuite complements manually written tests in both branch coverage and mutation score, although its effect is more highlighted for branch coverage. This observation is consistent with the findings from RQ1, where we noted that LLMSuite relies on EvoSuite for assertion generation. As a result, it benefits less from LLM-generated assertions, which may explain why the improvement in mutation score is smaller than the improvement in branch coverage. Furthermore, the quality and completeness of manual tests varied across projects. Actively maintained ones, such as OpenNLP and CoreNLP, generally had more comprehensive test suites. In contrast, GATE, Mallet, and CogCompNLP exhibited lower coverage. 
+
+5.4.2 Taxonomy of Detected Gaps. To investigate how LLMSuite complements existing test coverage, we manually analyzed each project and its corresponding test cases to determine which parts of the production code were exercised by manually written tests and which areas remained untested. To better understand these uncovered regions, we manually reviewed the uncovered code blocks across the dataset and categorized the reasons for their lack of coverage. For this purpose, we adopted the classification scheme of Wang et al. [93], originally proposed for analyzing test gaps in machine learning libraries. We adapted their scheme by adding two new categories—Method Overloading (MEO) and Properties-Dependent Behavior (PRB), marked with an asterisk (*)—and removing the message-handling behavior (MEB) category, which was not common in our dataset. This analysis showed that, in many cases, LLMSuite was able to extend coverage to code blocks that were not reached by the manual test suites. In the following, we illustrate both the covered and uncovered behaviors using examples from the CoreNLP project. 
+
+What Manually-Written Tests Cover . Manual tests tend to focus on a class’ main functionality through high-level scenarios, often combining multiple use cases in a single test method. For example, the CleanXmlAnnotator class processes XML input and extracts information from tags like <post> , <quote> , and self-closing tags such as <img/> . These tags may include attributes like author , datetime , or document_id . A sample XML snippet is shown in Listing 5. The manual tests for this class cover some valid cases, such as well-formed posts and quotes with attributes, and a couple of invalid ones, like an unclosed tag. While these are meaningful scenarios, they do not cover the full range of possible behaviors. 
+
+What Manually-Written Tests Do Not Cover . In contrast, manually written tests often omit alternative execution paths, special input configurations, and less central behaviors. In the following, we describe each gap category using examples from the CoreNLP project: 
+
+Valid Behaviors (VB). A class often supports multiple valid behaviors, but only a subset is exercised by manual tests. For instance, in CleanXMLAnnotator , the tests check whether an XML document starts and ends with a specific tag and whether tags include attributes. However, they cover only a few specific tags, leaving many supported ones untested. This partial coverage explains why some lines remain uncovered. Across all classes, 530 code blocks were left uncovered for this reason, accounting for 49% of all uncovered blocks. With LLMSuite , only 222 such blocks remained, primarily due to challenges in initializing complex objects. 
+
+Invalid Behaviors (IVB). In addition to valid behaviors, a class may also exhibit invalid behaviors when given inputs outside its expected domain, e.g., supplying a parameter with values beyond its allowable range. While manually written tests cover some cases (e.g., unclosed XML tags in Listing 5), they often miss others, such as having more closing than opening tags. This leads to 56 coverage drops across the manually written suite. In contrast, LLMSuite reduces this to just 16 cases by better addressing such edge scenarios.    
+
+> <post author="UDDep" datetime="2010-05-30T15:43:00" id="p2" ><quote orig_author="James Rood" >
+> Yesterday afternoon as I negotiated route 149 from Lake George to Fort Ann in NY I passed a new diner that had opened that day.
+> <img src="http://britishexpats.com/forum/images/smilies/wink.gif" /> </quote>
+> If they don't have english food and beer...tell em...
+> </post>
+> Listing 5. An Example Scenario for CleanXMLAnnotator
+
+Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 17 
+
+Exception Handling (EX). Manually written tests often do not cover exceptions. For instance, in CleanXMLAnnotator ,an exception is thrown when the appropriate tag annotation is missing, yet this is untested. We have discovered 56 such exception cases in the manual suite, whereas LLMSuite reduces this number by 11. 
+
+Auxiliary Methods (AUX). Our analysis reveals that many utility or helper methods remain untested in manually written tests, primarily because they are declared as private and are not directly invoked in typical test scenarios. This leaves 266 blocks uncovered, approximately 25% of all uncovered code. While LLMSuite and search-based techniques can sometimes reach these methods indirectly, testing private code remains challenging because bytecode instrumentation does not provide information about them. 
+
+Method Overloading (MEO). Constructors and methods can have multiple overloaded variants, each with different parameter lists. In our dataset, 121 code blocks remained uncovered because not all overloads were exercised by manually written tests. The search-based process in LLMSuite reduces this number to just 7 blocks. 
+
+Properties-Dependent Behavior (PRB). Some functionalities in NLP libraries depend on specific properties — such as configuration files, model paths, or input documents — to activate certain code paths. For instance, in CleanXMLAnnota-tor , different property values trigger different execution branches. These scenarios are often missed in manually written tests, leaving 48 blocks uncovered. LLMSuite reduces this to 10, although handling such cases remains challenging due to the domain knowledge required. 
+
+Answer to RQ4: Combining manually written and LLMSuite generated test cases increases coverage and mutation score significantly. We have identified 6 specific situations where LLMSuite was able to make a strong contribution to additional test coverage.                                                                                     
+
+> Table 8. Distribution of uncovered code in each NLP library
+> Project Tool VB (%) IVB (%) EX (%) AUX (%) MEO (%) PRB (%)
+> CogComp-NLP LLS 3 (18) 1 (6) 0 (0) 0 (0) 0 (0) 13 (76) Man 6 (46) 3 (23) 1 (8) 0 (0) 0 (0) 3 (23) CoreNLP LLS 33 (62) 3 (6) 5 (9) 3 (6) 0 (0) 9 (17) Man 41 (30) 9 (7) 10 (7) 16 (12) 31 (23) 30 (22) GateCore LLS 114 (33) 10 (3) 23 (7) 179 (53) 3 (1) 12 (4) Man 261 (39) 36 (5) 30 (4) 209 (31) 48 (7) 8 (1) Mallet LLS 15 (54) 0 (0) 2 (7) 10 (36) 0 (0) 1 (4) Man 154 (70) 6 (3) 7 (3) 27 (12) 40 (18) 0 (0) OpenNLP LLS 57 (60) 2 (2) 3 (3) 23 (24) 4 (4) 4 (4) Man 68 (68) 2 (2) 6 (6) 14 (14) 2 (2) 7 (7)
+> Overall LLS 222 (42) 16 (3) 33 (6) 215 (40) 7 (1) 38 (7)
+> Overall Man 530 (49) 56 (5) 54 (5) 266 (25) 121 (11) 48 (4)
+
+6 Discussion 
+
+Test-generation time budget. We allocated a 15-minute time budget per target class. Within that time budget, LLM-based test generation with self-refinement on average consumes 148.2 seconds (16.1 seconds in zero-shot mode). This can reduce the time available for the search process when time is limited. However, since LLM test generation is independent of the search, this overhead can be avoided by running it in parallel with the SBST process. 
+
+Cost Analysis and Token Usage. Beyond increasing processing time, the practical cost of LLM-based test generation must also be considered. We analyzed token usage on the 65 common classes, out of the 100 selected classes in our experiment, for which results were available for both class-level zero-shot generation and total class-level self-refinement. As shown in Figure 7(a), the full self-refinement pipeline consumed 7,547,600 tokens over 455 LLM calls, whereas class-level zero-shot required 688,549 tokens over 65 calls. Assuming a pricing model of $5.00 per one million input tokens and $15.00 per one million output tokens, this corresponds to an estimated total cost of $46.62 for self-refinement versus $4.78 for zero-shot, or about $0.72 versus $0.07 per target class. Most of this overhead comes from self-refinement itself. Figure 7(a) shows that, out of the total 7,547,600 tokens, 6,082,787 (80.6%) were consumed by the self-refinement rounds, while initial test generation and test reformatting 18 Deljouyi et al. Class-level Zero-shot Total of Class Level Self-Refinement Initial Test Generation Reformat of Tests Self-refinement of Tests 01.0M 2.0M 3.0M 4.0M 5.0M 6.0M 7.0M              
+
+> Tokens
+> 689K 7.5M 642K 822K 6.1M Approach Stage breakdown
+> (a) Comparing Zero-shot Against Total Self-Refinement and Its Stages
+> 12345Round
+> 0200K 400K 600K 800K 1.0M 1.2M 1.4M
+> 952K 1.1M 1.2M 1.3M 1.5M
+> (b) Round-by-Round Token Growth in Self-Refinement of Tests
+> CoreNLP Mallet GATE OpenNLP CogComp-NLP 0500K 1.0M 1.5M 2.0M 2.5M 3.0M
+> 3.3M 1.6M 941K 900K 783K
+> (c) Total Class-Level Self-Refinement Tokens by Project
+> Prompt tokens Completion tokens Total tokens
+
+Fig. 7. Token usage analysis for class-level self-refinement on the 65 classes common to both class-level zero-shot and total class-level self-refinement. 
+
+accounted for 642,430 (8.5%) and 822,383 (10.9%), respectively. Figure 7(b) further shows that token usage grows steadily across rounds, from 952,357 in Round 1 to 1,485,163 in Round 5. This is consistent with prompt growth when chat history is retained. For example, in the RelationFeatureExtractor class from CoreNLP, the number of input tokens increased from 1572 to 3325, 5182, 6996, and 8684 across refinement iterations, while the output size remained relatively stable at around ∼1727 tokens. Figure 7(c) also shows variation across projects. The token usage correspond to 27 target classes for CoreNLP, 14 for Mallet, 7 for GATE, 8 for OpenNLP, and 9 for CogComp-NLP. After normalization, the average token usage per class is 122,457 for CoreNLP, 115,475 for Mallet, 134,482 for GATE, 112,549 for OpenNLP, and 86,984 for CogComp-NLP, suggesting that token cost also depends on class complexity and prompt size. Overall, these results show that the additional gains of iterative refinement come at substantial token and monetary cost. Therefore, the choice of the number of refinement iterations ( 𝑇 ) should be guided not only by effectiveness gains but also by cost-effectiveness. In practice, a smaller number of refinement rounds may offer a better trade-off than using the full iterative process. 
+
+Parser. As discussed in Section 3, our parser, LLM2EvoSuiteParser , is able to handle complex cases such as nested method invocations, varargs, and multi-dimensional arrays. Still, limitations in both EvoSuite and Spoon prevent LLMSuite from fully utilizing all LLM-generated test snippets. Figure 8 summarizes the flow of LLM-generated statements through the hallucination-filtering and parsing stages and shows how they are filtered into different outcomes. Before parsing, the generated code goes through a hallucination-filtering stage. In the LLM component, we first try to repair generated snippets using the heuristics described earlier. Because using an LLM-in-the-loop repair mechanism would be too computationally expensive, we rely only on heuristic-based fixes and try to preserve as much of the generated code as possible. Across 474,626 LLM-generated statements, we found 39,980 hallucinated statements, including API mismatches. Rather than discarding the full test case, we comment out the hallucinated lines together with any dependent lines that become invalid as a result, while preserving the remaining valid statements so they can still contribute to testing. This leaves 434,646 hallucination-free statements and compilable, meaning that 91.57% of the generated lines remain usable. These cleaned tests are treated as LLMOnly test cases, for which we measure coverage independently, and are then passed to LLM2EvoSuiteParser for conversion into EvoSuite-compatible format. Out of the 434,646 hallucination-free statements, 388,761 were successfully converted, corresponding to a conversion success rate of 89.44%. Among the remaining statements, 2,461 could not be parsed because they contain constructs that EvoSuite does not support, including for loops (691), foreach loops (605), while loops (515), if statements (344), and 306 other unsupported constructs such as new implementations of classes or interfaces. In addition, 43,424 statements could not be resolved during parsing. Most of these (40,393) involve API calls that EvoSuite does not support in the test generation process, such as when() , spy() , and fail() . The remaining 3,031 statements include unsupported binary or unary expressions, such as mathematical operations or string manipulations like append() .Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 19 
+
+> Fig. 8. Flow of LLM-generated statements through the cleaning and parsing pipeline.
+
+EvoSuite also inserts additional constructs — such as catch blocks, assertions, and mock parameter initializations — after the search phase, which prevents some LLM-generated lines from being translated directly. Spoon, on the other hand, sometimes fails to resolve types that are not explicitly defined. To address this, we adopt loose type-checking, which covers most of these cases. We also observed issues in EvoSuite’s conversion of test cases to source code when handling parameterized types with dependent generics, for example class Value<J, T extends Type> , where the second type depends on the first. 
+
+LLM Hallucination. LLMs are known to hallucinate in their outputs [96]. In the context of code generation, this typically manifests as references to non-existent APIs [30]. As part of the hallucination-filtering stage, we first attempt to repair such issues using heuristics; if repair is not possible, the hallucinated lines are filtered out. Across all runs, we observed 39,980 hallucinated lines out of 474,626 generated lines (figure 8). To better understand the nature of these hallucinations, we conducted a detailed analysis on generated test cases for 70 target classes in one run. In this subset, we identified 8,449 hallucinated lines. We grouped these hallucinations into five categories: Unresolved References (3,087 instances, ∼36.5%), Access Modifier Issues (1,621, ∼19.2%), Abstract Instantiation Errors (1,573, ∼18.6%), Type Mismatches or Incompatible Types (1,177, ∼13.9%), and Other (991, ∼11.7%). We also investigated whether there is any correlation between hallucination frequency and coverage improvement: we computed the Pearson correlation coefficient between ΔCoverage and the ratio of commented hallucinated lines to the number of executed tests ( Δ Coverage ∼ #Errors Commented #Tests Executed ). The result was –0.273 , which indicates a weak negative correlation. This suggests classes with more hallucinations per test tend to benefit less from LLMSuite in terms of coverage improvement. 
+
+Training Contamination. ChatGPT-4o-latest-2025-07-12 has been trained on a large corpus of publicly available code, including GitHub. Since the exact training data has not been disclosed by OpenAI, it is not possible to confirm whether any code from our dataset was included. To assess potential overlap, we use JPlag [81], a code similarity detection tool, to compare LLM-generated test cases with manually written ones. The results indicate that the average of the average similarity is 4.48%, and the average of the maximum similarity is 12.05%, both relatively low scores. Additionally, as discussed in Section 5.4, only 30 classes in our dataset have corresponding manually written test cases. Among the few cases with higher similarity scores, we selected the top five for manual inspection. This analysis revealed no meaningful overlap, indicating that ChatGPT is not replicating the manually written test cases. 
+
+Practical Value and Scope of LLMSuite. Although LLMSuite improves structural coverage, these gains should be interpreted carefully. Search-based unit testing techniques such as EvoSuite are intended for structural exploration rather than specification-based validation [33, 35]. In particular, regression-based oracles capture observed behavior, 20 Deljouyi et al. not necessarily intended functionality, and therefore do not guarantee semantic correctness. The generated tests should thus be viewed as complementary to manually written or specification-based tests. Coverage is also only a proxy for test effectiveness [43]. While higher coverage increases the chance of exercising diverse behaviors, it does not necessarily imply stronger fault detection. For this reason, we complement coverage with mutation score, which provides complementary evidence of fault-detection capability [5, 48, 76, 88]. We also acknowledge that many industrial testing challenges arise at higher levels, such as integration, system, and acceptance testing [8, 9, 68]. Still, automated unit test generation remains useful for complex libraries, where manually exploring edge cases is difficult. In this work, RQ3 and RQ4 examine the practical value of the approach beyond coverage alone by showing how LLMSuite complements both SBST and manually written tests through exercising additional code regions and behaviors. These results suggest that the main benefit of the approach lies not only in higher coverage, but also in broader behavioral exploration, especially in cases where existing techniques struggle. 
+
+7 Threats To Validity 
+
+We identify the following threats to the validity of our results: 
+
+Internal Validity. Threats may arise from errors in the LLMSuite implementation or the evaluation pipeline. While some limitations were discussed earlier, we manually verified key components, wrote test cases to validate correctness, and inspected portions of the results. Additionally, we cross-validated coverage and mutation scores by rerunning experiments and reviewing outliers. 
+
+External Validity. We evaluated 100 classes from five open-source NLP libraries, systematically selected to cover diverse functionalities. While this provides a diverse and challenging sample, it is not intended to be representative of all classes in NLP libraries. Instead, our benchmark focuses on structurally complex, hard-to-cover units. This design choice is intentional, as such non-trivial classes are typically more difficult and costly to test manually, making them a more suitable target for evaluating the practical benefits of automatic test generation [74]. The results may also not generalize to other software domains, such as machine learning. Additionally, while we used LLMs trained on open-source code (GPT-4o, CodeLLaMA-13B), our similarity analysis revealed no meaningful overlap with manually written tests, indicating training data leakage [85] did not affect our results. 
+
+Construct Validity. While we evaluate test effectiveness using standard metrics such as line/branch coverage and mutation score, they do not fully capture qualitative aspects like test readability or maintainability, or the ability to detect real-world faults. Moreover, although we implemented CodaMosa-J as a Java counterpart to the original CodaMosa (as described in Section 4), it may not perfectly replicate exactly the original framework, introducing a potential threat to validity. 
+
+Conclusion Validity. To ensure the reliability of our comparisons, we followed established guidelines for evaluating search-based algorithms [10] and studies involving LLMs [85]. We used appropriate statistical tests, such as the Wilcoxon signed-rank test, along with effect size measures. However, variability in LLM outputs and the inherent non-determinism of search-based methods can introduce noise into the results. To mitigate this, we averaged results over multiple runs and analyzed confidence intervals where applicable. 
+
+8 Related Work 8.1 Test Cases for NLP Libraries 
+
+As discussed earlier, testing NLP and ML libraries comes with its own set of challenges that differ from traditional software systems. The complexity of the data and the wide range of possible scenarios make testing these libraries particularly difficult. As a result, their unit tests often show lower coverage and mutation scores, and important aspects such as bias, fairness, and security are not consistently evaluated [68, 93]. Researchers have tried to address these issues in different ways. For example, NLPLego [47] improves metamorphic testing by checking whether NLP models produce the expected outputs under structured input transformations. It helps uncover subtle inconsistencies by generating diverse and valid inputs. To improve unit-level test generation, other studies [53, 66] have explored combining grammar-based fuzzing with SBST. Some focus on handling structured inputs like XML and JSON [66], while others generate type-consistent inputs for complex ML frameworks such as TensorFlow and PyTorch [53]. However, these methods are usually limited to narrow domains and depend on handcrafted grammars or custom type specifications, which reduces their scalability and general applicability. Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 21 LLMSuite addresses these limitations by using LLMs to generate complex and diverse test inputs, including edge-case scenarios, at the unit-test level. Instead of targeting a single data format, LLMSuite adapts to a variety of input structures. While the approach is generalizable to other domains, this study focuses on NLP libraries due to their text-heavy nature and the unique challenges they pose for automated testing. 
+
+8.2 LLM-based Test Case Generation 
+
+There are several LLM-only test generators, ranging from simple tools–such as the approach by Siddiq et al. [89], which relies solely on LLMs to produce tests–to slightly more advanced ones like ChatTester [98], which introduces a basic compiler-error repair loop. More sophisticated systems such as TestSpark [86], CoverUp [80], and ChatUniTest [20] enrich prompts or iteratively fix errors to improve test quality. However, these approaches rely exclusively on LLMs, do not integrate SBST, and none of them focus on domain-specific software such as NLP libraries. Prior work also shows wide variation in outcomes: Siddiq et al. report only 2% coverage on the SF110 dataset, whereas TestPilot [87] achieves around 70% statement coverage on small JavaScript systems, and other studies aim to improve human-written tests. A few hybrid approaches–such as UTGen [25] and Aster [71]–combine LLMs with SBST, but mainly to improve understandability and readability. More recent work combines LLMs with complementary guidance mechanisms rather than relying on them alone. Yang et al. [95] propose a program-analysis-guided approach that uses dependency information and counter-examples to steer the LLM toward hard-to-cover branches, reporting strong coverage improvements over prior SBST and LLM-based baselines. Similarly, Broide and Stern [17] propose EvoGPT, a hybrid method that uses LLMs to generate diverse initial seeds and then applies evolutionary search to improve coverage and mutation score. These studies further support the view that LLMs are most effective when integrated with complementary techniques. LLMSuite follows the same general direction, but differs in its focus on NLP libraries, domain-specific prompting, self-refinement, and the conversion of LLM-generated code into EvoSuite-compatible test components that can be exploited during search. One notable hybrid LLM-guided SBST approach is CodaMosa [54], which also uses LLMs to escape local optima during search. While our approach shares this motivation, it introduces a self-refinement prompting strategy at the class level, whereas CodaMosa operates at the method level. In addition, we employ DynaMosa [73], which has been shown to outperform MOSA [72] in prior studies [18, 59, 73]. CodaMosa also targets general-purpose classes rather than domain-specific software such as NLP libraries. Since no Java implementation of CodaMosa was available, we re-implemented it based on the published design. As shown in Section 5.1, LLMSuite achieves 11% higher branch coverage, 8% higher line coverage, and 11% higher mutation score on NLP components. 
+
+9 Conclusion 
+
+Automated unit test generation remains particularly challenging for domain-specific software, such as NLP libraries, where test inputs must satisfy semantic (e.g., domain-specific knowledge), syntactic, and structural (e.g., input data format) constraints. In this paper, we proposed LLMSuite, a hybrid framework that integrates Large Language Models (in particular ChatGPT-4o-latest-2025-07-12 ) into the search-based test generation approach within EvoSuite. When no search objective improves over multiple generations (search stagnation), LLMSuite invokes LLMs to generate class-level test suites with a self-refinement prompt strategy based on semantics (e.g., expressed in the JavaDoc and comments) and the structure of the class under test. These LLM-generated tests are injected into EvoSuite’s evolving population. Across our evaluation of 100 classes from five widely used Java NLP libraries, LLMSuite improves branch and line coverage by 15% and mutation score by 5% over EvoSuite, outperforms an LLM-only baseline by 36% in structural coverage and approximately 24.7 percentage points in mutation score, and achieves 10% and 8% higher branch and line coverage than our Java re-implementation of CodaMOSA, with an 11% gain in mutation score (RQ1). When investigating design alternatives (RQ2), we found that the default configuration of LLMSuite consistently outperforms variants using different LLMs, alternative prompting strategies, fewer prompts, or string-only improvements–demonstrating the importance of class-level prompting, self-refinement, and tight integration with SBST. Our qualitative analysis (RQ3) shows that LLMSuite is particularly effective when meaningful inputs, correct API invocation sequences, or domain-specific configuration settings are required, while offering limited advantages for classes dominated by numerical computation or algorithmic logic. Finally, in examining its interaction with manually written tests (RQ4), we found that 22 Deljouyi et al. LLMSuite complements manual test suites by exercising behaviors and configurations that those tests do not reach, and combining the two leads to additional coverage through several recurring forms of complementary behavior. We identify several directions for future work. First, an important extension is to compare LLMSuite against agent-based LLM systems that use compiler or execution feedback for iterative self-repair. While such approaches are promising, our framework was designed to give us full control over the entire generation, parsing, repair, and search pipeline within EvoSuite. Nevertheless, a direct comparison with external agentic baselines would be valuable future work. Second, future work should evaluate LLMSuite with other open-weight and closed-source LLMs. In particular, we plan to investigate the impact of other general-purpose models with different capabilities and alignment strategies. Because the framework is model-agnostic, these models can be incorporated without changing the overall architecture, enabling a broader assessment of generality across the evolving LLM landscape. We also plan to experiment with code-specific LLMs, e.g., StarCoder and DeepSeek Coder. In addition, it would be interesting to study whether integrating LLM-generated assertions more directly into the pipeline can improve behavioral validation beyond EvoSuite’s regression assertions. Finally, we plan to investigate LLMSuite in other domains where structured inputs and domain-specific semantics pose challenges for test generation, such as scientific computing libraries, parsers, and compilers. 
+
+Acknowledgments 
+
+This research was partially funded by the Dutch science foundation NWO through the Vici “TestShift” grant (No. VI.C.182.032). 
+
+References 
+
+[1] Azat Abdullin, Pouria Derakhshanfar, and Annibale Panichella. 2025. Test Wars: A Comparative Study of SBST, Symbolic Execution, and LLM-Based Approaches to Unit Test Generation. In 2025 IEEE Conference on Software Testing, Verification and Validation (ICST) . IEEE, 221–232. [2] Morayo Adedjouma, Mehrdad Sabetzadeh, and Lionel C Briand. 2014. Automated detection and resolution of legal cross references: Approach and a study of luxembourg’s legislation. In 2014 IEEE 22nd International Requirements Engineering Conference (RE) . IEEE, 63–72. [3] Ali Al-Kaswan, Toufique Ahmed, Maliheh Izadi, Anand Ashok Sawant, Premkumar Devanbu, et al. 2023. Extending source code pre-trained language models to summarise decompiled binaries. In 2023 IEEE International Conference on Software Analysis, Evolution and Reengineering (SANER) . IEEE, 260–271. [4] Shaukat Ali, Lionel C. Briand, Hadi Hemmati, and Rajwinder Kaur Panesar-Walawege. 2010. A Systematic Review of the Application and Empirical Investigation of Search-Based Test Case Generation. IEEE Trans. Software Eng. 36, 6 (2010), 742–762. [5] James H Andrews, Lionel C Briand, and Yvan Labiche. 2005. Is mutation an appropriate tool for testing experiments?. In Proceedings of the 27th international conference on Software engineering . 402–411. [6] Maurício Finavaro Aniche, Felienne Hermans, and Arie van Deursen. 2019. Pragmatic Software Testing Education. In Proceedings of the 50th Technical Symposium on Computer Science Education (SIGCSE) . ACM, 414–420. https://doi.org/10.1145/3287324.3287461 [7] Maurício Finavaro Aniche, Christoph Treude, and Andy Zaidman. 2022. How Developers Engineer Test Cases: An Observational Study. IEEE Trans. Software Eng. 48, 12 (2022), 4925–4946. [8] Andrea Arcuri. 2018. Evomaster: Evolutionary multi-context automated system test generation. In 2018 IEEE 11th International Conference on Software Testing, Verification and Validation (ICST) . IEEE, 394–397. [9] Andrea Arcuri. 2018. An experience report on applying software testing academic results in industry: we need usable automated test generation. 
+
+Empirical Software Engineering 23, 4 (2018), 1959–1981. [10] Andrea Arcuri and Lionel Briand. 2014. A hitchhiker’s guide to statistical tests for assessing randomized algorithms in software engineering. 
+
+Software Testing, Verification and Reliability 24, 3 (2014), 219–250. [11] Andrea Arcuri and Gordon Fraser. 2013. Parameter tuning or default values? An empirical investigation in search-based software engineering. 
+
+Empirical Software Engineering 18 (2013), 594–623. [12] Luciano Baresi and Matteo Miraz. 2010. TestFul: automatic unit-test generation for Java classes. In 32nd IEEE/ACM International Conference on Software Engineering (ICSE) . ACM, 281–284. [13] Kent L. Beck. 2003. Test-Driven Development - By Example . Addison-Wesley. [14] Moritz Beller, Georgios Gousios, Annibale Panichella, Sebastian Proksch, Sven Amann, et al. 2019. Developer Testing in the IDE: Patterns, Beliefs, and Behavior. IEEE Trans. Software Eng. 45, 3 (2019), 261–284. [15] Steven Bird, Ewan Klein, and Edward Loper. 2009. Natural language processing with Python: analyzing text with the natural language toolkit .O’Reilly Media, Inc. [16] Carolin E. Brandt, Ali Khatami, Mairieli Wessel, and Andy Zaidman. 2024. Shaken, Not Stirred: How Developers Like Their Amplified Tests. IEEE Trans. Software Eng. 50, 5 (2024), 1264–1280. [17] Lior Broide, Roni Stern, and Argaman Mordoch. 2025. EvoGPT: Leveraging LLM-Driven Seed Diversity to Improve Search-Based Test Suite Generation. arXiv preprint arXiv:2505.12424 (2025). [18] José Campos, Yan Ge, Nasser Albunian, Gordon Fraser, Marcelo Eler, et al. 2018. An empirical evaluation of evolutionary algorithms for unit test suite generation. Information and Software Technology 104 (2018), 207–235. [19] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Pondé de Oliveira Pinto, et al. 2021. Evaluating Large Language Models Trained on Code. Arxiv (2021). arXiv:2107.03374 https://doi.org/10.48550/arXiv.2107.03374 [20] Yinghao Chen, Zehao Hu, Chen Zhi, Junxiao Han, Shuiguang Deng, et al. 2024. Chatunitest: A framework for llm-based test generation. In 
+
+Companion Proceedings of the 32nd ACM International Conference on the Foundations of Software Engineering . 572–576. [21] K. R. Chowdhary. 2020. Fundamentals of artificial intelligence . Springer, Chapter Natural language processing, 603–649. Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 23 
+
+[22] Tristan Coignion, Clément Quinton, and Romain Rouvoy. 2024. A Performance Study of LLM-Generated Code on Leetcode. In Proceedings of the 28th International Conference on Evaluation and Assessment in Software Engineering (EASE ’24) . Association for Computing Machinery, New York, NY, USA, 79–89. https://doi.org/10.1145/3661167.3661221 [23] Ronan Collobert, Jason Weston, Leon Bottou, Michael Karlen, Koray Kavukcuoglu, et al. 2011. Natural Language Processing (almost) from Scratch. arXiv:cs.LG/1103.0398 https://arxiv.org/abs/1103.0398 [24] Hamish Cunningham. 2002. GATE, a general architecture for text engineering. Computers and the Humanities 36 (2002), 223–254. [25] Amirhossein Deljouyi, Roham Koohestani, Maliheh Izadi, and Andy Zaidman. 2025. Leveraging Large Language Models for Enhancing the Understandability of Generated Unit Tests. In Proceedings of the International Conference on Software Engineering (ICSE) . IEEE, 1449–1461. [26] Pouria Derakhshanfar, Xavier Devroey, Annibale Panichella, Andy Zaidman, and Arie van Deursen. 2023. Generating Class-Level Integration Tests Using Call Site Information. IEEE Trans. Software Eng. 49, 4 (2023), 2069–2087. [27] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding. arXiv:cs.CL/1810.04805 https://arxiv.org/abs/1810.04805 [28] Xavier Devroey, Alessio Gambi, Juan Pablo Galeotti, René Just, Fitsum Kifetew, et al. 2023. JUGE: An infrastructure for benchmarking Java unit test generators. Software Testing, Verification and Reliability (2023), e1838. https://doi.org/10.1002/stvr.1838 [29] Bradley Efron. 1992. Bootstrap methods: another look at the jackknife. In Breakthroughs in statistics: Methodology and distribution . Springer, 569–593. [30] Aryaz Eghbali and Michael Pradel. 2024. De-Hallucinator: Mitigating LLM Hallucinations in Code Generation Tasks via Iterative Grounding. 
+
+arXiv preprint arXiv:2401.01701 (2024). [31] Khalid El Haji, Carolin Brandt, and Andy Zaidman. 2024. Using GitHub Copilot for Test Generation in Python: An Empirical Study. In Proceedings of the International Conference on Automation of Software Test (AST) . ACM, 45–55. [32] Gordon Fraser and Andrea Arcuri. 2011. EvoSuite: Automatic Test Suite Generation for Object-Oriented Software. In Proc. Joint Meeting Symp. Foundations of Software Engineering and the European Softw. Eng. Conf. (ESEC/FSE) . ACM, 416–419. [33] Gordon Fraser and Andrea Arcuri. 2013. EvoSuite: On the Challenges of Test Case Generation in the Real World. In International Conference on Software Testing, Verification and Validation (ICST) . IEEE, 362–369. [34] Gordon Fraser and Andrea Arcuri. 2013. Whole Test Suite Generation. IEEE Transactions on Software Engineering 39, 2 (2013), 276–291. [35] Gordon Fraser and Andrea Arcuri. 2014. A Large Scale Evaluation of Automated Unit Test Generation Using EvoSuite. ACM Transactions on Software Engineering and Methodology (TOSEM) 24, 2 (2014), 8. [36] Gordon Fraser and Andrea Arcuri. 2015. 1600 faults in 100 projects: automatically finding faults while achieving high coverage with evosuite. 
+
+Empirical software engineering 20, 3 (2015), 611–639. [37] Gordon Fraser and Andrea Arcuri. 2015. Achieving scalable mutation-based generation of whole test suites. Empirical Software Engineering 20, 3 (2015), 783–812. [38] Gordon Fraser, Matt Staats, Phil McMinn, Andrea Arcuri, and Frank Padberg. 2015. Does Automated Unit Test Generation Really Help Software Testers? A Controlled Empirical Study. ACM Trans. Softw. Eng. Methodol. 24, 4 (2015), 23:1–23:49. [39] Alessio Gambi, Tri Huynh, and Gordon Fraser. 2019. Generating effective test cases for self-driving cars from police reports. In Proceedings of the 2019 27th ACM Joint Meeting on European Software Engineering Conference and Symposium on the Foundations of Software Engineering . 257–267. [40] Sijia Gu, Noor Nashid, and Ali Mesbah. 2025. LLM Test Generation via Iterative Hybrid Program Analysis. In International Conference on Software Engineering (ICSE) . ACM. [41] Julia Hirschberg and Christopher D Manning. 2015. Advances in natural language processing. Science 349, 6245 (2015), 261–266. [42] Rashina Hoda. 2025. Qualitative Research with Socio-Technical Grounded Theory A Practical Guide to Qualitative Data Analysis and Theory Development in the Digital World. Innovations (2025). [43] Laura Inozemtseva and Reid Holmes. 2014. Coverage is not strongly correlated with test suite effectiveness. In Proceedings of the 36th International Conference on Software Engineering (ICSE 2014) . Association for Computing Machinery, New York, NY, USA, 435–445. https://doi.org/10.1145/ 2568225.2568271 [44] Maliheh Izadi, Roberta Gismondi, and Georgios Gousios. 2022. Codefill: Multi-token code completion by jointly learning from structure and naming sequences. In Proceedings of the 44th International Conference on Software Engineering . ACM, 401–412. [45] Maliheh Izadi, Jonathan Katzy, Tim Van Dam, Marc Otten, Razvan Mihai Popescu, et al. 2024. Language models for code completion: A practical evaluation. In Proceedings of the IEEE/ACM 46th International Conference on Software Engineering . ACM, 1–13. [46] Gunel Jahangirova and Valerio Terragni. 2023. SBFT Tool Competition 2023 - Java Test Case Generation Track. In IEEE/ACM International Workshop on Search-Based and Fuzz Testing, SBFT@ICSE 2023, Melbourne, Australia, May 14, 2023 . IEEE, 61–64. https://doi.org/10.1109/SBFT59156.2023.00025 [47] Pin Ji, Yang Feng, Ruohao Zhang, Ruichen Xue, Yichi Zhang, et al. 2025. NLPLego: Assembling Test Generation for Natural Language Processing Applications. ACM Transactions on Software Engineering and Methodology 34, 2, Article 49 (2025), 36 pages. https://doi.org/10.1145/3691631 [48] René Just, Darioush Jalali, Laura Inozemtseva, Michael D. Ernst, Reid Holmes, et al. 2014. Are mutants a valid substitute for real faults in software testing?. In Proceedings of the 22nd ACM SIGSOFT International Symposium on Foundations of Software Engineering (FSE 2014) . Association for Computing Machinery, New York, NY, USA, 654–665. https://doi.org/10.1145/2635868.2635929 [49] Daniel Khashabi, Mark Sammons, Ben Zhou, Tom Redman, Christos Christodoulopoulos, et al. 2018. CogCompNLP: Your Swiss Army Knife for NLP. In 11th Language Resources and Evaluation Conference (LREC) . European Language Resources Association (ELRA). [50] Ali Khatami and Andy Zaidman. 2023. Quality Assurance Awareness in Open Source Software Projects on GitHub. In 2023 IEEE 23rd International Working Conference on Source Code Analysis and Manipulation (SCAM) . IEEE, 174–185. [51] Ali Khatami and Andy Zaidman. 2024. State-Of-The-Practice in Quality Assurance in Java-Based Open Source Software Development. Software: Practice and Experience 54, 8 (2024), 1408–1446. [52] Amy J. Ko, Bryan Dosono, and Neeraja Duriseti. 2014. Thirty years of software problems in the news. In Proc. Int’l Workshop on Cooperative and Human Aspects of Software Engineering (CHASE) . ACM, 32–39. [53] Lukas Krodinger, Altin Hajdari, Stephan Lukasczyk, and Gordon Fraser. 2025. Constraint-Guided Unit Test Generation for Machine Learning Libraries. arXiv preprint arXiv:2510.09108 (2025). [54] Caroline Lemieux, Jeevana Priya Inala, Shuvendu K. Lahiri, and Siddhartha Sen. 2023. CodaMosa: Escaping Coverage Plateaus in Test Generation with Pre-trained Large Language Models. In IEEE/ACM 45th International Conference on Software Engineering (ICSE) . IEEE, 919–931. [55] Jia Li, Ge Li, Yongmin Li, and Zhi Jin. 2023. Structured Chain-of-Thought Prompting for Code Generation. arXiv (2023). https://doi.org/10.48550/ arXiv.2305.06599 24 Deljouyi et al. 
+
+[56] Raymond Li, Loubna Ben Allal, Yangtian Zi, Niklas Muennighoff, Denis Kocetkov, et al. 2023. StarCoder: may the source be with you! arXiv (2023). https://doi.org/10.48550/arXiv.2305.06161 [57] Vadim Liventsev, Anastasiia Grishina, Aki Härmä, and Leon Moonen. 2023. Fully Autonomous Programming with Large Language Models. In 
+
+Proceedings of the Genetic and Evolutionary Computation Conference (GECCO) . ACM, 1146–1155. [58] LLMSuite 2024. Replication Package of LLMSuite. https://doi.org/10.5281/zenodo.17651272 [59] Stephan Lukasczyk, Florian Kroiß, and Gordon Fraser. 2023. An empirical study of automated unit test generation for Python. Empirical Software Engineering 28, 2 (2023), 36. [60] Aman Madaan, Niket Tandon, Prakhar Gupta, Skyler Hallinan, Luyu Gao, et al. 2023. Self-refine: Iterative refinement with self-feedback. Advances in Neural Information Processing Systems 36 (2023), 46534–46594. [61] Christopher D Manning, Mihai Surdeanu, John Bauer, Jenny Rose Finkel, Steven Bethard, et al. 2014. The Stanford CoreNLP natural language processing toolkit. In Proceedings of 52nd annual meeting of the association for computational linguistics: system demonstrations . 55–60. [62] Ggaliwango Marvin, Nakayiza Hellen, Daudi Jjingo, and Joyce Nakatumba-Nabende. 2023. Prompt Engineering in Large Language Models. In 
+
+International Conference on Data Intelligence and Cognitive Informatics . Springer, 387–402. [63] A. Mastropaolo, S. Scalabrino, N. Cooper, D. N. Palacio, D. Poshyvanyk, et al. 2021. Studying the usage of text-to-text transfer transformer to support code-related tasks. In International Conference on Software Engineering (ICSE) . IEEE, 336–347. [64] Andrew Kachites McCallum. 2002. Mallet: A machine learning for languagetoolkit. http://mallet. cs. umass. edu (2002). [65] Seokhyeon Moon, Jinwoo Choi, and Yoon-Chan Jhi. 2025. EvoFuzz at the SBFT 2025 Java Tool Competition. In 2025 IEEE/ACM International Workshop on Search-Based and Fuzz Testing (SBFT) . IEEE, 53–54. [66] Mitchell Olsthoorn, Arie van Deursen, and Annibale Panichella. 2021. Generating highly-structured input data by combining search-based testing and grammar-based fuzzing. In Proceedings of the 35th IEEE/ACM International Conference on Automated Software Engineering (ASE ’20) . Association for Computing Machinery, New York, NY, USA, 1224–1228. https://doi.org/10.1145/3324884.3418930 [67] OpenAI:, Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, et al. 2023. GPT-4 Technical Report. arXiv (2023). https://doi.org/10.48550/ arXiv.2303.08774 [68] Moses Openja, Foutse Khomh, Armstrong Foundjem, Zhen Ming (Jack) Jiang, Mouna Abidi, et al. 2024. An Empirical Study of Testing Machine Learning in the Wild. ACM Trans. Softw. Eng. Methodol. 34, 1, Article 7 (2024), 63 pages. [69] OpenNLP 2005. The OpenNLP project. https://opennlp.apache.org/ [70] Carlos Pacheco and Michael D. Ernst. 2007. Randoop: Feedback-Directed Random Testing for Java. In Conf. on Object-Oriented Programming Systems and Applications (OOPSLA-Companion) . ACM, 815–816. [71] Rangeet Pan, Myeongsoo Kim, Rahul Krishna, Raju Pavuluri, and Saurabh Sinha. 2025. ASTER: Natural and Multi-Language Unit Test Generation with LLMs. In 2025 IEEE/ACM 47th International Conference on Software Engineering: Software Engineering in Practice (ICSE-SEIP) . 413–424. https://doi.org/10.1109/ICSE-SEIP66354.2025.00042 [72] Annibale Panichella, Fitsum Meshesha Kifetew, and Paolo Tonella. 2015. Reformulating branch coverage as a many-objective optimization problem. In 2015 IEEE 8th international conference on software testing, verification and validation (ICST) . IEEE, 1–10. [73] Annibale Panichella, Fitsum Meshesha Kifetew, and Paolo Tonella. 2018. Automated Test Case Generation as a Many-Objective Optimisation Problem with Dynamic Selection of the Targets. IEEE Trans. Software Eng. 44 (2018), 122–158. [74] Annibale Panichella, Fitsum Meshesha Kifetew, and Paolo Tonella. 2018. A large scale empirical comparison of state-of-the-art search-based test case generators. Information and Software Technology 104 (2018), 236–256. https://doi.org/10.1016/j.infsof.2018.08.009 [75] Sebastiano Panichella, Annibale Panichella, Moritz Beller, Andy Zaidman, and Harald C Gall. 2016. The impact of test case summaries on bug fixing performance: An empirical investigation. In Proc. Int’l Conference on Software Engineering (ICSE) . ACM, 547–558. [76] Mike Papadakis, Donghwan Shin, Shin Yoo, and Doo-Hwan Bae. 2018. Are mutation scores correlated with real fault detection? a large scale empirical study on the relationship between mutants and real faults. In Proceedings of the 40th International Conference on Software Engineering (ICSE ’18) . Association for Computing Machinery, New York, NY, USA, 537–548. https://doi.org/10.1145/3180155.3180183 [77] Zaki Pauzi and Andrea Capiluppi. 2023. Applications of natural language processing in software traceability: A systematic mapping study. Journal of Systems and Software 198 (2023), 111616. [78] Renaud Pawlak, Martin Monperrus, Nicolas Petitprez, Carlos Noguera, and Lionel Seinturier. 2016. SPOON: A library for implementing analyses and transformations of Java source code. Software: Practice and Experience 46, 9 (2016), 1155–1179. [79] PIT 2025. PIT is a state-of-the-art mutation testing system, providing gold standard test coverage for Java and the jvm. https://pitest.org/ [80] Juan Altmayer Pizzorno and Emery D Berger. 2024. CoverUp: Effective High Coverage Test Generation for Python. arXiv preprint arXiv:2403.16218 
+
+(2024). [81] Lutz Prechelt, Guido Malpohl, Michael Philippsen, et al. 2002. Finding plagiarisms among a set of programs with JPlag. J. Univers. Comput. Sci. 8, 11 (2002), 1016. [82] Nikitha Rao, Kush Jain, Uri Alon, Claire Le Goues, and Vincent J. Hellendoorn. 2023. CAT-LM Training Language Models on Aligned Code And Tests. In 38th IEEE/ACM International Conference on Automated Software Engineering (ASE) . IEEE, 409–420. https://doi.org/10.1109/ASE56229.2023.00193 [83] José Miguel Rojas, Gordon Fraser, and Andrea Arcuri. 2016. Seeding strategies in search-based unit test generation. Softw. Test. Verif. Reliab. 26, 5 (2016), 366–401. [84] Baptiste Rozière, Jonas Gehring, Fabian Gloeckle, Sten Sootla, Itai Gat, et al. 2023. Code Llama: Open Foundation Models for Code. arXiv (2023). https://doi.org/10.48550/arXiv.2308.12950 [85] June Sallou, Thomas Durieux, and Annibale Panichella. 2024. Breaking the silence: the threats of using llms in software engineering. In Proceedings of the 2024 ACM/IEEE 44th International Conference on Software Engineering: New Ideas and Emerging Results . 102–106. [86] Arkadii Sapozhnikov, Mitchell Olsthoorn, Annibale Panichella, Vladimir Kovalenko, and Pouria Derakhshanfar. 2024. Testspark: Intellij idea’s ultimate test generation companion. In Proceedings of the 2024 IEEE/ACM 46th International Conference on Software Engineering: Companion Proceedings . 30–34. [87] Max Schäfer, Sarah Nadi, Aryaz Eghbali, and Frank Tip. 2024. An Empirical Evaluation of Using Large Language Models for Automated Unit Test Generation. IEEE Transactions on Software Engineering 50, 1 (2024), 85–105. https://doi.org/10.1109/TSE.2023.3334955 [88] Sina Shamshiri, Rene Just, Jose Miguel Rojas, Gordon Fraser, Phil McMinn, et al. 2015. Do Automatically Generated Unit Tests Find Real Faults? An Empirical Study of Effectiveness and Challenges. In International Conference on Automated Software Engineering (ASE) . IEEE, 201–211. [89] Mohammed Latif Siddiq, Joanna C. S. Santos, Ridwanul Hasan Tanvir, Noshin Ulfat, Fahmid Al Rifat, et al. 2024. Using Large Language Models to Generate JUnit Tests: An Empirical Study. In International Conference on Evaluation and Assessment in Software Engineering (EASE) . ACM, 313–322. Enhancing Automated Unit Test Generation for NLP Libraries Using Large Language Models 25 
+
+[90] András Vargha and Harold D Delaney. 2000. A critique and improvement of the CL common language effect size statistics of McGraw and Wong. 
+
+Journal of Educational and Behavioral Statistics 25, 2 (2000), 101–132. [91] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, et al. 2023. Attention Is All You Need. arXiv (2023). https: //doi.org/10.48550/arXiv.1706.03762 [92] Junjie Wang, Yuchao Huang, Chunyang Chen, Zhe Liu, Song Wang, et al. 2023. Software Testing with Large Language Model: Survey, Landscape, and Vision. arXiv (2023). arXiv:cs.SE/2307.07221 https://doi.org/10.48550/arXiv.2307.07221 [93] Song Wang, Nishtha Shrestha, Abarna Kucheri Subburaman, Junjie Wang, Moshi Wei, et al. 2021. Automatic unit test generation for machine learning libraries: How far are we?. In 2021 IEEE/ACM 43rd International Conference on Software Engineering (ICSE) . IEEE, 1548–1560. [94] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, et al. 2023. Chain-of-Thought Prompting Elicits Reasoning in Large Language Models. arXiv (2023). https://doi.org/10.48550/arXiv.2201.11903 [95] Chen Yang, Junjie Chen, Bin Lin, Ziqi Wang, and Jianyi Zhou. 2025. Advancing Code Coverage: Incorporating Program Analysis with Large Language Models. ACM Transactions on Software Engineering and Methodology (2025). https://doi.org/10.1145/3748505 [96] Jia-Yu Yao, Kun-Peng Ning, Zhen-Hui Liu, Mu-Nan Ning, Yu-Yang Liu, et al. 2023. LLM lies: Hallucinations are not bugs, but features as adversarial examples. arXiv preprint arXiv:2310.01469 (2023). [97] Shengcheng Yu, Chunrong Fang, Yuchen Ling, Chentian Wu, and Zhenyu Chen. 2023. LLM for Test Script Generation and Migration: Challenges, Capabilities, and Opportunities. arXiv (2023). arXiv:cs.SE/2309.13574 https://doi.org/10.48550/arXiv.2309.13574 [98] Zhiqiang Yuan, Mingwei Liu, Shiji Ding, Kaixin Wang, Yixuan Chen, et al. 2024. Evaluating and Improving ChatGPT for Unit Test Generation. 
+
+Proc. ACM Softw. Eng. 1, FSE, Article 76 (July 2024), 24 pages. https://doi.org/10.1145/3660783 [99] JD Zamfirescu-Pereira, Richmond Y Wong, Bjoern Hartmann, and Qian Yang. 2023. Why Johnny can’t prompt: how non-AI experts try (and fail) to design LLM prompts. In Proceedings of the 2023 CHI Conference on Human Factors in Computing Systems . ACM, 1–21. [100] Liping Zhao, Waad Alhoshan, Alessio Ferrari, and Keletso J. Letsholo. 2022. Classification of Natural Language Processing Techniques for Requirements Engineering. arXiv:cs.CL/2204.04282 https://arxiv.org/abs/2204.04282
