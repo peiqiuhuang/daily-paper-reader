@@ -1,0 +1,751 @@
+Title: Bridging the Confidence Gap: Temperature Scaling for Calibrating Test-Time Prompt Tuning
+
+URL Source: https://arxiv.org/pdf/2609.17386v1
+
+Published Time: Wed, 16 Sep 2026 01:39:44 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# Bridging the Confidence Gap: Temperature Scaling for Calibrating Test-Time Prompt Tuning 
+
+Yuwei Liang 1,2 Jian Liang 1,2∗ Dapeng Hu 3 Yinuo Xu 1,2 Ran He 1,21 School of Artificial Intelligence, University of Chinese Academy of Sciences, Beijing, China  
+
+> 2
+
+NLPR & MAIS, Institute of Automation, Chinese Academy of Sciences, Beijing, China  
+
+> 3
+
+Independent Researcher 
+
+liangyuwei911@gmail.com, liangjian92@gmail.com 
+
+## Abstract 
+
+Test-time prompt tuning (TPT) enables adaptation on a single test instance, achiev-ing improved accuracy but often sacrificing calibration performance. Most existing calibration methods introduce additional regularization terms to promote dispersion across text embeddings and reduce calibration error, yet these methods often suffer from a drop in accuracy. Motivated by the well-calibrated nature of zero-shot predictions, we propose CoTS , a simple yet effective post-hoc calibration method that preserves accuracy. Specifically, CoTS applies temperature scaling to min-imize the confidence gap between adapted and zero-shot predictions. To fully exploit the potential of multiple augmentations during adaptation, we introduce a weak-strong ensemble strategy that further boosts accuracy. We then apply 
+
+CoTS to this ensemble, termed E-CoTS , to maintain its well-calibrated property. Extensive experiments on diverse datasets and backbones show that our approaches effectively mitigate miscalibration without compromising primary accuracy. For instance, E-CoTS reduces the average expected calibration error of TPT from 11.90% to 5.38% on ImageNet variants, while even increasing accuracy from 60.74% to 62.95%. Moreover, when integrated with existing calibration methods, 
+
+E-CoTS usually enhances both accuracy and calibration simultaneously. Code is available at https://github.com/yuweiliang911/CoTS .
+
+## 1 Introduction 
+
+Vision-language models (VLMs), such as CLIP [53] and ALIGN [26], are pre-trained to align visual and textual features in a shared embedding space, enabling strong zero-shot performance. To efficiently adapt VLMs to diverse downstream tasks, pioneering works [77, 76] replace hand-crafted prompts with learnable continuous vectors optimized on training data. For unsupervised settings, earlier methods typically require access to multiple samples from either the entire test set [24, 62, 38] or streaming data [42, 69]. In contrast, episodic test-time adaptation (TTA) methods [57, 12, 56] perform prompt tuning using a single test instance, which is more challenging and has received increasing attention. A classic approach, test-time prompt tuning (TPT) [57] adapts CLIP during inference by minimizing the marginal entropy over multiple augmented predictions. Although TPT [57] improves accuracy over zero-shot CLIP, it is prone to generating overconfident predictions, raising reliability concerns for VLMs in safety-critical applications [29, 50, 31, 58]. A pioneering work, C-TPT [72], shows that well-calibrated prompts tend to produce text embeddings with broader class-wise dispersion and thus introduces a distance-dispersion regularization term to push prompt embeddings away from the class centroid. Building on this insight, subsequent works [55, 1, 13] further propose various regularization terms to encourage angular separation              
+
+> ∗To whom correspondence should be addressed. arXiv:2609.17386v1 [cs.LG] 15 Sep 2026 4.0 6.0 8.0 10.0 ECE (%) 64.0 64.5 65.0 65.5 Accuracy (%)
+> Finegrained datasets
+> 4.0 6.0 8.0 10.0 12.0 ECE (%) 58.0 60.0 62.0 Accuracy (%)
+> ImageNet variants ZeroShot TPT Penalty SaLS CTPT OTPT ATPT SoC CoTS ECoTS [53] [46] [72] [1] [57] [46] [55] [13]
+
+Figure 1: Average accuracy (%) and expected calibration error (ECE, %) of zero-shot CLIP, TPT, and various calibration methods on fine-grained datasets and ImageNet variants using ViT-B/16. between textual features. Although these regularization-based methods achieve lower expected calibration error (ECE) than the original TPT [57], we find they suffer from a noticeable accuracy drop, as shown in Fig. 1. We argue that reduced ECE is less meaningful when it comes at the expense of accuracy, especially as the underlying calibration mechanisms remain poorly interpretable. Alternatively, SaLS [46] presents the only post-hoc calibration method that preserves accuracy by adjusting logits to remain within the zero-shot range after inference, but its calibration improvement remains limited. It is well known that CLIP [53] is generally well-calibrated [44, 15], with a relatively small gap between accuracy and confidence. Taking a closer look at the accuracy of CLIP and TPT, we find that prompt tuning using a single test instance does not substantially alter accuracy, suggesting that the increased miscalibration stems from a shift in confidence. To validate this hypothesis, we conduct a pilot study that assigns zero-shot confidence to TPT predictions. We find that this straightforward replacement significantly reduces calibration error, surpassing [46, 72] while falling short of [55, 13]. However, this naive confidence replacement introduces a critical inconsistency: the predicted class comes from TPT’s softmax distribution, whereas the confidence comes from the zero-shot distribution, potentially leading to unstable decisions. Based on these insights, we propose Co nfidence-based Temperature Scaling ( CoTS ), a simple yet effective calibration method that follows the classic idea of temperature scaling [16]. Specifically, 
+
+CoTS optimizes a learnable temperature parameter to align TPT-predicted confidence with zero-shot confidence, thereby mitigating calibration error while retaining accuracy. Furthermore, inspired by prior work [10, 6] that ensembles augmented views to enhance prediction robustness, we introduce a new weak-strong ensemble strategy to further boost accuracy. In this strategy, we retain the weakly augmented view and balance its predictions with those from selected strong augmentations via a weighted trade-off. Empirically, we find that this ensemble strategy indeed boosts accuracy but may disrupt the model’s well-calibrated properties. To mitigate this issue, we further integrate the ensemble strategy with CoTS , termed E-CoTS , achieving a better trade-off between accuracy and calibration. We validate the proposed methods on both fine-grained datasets and ImageNet variants. To summarize, our contributions are as follows: • We propose CoTS , a novel post-hoc confidence-based calibration method that uses temperature scaling to align TPT-predicted confidence with zero-shot confidence. • We devise a simple weak-strong ensemble strategy integrated with CoTS , dubbed E-CoTS , that achieves reliable classification against TPT with superior accuracy and lower calibration error. • Experiments across diverse datasets and backbones show that our methods reduce ECE to near the well-calibrated zero-shot baseline, while maintaining or even improving the adapted model’s classification accuracy. Both CoTS and E-CoTS are plug-and-play and usually complement existing regularization-based calibration approaches, improving either accuracy or ECE. 
+
+## 2 Preliminaries and Motivation 
+
+CLIP-based zero-shot classification. CLIP [53] consists of a visual encoder fv (·) and a text encoder 
+
+ft(·). For a K-class classification task with label space Y = {y1, y 2, . . . , y K }, let x denote an 2input image and y ∈ Y its ground-truth label. The visual encoder maps x to an image embedding 
+
+v = fv (x) ∈ Rd, while each class label yk ∈ Y is converted into a textual prompt ck (e.g. , using the template "a photo of a [CLASS]") and then encoded into a text embedding tk = ft(ck). Both the image and text embeddings are l2-normalized, i.e. , ∥v∥ = ∥tk∥ = 1 . Then, the k-th values of the logit vector z and softmax probability vector p(x) corresponding to class yk are defined as follows: 
+
+zk = ( vT · tk)/τ clip , pk(x) = p(y = k|x) = exp( zk)
+
+PKj=1 exp( zj ) , (1) where the scaling factor τclip = 0 .01 is learned during pre-training [53]. 
+
+Test-time prompt tuning (TPT). TPT [57] adapts CLIP [53] to a single test image by optimizing text prompts at test time, following the test-time adaptation paradigm [61, 75, 37]. Besides the weak augmented view A1(x), TPT generates (N − 1) randomly augmented views of the test image using AugMix [21], and optimizes the input text prompts by minimizing the marginal entropy loss: 
+
+LTPT = −
+
+> K
+
+X
+
+> k=1
+
+¯pk(x) log ¯ pk(x), ¯pk(x) = 1
+
+ρN 
+
+> N
+
+X
+
+> i=1
+
+1[H(p(Ai(x))) ≤ γ] pk(Ai(x)) . (2) Here ¯pk(x) is the average softmax probability over selected augmentations that correspond to small entropy values, γ is the threshold corresponding to a cutoff percentile ρ (defaulting to 0.1 [57]), and 
+
+H(p(Ai(x))) measures the self-entropy of the prediction on the i-th augmented view. 
+
+Temperature scaling. Temperature Scaling (TS) [16] is a classic post-hoc calibration technique [52] that adjusts model confidence without altering its predictions. It introduces a single temperature parameter τ > 0 to rescale the logits before applying the softmax: 
+
+ˆpk(x; τ ) = exp( zk/τ )
+
+PKj=1 exp( zj /τ ) , k ∈ [1 , . . . , K ], (3) where zk is the logit for class k. A larger τ softens the distribution (reducing overconfidence), while a smaller τ sharpens it. The optimal temperature τ ∗ is typically obtained by minimizing the negative log-likelihood (NLL) on a labeled validation set V = {xi, y i}|V |
+
+> i=1
+
+:
+
+τ ∗ = arg min  
+
+> τ
+
+− 
+
+> |V|
+
+X
+
+> i=1
+
+log ˆ pyi (xi; τ ). (4) However, no labeled validation set is available in the episodic test-time adaptation problem, motivating alternative strategies for determining the temperature. 
+
+2.1 A Critical Examination of Prior Calibration Methods 
+
+Although TPT [57] improves accuracy compared to zero-shot CLIP [53], recent studies have shown that it produces overconfident predictions [46, 72]. To address this, a line of work has focused on calibrating TPT [72, 55, 17, 1, 13]. These methods introduce regularization terms during prompt opti-mization to encourage greater dispersion among text embeddings, e.g. , distance-based dispersion [72], orthogonal constraints [55], angular diversity [1], and semantic-aware separation [13]. Alternatively, SaLS [46] identifies the increase in logit range as the cause of miscalibration and adjusts logits to remain within the zero-shot range. To investigate whether these methods truly work as expected, we examine their ECE values and accuracies alongside those of CLIP and TPT in Fig. 1. 
+
+Observation 1: Calibration methods reduce TPT’s calibration error but do not significantly outperform zero-shot CLIP. As depicted in Fig. 1, zero-shot predictions maintain low ECE values, confirming that CLIP models are generally well-calibrated [44, 15]. While TPT [57] clearly boosts accuracy, it leads to a substantial increase in ECE. Existing calibration methods significantly reduce the ECE of TPT, but most remain comparable to or slightly worse than zero-shot CLIP; only SoC [13] marginally outperforms it. The only post-hoc approach, SaLS [46], achieves notably weaker ECE reduction than its regularization-based counterparts. 
+
+Observation 2: Calibration methods improve accuracy over CLIP but often degrade the accuracy of TPT. As depicted in Fig. 1, all regularization-based methods decrease the accuracy of 3TPT. Specifically, the accuracy of O-TPT [55] and SoC [13] degrade substantially, even approaching that of zero-shot CLIP. In contrast, the post-hoc approach SaLS [46] fully preserves TPT’s accuracy. Taken together, zero-shot CLIP serves as a strong calibration baseline, while TPT provides a clear ac-curacy gain. Existing regularization-based methods trade accuracy for calibration, whereas SaLS [46] preserves accuracy but offers limited calibration improvement. This reveals an unresolved gap: no existing method simultaneously preserves TPT’s accuracy advantage and reduces calibration error to the well-calibrated zero-shot level. 2.2 Confidence Replacement: A Pilot Study Finegrained datasets Imagenet variants 
+
+> 0246810 12 ECE (%)
+> 6.0 6.1
+> ZeroShot TPT CTPT SaLS CoR ATPT SoC
+> [57] [72] [46] [1] [13]
+
+Figure 2: Comparison of average ECE (%) between CoR 
+
+and existing calibration methods on fine-grained datasets and ImageNet variants using ViT-B/16. Comparing the accuracy of zero-shot CLIP and TPT, we find that adaptation using a single test instance typically yields limited accuracy gains, suggest-ing that TPT’s miscalibration stems from a shift in confidence rather than a change in predictive performance. To test this hypothesis, we conduct a simple experiment: for each test sam-ple, we retain the predicted class from TPT but replace its confidence (max-imum predicted probability) with the zero-shot confidence of the same sam-ple, and then measure ECE. We refer to this procedure as Confidence Re-placement ( CoR ). As shown in Fig. 2, this simple replacement leads to a notable re-duction in ECE, even outperforming SaLS [46] and C-TPT [72]. However, CoR remains inferior to recent calibration methods such as SoC [13]. We attribute this to a fundamental inconsistency: the predicted class is derived from the TPT distribution, whereas the confidence comes from the zero-shot distribution, which may lead to incoherent decisions. Nevertheless, this experiment confirms two key findings: (1) the miscalibration of TPT is largely caused by confidence inflation, and (2) zero-shot confidence provides a useful refer-ence for calibration. These observations motivate a principled approach that aligns TPT confidence with zero-shot confidence while maintaining a consistent probability distribution. 
+
+## 3 Methodology 
+
+Section 3.1 describes the proposed confidence-based temperature scaling method, while Section 3.2 then presents its enhanced variant under a new weak-strong ensemble strategy. 
+
+3.1 Confidence-based Temperature Scaling 
+
+Based on the findings in Section 2.2, we propose Co nfidence-based Temperature Scaling ( CoTS ), a post-hoc calibration method that follows the classic idea of temperature scaling [16]. Unlike standard temperature scaling, which requires a labeled validation set to optimize the NLL, CoTS leverages the well-calibrated zero-shot predictions as a label-free reference. Specifically, CoTS optimizes a learnable temperature parameter τ to align TPT-predicted confidence with zero-shot confidence, thereby reducing calibration error while retaining accuracy. Let ztpt (x) and zzs (x) denote the logits of the TPT-adapted model and the zero-shot model for the test image x, respectively. For a single augmented view, the objective is to minimize the squared difference between the temperature-scaled TPT confidence and the zero-shot confidence: 
+
+ max k ˆptpt  
+
+> k
+
+(x; τ ) − max k pzs  
+
+> k
+
+(x)2, where ˆptpt and pzs are the corresponding softmax probabilities. To fully exploit the multiple augmentations available in TPT and reduce the sensitivity of relying on 4the weak view itself, we optimize over the set of selected strongly augmented views: 
+
+τ ∗ = arg min 
+
+> τ
+
+1
+
+|Ω|
+
+X
+
+> i∈Ω
+
+
+
+max  
+
+> k
+
+ˆptpt  
+
+> k
+
+(Ai(x); τ ) − max  
+
+> k
+
+pzs  
+
+> k
+
+(Ai(x)) 
+
+2
+
+, (5) where Ω = {i | i > 1, H(ptpt (Ai(x))) ≤ γ′} denotes the set of strongly augmented views selected by having low entropy after adaptation under the threshold γ′, excluding the weakly augmented view. Once the optimal parameter τ ∗ is obtained, the calibrated probability is computed as ˆptpt (A1(x); τ ∗).Compared to existing regularization-based calibration methods [72, 55, 1, 13], which modify the prompt optimization objective and may interfere with discriminative performance, CoTS operates entirely after adaptation and thus avoids any accuracy degradation. 
+
+3.2 Ensemble with Confidence-Based Temperature Scaling 
+
+While CoTS reduces calibration error without degrading the accuracy of TPT, it mainly preserves rather than improves the adapted prediction. We wonder whether we can further improve accuracy while maintaining good calibration, a goal that is especially important since existing calibration methods ( e.g. , O-TPT [55], SoC [13]) often suffer from a notable accuracy degradation. Orthogonal to these calibration methods, ensembling over augmented views provides an effective way to boost accuracy during CLIP adaptation [10, 56, 6], and ZERO [10] theoretically shows that marginalizing predictions across augmented views can reduce the error bound compared with single-view inference. Inspired by these insights, we propose a weak-strong ensemble strategy that further exploits the predictions from selected strongly augmented views to boost accuracy. Unlike prior work that uses majority voting [10] or uniform averaging [6] over augmented views, we balance the predictions from weak and strong augmentations using an adaptive weight: 
+
+pens = α · ptpt (A1(x)) + (1 − α) · 1
+
+|Ω|
+
+X
+
+> i∈Ω
+
+ptpt (Ai(x)) , (6) where α = 1
+
+> K(K−1)
+
+P 
+
+> i̸=j
+
+tTi · tj is the average pairwise cosine similarity among the K normalized text embeddings {ti}Ki=1 . Intuitively, a higher α indicates greater inter-class similarity in the text embedding space, which makes entropy-based view selection less discriminative ( i.e. , the average of strong views becomes relatively unreliable). In such cases, the weakly augmented view (original im-age) is more reliable, and the ensemble assigns it a larger weight. Conversely, when text embeddings are well-separated ( α is small), the entropy-filtered strongly augmented views provide more reliable complementary information. Note that α depends only on the text embeddings and thus varies across tasks and prompts, providing a task-adaptive weighting without per-sample tuning. Through a preliminary study, we find that directly applying this ensemble on top of calibrated models indeed enhances accuracy but may disrupt their well-calibrated properties. To address this, we integrate the proposed confidence-based temperature scaling into the ensemble strategy. Specifically, we substitute each probability vector in Eq. (6) with its temperature-calibrated version: 
+
+ˆpens = α · ˆptpt (A1(x); τ ∗) + (1 − α) · 1
+
+|Ω|
+
+X
+
+> i∈Ω
+
+ˆptpt (Ai(x); τ ∗). (7) The combined approach, termed E-CoTS , achieves a better trade-off between accuracy and calibration: the ensemble component enhances classification performance, while temperature scaling reduces calibration error. Both methods are post-hoc, and their pseudocode is provided in Appendix C. 
+
+## 4 Experiment 
+
+4.1 Experimental Setup Datasets. To comprehensively evaluate the performance of CoTS and E-CoTS , we first use a fine-grained benchmark consisting of eleven image classification datasets, including ImageNet [7], DTD [5], Flowers102 [48], Food101 [3], SUN397 [68], Aircraft [43], OxfordPets [51], Cal-tech101 [11], UCF101 [59], EuroSAT [19], and StanfordCars [32]. To further evaluate robustness under natural distribution shifts, we conduct experiments on four ImageNet variants, including 5Table 1: Performance comparison of different methods on fine-grained datasets using ViT-B/16. Accuracy (%) and ECE (%) are reported. In the Average column, green indicates performance improvement over TPT, while red indicates performance degradation.                                                                                                                                                                                                                                                              
+
+> (%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Average Accuracy Zero-Shot [53] 66.72 44.33 67.32 83.66 62.58 23.85 88.20 93.96 65.19 42.05 65.56 63.95 +0.00
+> TPT [57] 68.91 47.12 68.64 84.65 65.50 23.27 87.25 94.08 68.20 42.91 66.58 65.19 +0.00
+> C-TPT [72] 68.45 45.17 69.58 83.14 64.53 24.10 88.20 93.75 65.05 42.45 65.80 64.57 -0.63
+> Penalty [46] 68.84 45.80 68.36 84.43 65.44 22.75 82.94 93.27 67.09 41.20 66.19 64.21 -0.98
+> SaLS [46] 68.91 47.12 68.67 84.65 65.49 23.29 87.25 94.08 68.21 42.91 66.57 65.20 +0.00
+> O-TPT [55] 67.30 45.49 69.03 82.78 63.12 23.65 88.13 93.54 63.82 42.44 65.24 64.05 -1.14
+> A-TPT [1] 67.92 45.17 69.79 83.06 63.20 23.80 87.89 93.24 64.03 42.05 65.20 64.12 -1.07
+> SoC [13] 67.57 42.79 68.01 83.60 62.37 24.01 88.30 94.01 65.47 42.04 65.31 63.95 -1.24
+> CoTS 68.91 47.12 68.64 84.65 65.50 23.27 87.25 94.08 68.20 42.91 66.58 65.19 +0.00
+> E-CoTS 69.49 47.32 68.25 84.54 65.67 23.59 86.94 94.13 68.25 41.68 67.57 65.22 +0.03
+> ECE Zero-Shot [53] 1.98 8.24 2.73 2.08 2.24 5.53 4.45 5.91 2.95 7.10 4.40 4.33 +0.00
+> TPT [57] 10.56 20.96 13.59 4.31 11.23 16.96 5.50 4.36 11.57 20.15 5.08 11.30 +0.00
+> C-TPT [72] 5.14 12.94 5.16 3.39 5.10 4.16 1.63 4.41 2.49 11.66 1.47 5.23 -6.07
+> Penalty [46] 10.38 14.88 12.08 2.67 10.98 15.65 1.84 4.89 9.14 4.62 3.94 8.28 -3.02
+> SaLS [46] 9.72 18.61 11.93 4.35 11.01 15.76 5.12 4.37 10.66 13.83 3.94 9.94 -1.36
+> O-TPT [55] 2.03 7.66 3.68 4.28 8.42 3.76 2.13 4.53 2.70 11.52 1.81 4.77 -6.52
+> A-TPT [1] 2.38 8.49 4.23 3.19 4.17 6.25 2.18 5.30 2.63 7.11 1.68 4.33 -6.97
+> SoC [13] 3.71 7.63 2.98 2.84 2.84 5.41 1.83 5.80 2.71 7.08 4.63 4.31 -6.98
+> CoTS 3.39 6.67 2.48 1.85 3.51 5.21 2.91 6.13 3.11 7.58 4.29 4.28 -7.01
+> E-CoTS 3.00 6.94 4.10 1.29 2.59 5.73 3.43 4.74 3.50 8.23 3.84 4.31 -6.98
+
+ImageNet-A (natural adversarial examples) [22], ImageNet-V (re-collected images) [54], ImageNet-R (artistic renditions) [20], and ImageNet-K (sketch-style images with domain shifts) [65]. In the episodic test-time adaptation setting [9], each data instance is adapted independently of the others. 
+
+Baselines. We first compare CoTS with representative calibration methods designed for fine-tuned CLIP [53]. These include regularization-based methods that encourage textual dispersion, such as C-TPT [72], O-TPT [55], A-TPT [1], and SoC [13]; logit-adjustment methods including ZS-Norm [46], Penalty [46], and SaLS [46]. In addition to direct comparison, we also evaluate whether our advanced 
+
+E-CoTS can serve as a plug-and-play module on top of existing calibration methods [72, 55, 1, 13]. To examine generality beyond TPT methods, we further apply CoTS to other episodic test-time adaptation methods, including TTL [25] and TPS [60]. 
+
+Implementation details. We use ViT-B/16 [53] as the backbone model and follow the standard TPT [57] protocol. The initial text prompt is set to "a photo of a [CLASS]" and optimized using AdamW [41] with a single gradient step and a learning rate of 0.005. For each test sample, we generate 64 augmented views using AugMix [21] and select confident views following TPT [57]. For temperature learning, we select the top 10% ( ρ=0.1) most confident samples, excluding the weak augmentation (original image), and train the temperature parameter for 50 steps. We implement all baselines using their official code and report the average results over three random seeds. We provide additional results ( e.g. , for ResNet-50, standard deviations, and other metrics) in the Appendix. 4.2 Results Performance on fine-grained datasets. We evaluate the performance on fine-grained datasets with ViT-B/16 in Table 1. CoTS preserves average accuracy of TPT while substantially improving calibration, reducing average ECE from 11.30% to 4.28%, which is the best among all methods. On Flowers, CoTS attains the lowest ECE overall, even outperforming zero-shot. Compared to SaLS [46], the only post-hoc calibration baseline, CoTS achieves much lower ECE. Furthermore, 
+
+E-CoTS improves the average accuracy and maintains a competitive ECE, demonstrating a better balance between classification performance and calibration. 
+
+Performance on ImageNet variants. The results on four ImageNet variants under distribution shifts are demonstrated in Table 2. It is clear that regularization-based methods (O-TPT [55], A-TPT [1], SoC [13]) reduce ECE but at the cost of accuracy. In contrast, CoTS preserves TPT’s average accuracy while more than halving the average ECE, demonstrating its effectiveness without altering predictions. With the weak-strong ensemble strategy, E-CoTS achieves the best average accuracy of 62.95% while maintaining a competitive ECE of 5.38%. These results indicate that our approach not only mitigates miscalibration but also enhances the robustness of test-time prompt tuning. 6Table 2: Performance comparison of different methods on ImageNet variants using ViT-B/16. Accu-racy (%) and ECE (%) are reported.                                                                                                                
+
+> Method Accuracy (%) ECE (%) -A -V -R -Sk Average -A -V -R -Sk Average Zero-Shot [53] 47.83 60.94 73.99 46.10 57.22 +0.00 8.34 3.18 3.55 4.87 4.98 +0.00
+> TPT [57] 54.63 63.45 77.05 47.82 60.74 +0.00 15.20 11.88 4.84 15.69 11.90 +0.00
+> C-TPT [72] 51.19 62.58 75.79 47.43 59.25 -1.49 8.18 6.55 1.74 10.20 6.67 -5.24
+> Penalty [46] 53.07 63.40 76.68 47.79 60.24 -0.50 13.33 11.64 3.60 15.40 10.99 -0.91
+> SALS [46] 54.63 63.44 77.05 47.82 60.74 +0.00 13.95 10.81 3.87 15.29 10.98 -0.92
+> O-TPT [55] 48.12 61.35 73.98 46.59 57.51 -3.23 6.68 3.45 3.98 5.76 4.97 -6.94
+> A-TPT [1] 49.16 61.77 74.99 46.89 58.20 -2.54 5.55 2.85 4.09 4.87 4.34 -7.56
+> SoC [13] 49.57 61.36 75.11 46.45 58.12 -2.62 8.15 3.65 4.50 3.16 4.87 -7.04
+> CoTS 54.63 63.45 77.05 47.82 60.74 +0.00 7.85 4.37 5.09 3.87 5.30 -6.61
+> E-CoTS 60.72 64.49 77.88 48.72 62.95 +2.22 8.71 3.77 2.94 6.11 5.38 -6.52
+
+Table 3: Compatibility of CoTS , and E-CoTS with different base methods using ViT-B/16. Average accuracy (%) and ECE (%) are reported on fine-grained datasets and ImageNet variants, respectively. (%) Method Fine-grained datasets ImageNet variants C-TPT Penalty O-TPT A-TPT SoC C-TPT Penalty O-TPT A-TPT SoC [72] [46] [55] [1] [13] [72] [46] [55] [1] [13] ACC  base 64.57 64.21 64.05 64.12 63.95 59.25 60.24 57.51 58.20 58.12 + E-CoTS 64.64 65.25 64.93 65.07 65.01 62.74 62.65 62.01 62.32 61.84 ECE  base 5.23 8.28 4.77 4.33 4.31 6.67 10.99 4.97 4.34 4.87 + SaLS [46] 4.97 9.04 4.56 4.25 4.26 6.17 11.06 4.38 4.80 5.02 + CoTS 4.53 3.90 4.55 4.38 4.44 4.75 5.14 4.14 4.43 4.37 + E-CoTS 4.16 3.86 4.30 3.85 4.20 5.14 5.39 4.55 4.87 4.58 
+
+Plug-and-play compatibility with calibration methods. Table 3 evaluates whether the proposed 
+
+CoTS and E-CoTS can be integrated with different base methods. Overall, E-CoTS consistently im-proves accuracy across all base methods, showing that the weak-strong ensemble strategy is broadly compatible with prior approaches. For example, when combined with O-TPT [55], E-CoTS in-creases the accuracy on ImageNet variants from 57.51% to 62.01%, showing its effectiveness under distribution shifts. For calibration, CoTS and E-CoTS generally reduce ECE compared with the corresponding base methods, especially for Penalty [46] and C-TPT [72]. These results demonstrate that our method is not restricted to TPT, but can serve as a plug-and-play component to improve the accuracy-calibration trade-off of existing calibration methods. 
+
+4.3 Ablation Studies 
+
+We conduct ablation studies on both temperature scaling and the ensemble design. For temperature scaling in CoTS , we analyze the choice of augmented views and the choice of confidence alignment loss. For the ensemble strategy in E-CoTS , we study the effect of different ensemble weights. We also provide a component-level ablation in Appendix E.6, showing that ensemble-only improves accuracy but may harm calibration, whereas E-CoTS achieves a better accuracy-calibration trade-off. 
+
+View selection in CoTS . We analyze how different augmented view selections affect temperature learning, as illustrated in Fig. 3a. Using only the weak view yields limited calibration improvement, with ECE even higher than CoR , indicating that a single weak augmentation does not provide enough confidence variation for reliable temperature estimation. In contrast, using strong augmented views substantially reduces ECE, indicating that strong augmentations offer more informative confidence variations for alignment. However, simply using the Top-6 views is not optimal, since the selected set may still contain weak or overly confident views that provide a limited calibration signal. Among all settings, CoTS with the Top-6 strong views achieves the best calibration performance, obtaining the lowest ECE on both dataset groups. 7Finegrained datasets ImageNet variants 
+
+> 01234567
+> ECE (%)
+> 5.25 5.34 4.19 4.18 5.20 4.15 6.02 6.13 5.57 5.54 6.62 5.17
+> COR CoTS w/ Weak View CoTS w/ Strong Views CoTS w/ All Views CoTS w/ Top6 Views CoTS w/ Top6 Strong Views
+
+(a) View selection for CoTS .L1 L2 L  
+
+> 4.0 4.5 5.0 5.5 ECE(%)
+> 4.17 5.25 4.15 5.17 4.23 5.19
+> Finegrained datasets ImageNet variants
+
+(b) Loss function for CoTS .
+
+Figure 3: Ablation studies on key components ( i.e. , view selection and loss function) of CoTS with ViT-B/16. Average ECE (%) is reported on fine-grained datasets and ImageNet variants. Table 4: Performance comparison of different methods initialized with CoOp [77] using ViT-B/16. We report average accuracy (%) and ECE (%) on fine-grained datasets and ImageNet variants, and evaluate the effect of integrating CoTS and E-CoTS .
+
+(%) Method Fine-grained datasets ImageNet variants TPT C-TPT O-TPT A-TPT SoC TPT C-TPT O-TPT A-TPT SoC [57] [72] [55] [1] [13] [57] [72] [55] [1] [13] ACC  base 65.67 65.12 64.58 64.68 64.23 63.08 61.51 59.16 60.48 61.45 + E-CoTS 65.47 65.70 65.60 65.54 65.19 64.45 64.15 63.36 63.88 64.24 ECE  base 17.46 10.56 8.43 9.29 5.61 19.95 15.38 9.92 12.20 10.22 + SALS [46] 13.83 6.76 5.38 6.05 5.44 16.00 9.94 5.46 7.26 8.13 + CoTS 5.61 5.22 5.18 5.11 5.23 5.06 4.62 4.68 4.65 4.44 + E-CoTS 6.10 5.37 5.30 5.12 4.98 6.44 5.26 4.26 4.80 4.80 
+
+Loss function in CoTS . We further compare different loss functions for confidence alignment in Fig. 3b. The results show that all three losses achieve comparable calibration performance, indicating that CoTS is not highly sensitive to the specific loss formulation. Among them, the L2 loss obtains the lowest ECE on both fine-grained datasets and ImageNet variants. Therefore, we adopt L2 as the default objective for temperature learning in our experiments. 
+
+Ensemble weight α in E-CoTS . We study the influence of the ensemble weight α in E-CoTS , with results shown in Fig. 4. Using fixed weights underperforms the proposed adaptive weighting strategy, particularly on ImageNet variants (see Appendix E.2). The adaptive strategy achieves a favorable balance between accuracy and calibration, avoiding the need for manual weight selection. 
+
+4.4 Robustness Analysis Compatibility with CoOp initialization. We evaluate our method initialized with CoOp [77], with the results shown in Table 4. Compared with the base results of existing regularization-based methods, 
+
+CoTS consistently achieves much lower ECE across both fine-grained datasets and ImageNet variants. Meanwhile, E-CoTS generally improves accuracy over the corresponding base methods, showing that the weak-strong ensemble remains beneficial under CoOp [77] initialization. Overall, these results demonstrate that our method is compatible with stronger prompt initialization and provides stronger calibration performance than existing regularization-based approaches. We also analyze the sensitivity of our method to hand-crafted prompt initialization in Appendix E.1. 
+
+Generalization to other episodic TTA methods We further evaluate CoTS and E-CoTS on other episodic TTA methods. The results in Table 5 show that our method generalizes well beyond TPT-based approaches. In particular, CoTS consistently brings large reductions in ECE on both datasets, substantially outperforming the corresponding base models and also achieving stronger calibration than SaLS [46]. Furthermore, E-CoTS maintains comparable, and sometimes improved accuracy over the base methods. These results indicate that our approach is not limited to a specific adaptation framework, but can serve as an effective calibration strategy for other episodic TTA methods as well. 80.1 0.3 0.5 0.7 0.9 1.0 
+
+> Alpha
+> 3.0 4.0 5.0 6.0 7.0 8.0
+> ECE (%)
+> ECE (adaptive) ECE Accuracy (adaptive) Accuracy
+> 64.0 64.2 64.5 64.8 65.0 65.2 65.5 65.8 66.0
+> Accuracy (%)
+
+Figure 4: Effect of the ensemble weight α on 
+
+E-CoTS using ViT-B/16. Average accuracy (%) and ECE (%) on fine-grained datasets are reported. Table 5: Evaluation of SaLS [46], CoTS , and 
+
+E-CoTS on TTL [25] and TPS [60] using ViT-B/16. Average accuracy (%) and ECE (%) on fine-grained datasets and ImageNet variants are reported.                                    
+
+> (%) Method Fine-grained datasets ImageNet variants TTL TPS TTL TPS [25] [60] [25] [60] ACC  base 64.48 64.99 62.46 61.69 +E-CoTS 64.23 65.11 62.39 61.71 ECE  base 28.60 16.79 34.30 27.16 + SaLS [46] 22.15 13.69 28.94 23.98 +CoTS 9.82 4.87 9.42 6.67 +E-CoTS 9.42 5.02 8.66 6.65
+
+Table 6: Performance comparison of different methods using ViT-B/16 and ResNet-50. Accuracy (%) and ECE (%) are reported on fine-grained datasets and ImageNet variants, respectively. 
+
+Method ViT-B/16 ResNet-50 Fine-grained datasets ImageNet variants Fine-grained datasets ImageNet variants ACC (%) ECE (%) ACC (%) ECE (%) ACC (%) ECE (%) ACC (%) ECE (%) Zero-Shot [53] 63.95 4.33 57.22 4.98 56.04 5.38 40.70 7.09 TPT [57] 65.19 11.30 60.74 11.90 58.06 11.31 43.83 17.55 C-TPT [72] 64.57 5.23 59.25 6.67 57.69 6.44 42.75 13.14 Penalty [46] 64.21 8.28 60.24 10.99 57.52 8.41 43.66 17.02 SALS [46] 65.20 9.94 60.74 10.98 58.06 9.31 43.83 15.37 O-TPT [55] 64.05 4.77 57.51 4.97 57.36 5.67 40.82 6.46 A-TPT [1] 64.12 4.33 58.20 4.34 57.30 4.55 41.94 7.76 SoC [13] 63.95 4.31 58.12 4.87 56.19 5.50 41.61 7.52 
+
+CoTS 65.19 4.28 60.74 5.30 58.06 5.04 43.83 6.87 
+
+E-CoTS 65.22 4.31 62.95 5.38 57.72 5.04 45.39 7.24 
+
+Overall comparison across backbones. We summarize the average performance on fine-grained datasets and ImageNet variants using both ViT-B/16 and ResNet-50 in Table 6. The improvements are consistent across both backbones, demonstrating the robustness of CoTS and E-CoTS . Overall, both CoTS and E-CoTS provide a superior accuracy-calibration trade-off compared to prior methods. 
+
+## 5 Conclusion 
+
+This paper studies the calibration problem in test-time prompt tuning from the perspective of confi-dence correction. We observe that existing calibration-oriented methods often reduce ECE at the cost of classification accuracy. To address this trade-off, we propose CoTS , a post-hoc confidence-based temperature scaling method that uses zero-shot CLIP predictions as a calibration anchor. By only rescaling logits, CoTS improves calibration performance without changing the discriminative benefits of TPT. We further introduce a weak-strong ensemble strategy and integrate it into CoTS , resulting in E-CoTS , which improves accuracy while maintaining reliable calibration. Extensive experiments across multiple datasets and backbones validate that our methods effectively mitigate miscalibration without compromising primary accuracy. 
+
+## References 
+
+[1] S. A. Ahamed, U. S. K. P. M. Thanthrige, R. Rodrigo, and M. H. Khan. A-TPT: Angular diversity calibration properties for test-time prompt tuning of vision-language models. In Proc. ICLR , 2026. [2] C. Blundell, J. Cornebise, K. Kavukcuoglu, and D. Wierstra. Weight uncertainty in neural network. In 
+
+Proc. ICML , pages 1613–1622, 2015. 
+
+9[3] L. Bossard, M. Guillaumin, and L. Van Gool. Food-101–mining discriminative components with random forests. In Proc. ECCV , pages 446–461, 2014. [4] G. W. Brier. Verification of forecasts expressed in terms of probability. Monthly Weather Review , 78:1–3, 1950. [5] M. Cimpoi, S. Maji, I. Kokkinos, S. Mohamed, and A. Vedaldi. Describing textures in the wild. In Proc. CVPR , pages 3606–3613, 2014. [6] K. M. Dafnis and D. N. Metaxas. Test-time spectrum-aware latent steering for zero-shot generalization in vision-language models. In Proc. NeurIPS , pages 151169–151194, 2025. [7] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. Fei-Fei. Imagenet: A large-scale hierarchical image database. In Proc. CVPR , pages 248–255, 2009. [8] Z. Ding, X. Han, P. Liu, and M. Niethammer. Local temperature scaling for probability calibration. In 
+
+Proc. ICCV , pages 6889–6899, 2021. [9] H. Dong, L. Sheng, J. Liang, R. He, E. Chatzi, and O. Fink. Adapting vision-language models without labels: A comprehensive survey. arXiv preprint arXiv:2508.05547 , 2025. [10] M. Farina, G. Franchi, G. Iacca, M. Mancini, and E. Ricci. Frustratingly easy test-time adaptation of vision-language models. In Proc. NeurIPS , pages 129062–129093, 2024. [11] L. Fei-Fei, R. Fergus, and P. Perona. Learning generative visual models from few training examples: An incremental bayesian approach tested on 101 object categories. In Proc. CVPR Workshops , pages 178–178, 2004. [12] C.-M. Feng, K. Yu, Y. Liu, S. Khan, and W. Zuo. Diverse data augmentation with diffusions for effective test-time prompt tuning. In Proc. ICCV , pages 2704–2714, 2023. [13] L. Fillioux, O. Chakraborty, I. B. Ayed, P.-H. Cournède, S. Christodoulidis, M. Vakalopoulou, and J. Dolz. Soc: Semantic orthogonal calibration for test-time prompt tuning. In Proc. CVPR , 2026. [14] Y. Gal and Z. Ghahramani. Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In Proc. ICML , pages 1050–1059, 2016. [15] I. Galil, M. Dabbah, and R. El-Yaniv. What can we learn from the selective prediction and uncertainty estimation performance of 523 imagenet classifiers? In Proc. ICLR , 2023. [16] C. Guo, G. Pleiss, Y. Sun, and K. Q. Weinberger. On calibration of modern neural networks. In Proc. ICML , pages 1321–1330, 2017. [17] J. Han and W. Hwang. D-tpt: Dimensional entropy maximization for calibrating test-time prompt tuning in vision-language models. arXiv preprint arXiv:2510.09473 , 2025. [18] Z. Han, C. Gao, J. Liu, J. Zhang, and S. Q. Zhang. Parameter-efficient fine-tuning for large models: A comprehensive survey. Transactions on Machine Learning Research , 2024. [19] P. Helber, B. Bischke, A. Dengel, and D. Borth. Introducing eurosat: A novel dataset and deep learning benchmark for land use and land cover classification. In IGARSS , pages 204–207, 2018. [20] D. Hendrycks, S. Basart, N. Mu, S. Kadavath, F. Wang, E. Dorundo, R. Desai, T. Zhu, S. Parajuli, M. Guo, et al. The many faces of robustness: A critical analysis of out-of-distribution generalization. In Proc. ICCV ,pages 8340–8349, 2021. [21] D. Hendrycks, N. Mu, E. D. Cubuk, B. Zoph, J. Gilmer, and B. Lakshminarayanan. Augmix: A simple data processing method to improve robustness and uncertainty. In Proc. ICLR , 2020. [22] D. Hendrycks, K. Zhao, S. Basart, J. Steinhardt, and D. Song. Natural adversarial examples. In Proc. CVPR , pages 15262–15271, 2021. [23] D. Hu, J. Liang, X. Wang, and C.-S. Foo. Pseudo-calibration: Improving predictive uncertainty estimation in unsupervised domain adaptation. In Proc. ICML , pages 19304–19326, 2024. [24] T. Huang, J. Chu, and F. Wei. Unsupervised prompt learning for vision-language models. arXiv preprint arXiv:2204.03649 , 2022. 
+
+10 [25] R. Imam, H. Gani, M. Huzaifa, and K. Nandakumar. Test-time low rank adaptation via confidence maximization for zero-shot generalization of vision-language models. In Proc. WACV , pages 5449–5459, 2025. [26] C. Jia, Y. Yang, Y. Xia, Y.-T. Chen, Z. Parekh, H. Pham, Q. Le, Y.-H. Sung, Z. Li, and T. Duerig. Scaling up visual and vision-language representation learning with noisy text supervision. In Proc. ICML , pages 4904–4916, 2021. [27] M. Jia, L. Tang, B.-C. Chen, C. Cardie, S. Belongie, B. Hariharan, and S.-N. Lim. Visual prompt tuning. In Proc. ECCV , pages 709–727, 2022. [28] A. Karmanov, D. Guan, S. Lu, A. El Saddik, and E. Xing. Efficient test-time adaptation of vision-language models. In Proc. CVPR , pages 14162–14171, 2024. [29] A. Khandelwal, L. Weihs, R. Mottaghi, and A. Kembhavi. Simple but effective: Clip embeddings for embodied ai. In Proc. CVPR , pages 14829–14838, 2022. [30] M. U. Khattak, H. Rasheed, M. Maaz, S. Khan, and F. S. Khan. Maple: Multi-modal prompt learning. In 
+
+Proc. CVPR , pages 19113–19122, 2023. [31] T. Koleilat, H. Asgariandehkordi, H. Rivaz, and Y. Xiao. Biomedcoop: Learning to prompt for biomedical vision-language models. In Proc. CVPR , pages 14766–14776, 2025. [32] J. Krause, M. Stark, J. Deng, and L. Fei-Fei. 3d object representations for fine-grained categorization. In 
+
+Proc. ICCV Workshops , pages 554–561, 2013. [33] M. Kull, M. Perello-Nieto, M. Kängsepp, T. S. Filho, H. Song, and P. Flach. Beyond temperature scaling: obtaining well-calibrated multiclass probabilities with dirichlet calibration. In Proc. NeurIPS , pages 12316–12326, 2019. [34] B. Lakshminarayanan, A. Pritzel, and C. Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. In Proc. NeurIPS , pages 6405–6416, 2017. [35] B. Lester, R. Al-Rfou, and N. Constant. The power of scale for parameter-efficient prompt tuning. In Proc. EMNLP , pages 3045–3059, 2021. [36] V. Lialin, V. Deshpande, X. Yao, and A. Rumshisky. Scaling down to scale up: A guide to parameter-efficient fine-tuning. arXiv preprint arXiv:2303.15647 , 2023. [37] J. Liang, R. He, and T. Tan. A comprehensive survey on test-time adaptation under distribution shifts. Int. J. Comput. Vis. , 133(1):31–64, 2025. [38] J. Liang, L. Sheng, Z. Wang, R. He, and T. Tan. Realistic unsupervised clip fine-tuning with universal entropy optimization. In Proc. ICML , pages 29667–29681, 2024. [39] T.-Y. Lin, P. Goyal, R. Girshick, K. He, and P. Dollár. Focal loss for dense object detection. In Proc. ICCV ,pages 2980–2988, 2017. [40] B. Liu, I. Ben Ayed, A. Galdran, and J. Dolz. The devil is in the margin: Margin-based label smoothing for network calibration. In Proc. CVPR , pages 80–88, 2022. [41] I. Loshchilov and F. Hutter. Decoupled weight decay regularization. In Proc. ICLR , 2019. [42] X. Ma, J. Zhang, S. Guo, and W. Xu. Swapprompt: test-time prompt adaptation for vision-language models. In Proc. NeurIPS , pages 65252–65264, 2023. [43] S. Maji, E. Rahtu, J. Kannala, M. Blaschko, and A. Vedaldi. Fine-grained visual classification of aircraft. 
+
+arXiv preprint arXiv:1306.5151 , 2013. [44] M. Minderer, J. Djolonga, R. Romijnders, F. A. Hubis, X. Zhai, N. Houlsby, D. Tran, and M. Lucic. Revisiting the calibration of modern neural networks. In Proc. NeurIPS , pages 15682–15694, 2021. [45] R. Müller, S. Kornblith, and G. Hinton. When does label smoothing help? In Proc. NeurIPS , pages 4694–4703, 2019. [46] B. Murugesan, J. Silva-Rodríguez, I. B. Ayed, and J. Dolz. Robust calibration of large vision-language adapters. In Proc. ECCV , pages 147–165, 2024. [47] M. P. Naeini, G. Cooper, and M. Hauskrecht. Obtaining well calibrated probabilities using bayesian binning. In Proc. AAAI , pages 2901–2907, 2015. 
+
+11 [48] M.-E. Nilsback and A. Zisserman. Automated flower classification over a large number of classes. In Proc. ICVGIP , pages 722–729, 2008. [49] J. Nixon, M. W. Dusenberry, L. Zhang, G. Jerfel, and D. Tran. Measuring calibration in deep learning. In 
+
+Proc. CVPR Workshops , 2019. [50] C. Pan, B. Yaman, T. Nesti, A. Mallik, A. G. Allievi, S. Velipasalar, and L. Ren. Vlp: Vision language planning for autonomous driving. In Proc. CVPR , pages 14760–14769, 2024. [51] O. M. Parkhi, A. Vedaldi, A. Zisserman, and C. Jawahar. Cats and dogs. In Proc. CVPR , pages 3498–3505, 2012. [52] J. Platt et al. Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods. Advances in Large Margin Classifiers , 10(3):61–74, 1999. [53] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, et al. Learning transferable visual models from natural language supervision. In Proc. ICML ,pages 8748–8763, 2021. [54] B. Recht, R. Roelofs, L. Schmidt, and V. Shankar. Do imagenet classifiers generalize to imagenet? In 
+
+Proc. ICML , pages 5389–5400, 2019. [55] A. Sharifdeen, M. A. Munir, S. Baliah, S. Khan, and M. H. Khan. O-tpt: Orthogonality constraints for calibrating test-time prompt tuning in vision-language models. In Proc. CVPR , pages 19942–19951, 2025. [56] L. Sheng, J. Liang, Z. Wang, and R. He. R-tpt: Improving adversarial robustness of vision-language models through test-time prompt tuning. In Proc. CVPR , pages 29958–29967, 2025. [57] M. Shu, W. Nie, D.-A. Huang, Z. Yu, T. Goldstein, A. Anandkumar, and C. Xiao. Test-time prompt tuning for zero-shot generalization in vision-language models. In Proc. NeurIPS , pages 14274–14289, 2022. [58] J. Silva-Rodríguez, F. Shakeri, H. Bahig, J. Dolz, and I. Ben Ayed. Few-shot, now for real: Medical vlms adaptation without balanced sets or validation. In Proc. MICCAI , pages 237–247, 2025. [59] K. Soomro, A. R. Zamir, and M. Shah. Ucf101: A dataset of 101 human actions classes from videos in the wild. arXiv preprint arXiv:1212.0402 , 2012. [60] E. Sui, X. Wang, and S. Yeung-Levy. Just shift it: Test-time prototype shifting for zero-shot generalization with vision-language models. In Proc. WACV , pages 825–835, 2025. [61] Y. Sun, X. Wang, Z. Liu, J. Miller, A. Efros, and M. Hardt. Test-time training with self-supervision for generalization under distribution shifts. In Proc. ICML , pages 9229–9248, 2020. [62] K. Tanwisuth, S. Zhang, H. Zheng, P. He, and M. Zhou. Pouf: Prompt-oriented unsupervised fine-tuning for large pre-trained models. In Proc. ICML , pages 33816–33832, 2023. [63] S. Thulasidasan, G. Chennupati, J. Bilmes, T. Bhattacharya, and S. Michalak. On mixup training: improved calibration and predictive uncertainty for deep neural networks. In Proc. NeurIPS , pages 13911–13922, 2019. [64] C. Wang. Calibration in deep learning: A survey of the state-of-the-art. arXiv preprint arXiv:2308.01222 ,2023. [65] H. Wang, S. Ge, E. P. Xing, and Z. C. Lipton. Learning robust global representations by penalizing local predictive power. In Proc. NeurIPS , pages 10506–10518, 2019. [66] S. Wang, Y. Li, and H. Wei. Understanding and mitigating miscalibration in prompt tuning for vision-language models. In Proc. ICML , pages 63467–63489, 2025. [67] S. Wang, J. Wang, G. Wang, B. Zhang, K. Zhou, and H. Wei. Open-vocabulary calibration for fine-tuned clip. In Proc. ICML , pages 51734–51754, 2024. [68] J. Xiao, J. Hays, K. A. Ehinger, A. Oliva, and A. Torralba. Sun database: Large-scale scene recognition from abbey to zoo. In Proc. CVPR , pages 3485–3492, 2010. [69] Z. Xiao, S. Yan, J. Hong, J. Cai, X. Jiang, Y. Hu, J. Shen, C. Wang, and C. G. M. Snoek. Dynaprompt: Dynamic test-time prompt tuning. In Proc. ICLR , 2025. [70] D. Yan, J. Liang, Y. Wang, S. Lu, R. He, and T. Tan. What if consensus lies? selective-complementary reinforcement learning at test time. In Proc. ACL , pages 28957–28970, 2026. 
+
+12 [71] H. Yao, R. Zhang, and C. Xu. Visual-language prompt tuning with knowledge-guided context optimization. In Proc. CVPR , pages 6757–6767, 2023. [72] H. S. Yoon, E. Yoon, J. T. J. Tee, M. A. Hasegawa-Johnson, Y. Li, and C. D. Yoo. C-TPT: Calibrated test-time prompt tuning for vision-language models via text feature dispersion. In Proc. ICLR , 2024. [73] M. Zanella and I. Ben Ayed. On the test-time zero-shot generalization of vision-language models: Do we really need prompt learning? In Proc. CVPR , pages 23783–23793, 2024. [74] X. Zhai, B. Mustafa, A. Kolesnikov, and L. Beyer. Sigmoid loss for language image pre-training. In Proc. ICCV , pages 11941–11952, 2023. [75] M. Zhang, S. Levine, and C. Finn. Memo: test time robustness via adaptation and augmentation. In Proc. NeurIPS , pages 38629–38642, 2022. [76] K. Zhou, J. Yang, C. C. Loy, and Z. Liu. Conditional prompt learning for vision-language models. In Proc. CVPR , pages 16816–16825, 2022. [77] K. Zhou, J. Yang, C. C. Loy, and Z. Liu. Learning to prompt for vision-language models. Int. J. Comput. Vis. , 130(9):2337–2348, 2022. 
+
+## A Limitations and Broader Impact 
+
+A.1 Limitations 
+
+While our methods effectively improve calibration for test-time prompt tuning, they are currently eval-uated on classification tasks and introduce additional computational overhead. Extending confidence-oriented temperature scaling to other vision-language tasks, such as semantic segmentation, object detection, or adversarial robustness, remains to be explored. 
+
+A.2 Broader Impact 
+
+This work aims to improve the reliability of vision-language models by mitigating the miscalibration issue in test-time prompt tuning. The proposed methods achieve a favorable balance between accuracy and calibration error. Moreover, our approaches can be readily integrated with existing calibration techniques, highlighting their potential as general plug-and-play modules for test-time adaptation. We hope this work provides useful insights for future research on calibration in vision-language models and encourages the development of more reliable foundation models. 
+
+## B Related Work 
+
+Prompt Tuning in Vision-Language Models. Vision-Language Models (VLMs) such as CLIP [53] and ALIGN [26] learn a shared embedding space that aligns visual features with corresponding textual descriptions, enabling zero-shot transfer to a variety of downstream classification tasks. To efficiently adapt VLMs to diverse downstream tasks, many parameter-efficient fine-tuning (PEFT) methods [36, 18] have proven effective by optimizing only a small subset of parameters while keeping the rest of the model frozen. One widely used PEFT technique is prompt tuning [35, 27], which adds trainable tokens either to the input or to intermediate layers. In particular, CoOp [77] pioneers prompt learning for VLMs by replacing fixed templates with learnable continuous vectors. Subsequently, CoCoOp [76] incorporates visual cues to generate instance-specific prompts, while MaPLE [30] further enhances context tuning by applying learnable prompts to both the image and text encoders. To avoid relying on annotated downstream training data during adaptation, several methods [24, 62, 38] explore unsupervised prompt learning with pre-trained VLMs. TPT [57] focuses on an interesting unsupervised scenario, where the model is adapted using only a single instance at test time. Such a challenging paradigm has gained increasing attention [25, 10, 73, 60, 56], and our work also studies this problem but focuses more on calibration performance. 
+
+Calibration of Deep Neural Networks. In real-world safety-critical decision systems, classification networks must not only be accurate but also indicate when they are likely to be incorrect. Confidence calibration [16, 49] formalizes this by measuring how well a model’s predicted confidence aligns with its actual accuracy. A recent survey [64] categorizes existing calibration methods into post-hoc, 13 regularization, and uncertainty estimation approaches. Post-hoc calibration methods [16, 33, 8] adjust predictions post-training without modifying parameters. A popular example is temperature scaling (TS) [16], which scales logits using a temperature parameter optimized on a validation set.Later methods [33, 8] extend TS to improve robustness under limited validation data, multi-label tasks, and distribution shifts. By contrast, regularization-based calibration methods [16, 40] always incorporate additional regularization objectives during model training. These include explicit penalties on over-confident predictions [16, 40] and implicit techniques ( e.g. , label smoothing [45], mixup [63], focal loss [39]) that improve calibration and generalization via softened targets. Moreover, uncertainty esti-mation methods alleviate miscalibration by introducing randomness via Bayesian neural networks [2], ensembles [34], and Monte Carlo dropout [14]. Most existing post-hoc calibration methods require a labeled validation set. One recent approach [23] uses mixup synthesis over unlabeled samples to generate pseudo-labeled data for temperature scaling, whereas our method operates using only a single unlabeled instance. We further provide a hybrid calibration strategy that combines temperature scaling with an output-level ensemble. 
+
+Calibration of Vision-Language Models. Although prompt tuning methods are primarily developed to improve accuracy, recent works [67, 66, 46, 72] have also examined the calibration performance of VLMs, particularly CLIP [53]. Specifically, existing few-shot prompt tuning methods are found to lead to a calibration trade-off between base and new classes [67], e.g. , CoOp [77] causes overconfidence on new classes, whereas KgCoOp [71] leads to underconfidence on base classes. Meanwhile, a classic unsupervised prompt tuning method, TPT [72], improves accuracy but incurs a high calibration error after test-time adaptation. Since our method belongs to the unsupervised category, we primarily review prior work within this branch of the literature. C-TPT [72] finds that well-calibrated prompts yield text embeddings with broader class-wise dispersion and, on this basis, proposes a dispersion-based regularization term to encourage embeddings to move away from the class centroid. To fully exploit the textual feature space, several recent methods ( i.e. , O-TPT [55], A-TPT [1], and SoC [13]) encourage angular separation between textual features to promote greater dispersion. Alternatively, D-TPT [17] identifies and mitigates the influence of dominant feature dimensions to improve calibration performance. Unlike these regularization-based methods, we follow TS [16] and propose a simple yet efficient post-hoc calibration method. The most closely related work to ours is SaLS [46], which adjusts logits within the zero-shot range to maintain reliable confidence. Both methods are built on the observation that zero-shot predictions are relatively well-calibrated. However, unlike SaLS [46], our method learns a temperature parameter to bridge the confidence gap before and after adaptation. 
+
+## C Pseudocode 
+
+Algorithm 1: PyTorch-style code for CoTS and E-CoTS # x: input image (C, H, W); fclip : pretrained CLIP; A: augmentation # N: views nums; ρ: selection ratio; T: steps; ensemble: False/ True def E-CoTS (x, fclip , A, N, ρ, T) :# step 1: augment and select confident views 
+
+views = A (x, num_views=N) // (N, C, H, W) 
+
+logits zs = fclip (views) // (N, K) 
+
+idx zs = select_confident_views (logits zs , top= ρ)
+
+# step 2: test-time prompt tuning 
+
+ftpt = run_tpt_optimization (fclip , views[idx zs ], steps=T) logits tpt = ftpt (views) 
+
+# step 3: confidence-based temperature scaling (CoTS, Eq. (5) )
+
+idx tpt = select_confident_views (logits tpt [1:], top= ρ)
+
+τ = optimize_temperature (logits tpt [idx tpt ], logits zs [idx tpt ]) 
+
+ˆptpt = (logits tpt / τ ). softmax (dim=1) 
+
+if ensemble : # step 4: weak-strong ensemble (E-CoTS, Eq. (7) )
+
+α = compute_average_similarity () 
+
+ˆpecots = α · ˆptpt [0] + (1 − α) · ˆptpt [idx tpt ]. mean (dim=0) 
+
+return ˆpecots .argmax (), ˆpecots .max () 
+
+else: 
+
+ˆpcots = ˆptpt [0] 
+
+return ˆpcots .argmax (), ˆpcots .max () 14 We provided the pseudocode in Algorithm 1. 
+
+## D Additional Experimental Results 
+
+D.1 Computational Efficiency 
+
+We measure the computation time of different methods using a single 48GB GPU (NVIDIA RTX A6000). As shown in Table 7, integrating CoTS delivers effective calibration improvement without substantially increasing overall inference cost. These results show that CoTS offers an efficient calibration strategy for test-time prompt tuning. 
+
+D.2 Results with ResNet-50 
+
+We further evaluate different methods with ResNet-50 to verify the robustness of our approach across architectures. The results in fine-grained datasets and ImageNet variants are shown in Table 8 and Table 9. 
+
+D.3 Results with Online TTA Framework 
+
+To assess the applicability of our approach beyond the standard episodic setting, we integrate CoTS 
+
+and E-CoTS with TDA [28], an online TTA framework. As shown in Table 10 and Table 11, CoTS 
+
+substantially improves calibration, while E-CoTS achieves a favorable accuracy–calibration trade-off. 
+
+D.4 Results with SigLIP 
+
+We also investigate whether the proposed methods remain effective with a different vision-language model by conducting experiments with SigLIP [74]. Table 12 and Table 13 show that CoTS and 
+
+E-CoTS consistently provide competitive accuracy and improved calibration. 
+
+D.5 Standard Deviations 
+
+We report standard deviations of accuracy and ECE across three seeds in Table 14 and Table 15. On fine-grained datasets and ImageNet, CoTS achieves consistently low variance, indicating stable performance. On ImageNet variants, both CoTS and E-CoTS remain robust across seeds, with 
+
+E-CoTS maintaining strong calibration despite minor variability. Overall, the results confirm that the proposed methods are reliable and stable while improving calibration under different runs. 
+
+D.6 Calibration Metrics Calibration error. To quantify model calibration [47, 16], we primarily adopt the Expected Calibra-tion Error (ECE) [47], which measures the discrepancy between predicted probabilities and observed frequencies. Specifically, the predictions are partitioned into M confidence bins {B1, B 2, . . . , B M }
+
+based on the confidence values, where Bm contains all samples whose predicted confidence falls into the m-th interval. The ECE is then computed as a weighted average of the absolute difference between accuracy and confidence within each bin: ECE =
+
+> M
+
+X
+
+> m=1
+
+|Bm|
+
+S | acc (Bm) − conf (Bm)| , (8) Table 7: Computation time (s) of different methods on DTD and ImageNet-A using ViT-B/16. We report the average inference time per sample.                           
+
+> Dataset TPT C-TPT O-TPT A-TPT SoC SaLS CoTS
+> [57] [72] [55] [1] [13] [46] DTD 0.192 0.193 0.206 0.207 0.206 +0.000 +0.053 ImageNet-A 0.223 0.224 0.258 0.258 0.256 +0.000 +0.054
+
+15 Table 8: Performance comparison on fine-grained datasets using ResNet-50. Accuracy (%) and ECE (%) are reported.                                                                                                                                                                                                                                                              
+
+> (%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Avg. Accuracy Zero-Shot [53] 58.17 40.37 61.67 73.94 58.84 15.75 83.54 85.88 58.84 23.67 55.78 56.04 TPT [57] 60.68 41.51 62.57 74.99 61.36 17.69 84.43 87.87 60.67 28.42 58.47 58.06 C-TPT [72] 60.47 41.25 65.03 74.84 60.93 17.21 83.66 87.37 60.25 27.18 56.38 57.69 Penalty [46] 60.64 41.31 62.66 74.70 61.25 17.36 83.94 87.56 60.08 25.67 57.56 57.52 SaLS [46] 60.69 41.51 62.57 74.99 61.36 17.68 84.43 87.86 60.67 28.42 58.47 58.06 O-TPT [55] 58.99 41.65 65.58 74.64 59.61 17.03 83.19 87.07 59.81 27.73 55.64 57.36 A-TPT [1] 59.91 41.86 64.20 74.29 59.31 16.00 82.68 86.88 59.81 29.14 56.17 57.30 SoC [13] 59.93 40.37 61.90 73.82 59.04 15.67 83.28 85.84 58.90 23.64 55.68 56.19
+> CoTS 60.68 41.51 62.57 74.99 61.36 17.69 84.43 87.87 60.67 28.42 58.47 58.06
+> E-CoTS 60.90 41.33 60.71 74.27 61.33 17.73 84.12 87.69 60.47 27.45 58.96 57.72 ECE Zero-Shot [53] 2.01 9.04 3.03 2.71 3.81 6.30 5.70 4.41 3.00 14.76 4.40 5.38 TPT [57] 11.37 25.80 13.63 5.21 9.17 15.66 3.94 3.74 11.03 21.10 3.76 11.31 C-TPT [72] 6.75 21.65 3.81 1.76 3.01 10.69 2.79 2.61 3.02 13.37 1.33 6.44 Penalty [46] 11.29 16.96 11.94 3.34 8.98 13.39 3.25 3.66 10.08 6.92 2.65 8.41 SaLS [46] 9.91 21.66 11.99 3.93 8.66 15.29 3.07 4.02 8.98 12.32 2.54 9.31 O-TPT [55] 3.11 16.63 2.40 1.28 6.57 8.18 3.35 2.85 2.35 13.44 2.26 5.67 A-TPT [1] 2.32 15.35 2.71 1.55 4.22 8.26 2.72 4.16 2.63 4.71 1.43 4.55 SoC [13] 3.02 8.95 3.34 3.63 3.89 6.36 5.61 4.53 2.37 14.79 4.02 5.50
+> CoTS 3.74 7.97 2.62 3.74 5.24 4.88 5.29 5.84 2.79 7.33 6.05 5.04
+> E-CoTS 2.36 9.47 6.80 2.18 3.36 5.40 3.89 4.40 3.67 8.54 5.42 5.04
+
+Table 9: Performance comparison of different methods on ImageNet variants using ResNet-50. Accuracy (%) and ECE (%) are reported. 
+
+Method Accuracy (%) ECE (%) -A -V -R -Sk Avg. -A -V -R -Sk Avg. Zero-Shot [53] 21.87 51.45 56.12 33.36 40.70 21.24 3.03 0.98 3.11 7.09 TPT [57] 26.51 54.63 59.04 35.13 43.83 30.96 13.94 10.47 14.84 17.55 C-TPT [72] 24.27 54.21 57.77 34.75 42.75 26.61 9.35 5.51 11.08 13.14 Penalty [46] 26.12 54.58 58.80 35.12 43.66 29.85 13.80 9.73 14.70 17.02 SaLS [46] 26.52 54.63 59.04 35.13 43.83 28.10 12.27 7.79 13.32 15.37 O-TPT [55] 21.59 52.37 56.11 33.20 40.82 19.23 2.38 1.52 2.70 6.46 A-TPT [1] 22.56 53.26 57.61 34.32 41.94 20.28 4.11 0.94 5.70 7.76 SoC [13] 22.60 53.28 56.85 33.72 41.61 19.38 4.24 2.47 3.97 7.52 
+
+CoTS 26.51 54.63 59.04 35.13 43.83 17.52 4.55 3.07 2.33 6.87 
+
+E-CoTS 31.80 55.20 58.90 35.65 45.39 17.75 4.60 1.72 4.89 7.24 
+
+where S is the total number of samples, |Bm| denotes the number of samples in bin Bm, and acc (Bm)
+
+and conf (Bm) represent the fraction of correctly predicted samples and the mean predicted confidence for the m-th bin, respectively. ECE provides a scalar measure of miscalibration: smaller values indicate better alignment between predicted confidences and empirical accuracies. 
+
+Brier score. We also report the Brier Score (BS) [4] to evaluate the quality of probabilistic predictions. Different from ECE, which measures the confidence-accuracy discrepancy after binning, the BS directly computes the squared error between the predicted probability distribution and the one-hot ground-truth label. For a multi-class classification problem with K classes, it is formulated as: BS = 1
+
+S
+
+> S
+
+X
+
+> i=1
+> K
+
+X
+
+> c=1
+
+(pi,c − yi,c )2 , (9) where S denotes the total number of samples, pi,c represents the predicted probability of sample i
+
+for class c, and yi,c is the corresponding one-hot ground-truth label. A lower BS indicates that the predicted probability distribution is closer to the true label distribution. The BS values of different methods with ViT-B/16 are shown in Table 16 and Table 17. Our methods achieve competitive Brier scores across datasets. 16 Table 10: Performance comparison of different methods integrated with an online TTA framework (TDA [28]) on fine-grained datasets using ViT-B/16. Accuracy (%) and ECE (%) are reported.                                                                                                                                                                                                                                      
+
+> (%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Average Accuracy TDA [28] 68.27 46.04 69.75 83.68 65.01 24.06 88.36 94.04 67.99 51.04 66.55 65.65 C-TPT [72] 69.15 47.22 70.69 83.42 65.52 24.30 88.69 94.08 67.64 47.67 67.01 65.62 Penalty [46] 68.26 46.04 69.79 83.67 65.09 24.12 88.36 94.00 67.99 51.04 66.57 65.90 SaLS [46] 68.27 46.04 69.75 83.68 65.01 24.06 88.36 94.04 67.99 51.04 66.55 65.65 O-TPT [55] 68.49 48.11 70.77 83.15 64.93 24.09 88.58 94.20 66.98 47.06 66.56 65.44 A-TPT [1] 68.83 48.11 71.09 83.22 65.08 23.97 88.55 93.43 67.01 51.04 66.53 65.80 SoC [13] 68.59 45.21 69.71 83.66 64.82 24.24 88.61 94.20 68.17 51.04 66.55 65.62
+> CoTS 68.27 46.04 69.75 83.68 65.01 24.06 88.36 94.04 67.99 51.04 66.55 65.65
+> E-CoTS 70.25 47.16 69.35 84.58 66.96 25.02 88.80 94.24 69.13 51.52 68.85 66.56 ECE TDA [28] 5.27 17.02 7.76 2.21 5.78 13.98 2.81 3.32 5.88 7.05 1.95 6.78 C-TPT [72] 8.80 20.09 11.35 1.68 7.11 12.54 2.04 3.14 5.41 12.32 4.17 7.98 Penalty [46] 5.29 16.99 7.71 2.23 5.75 13.94 2.86 3.28 5.92 7.08 2.04 6.64 SaLS [46] 3.98 13.36 5.59 1.48 4.33 12.10 3.38 3.72 4.78 6.75 1.90 5.74 O-TPT [55] 5.80 15.10 9.71 1.92 3.85 11.70 1.79 3.20 4.60 13.42 3.63 6.89 A-TPT [1] 5.43 14.88 10.21 1.47 7.58 14.46 1.26 3.16 4.63 7.05 3.97 6.87 SoC [13] 5.35 16.31 8.95 1.48 5.08 13.85 1.43 3.64 6.08 7.02 1.85 6.57
+> CoTS 3.47 7.13 3.09 2.54 4.97 4.72 5.02 6.40 3.37 6.66 5.61 4.95
+> E-CoTS 3.05 6.26 2.77 3.02 5.20 3.80 3.27 5.28 3.13 6.78 7.02 4.65
+
+Table 11: Performance comparison of different methods integrated with an online TTA framework (TDA [28]) on ImageNet variants using ViT-B/16. Accuracy (%) and ECE (%) are reported. 
+
+Method Accuracy (%) ECE (%) -A -V -R -Sk Average -A -V -R -Sk Average TDA [28] 50.03 61.87 75.17 48.84 58.98 11.96 10.06 1.62 10.10 8.44 C-TPT [72] 52.92 63.32 76.60 49.21 60.51 12.03 13.06 1.93 14.59 10.40 Penalty [46] 50.03 61.89 75.17 48.83 58.98 11.98 10.07 1.62 10.14 8.45 SaLS [46] 50.03 61.87 75.17 48.84 58.98 10.22 8.11 2.23 7.95 7.13 O-TPT [55] 50.65 62.27 75.22 48.98 59.28 10.57 10.48 1.94 10.92 8.48 A-TPT [1] 51.44 62.57 75.95 49.14 59.77 9.45 10.01 1.84 10.43 7.93 SoC [13] 51.45 62.29 75.96 48.73 59.61 12.03 9.29 2.58 9.07 8.24 
+
+CoTS 50.03 61.87 75.17 48.84 58.98 6.37 3.40 5.43 2.22 4.36 
+
+E-CoTS 59.63 64.28 78.36 51.16 63.36 8.18 3.60 6.24 1.89 4.98 
+
+Class-wise ECE. We additionally report the Class-wise Expected Calibration Error (CECE) [33], which evaluates calibration across all classes rather than only the predicted class. It is computed as: CECE =
+
+> M
+
+X
+
+> m=1
+> K
+
+X
+
+> c=1
+
+|Bm,c |
+
+SK |acc c(Bm,c ) − conf c(Bm,c )| , (10) where Bm,c denotes the m-th confidence bin for class c. Lower CECE indicates better class-wise calibration. The results are reported in Table 18 and Table 19. 
+
+Adaptive ECE. We also report Adaptive Expected Calibration Error (AECE) [49], which uses adaptive bins with approximately equal numbers of samples to reduce the sensitivity to fixed-width binning. It is defined as: AECE =
+
+> R
+
+X
+
+> r=1
+> K
+
+X
+
+> c=1
+
+1
+
+RK |acc c(Br,c ) − conf c(Br,c )| . (11) Lower AECE indicates better calibration. The results are reported in Table 20 and Table 21. 17 Table 12: Performance comparison of different methods with SigLIP [74] on ImageNet and fine-grained datasets. Accuracy (%) and ECE (%) are reported.                                                                                                                                                                                                                                                              
+
+> (%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Average Accuracy Zero-Shot 75.69 62.94 84.41 87.30 69.64 40.65 93.21 97.93 70.82 41.35 90.70 74.06 TPT 76.46 64.60 84.53 87.60 70.00 40.95 92.75 98.13 71.19 40.68 91.28 74.38 C-TPT 76.11 63.18 84.25 87.35 69.70 40.29 92.89 97.97 70.61 40.69 90.67 73.97 Penalty 76.45 64.07 84.33 87.45 69.91 40.38 92.72 96.19 70.90 41.83 91.11 74.12 SaLS 76.46 64.60 84.53 87.60 70.00 40.95 92.75 98.13 71.19 40.68 91.28 74.38 O-TPT 75.69 62.41 84.33 87.32 69.56 39.78 92.86 97.93 70.18 40.68 90.69 73.77 A-TPT 75.91 62.41 84.29 87.31 69.59 40.32 92.89 98.01 70.55 40.60 90.69 73.87 SoC 75.97 63.00 84.33 87.35 69.68 40.65 93.13 97.93 70.82 41.35 90.75 74.09
+> CoTS 76.46 64.60 84.53 87.60 70.00 40.95 92.75 98.13 71.19 40.68 91.28 74.38
+> E-CoTS 77.86 65.19 84.78 87.73 70.04 39.60 92.72 98.22 71.64 38.74 91.38 74.35 ECE Zero-Shot 4.54 6.29 3.83 2.04 3.89 7.80 2.54 1.53 6.94 15.99 0.69 5.10 TPT 6.57 11.70 4.08 3.34 7.04 12.90 1.87 0.81 9.52 19.90 1.87 7.24 C-TPT 5.81 9.40 4.15 2.57 5.35 11.48 2.12 1.30 8.35 18.39 0.91 6.35 Penalty 6.49 9.68 4.21 2.69 6.90 12.90 2.60 1.63 8.30 14.35 1.43 6.47 SaLS 6.29 10.43 4.12 3.05 6.63 12.61 1.87 0.82 9.07 18.95 1.75 6.87 O-TPT 4.96 8.76 3.87 2.42 4.63 11.02 2.18 1.38 8.11 18.51 0.74 6.05 A-TPT 5.35 8.36 3.99 2.48 4.87 11.28 2.16 1.29 8.23 17.84 0.83 6.06 SoC 5.30 6.30 3.89 2.30 4.36 7.83 2.33 1.21 7.40 16.04 1.03 5.27
+> CoTS 4.18 4.67 4.18 2.20 3.68 7.55 2.27 1.37 6.65 15.12 1.18 4.82
+> E-CoTS 4.22 5.22 4.67 1.95 3.95 6.64 2.34 1.44 6.26 16.27 0.84 4.89
+
+Table 13: Performance comparison of different methods with SigLIP [74] on ImageNet variants. Accuracy (%) and ECE (%) are reported. 
+
+Method Accuracy (%) ECE (%) -A -V -R -Sk Average -A -V -R -Sk Average Zero-Shot 45.07 68.43 89.31 66.59 67.35 15.90 7.26 1.42 7.43 8.00 TPT 46.73 69.23 89.89 67.08 68.23 17.25 9.45 0.68 10.37 9.43 C-TPT 45.84 68.94 89.57 66.88 67.81 17.08 8.65 0.88 9.57 9.04 Penalty 46.01 69.19 89.70 67.08 68.00 16.98 9.40 0.78 10.28 9.36 SaLS 46.73 69.23 89.89 67.08 68.23 16.69 9.11 0.86 9.98 9.16 O-TPT 45.25 68.41 89.34 66.56 67.39 16.54 7.79 1.05 7.99 8.34 A-TPT 45.45 68.78 89.46 66.80 67.62 16.71 8.10 0.96 8.69 8.62 SoC 45.72 68.75 89.51 66.85 67.71 16.39 8.05 1.02 8.39 8.46 
+
+CoTS 46.73 69.23 89.89 67.08 68.23 13.91 6.72 1.82 7.14 7.40 
+
+E-CoTS 56.35 70.70 90.95 67.44 71.36 10.64 6.42 2.44 7.43 6.73 
+
+## E Additional Analysis 
+
+E.1 Sensitivity to Hand-crafted Prompt Initialization 
+
+We evaluate the performance of different methods under multiple initial prompt templates on Ima-geNet variants. Table 22 reports ACC (%) and ECE (%) for each method, showing how CoTS and 
+
+E-CoTS consistently maintain low ECE while achieving high accuracy across prompts. 
+
+E.2 Ensemble Weight α in E-CoTS 
+
+As shown in Fig. 5, the adaptive weighting strategy achieves a better balance between accuracy and calibration, avoiding the need to tune α for different settings. 
+
+E.3 Similarity-based Analysis 
+
+Figure 6 shows the weak-strong accuracy ratio plotted against dataset-level similarity. This result demonstrates the effectiveness of the proposed weak-strong ensemble strategy. 18 Table 14: Standard deviations across three seeds on fine-grained datasets and ImageNet using ViT-B/16. Accuracy(%) and ECE(%) are reported in percentage points. 
+
+(%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Accuracy TPT [57] 0.04 0.11 0.08 0.02 0.06 0.16 0.11 0.22 0.27 0.09 0.08 C-TPT [72] 0.01 0.15 0.12 0.03 0.11 0.09 0.02 0.10 0.05 0.02 0.11 Penalty [46] 0.02 0.10 0.23 0.01 0.06 0.35 0.19 0.18 0.15 0.06 0.07 SALS [46] 0.04 0.11 0.08 0.02 0.05 0.19 0.11 0.22 0.27 0.09 0.09 O-TPT [55] 0.02 0.11 0.04 0.04 0.04 0.01 0.05 0.10 0.06 0.06 0.12 A-TPT [1] 0.02 0.03 0.07 0.03 0.04 0.35 0.01 0.16 0.13 0.00 0.10 SoC [13] 0.03 0.05 0.12 0.03 0.04 0.01 0.12 0.11 0.07 0.01 0.05 
+
+CoTS 0.04 0.11 0.08 0.02 0.06 0.16 0.11 0.22 0.27 0.09 0.08 
+
+E-CoTS 0.04 0.28 0.06 0.03 0.09 0.20 0.26 0.12 0.18 0.14 0.13 ECE TPT [57] 0.07 0.10 0.07 0.04 0.14 0.12 0.10 0.12 0.38 0.04 0.07 C-TPT [72] 0.04 0.17 0.10 0.04 0.15 0.07 0.10 0.12 0.22 0.26 0.35 Penalty [46] 0.04 0.15 0.25 0.07 0.11 0.40 0.18 0.14 0.17 0.15 0.17 SALS [46] 0.06 0.18 0.11 0.01 0.03 0.11 0.09 0.06 0.36 0.38 0.08 O-TPT [55] 0.02 0.14 0.14 0.04 0.04 0.13 0.07 0.10 0.07 0.10 0.15 A-TPT [1] 0.02 0.25 0.13 0.03 0.08 0.31 0.10 0.16 0.08 0.00 0.10 SoC [13] 0.06 0.02 0.04 0.02 0.02 0.05 0.16 0.09 0.06 0.01 0.05 
+
+CoTS 0.08 0.61 0.12 0.03 0.19 0.28 0.07 0.22 0.29 0.27 0.07 
+
+E-CoTS 0.03 0.86 0.26 0.00 0.26 0.13 0.09 0.16 0.36 0.13 0.15 
+
+Table 15: Standard deviations across three seeds on ImageNet variants using ViT-B/16. Accuracy(%) and ECE(%) are reported in percentage points. 
+
+Method Accuracy (%) ECE (%) -A -V -R -Sk -A -V -R -Sk TPT [57] 0.07 0.14 0.04 0.03 0.15 0.24 0.03 0.05 C-TPT [72] 0.13 0.16 0.06 0.02 0.18 0.05 0.05 0.02 Penalty [46] 0.13 0.16 0.03 0.02 0.10 0.22 0.09 0.04 SALS [46] 0.07 0.14 0.04 0.03 0.04 0.24 0.13 0.03 O-TPT [55] 0.01 0.02 0.03 0.03 0.03 0.16 0.03 0.05 A-TPT [1] 0.04 0.19 0.06 0.04 0.14 0.18 0.07 0.06 SoC [13] 0.10 0.08 0.03 0.03 0.09 0.11 0.04 0.02 
+
+CoTS 0.07 0.14 0.04 0.03 0.29 0.18 0.05 0.08 
+
+E-CoTS 0.24 0.11 0.08 0.07 0.02 0.16 0.08 0.08 
+
+E.4 Step-wise Analysis 
+
+Figure 7 presents ECE and ACC of CoTS and E-CoTS over iteration steps on DTD and ImageNet-A. As the number of steps increases, ECE tends to converge while ACC remains stable. 
+
+E.5 Sensitivity to K and T0
+
+We further investigate the sensitivity to the number of selected strong views K and the temperature initialization T0. Figure 8 show that CoTS is generally robust to variations in both hyperparameters. We set K = 6 and T0 = 1 .0 by default throughout the experiments. 
+
+E.6 Comparison between Ensemble-Only and E-CoTS 
+
+We further compare base methods, ensemble-only, and E-CoTS across different TPT-based calibration methods (Table 23). Ensemble-only often improves accuracy but can sometimes increase ECE. By integrating CoTS into the ensemble prediction, E-CoTS reduces ECE while retaining the accuracy gains from ensembling. 19 Table 16: Brier scores (%) of different methods on fine-grained datasets with ViT-B/16. 
+
+(%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Average Brier score Zero-Shot [53] 16.44 18.45 14.22 9.92 18.33 14.77 7.47 6.11 14.55 19.36 16.44 14.19 TPT [57] 18.20 24.82 16.83 10.14 20.15 18.49 8.78 5.76 16.01 24.81 16.54 16.41 C-TPT [72] 16.88 21.12 13.95 10.29 19.36 14.40 7.20 5.86 15.17 22.36 16.61 14.84 Penalty [46] 18.23 23.46 16.28 10.43 20.03 17.37 10.21 6.57 16.13 19.26 16.47 15.86 SaLS [46] 17.94 23.36 16.23 9.98 19.90 17.61 8.60 5.83 15.75 22.66 16.34 15.84 O-TPT [55] 16.16 19.06 13.38 10.56 19.46 14.11 7.26 5.71 15.37 22.73 16.57 14.58 A-TPT [1] 16.47 19.71 13.45 10.27 19.00 15.04 7.44 6.34 15.65 19.36 16.53 14.48 SoC [13] 16.63 18.61 13.84 10.10 18.79 14.79 7.00 6.02 14.45 19.37 16.59 14.20 
+
+CoTS 16.61 19.51 14.24 9.73 18.34 14.14 7.43 6.62 14.36 21.62 16.22 14.44 
+
+E-CoTS 16.30 19.72 14.36 9.60 17.99 14.30 7.45 5.58 14.03 21.43 15.96 14.25 
+
+Table 17: Brier scores (%) of different methods on ImageNet variants with ViT-B/16. 
+
+(%) Method -A -V -R -Sk Average Brier score Zero-Shot [53] 20.68 17.58 12.45 17.91 17.16 TPT [57] 23.95 20.10 12.82 22.12 19.75 C-TPT [72] 21.64 18.56 12.47 19.83 18.13 Penalty [46] 23.87 20.00 12.97 22.13 19.74 SaLS [46] 23.34 19.71 12.50 21.68 19.30 O-TPT [55] 20.32 17.41 12.40 17.98 17.03 A-TPT [1] 20.51 17.69 12.35 18.25 17.20 SoC [13] 20.63 17.66 12.25 18.09 17.16 
+
+CoTS 21.40 17.97 12.67 18.33 17.59 
+
+E-CoTS 21.93 17.75 12.10 18.39 17.54 
+
+E.7 Comparison with ZERO and Our Ensemble Strategy 
+
+Table 24 compares ZERO [10] with our ensemble strategy under both zero-shot and TPT settings. Our ensemble achieves a better accuracy–calibration trade-off than ZERO, while E-CoTS further substantially reduces ECE and maintains competitive accuracy. 20 Table 18: Class-wise ECE (%) [33] of different methods on fine-grained datasets with ViT-B/16. 
+
+(%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Average CECE Zero-Shot [53] 0.04 1.42 0.62 0.21 0.13 0.57 0.70 0.24 0.52 6.59 0.23 1.03 TPT [57] 0.04 1.49 0.53 0.19 0.12 0.71 0.62 0.17 0.47 6.95 0.22 1.05 C-TPT [72] 0.04 1.39 0.54 0.24 0.12 0.61 0.60 0.22 0.55 7.37 0.23 1.08 Penalty [46] 0.04 1.43 0.54 0.19 0.12 0.66 0.93 0.23 0.49 5.96 0.22 0.98 SaLS [46] 0.04 1.46 0.53 0.18 0.12 0.69 0.62 0.18 0.47 6.38 0.22 0.99 O-TPT [55] 0.04 1.36 0.55 0.25 0.14 0.60 0.60 0.23 0.58 7.39 0.23 1.09 A-TPT [1] 0.04 1.38 0.54 0.24 0.13 0.60 0.63 0.25 0.57 6.59 0.23 1.02 SoC [13] 0.04 1.44 0.58 0.23 0.13 0.57 0.62 0.25 0.51 6.58 0.23 1.02 
+
+CoTS 0.04 1.25 0.58 0.20 0.12 0.55 0.72 0.25 0.50 6.07 0.24 0.96 
+
+E-CoTS 0.04 1.28 0.58 0.20 0.12 0.56 0.70 0.22 0.50 6.02 0.24 0.95 
+
+Table 19: Class-wise ECE (%) [33] of different methods on ImageNet variants with ViT-B/16. 
+
+(%) Method -A -V -R -Sk Average CECE Zero-Shot [53] 0.30 0.06 0.18 0.06 0.15 TPT [57] 0.28 0.06 0.14 0.06 0.14 C-TPT [72] 0.29 0.06 0.16 0.06 0.14 Penalty [46] 0.28 0.06 0.14 0.06 0.14 SaLS [46] 0.28 0.06 0.14 0.06 0.14 O-TPT [55] 0.30 0.06 0.18 0.06 0.15 A-TPT [1] 0.30 0.06 0.17 0.06 0.15 SoC [13] 0.29 0.06 0.17 0.06 0.15 
+
+CoTS 0.27 0.06 0.17 0.06 0.14 
+
+E-CoTS 0.26 0.06 0.16 0.06 0.13 
+
+Table 20: Adaptive ECE (%) [49] of different methods on fine-grained datasets with ViT-B/16. 
+
+(%) Method ImgNet DTD Flowers Food101 SUN397 Aircraft Pets Caltech UCF101 EuroSAT Cars Average AECE Zero-Shot [53] 0.03 1.33 0.48 0.18 0.10 0.55 0.54 0.17 0.41 6.57 0.12 0.95 TPT [57] 0.02 1.37 0.45 0.15 0.08 0.66 0.54 0.13 0.38 6.93 0.13 0.98 C-TPT [72] 0.02 1.24 0.43 0.19 0.09 0.59 0.48 0.15 0.43 7.33 0.13 1.01 Penalty [46] 0.02 1.35 0.46 0.16 0.08 0.63 0.80 0.16 0.40 5.97 0.13 0.92 SaLS [46] 0.02 1.35 0.46 0.15 0.08 0.64 0.55 0.14 0.38 6.40 0.13 0.94 O-TPT [55] 0.03 1.28 0.43 0.20 0.09 0.60 0.48 0.15 0.46 7.34 0.14 1.02 A-TPT [1] 0.03 1.28 0.43 0.20 0.10 0.57 0.49 0.17 0.46 6.57 0.13 0.95 SoC [13] 0.03 1.36 0.46 0.18 0.09 0.55 0.49 0.18 0.41 6.56 0.12 0.95 
+
+CoTS 0.03 1.29 0.48 0.17 0.09 0.56 0.60 0.18 0.41 6.11 0.12 0.91 
+
+E-CoTS 0.03 1.30 0.49 0.17 0.09 0.56 0.60 0.17 0.41 6.05 0.13 0.91 
+
+Table 21: Adaptive ECE (%) [49] of different methods on ImageNet variants with ViT-B/16. 
+
+(%) Method -A -V -R -Sk Average AECE Zero-Shot [53] 0.24 0.03 0.16 0.05 0.12 TPT [57] 0.21 0.03 0.12 0.05 0.10 
+
+C-TPT [72] 0.23 0.03 0.14 0.05 0.11 Penalty [46] 0.21 0.03 0.12 0.05 0.10 SaLS [46] 0.21 0.03 0.12 0.05 0.10 
+
+O-TPT [55] 0.25 0.03 0.16 0.05 0.12 A-TPT [1] 0.25 0.03 0.15 0.05 0.12 SoC [13] 0.24 0.03 0.14 0.05 0.11 
+
+CoTS 0.22 0.03 0.14 0.05 0.11 
+
+E-CoTS 0.21 0.03 0.14 0.05 0.11 
+
+21 Table 22: Performance comparison under different initial prompts on ImageNet variants. Accuracy (%) and ECE (%) are reported. 
+
+Prompt template Metric Zero-Shot TPT SaLS A-TPT SoC CoTS E-CoTS 
+
+(%) [53] [57] [46] [1] [13] 
+
+"a_bad_photo_of_a" ACC 58.60 61.61 61.61 57.58 59.03 61.61 63.66 ECE 4.47 12.07 10.61 5.13 5.73 5.16 5.12 
+
+"a_black_and_white_photo_of_a" ACC 55.46 59.30 59.30 56.84 57.09 59.30 60.69 ECE 6.50 18.07 16.67 7.88 8.06 5.95 7.23 
+
+"a_blurry_photo_of_a" ACC 57.72 61.11 61.11 58.35 59.10 61.11 62.82 ECE 4.87 15.67 12.72 10.27 8.74 5.32 5.25 
+
+"a_good_photo_of_a" ACC 57.67 61.34 61.34 58.48 59.47 61.34 63.21 ECE 4.67 14.90 12.84 8.14 7.86 5.35 5.57 
+
+"a_high_contrast_photo_of_a" ACC 56.35 60.20 60.20 57.21 57.79 60.20 61.59 ECE 5.49 19.30 16.57 8.84 9.62 5.43 6.20 
+
+"a_low_contrast_photo_of_a" ACC 57.63 61.28 61.28 56.57 58.28 61.28 62.82 ECE 5.21 17.34 8.12 8.60 14.98 5.31 5.55 
+
+"a_photo_of_a_small" ACC 56.25 60.10 60.10 58.88 58.15 60.10 61.67 ECE 4.19 14.97 12.61 5.10 6.93 5.07 4.80 0.1 0.3 0.5 0.7 0.9 1.0 
+
+> Alpha
+> 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0
+> ECE (%)
+> ECE (adaptive) ECE Accuracy (adaptive) Accuracy
+> 60.5 61.0 61.5 62.0 62.5 63.0 63.5
+> Accuracy (%)
+
+Figure 5: Effect of ensemble weight α on ImageNet variants using ViT-B/16. Accuracy (%) and ECE (%) are reported. 0.85 0.90 0.95 1.00 1.05 1.10 1.15 
+
+Weak Acc / Strong Acc 
+
+0.56 0.61 0.66 0.71 0.76 0.81 0.86 
+
+> Similarity
+
+Figure 6: Weak-strong accuracy ratio versus dataset-level similarity across different datasets. 22 0 10 20 30 40 50 
+
+> Step
+> 10 15 20
+> ECE (%)  CoTS (ECE) ECoTS (ECE) CoTS (ACC) ECoTS (ACC)
+> 47.1 47.2 47.3 47.4 47.5
+> ACC (%)
+
+(a) DTD 0 10 20 30 40 50  
+
+> Step
+> 810 12 14 16
+> ECE (%)  CoTS (ECE) ECoTS (ECE) CoTS (ACC) ECoTS (ACC)
+> 55 56 57 58 59 60 61
+> ACC (%)
+
+(b) ImageNet-A 
+
+Figure 7: ACC(%) and ECE(%) curves of CoTS and E-CoTS on DTD and ImageNet-A over iteration steps using ViT-B/16. Table 23: Performance of base, direct ensemble, and E-CoTS across different TPT-based methods using ViT-B/16. Accuracy (%) and ECE (%) are reported on fine-grained datasets and ImageNet variants. 
+
+(%) Method Fine-grained datasets ImageNet variants TPT C-TPT O-TPT A-TPT SoC TPT C-TPT O-TPT A-TPT SoC [57] [72] [55] [1] [13] [57] [72] [55] [1] [13] ACC  base 65.25 64.57 64.04 64.15 63.96 60.72 59.26 57.51 58.18 58.17 Ensemble 65.32 65.27 64.99 65.12 65.11 62.90 62.66 62.03 62.41 61.84 
+
+E-CoTS 65.28 65.24 64.95 65.09 65.11 62.99 62.67 61.97 62.28 61.81 ECE  base 11.25 5.24 4.80 4.27 4.30 12.06 6.74 4.99 4.37 4.83 Ensemble 12.28 5.35 4.90 4.00 4.12 13.36 7.86 5.36 5.38 4.08 
+
+E-CoTS 4.18 4.19 4.29 3.86 4.18 5.47 5.18 4.51 4.84 4.66 4 6 8 10 12 
+
+K
+
+4.2 4.4 4.6 4.8 5.0 5.2 5.4 
+
+> ECE (%)
+
+Fine grained 
+
+ImageNet variant 
+
+0.8 0.9 1.0 1.1 1.2 
+
+T0
+
+4.2 4.4 4.6 4.8 5.0 5.2 5.4 
+
+Figure 8: Sensitivity analysis of CoTS to the number of selected strong views K and the temperature initialization T0. ECE (%) is reported on fine-grained datasets and ImageNet variants. 23 Table 24: Comparison of ZERO [10] and our ensemble strategy using ViT-B/16. Accuracy (%) and ECE (%) are reported on fine-grained datasets and ImageNet variants. 
+
+Method Fine-grained datasets ImageNet variants ACC (%) ECE (%) ACC (%) ECE (%) Zero-Shot [53] 63.95 4.33 57.22 4.98 
+
+w/ ZERO [10] 64.41 18.24 62.42 19.54 w/ Ensemble (Ours) 65.21 4.00 61.86 5.03 TPT [57] 65.19 11.30 60.74 11.90 w/ ZERO [10] 64.65 27.26 62.97 28.34 w/ Ensemble (Ours) 65.32 12.28 62.90 13.36 w/ E-CoTS 65.22 4.31 62.95 5.38 
+
+> 24
+
+(a) SoC [13]: DTD (b) SoC [13]: Flowers (c) SoC [13]: Pets (d) SoC [13]: IN-V 
+
+(e) O-TPT [55]: DTD (f) O-TPT [55]: Flow-ers 
+
+(g) O-TPT [55]: Pets (h) O-TPT [55]: IN-V 
+
+(i) A-TPT [1]: DTD (j) A-TPT [1]: Flowers (k) A-TPT [1]: Pets (l) A-TPT [1]: IN-V 
+
+(m) CoTS : DTD (n) CoTS : Flowers (o) CoTS : Pets (p) CoTS : IN-V 
+
+(q) E-CoTS : DTD (r) E-CoTS : Flowers (s) E-CoTS : Pets (t) E-CoTS : IN-V 
+
+Figure 9: Reliability diagrams of SoC [13], O-TPT [55], A-TPT [1], CoTS , and E-CoTS on DTD, Flowers, Pets, and ImageNet-V using ViT-B/16. 
+
+## F Reliability Diagram 
+
+As shown in Fig. 9, CoTS and ecots achieve small accuracy-confidence gaps across datasets, indicating reliable calibration. 25

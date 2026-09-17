@@ -1,0 +1,1009 @@
+Title: TecoPrompt: Temporal-Conservative Prompt Learning for Vision-Language Models
+
+URL Source: https://arxiv.org/pdf/2609.16858v1
+
+Published Time: Wed, 16 Sep 2026 01:07:58 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# TecoPrompt: Temporal-Conservative Prompt Learning for Vision-Language Models 
+
+Zeyi Shao 1, Haowen Hua 1, Jiaxin Zhang 2, John See 3
+
+Zeyd Boukhers 4, and Cong Yang 1B 
+
+> 1
+
+Soochow University, Suzhou, China  
+
+> 2
+
+NVIDIA, Shanghai, China  
+
+> 3
+
+Heriot-Watt University Malaysia, Putrajaya, Malaysia  
+
+> 4
+
+Fraunhofer FIT, Sankt Augustin, Germany  
+
+> B
+
+Corresponding author: cong.yang@suda.edu.cn 
+
+Abstract. Prompt learning adapts vision-language models, such as CLIP, by adjusting a small set of context tokens. However, under few-shot su-pervision, even moderate label noise can disrupt prompt optimization. To address this issue, we propose TecoPrompt, a closed-loop robust prompt-learning framework that revisits optimal transport (OT) pseudo-labeling from a temporal perspective. TecoPrompt employs an entropic OT plan in the CLIP semantic space to obtain globally consistent label candidates. It verifies the reliability of these candidates by examining trajectory stability: a noisy label is only rewritten if the OT candidate remains unchanged within a  K-epoch temporal stability window and passes a con-fidence gate based on Exponential Moving Average (EMA). This approach helps reduce confirmation bias. The rewritten labels are then integrated back into prompt training using a tri-group objective that includes three loss functions aligned with clean, mid, and noisy subsets. Experiments on seven datasets with synthetic symmetric and asymmetric noise, as well as Food101N, demonstrate significant performance improvements. For example, on the OxfordPets dataset, with 50% asymmetric noise, TecoPrompt achieves an accuracy of 0.843, up from 0.775. 
+
+Keywords: Vision-Language Models · Prompt Learning · Few-Shot Learning 
+
+## 1 Introduction 
+
+Vision-language pre-trained models (VL-PTMs) like CLIP learn to create aligned representations of images and text. This capability allows for open-vocabulary recognition and robust zero-shot transfer [15, 34, 48]. Building upon this align-ment, prompt learning has emerged as a practical method for adaptation. It involves updating only a small set of context tokens while keeping the encoders frozen, making it efficient and data-friendly [16, 17, 52, 53]. Additionally, prior research [43] suggests that prompt-based adaptation may be inherently more tolerant to imperfect supervision. arXiv:2609.16858v1 [cs.CV] 15 Sep 2026 2 Z. Shao et al. 5 10 15 20+          
+
+> Max consecutive epochs
+> 0.00.10.20.30.40.5
+> Fraction
+> UCF101
+> Noisy (correct) Clean (wrong)
+> 510 15 20+
+> Max consecutive epochs
+> OxfordPets
+> Noisy (correct) Clean (wrong)
+> 510 15 20+
+> Max consecutive epochs
+> Flowers102
+> Noisy (correct) Clean (wrong)
+> 510 15 20+
+> Max consecutive epochs
+> Caltech101
+> Noisy (correct) Clean (wrong)
+
+Fig. 1: Distribution of the maximum number of consecutive epochs during which the OT pseudo-label remains unchanged. For noisy examples, we count runs in which the stable OT label matches the ground-truth (Noisy, correct); for clean examples, we count runs in which the stable OT label is incorrect (Clean, wrong). Across datasets, noisy examples frequently exhibit long stable-correct runs (including the “20+” bin), whereas clean examples rarely sustain long stable-wrong runs. 
+
+Despite their successes, most current strategies [11, 25, 42] for learning from noisy labels offer limited improvements in few-shot prompt learning, where each labeled example is highly valuable. These methods commonly utilize techniques like sample grouping, instance filtering, or robust loss functions to reduce the impact of noisy annotations. While these approaches enhance robustness, they often downweight or eliminate portions of the data, resulting in inefficient use of limited supervision. A more effective solution is label correction, which aims to convert noisy annotations into reliable targets. However, naive or overly aggressive rewriting can mistakenly alter clean labels, worsening confirmation bias, particularly when early predictions are unstable. Therefore, a high-precision and conservative correction strategy is essential to enhance supervision while carefully managing the risk of mis-correction. Motivated by this, we revisit optimal transport (OT)-based pseudo-labeling using a globally coupled assignment. To analyze the temporal behavior of OT pseudo-labels, we conducted a controlled experiment in which 50% random label noise was injected into the training data. In Fig. 1, when OT pseudo-labels are recomputed across epochs with a globally coupled assignment, some samples demonstrate strong temporal consistency. Notably, noisy samples often display extended periods during which the OT label remains unchanged and aligns with the ground-truth label, while clean samples are less likely to exhibit such long, incorrect stable runs. This significant distinction suggests that OT provides reliable candidate labels, and that temporal consistency can serve as a precise criterion for determining when to implement label corrections during training. To demonstrate when stability can be trusted for hard rectification, we analyze the supervision trajectory induced by Optimal Transport (OT) through the lens of learning dynamics [3, 45]. We consider the OT candidate distribution as a score vector and monitor the evolution of its maximum value (argmax) during training. With bounded perturbations per epoch, a sufficient margin condition ensures the invariance of the argmax. This explains why stable candidates are more reliable. Additionally, we connect OT label flips to forgetting-style dynamics. This analysis TecoPrompt 3
+
+supports the use of a K-epoch stability window as a conservative gate and suggests that K should be chosen to enhance precision in rectification [41]. Based on these insights, we propose TecoPrompt (Temporal-Conservative Prompt Learning), a robust and closed-loop framework for few-shot adaptation in the presence of noisy labels. TecoPrompt uses an entropically regularized optimal transport formulation to establish a globally consistent assignment between image embeddings and prompt-conditioned text prototypes. From this, we derive globally consistent candidates. To verify these candidates, TecoPrompt evaluates trajectory stability within a K-epoch window, alongside an exponential moving average (EMA)-based confidence gate, and performs conservative hard rectification. The corrected labels are then fed back into the prompt optimization process using a tri-group objective. This objective combines cross-entropy loss on clean and rectified samples with noise-robust losses on uncertain samples. Succinctly, the main contributions of this work are as follows: 1) We propose TecoPrompt, a closed-loop robust prompt learning framework that couples global OT-based candidate generation with strict temporal verification for reliable label rectification. 2) We establish sufficient conditions that justify hard label rewriting and show how the stability window and confidence gating improve correction precision. 3) We conduct extensive experiments on diverse datasets under various noise settings, consistently achieving substantial performance gains over prior approaches (e.g., 66.6% vs. 55.3% on Flowers102 under 75% asymmetric noise). 
+
+## 2 Related Work 
+
+Prompt Learning for Vision-Language Models. Prompt learning adapts CLIP-style vision-language models by tuning lightweight prompts while keeping the backbone frozen. A representative line learns continuous textual contexts, exemplified by CoOp and the instance-conditional CoCoOp [52, 53]. Another line extends prompting beyond pure text to strengthen cross-modal adaptation, such as visual prompt tokens and joint prompting across modalities [16, 17]. Recent studies further improve prompt transfer under distribution shifts by introducing source-aware regularization [18] or by explicitly modeling domain adaptation for CLIP [26]. In parallel, label-free test-time prompt tuning updates prompts using unlabeled target data at inference, including TPT and its calibrated variant, C-TPT [36, 47]. Beyond these core directions, prompt learning is increasingly studied under alternative training regimes that reduce annotation dependence or enhance generalization, such as unsupervised prompt distillation [24] and global-local prompting [20], which leverage both holistic and region-level cues. 
+
+Learning with Noisy Labels. Noisy supervision often induces memorization and biased optimization in deep networks [1, 4, 49]. Common defenses include robust training dynamics and regularization [13, 27, 44], noise-robust loss design [9, 51], explicit objective correction via noise modeling or transition estimation [32, 46, 50], and data-centric selection or refinement [22, 23, 35, 37]. 4 Z. Shao et al. 
+
+Prompt tuning’s empirically observed resilience to noisy supervision was highlighted by Wu et al. [43]; JoAPR [10] separates clean/noisy samples via a Gaussian-mixture partitioning and label-refinement pipeline and then retrains on the purified set; NLPrompt enhances prompt learning by using PromptMAE and PromptOT. The PromptOT method purifies noisy labels by dividing the data into clean and noisy subsets. CE is applied to the clean subset, while MAE is used for noisy samples to improve robustness. In contrast, our method differs from NLPrompt in that it integrates temporal consistency into label corrections. TecoPrompt checks label stability over K epochs before committing corrections, ensuring more reliable updates. Additionally, TecoPrompt employs a tri-group loss to enable more nuanced optimization. 
+
+Optimal Transport for Global Consistency. Optimal transport (OT) pro-vides a principled global coupling mechanism and can be solved efficiently via entropic regularization and Sinkhorn iterations [6, 33]. OT has been used as a global signal for learning under noisy supervision, such as filtering/reweighting or curriculum-aware transport [2, 8], and has also been introduced into prompt learning to exploit the shared embedding space [3]. Many existing OT-based prompt-learning approaches primarily employ OT for purification, subset as-signment, or loss re-weighting. In contrast, our method treats OT assignments as structured, globally consistent label candidates, and further introduces a sample-wise temporal consistency criterion (based on the stability of historical OT assignments) to decide whether to trigger hard label rewriting, aligning with the broader principle of temporal consistency in semi-supervised learning while explicitly controlling confirmation bias [4, 21, 40]. 
+
+## 3 Formulation of Temporal-Consistency OT Label Rewriting 
+
+In this section, we provide a theoretical characterization of OT label rewrit-ing triggered by temporal consistency in TecoPrompt. Building on temporal consistency as a reliability prior widely used in semi-supervised learning [21] and teacher–student consistency targets [40], we formalize when a temporally stable OT assignment can serve as a reliable label candidate and show that strengthening the temporal consistency requirement yields a more conservative yet reliable rewriting set. 
+
+3.1 Notation. 
+
+Scalars are denoted by non-bold letters, vectors by lowercase bold letters, and matrices by uppercase bold letters. The indicator function is written as 1[·], and we use [ n] = {1, 2, . . . , n }. For each sample i ∈ [N ], let y⋆i ∈ [C] denote its (latent) clean label and ˜ yi ∈ [C] the observed (possibly noisy) label. At epoch t, the OT-induced pseudo-label is ˆ y(t) 
+
+> i
+
+∈ [C], with a confidence score c(t) 
+
+> i
+
+∈ [0 , 1]. TecoPrompt 5
+
+Given a temporal stability window of size K, we define three events to characterize temporal stability and reliability. The temporal consistency event is EK (i) = {ˆy(t−K+1)  
+
+> i
+
+= · · · = ˆ y(t)
+
+> i
+
+̸ = ˜ yi}, meaning that the pseudo-label remains unchanged within the K-epoch stability window and disagrees with the observed label. The reliability event is DK (i) = {c(t−K+1)  
+
+> i
+
+≥ θ, . . . , c (t) 
+
+> i
+
+≥ θ}, requiring the confidence to stay above a threshold θ throughout the same window. The rewrite-candidate event is defined as AK (i) = EK (i) ∩ D K (i). 
+
+3.2 OT-Forgettability and a 2 × 2 Decomposition. 
+
+We characterize sample-wise stability through the OT pseudo-label trajectory. Let ˆ y(s) 
+
+> i
+
+∈ [C] denote the OT-induced pseudo-label of sample i at epoch s. After warm-up, we monitor the trajectory over a window of length Tw starting from epoch t0. We quantify temporal instability using the one-step flip indicator and its flip rate: 
+
+d(s) 
+
+> i
+
+= 1
+
+[
+
+ˆy(s+1) 
+
+> i
+
+̸ = ˆ y(s)
+
+> i
+
+]
+
+, ϕi = 1
+
+Twt0+Tw −1∑
+
+> s=t0
+
+d(s) 
+
+> i
+
+∈ [0 , 1] . (1) A smaller ϕi indicates a more stable OT assignment, while a larger value indicates frequent changes. Given a threshold ϕ0 ∈ (0 , 1), we define the OT-forgettability indicator as follows: 
+
+Fi = 1[ϕi > ϕ 0]. (2) We call Fi = 0 OT-unforgettable and Fi = 1 OT-forgettable. Unlike the classic example-forgetting definition based on correctness with respect to y⋆i , ϕi and Fi
+
+are directly observable from the OT pseudo-label trajectory. For theoretical analysis, let ˜ yi be the observed label and y⋆i be the ground-truth label. We introduce the latent noise indicator: 
+
+Zi = 1[˜ yi̸ = y⋆i ]. (3) which is used only to describe the clean/noisy decomposition and is not required by the rewriting rule. The pair ( Zi, F i) induces a 2 × 2 partition: 
+
+Fi = 0 , OT-unforgettable Fi = 1 , OT-forgettable 
+
+Zi = 0 , clean Sc,u Sc,f 
+
+Zi = 1 , noisy Sn,u Sn,f 
+
+(4) Intuitively, Sn,u contains noisy yet OT-unforgettable samples: despite incorrect observed labels, their OT pseudo-labels remain consistent across training, making them the primary targets for conservative label rewriting. 
+
+Rewriting objective. Our goal is to correct supervision mainly on the noisy OT-unforgettable subset Sn,u . Meanwhile, the procedure should remain conservative on clean data by requiring stable disagreement and high confidence. 6 Z. Shao et al. a photo of  cat       
+
+> a photo of cat
+> Image
+> encoder
+> 🔥
+> Text
+> encoder
+> a photo of dog
+> Cost matrix
+> Image
+> features
+> Optimal
+> Transport
+> 🔥
+> MAE
+> GCE
+> CE
+> …… deer cow
+> Rewrite
+> Label
+> Pseudo label Blended label
+> labels with
+> Confidence
+> same label
+> with Confidence
+> noisy label
+> dog
+> False label
+> cat
+> True label
+> K-epoch
+> Stability
+> Window
+> No Label
+> Update
+> Text features
+> Sample
+> Selection
+> （Balanced ）
+> Backpropagation
+
+Fig. 2: Overview of the proposed TecoPrompt framework. Given frozen CLIP image/text encoders, we compute image embeddings and prompt-conditioned text prototypes, and solve a balanced entropic optimal transport problem to obtain globally consistent pseudo-label distributions. We then blend the OT pseudo-labels with the observed noisy labels using confidence weighting (where confidence scores are EMA-smoothed), perform sample selection to form clean/mid/noisy groups, and optimize prompts with a tri-group objective. In parallel, we track the OT-induced label trajectory over epochs and apply EMA-gated temporal consistency with a K-epoch stability window to conservatively trigger hard-label rewriting, thereby forming a closed-loop refinement that mitigates confirmation bias. 
+
+3.3 Temporal-Consistency Rewriting. 
+
+Following Sec. 3.1, AK (i) collects samples whose OT-induced pseudo-labels are temporally stable and simultaneously disagree with the observed labels. Therefore, a sample is rewritten only if it is temporally consistent, disagrees with ˜ yi, and maintains high confidence over the history window. 
+
+Theorem 1. Under the proposed assumptions, increasing the consistency window size K improves the reliability of the rewritten labels. In particular, for sufficiently large K, the probability of correct label rewriting can be made arbitrarily high. 
+
+The proof is provided in the Appendix. This result shows that longer OT-consistency trajectories progressively eliminate unstable samples, leading to robust label correction under noise. 
+
+## 4 Method 
+
+As illustrated in Fig. 2, our core idea is to combine a global view and a sample-wise view: OT provides globally consistent label candidates, while temporal tracking identifies which candidates are sufficiently reliable to trigger conservative label rewriting. Our method consists of five components: (i) Text & Image Encoder, (ii) OT-based purification, (iii) EMA-smoothed OT confidence, (iv) temporal consistency label rewriting, and (v) ternary grouping with loss-specific training. TecoPrompt 7
+
+4.1 Text & Image Encoder. 
+
+We use a CLIP-style prompt-learning setup with a frozen text encoder h(·) and a frozen image encoder g(·). For each class c ∈ [C], we feed a learnable context prompt p together with a fixed class prompt pc into the text encoder  h to obtain a class-specific text feature: 
+
+hc = h(p, p c) ∈ Rd. (5) For each input image xi, we extract a d-dimensional image representation 
+
+gi ∈ Rd using the frozen image encoder g(·). We define the similarity between an image feature and a class text feature as their inner product: 
+
+sim( gi, hc) = ⟨gi, hc⟩. (6) and obtain the predictive distribution by applying a softmax operator to the resulting similarity vector over all classes: 
+
+si(p) = softmax (sim( gi, {hc}Cc=1 )) ∈ RC . (7) In implementation, we stack the class text features {hc}Cc=1 and image features 
+
+{gi}Ni=1 into matrices T = [ h1; . . . ; hC ] ∈ RC×d and I = [ g1; . . . ; gN ] ∈ RN ×d,and compute the pairwise similarity matrix S = TI ⊤ ∈ RC×N .
+
+4.2 OT-based Purification 
+
+We apply entropically regularized OT in the shared vision-language embedding space, where class-wise text features serve as prototypes and image features as samples. Solved efficiently by Sinkhorn iterations [6, 33], OT yields balanced soft pseudo-labels for each sample, providing a lightweight purification signal for data partitioning, confidence estimation, and subsequent refinement. Given the similarity matrix S ∈ RC×N computed above, we construct the OT cost matrix C via an element-wise negative log transform of S, and solve the following balanced OT problem: 
+
+min  
+
+> Q≥0
+
+⟨C, Q⟩ − ϵH (Q) s.t. Q1 N = 1 
+
+> C
+
+1C , Q⊤1C = 1 
+
+> N
+
+1N . (8) where H(Q) = − ∑Cc=1 
+
+∑Ni=1 Qc,i log Qc,i is the entropy of the transport plan, and ϵ > 0 controls the strength of the entropic regularization. The optimal coupling Q⋆ induces a soft pseudo-label distribution for each sample (column-wise). We denote the OT-induced pseudo-label by ˆ y(t) 
+
+> i
+
+∈ [C] with confidence 
+
+c(t) 
+
+> i
+
+∈ [0 , 1], and take: 
+
+ˆy(t) 
+
+> i
+
+= arg max  
+
+> c∈[C]
+
+Q⋆c,i , c(t) 
+
+> i
+
+= max  
+
+> c∈[C]
+
+Q⋆c,i . (9) as the OT signal used to guide subsequent sample selection and to quantify temporal consistency across iterations. 8 Z. Shao et al. Optimal     
+
+> Transport
+> Warmup Label
+> Rewrite Refurbish Optimal
+> Transport
+
+. . .   
+
+> Epoch K Epoch K+1
+> Noisy
+> Label
+> Noisy
+> Label
+> Updata
+
+Fig. 3: Optimal Transport generates pseudo-label candidates to rewrite noisy annota-tions. Through iterative updates over epochs, incorrect labels are progressively corrected, reducing the noise rate and improving the quality of supervision. 
+
+4.3 EMA-Smoothed OT Confidence 
+
+Single-epoch OT confidence can be noisy. We therefore maintain an exponential moving average (EMA) confidence for each sample: 
+
+¯c(t) 
+
+> i
+
+=
+
+{
+
+c(t) 
+
+> i
+
+, t = 1 ,β¯c(t−1)  
+
+> i
+
++ (1 − β)c(t) 
+
+> i
+
+, t > 1. (10) where β ∈ [0 , 1) controls the smoothing strength. We also keep a short history of OT pseudo-labels and confidences to support temporal consistency checking. 
+
+4.4 Temporal Consistency Label Rewriting 
+
+We trigger hard label rewriting only when the OT pseudo-label is both temporally consistent and sufficiently confident, as illustrated in Fig. 3. Following Sec. 3.1, where AK (i) denotes the rewrite-candidate event requiring stability within the 
+
+K-epoch window and sustained confidence. For eligible samples, we rewrite the observed label by the stable OT candidate: 
+
+˜yi ← ˆy(t) 
+
+> i
+
+if AK (i) holds.  (11) This criterion enforces a conservative rewrite policy by requiring both temporal stability and sustained confidence before updating labels. 
+
+warmup. To avoid aggressive early corrections and reduce confirmation bias, we introduce a warmup condition. Let  t denote the current epoch index and treat  t < K  as the warmup stage (warmup length  = K − 1 epochs), during which we only collect the OT-induced label assignments into the temporal buffer without applying any hard rewrite. Hard OT label rewriting is enabled only once  t ≥ K, i.e., after accumulating a full K-epoch stability window. In addition to preventing unstable early predictions from triggering irreversible corrections, this strategy allows the model to reach a more reliable regime and enforces multi-epoch consistency as a prerequisite for rewriting. TecoPrompt 9
+
+4.5 Ternary Grouping and Training Objectives 
+
+After smoothing and consistency checking, and applying label rewriting when triggered, we partition the training set D into three pairwise disjoint subsets Dcln ,
+
+Dmid , and Dnos , such that D = Dcln ∪ D mid ∪ D nos and Da ∩ D b = ∅ for a̸ = b.
+
+Clean set. A sample is placed into Dcln if its OT pseudo-label agrees with the observed label and its EMA confidence passes a strict threshold. Here τclean and 
+
+τmid denote confidence thresholds with τclean > τ mid :
+
+i ∈ D cln ⇐⇒ ˆy(t) 
+
+> i
+
+= ˜ yi and ¯c(t) 
+
+> i
+
+≥ τclean . (12) 
+
+Mid set. The mid set collects samples that are likely usable but not fully reliable. Concretely, we include either agreement samples with moderate EMA confidence or rewrite-eligible samples not already assigned to Dcln :
+
+i ∈ D mid ⇐⇒ 
+
+(
+
+ˆy(t) 
+
+> i
+
+= ˜ yi and τmid ≤ ¯c(t) 
+
+> i
+
+< τ clean 
+
+)
+
+or AK (i). (13) 
+
+Noisy set. All remaining samples are treated as noisy: 
+
+Dnos = D \ (Dcln ∪ D mid ) . (14) 
+
+Loss functions. Let si ∈ ∆C−1 denote the predicted class distribution obtained from the similarity scores via a softmax operator, and let si, ˜yi denote the proba-bility assigned to the current training label ˜ yi. We optimize a weighted sum of losses over the three subsets: 
+
+L = λcLcln + λmLmid + λnLnos . (15) where λc, λ m, λ n ≥ 0 control the relative contribution of each term. Our design follows a “strong-to-robust” principle based on subset reliability: The clean subset is expected to be highly reliable and thus benefits from the strong discriminability of cross-entropy (CE); The mid subset may contain mild corruption, so we adopt generalized cross-entropy (GCE) with q ∈ (0 , 1) as a compromise that down-weights low-confidence samples while preserving learning efficacy; The noisy subset is potentially heavily corrupted, for which we use an MAE-style objective that is less sensitive to mislabeled targets and helps prevent overfitting to noise: 
+
+Lcln = ∑
+
+> i∈D cln
+
+− log si, ˜yi , Lmid = ∑
+
+> i∈D mid
+
+1 − s qi, ˜yi
+
+q , Lnos = ∑
+
+> i∈D nos
+
+(1 − si, ˜yi ). (16) 
+
+## 5 Experiments 
+
+We conduct extensive experiments to evaluate the effectiveness and robustness of TecoPrompt under few-shot prompt learning with noisy supervision. 10 Z. Shao et al. 
+
+5.1 Benchmarks and Baselines Synthetic noisy benchmarks. We use seven widely adopted visual classification datasets: Flowers102 [28], DTD [5], EuroSAT [12], OxfordPets [30], Stanford-Cars [19], UCF101 [38], and Caltech101 [7]. These datasets are originally clean; we corrupt labels only on the training split (Sec. 5.2) and keep the official test split unchanged for evaluation, as in [29]. For each dataset, we construct a 16-shot training set per class. 
+
+Real-world noisy benchmark. We additionally evaluate on Food101N [22], a real-world dataset with naturally noisy web-collected annotations, to assess robustness under practical noise patterns beyond controlled synthetic label flips. 
+
+Baselines. We compare TecoPrompt with CoOp [53], CoOp trained with general-ized cross-entropy (CoOp+GCE) [43], JoAPR [10], and NLPrompt. All methods use the same backbone and few-shot splits for fair comparison. 
+
+5.2 Implementation Details 
+
+We evaluate two corruption patterns following [29] and apply noise only to the training labels. Under symmetric noise (Sym), each label is independently flipped to a uniformly sampled incorrect class with probability η. Under asymmetric noise (Asym), we use a fixed class-dependent mapping, in which each class is flipped to a designated successor class with probability η, thereby producing structured corruption where noisy labels are often less distinguishable, and the setting is generally more challenging. We adopt the same experimental setup as NLPrompt [29] for fair comparison. All experiments are conducted with the pre-trained CLIP model [34] using ResNet-50 as the image encoder. The text encoder is the CLIP text transformer, and we freeze both encoders while optimizing only the learnable prompt parameters. We train models for 200 epochs using SGD with an initial learning rate of 0.002 and a cosine annealing schedule. For prompt design, we use 16 shared context tokens and place the class token at the end of the prompt, following the standard CoOp-style template [53]. All experiments were conducted on a cluster equipped with NVIDIA A100 GPUs using PyTorch [31]. All results are reported as the average accuracy over three random seeds, and the highest accuracy in each column is highlighted in bold. 
+
+5.3 Results on Synthetic Noisy Labels 
+
+Tab. 1 summarizes performance under synthetic symmetric and asymmetric label noise across seven datasets. The noise rate ranges from 12.5% to 75%, increasing in steps of 12.5%. Across most datasets and noise levels, TecoPrompt achieves strong performance, with particularly notable advantages emerging as the noise rate increases. Under severe label corruption, the performance gap becomes more pronounced, demonstrating that the proposed prompt is less affected by noisy supervision. These results indicate that TecoPrompt learns more robust prompts that maintain stable performance even under high levels of label noise. TecoPrompt 11 
+
+Table 1: Classification performance (accuracy, %) under symmetric (Sym) and asymmet-ric (Asym) label noise. Except for TecoPrompt, all results are taken from NLPrompt [29]. 
+
+Dataset Method Noise Rate: Sym Noise Rate: Asym 12.5% 25.0% 37.5% 50.0% 62.5% 75.0% 12.5% 25.0% 37.5% 50.0% 62.5% 75.0% Flowers102 CoOp 88.9 83.5 77.9 70.1 55.6 37.2 87.0 74.7 60.4 42.6 26.5 12.6 GCE 88.8 88.3 86.7 84.1 78.4 70.4 88.4 86.4 80.3 69.9 61.5 39.2 JoAPR 85.6 81.2 74.6 70.2 67.9 66.9 85.2 79.6 74.0 73.8 53.4 13.3 NLPrompt 93.9 92.6 92.7 89.9 84.8 76.8 93.8 93.4 91.8 81.1 73.6 55.3 TecoPrompt 94.0 93.7 92.9 90.5 86.1 82.3 94.1 93.5 92.2 89.4 80.4 66.6 
+
+DTD CoOp 56.0 49.6 43.3 34.4 27.8 17.3 55.6 47.8 38.1 29.6 20.5 11.7 GCE 61.0 59.8 56.8 50.7 43.6 33.7 60.7 57.6 52.7 44.0 33.4 18.2 JoAPR 58.1 57.7 56.3 53.0 48.1 29.9 52.4 56.6 53.1 48.9 40.2 28.3 NLPrompt 63.0 61.2 59.2 55.2 49.0 39.8 62.3 60.6 56.5 50.8 40.3 28.4 TecoPrompt 62.7 61.8 59.8 58.1 54.2 49.8 62.8 62.7 58.3 56.5 48.5 38.4 
+
+EuroSAT CoOp 76.5 69.2 61.7 52.3 37.6 26.7 76.0 66.3 53.8 41.2 28.0 17.4 GCE 82.1 78.6 74.7 63.1 49.7 31.4 78.2 72.7 63.6 45.3 22.9 12.1 JoAPR 75.1 61.1 60.9 63.6 39.0 27.3 69.4 67.3 59.4 47.6 33.9 17.5 NLPrompt 82.5 79.5 78.1 66.7 63.5 43.8 80.1 77.1 71.4 54.3 37.3 32.7 TecoPrompt 83.5 80.7 78.9 72.7 68.7 52.1 81.1 80.1 78.7 63.7 37.9 33.7 
+
+OxfordPets CoOp 76.5 66.7 60.3 47.0 35.8 24.6 76.1 66.2 52.5 38.7 26.6 14.9 GCE 85.6 84.6 83.7 79.2 71.4 53.2 85.5 83.0 76.7 68.1 50.7 32.0 JoAPR 84.0 83.3 83.2 83.1 82.4 74.4 82.9 83.4 79.1 75.8 52.7 43.6 NLPrompt 86.2 86.0 85.3 84.9 83.6 70.8 86.0 85.0 82.4 77.5 66.3 48.6 TecoPrompt 86.7 86.3 85.7 85.1 84.2 84.6 86.7 85.2 84.9 84.3 83.0 75.3 
+
+StanfordCars CoOp 66.2 59.7 53.4 45.9 35.7 22.9 65.8 57.1 46.2 33.7 22.4 12.8 GCE 69.7 66.4 66.5 63.8 59.3 50.9 70.0 66.5 61.2 53.7 39.7 26.6 JoAPR 68.6 66.3 62.8 56.7 48.5 39.4 66.5 61.7 51.5 42.0 30.8 23.0 NLPrompt 69.4 68.8 67.2 65.6 62.8 58.3 69.8 67.5 64.2 59.0 50.9 39.5 TecoPrompt 69.7 68.9 68.2 66.8 64.4 60.4 70.2 68.7 66.7 63.2 58.2 51.9 
+
+UCF101 CoOp 69.0 63.4 58.2 49.7 40.8 26.3 67.2 58.1 46.5 34.4 23.7 13.2 GCE 74.0 73.6 72.6 69.4 66.0 57.1 73.9 71.9 68.0 62.2 52.5 36.4 JoAPR 72.8 71.2 70.4 67.6 65.3 57.7 72.1 69.8 64.1 59.2 56.1 47.5 NLPrompt 74.8 73.4 72.8 70.3 68.1 60.5 74.9 73.5 71.0 66.0 59.0 49.3 TecoPrompt 75.1 74.4 73.4 72.0 70.3 67.4 75.1 73.9 71.6 70.1 67.4 58.1 
+
+Caltech101 CoOp 86.4 81.0 76.7 70.9 61.3 46.9 84.9 75.2 62.9 49.4 33.6 20.3 GCE 92.0 90.9 90.8 89.3 86.7 79.0 91.3 91.2 89.7 85.8 78.2 62.1 JoAPR 90.3 90.5 89.9 88.3 86.9 83.9 90.3 89.3 88.3 88.7 85.8 81.9 NLPrompt 91.7 91.1 90.8 89.9 88.3 86.7 91.6 91.2 90.2 89.3 86.2 81.1 TecoPrompt 91.5 91.7 91.1 90.5 90.1 89.4 91.9 91.9 91.0 90.1 89.1 85.7 
+
+5.4 Results on real-world Noisy Labels 
+
+Tab. 2 reports the results on Food101N [22], a real-world dataset with naturally noisy labels. TecoPrompt achieves the highest accuracy among all compared approaches, demonstrating that the robustness observed under synthetic noise settings effectively transfers to realistic, naturally corrupted supervision. 
+
+5.5 Few-shot Learning Analysis 
+
+To understand how data scarcity interacts with label corruption, we vary the number of shots per class in  {1, 2, 4, 8, 16 } while fixing the noise rate at 50%. In these experiments, we set the number of training epochs to 100. The trends in Fig. 4 show that accuracy rises steadily with more shots for all compared methods, 12 Z. Shao et al. 
+
+Table 2: Test accuracy (%) on Food101N. 
+
+Method CoOp GCE JoAPR NLPrompt TecoPrompt Accuracy 69.50 71.32 72.57 76.46 78.67 1 2 4 8 16 40 60 80                        
+
+> (a) Caltech101
+> 1 2 4816
+> (b) DTD
+> 1 2 4816
+> (c) OxfordPets
+> 1 2 4816
+> (d) StanfordCars
+> 1 2 4816 40 60 80
+> 1 2 4816 1 2 4816 1 2 4816
+> Accuracy (%) Number of Shots
+> Sym Asym
+> CoOp GCE JoAPR NLPrompt TecoPrompt
+
+Fig. 4: Few-shot robustness under label noise with different shot budgets. We vary the number of shots per class over 1, 2, 4, 8, 16, while keeping the noise rate at 50%. 
+
+under both symmetric and asymmetric noise. Across datasets (Caltech101, DTD, OxfordPets, StanfordCars), TecoPrompt maintains an advantage throughout, with the gap most evident at very low shot counts, indicating better robustness when both supervision quality and quantity are limited. 
+
+5.6 Comparison of Supervision Strategies 
+
+Tab. 3 reports test accuracy on Flowers102 after 100 epochs under symmetric and asymmetric label corruption at rates of 20%, 40%, 60%, and 80%. LS and ST denote Label Smoothing [39] and Soft Targets [14], respectively. NLPrompt performs OT-based label allocation, whereas TecoPrompt further introduces EMA-smoothed confidence and a K-epoch stability window to enable conservative hard-label rewriting. TecoPrompt consistently achieves the best performance across all noise settings, with larger margins under severe corruption, indicating that temporally verified hard rewriting provides more reliable supervision than purely OT-based soft supervision. 
+
+5.7 Ablation Study 
+
+Tab. 4 summarizes ablation results of TecoPrompt on OxfordPets under symmetric label noise. All models are trained for 100 epochs under the 16-shot setting following Sec. 5.2. Unless otherwise specified, the default configuration uses EMA and rewriting with K=8 and loss-CE-0.5-MAE, where CE, GCE( q=0 .5), and MAE are applied to clean, mid, and noisy groups, respectively. Rows (a)–(c) TecoPrompt 13                                                                                                                           
+
+> Table 3: Comparison of soft supervision and hard label rewriting strategies under different noise rates on Flowers102. Supervision Strategy Noise Rate: Sym Noise Rate: Asym 20% 40% 60% 80% 20% 40% 60% 80% GCE + ST 85.93 84.48 81.19 66.15 83.53 80.50 67.43 39.15 NLPrompt + ST 88.42 86.33 82.51 76.43 88.74 86.91 81.37 71.80 NLPrompt + LS 88.35 88.12 82.54 74.48 88.61 84.92 79.07 70.63 TecoPrompt 90.76 88.98 83.31 78.02 89.86 87.21 81.93 73.14 Table 4: Ablation studies under multiple noise ratios (%). ID EMA Rewrite KLoss 10% 30% 50% 70% Avg (a) ––87.05 87.03 85.46 78.22 84.44 (b) ✓––87.21 86.77 86.02 85.03 86.26 (c) ✓––86.05 85.98 85.34 81.30 84.67 (d) ✓✓–CE-0.3-0.5 87.58 86.91 85.98 85.36 86.46 (e) ✓✓–0.7-0.5-0.3 86.70 85.95 84.35 58.62 78.91 (f) ✓✓1–82.23 80.85 78.12 80.15 80.59 (g) ✓✓4–86.52 85.75 85.98 86.02 86.07 (h) ✓✓8–87.52 87.19 86.40 86.72 86.96
+> (i) ✓✓16 –87.70 87.61 85.87 84.74 86.48
+
+ablate EMA and rewriting, rows (d)–(e) vary the group-wise loss design, and rows (f)–(i) study different K values. The results show that rewriting is the main driver of robustness, especially under heavy noise, while EMA alone brings smaller gains but improves stability when coupled with rewriting. The sharp collapse of (e) at 70% noise highlights that an improper group-wise loss assignment can be detrimental in the high-noise regime, motivating the robust loss choice for the noisy group in our default design. Finally, varying K indicates that moderate history yields the most stable performance: small K introduces noisy corrections, whereas large K makes rewriting overly conservative and reduces the frequency of corrections. The lower error ratio under larger K can occasionally yield slightly better results than 
+
+K = 8, but a moderate window provides the best overall balance. Fig. 5 provides a closer look at how K affects rewriting dynamics. With a small 
+
+K, rewriting reacts to transient fluctuations, leading to less stable corrections and a higher error ratio. Increasing K suppresses such short-term label switches and reduces harmful flips, improving correction precision in a manner consistent with Theorem 1. However, an overly large window becomes too conservative and triggers fewer effective corrections. Overall, the dynamics in Fig. 5 explain why 
+
+K=8 is a suitable default on this dataset, striking a favorable balance between correction quantity and correction precision. 14 Z. Shao et al. 10 20 30 40 50 
+
+> Epoch
+> 50
+> 050 100
+> Count
+
+K=1         
+
+> Incorrect Correct
+> Incorrect Incorrect
+> Correct Incorrect
+> 010 20 30 40 50 60 70 80 90 100
+> Epoch
+> 0.0 0.1 0.2 0.3 0.4 0.5
+> Error ratio
+> 10 20 30 40 50
+> Epoch
+> 010 20 30 40 50
+> warmup
+
+K=4         
+
+> Incorrect Correct
+> Incorrect Incorrect
+> Correct Incorrect
+> 010 20 30 40 50 60 70 80 90 100
+> Epoch
+> 0.0 0.1 0.2 0.3 0.4 0.5 10 20 30 40 50
+> Epoch
+> 010 20 30
+> warmup
+
+K=8        
+
+> Incorrect Correct
+> Incorrect Incorrect
+> Correct Incorrect
+> 010 20 30 40 50 60 70 80 90 100
+> Epoch
+> 0.0 0.1 0.2 0.3 0.4 0.5 20 30 40 50
+> Epoch
+> 0.0 2.5 5.0 7.5 10.0
+> warmup
+
+K=16     
+
+> Incorrect Correct
+> Incorrect Incorrect
+> Correct Incorrect
+> 010 20 30 40 50 60 70 80 90 100
+> Epoch
+> 0.0 0.1 0.2 0.3 0.4 0.5
+
+Fig. 5: Effect of the temporal stability window size K for conservative hard label rewriting. The top row reports the per-epoch counts of rewriting outcomes, including incorrect→correct, incorrect→incorrect, and correct→incorrect. The bottom row shows the ratio of incorrect labels in the dataset over training. The dashed line denotes the warm-up stage before rewriting is enabled. 
+
+5.8 Qualitative Analysis of Label Rewriting 
+
+On OxfordPets under 50% label noise with 100 training epochs, TecoPrompt rewrites 234 samples, of which 222 are corrected from wrong labels to ground-truth labels, accounting for 94.87%. Since this setting contains 296 noisy labels in total, these corrections cover 75.00% of the noisy samples. In comparison, only 6 samples are changed from correct labels to wrong labels, and 6 from one wrong label to another wrong label, each accounting for 2.56%. These results indicate that the temporal stability window effectively filters unreliable OT candidates and enables accurate hard rewriting. Fig. 6 shows the correct-to-wrong cases, where Bengal is rewritten as Egyptian Mau and Leonberger as Keeshond. These errors occur between visually similar fine-grained classes that share appearance cues such as texture, color, and facial structure. This suggests that strong inter-class similarity can occasionally lead to temporally stable but incorrect OT assignments. 
+
+5.9 Limitations 
+
+TecoPrompt prioritizes high-precision hard rewrites and therefore does not at-tempt to correct every noisy label. In practice, examples that flip frequently during training (so-called forgettable examples) typically fail the temporal verification and thus remain unmodified, which is an intentional trade-off to avoid incorrect corrections. The K-epoch stability window controls the precision-coverage balance and should be tuned for each dataset; empirically, K = 8 works well across our benchmarks. Finally, the method requires maintaining historical information and EMA updates, which introduce additional overhead. However, this cost remains modest in practice; on Caltech101 under the 16-shot setting, it requires only 0.20 seconds more per epoch than NLPrompt on a single RTX 3080 Ti. TecoPrompt 15  
+
+> Fig. 6: Examples of rare incorrect label rewriting cases. The left column shows the original training samples, the middle column shows reference images from the revised classes, and the right column reports the corresponding label changes and rewriting outcomes. These cases illustrate that incorrect rewrites mainly occur between visually similar fine-grained categories.
+
+## 6 Conclusion 
+
+We propose TecoPrompt, a robust prompt-learning framework for vision–language models under noisy supervision. It stabilizes OT-based label candidates through EMA confidence gating and performs conservative rewriting only when candidates remain consistent within a K-epoch temporal window, reducing confirmation bias and pseudo-label drift. A group-specific objective further applies tailored losses to clean, mid, and noisy subsets. Experiments across diverse noise types and severities demonstrate consistent robustness gains, validating temporal-conservative label correction for noise-tolerant prompt tuning. 
+
+## Acknowledgments. 
+
+This work was supported in part by the National Natural Science Foundation of China (62473276, 62573309), in part by the Natural Science Foundation of Jiangsu Province (BK20241918), and in part by the Research Fund of Horizon Robotics (H230666). Bibliography 
+
+[1] Arpit, D., Jastrzebski, S., Ballas, N., Krueger, D., Bengio, E., Kanwal, M.S., Maharaj, T., Fischer, A., Courville, A., Bengio, Y., Lacoste-Julien, S.: A closer look at memorization in deep networks. In: International Conference on Machine Learning (ICML) (2017) [2] Chang, W., Shi, Y., Wang, J.: Csot: Curriculum and structure-aware optimal transport for learning with noisy labels. In: Advances in Neural Information Processing Systems. pp. 8528–8541 (2023) [3] Chen, G., Yao, W., Song, X., Li, X., Rao, Y., Zhang, K.: Plot: Prompt learning with optimal transport for vision-language models. In: Interna-tional Conference on Learning Representations (ICLR) (2023), https: //openreview.net/forum?id=b9APFSTylGT 
+
+[4] Chen, M., Cheng, H., Du, Y., Xu, M., Jiang, W., Wang, C.: Two wrongs don’t make a right: Combating confirmation bias in learning with label noise. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 37, pp. 14765–14773 (2023). https://doi.org/10.1609/aaai.v37i12.26725 
+
+[5] Cimpoi, M., Maji, S., Kokkinos, I., Mohamed, S., Vedaldi, A.: Describing textures in the wild. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). pp. 3606–3613 (2014) [6] Cuturi, M.: Sinkhorn distances: Lightspeed computation of optimal transport. In: Advances in Neural Information Processing Systems (2013) [7] Fei-Fei, L., Fergus, R., Perona, P.: Learning generative visual models from few training examples: An incremental bayesian approach tested on 101 object categories. In: 2004 Conference on Computer Vision and Pattern Recognition Workshop (CVPRW). pp. 178–178. IEEE (2004) [8] Feng, C., Ren, Y., Xie, X.: Ot-filter: An optimal transport filter for learning with noisy labels. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 16164–16174 (2023) [9] Feng, L., Shu, S., Lin, Z., Lv, F., Li, L., An, B.: Can cross entropy loss be robust to label noise? In: Proceedings of the International Joint Conference on Artificial Intelligence (IJCAI) (2020) [10] Guo, Y., Gu, X.: Joapr: Cleaning the lens of prompt learning for vision-language models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 28695–28705 (2024) [11] Han, B., Yao, Q., Yu, X., Niu, G., Xu, M., Hu, W., Tsang, I., Sugiyama, M.: Co-teaching: Robust training of deep neural networks with extremely noisy labels. In: Advances in Neural Information Processing Systems (2018) [12] Helber, P., Bischke, B., Dengel, A., Borth, D.: EuroSAT: A novel dataset and deep learning benchmark for land use and land cover classification. IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing 12 (7), 2217–2226 (2019) TecoPrompt 17 
+
+[13] Hendrycks, D., Lee, K., Mazeika, M.: Using pre-training can improve model robustness and uncertainty. In: Proceedings of the International Conference on Machine Learning (ICML). pp. 2712–2721. PMLR (2019) [14] Hinton, G.E., Vinyals, O., Dean, J.: Distilling the knowledge in a neural network. CoRR abs/1503.02531 (2015), https://arxiv.org/abs/1503. 02531 
+
+[15] Jia, C., Yang, Y., Xia, Y., Chen, Y.T., Parekh, Z., Pham, H., Le, Q.V., Sung, Y.H., Li, Z., Duerig, T.: Scaling up visual and vision-language representation learning with noisy text supervision. In: Proceedings of the 38th International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 139, pp. 4904–4916. PMLR (2021), https://proceedings.mlr.press/ v139/jia21b.html 
+
+[16] Jia, M., Tang, L., Chen, B., Cardie, C., Belongie, S.J., Hariharan, B., Lim, S.: Visual prompt tuning. In: Computer Vision – ECCV 2022. Lecture Notes in Computer Science, vol. 13693, pp. 709–727. Springer (2022). https: //doi.org/10.1007/978-3-031-19827-4_41 
+
+[17] Khattak, M.U., Rasheed, H., Maaz, M., Khan, S., Khan, F.S.: Maple: Multi-modal prompt learning. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 19113–19122 (2023) [18] Khattak, M.U., Wasim, S.T., Naseer, M., Khan, S., Yang, M.H., Khan, F.S.: Self-regulating prompts: Foundational model adaptation without for-getting. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV). pp. 15190–15200 (2023). https://doi.org/10. 1109/ICCV51070.2023.01394 
+
+[19] Krause, J., Stark, M., Deng, J., Fei-Fei, L.: 3d object representations for fine-grained categorization. In: Proceedings of the IEEE International Conference on Computer Vision Workshops (ICCVW). pp. 554–561 (2013) [20] Lafon, M., Ramzi, E., Rambour, C., Audebert, N., Thome, N.: Gallop: Learning global and local prompts for vision-language models. In: European Conference on Computer Vision (ECCV) (2024) [21] Laine, S., Aila, T.: Temporal ensembling for semi-supervised learning. In: International Conference on Learning Representations (ICLR) (2017) [22] Lee, K.H., He, X., Zhang, L., Yang, L.: Cleannet: Transfer learning for scalable image classifier training with label noise. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). pp. 5447–5456 (2018) [23] Li, J., Socher, R., Hoi, S.C.H.: Dividemix: Learning with noisy labels as semi-supervised learning. In: International Conference on Learning Represen-tations (ICLR) (2020), https://openreview.net/forum?id=HJgExaVtwr 
+
+[24] Li, Z., Li, X., Fu, X., Zhang, X., Wang, W., Chen, S., Yang, J.: Promptkd: Unsupervised prompt distillation for vision-language models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2024) [25] Liang, K.J., Rangrej, S.B., Petrovic, V., Hassner, T.: Few-shot learning with noisy labels. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 9089–9098 (2022) 18 Z. Shao et al. 
+
+[26] Lu, Y., Liu, J., Zhang, Y., Liu, Y., Tian, X.: Prompt distribution learning. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 5206–5215 (June 2022) [27] Lyu, Y., Tsang, I.W.: Curriculum loss: Robust learning and generalization against label corruption. In: International Conference on Learning Represen-tations (ICLR) (2020), https://openreview.net/forum?id=rkgt0REKwS 
+
+[28] Nilsback, M.E., Zisserman, A.: Automated flower classification over a large number of classes. In: 2008 Sixth Indian Conference on Computer Vision, Graphics & Image Processing. pp. 722–729. IEEE (2008) [29] Pan, B., Li, Q., Tang, X., Huang, W., Fang, Z., Liu, F., Wang, J., Yu, J., Shi, Y.: Nlprompt: Noise-label prompt learning for vision-language models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 19963–19973 (2025) [30] Parkhi, O.M., Vedaldi, A., Zisserman, A., Jawahar, C.V.: Cats and dogs. In: 2012 IEEE Conference on Computer Vision and Pattern Recognition (CVPR). pp. 3498–3505. IEEE (2012) [31] Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., Desmaison, A., Kopf, A., Yang, E., DeVito, Z., Raison, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang, L., Bai, J., Chintala, S.: Pytorch: An imperative style, high-performance deep learning library. In: Advances in Neural Information Processing Systems (NeurIPS). vol. 32 (2019) [32] Patrini, G., Rozza, A., Menon, A.K., Nock, R., Qu, L.: Making deep neural networks robust to label noise: A loss correction approach. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) (2017) [33] Peyré, G., Cuturi, M.: Computational optimal transport. Foundations and Trends in Machine Learning 11 (5–6), 355–607 (2019). https://doi.org/ 10.1561/2200000073 
+
+[34] Radford, A., Kim, J.W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J., Krueger, G., Sutskever, I.: Learning transferable visual models from natural language supervision. In: Proceedings of the 38th International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 139, pp. 8748–8763. PMLR (2021) [35] Reed, S., Lee, H., Anguelov, D., Szegedy, C., Erhan, D., Rabinovich, A.: Training deep neural networks on noisy labels with bootstrapping. In: ICLR Workshop (2015) [36] Shu, M., Nie, W., Huang, D., Yu, Z., Goldstein, T., Anandkumar, A., Xiao, C.: Test-time prompt tuning for zero-shot generalization in vision-language models. In: Advances in Neural Information Processing Systems 35: Annual Conference on Neural Information Processing Systems 2022 (NeurIPS 2022) (2022), http://papers.nips.cc/paper_files/paper/2022/hash/ 5bf2b802e24106064dc547ae9283bb0c-Abstract-Conference.html TecoPrompt 19 
+
+[37] Song, H., Kim, M., Lee, J.G.: Selfie: Refurbishing unclean samples for robust deep learning. In: Proceedings of the 36th International Conference on Machine Learning (ICML). pp. 5907–5915. PMLR (2019) [38] Soomro, K., Zamir, A.R., Shah, M.: UCF101: A dataset of 101 human action classes from videos in the wild. arXiv preprint arXiv:1212.0402 (2012) [39] Szegedy, C., Vanhoucke, V., Ioffe, S., Shlens, J., Wojna, Z.: Rethinking the inception architecture for computer vision. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). pp. 2818–2826 (2016). https://doi.org/10.1109/CVPR.2016.308 
+
+[40] Tarvainen, A., Valpola, H.: Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results. In: Advances in Neural Information Processing Systems (2017) [41] Toneva, M., Sordoni, A., des Combes, R.T., Trischler, A., Bengio, Y., Gordon, G.J.: An empirical study of example forgetting during deep neural network learning. In: International Conference on Learning Representations (ICLR) (2019), https://openreview.net/forum?id=BJlxm30cKm 
+
+[42] Wei, H., Feng, L., Chen, X., An, B.: Combating noisy labels by agree-ment: A joint training method with co-regularization. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 13726–13735 (2020) [43] Wu, C.E., Tian, Y., Yu, H., Wang, H., Morgado, P., Hu, Y.H., Yang, L.: Why is prompt tuning for vision-language models robust to noisy labels? In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV). pp. 15488–15497 (2023) [44] Xia, X., Liu, T., Han, B., Gong, C., Wang, N., Ge, Z., Chang, Y.: Robust early-learning: Hindering the memorization of noisy labels. In: International Conference on Learning Representations (ICLR) (2021) [45] Xu, T., Zhou, Y., Ji, K., Liang, Y.: When will gradient methods converge to max-margin classifier under relu models? (2018). https://doi.org/10. 48550/arXiv.1806.04339 
+
+[46] Yao, Y., Liu, T., Han, B., Gong, M., Deng, J., Niu, G., Sugiyama, M.: Dual t: Reducing estimation error for transition matrix in label-noise learning. In: Advances in Neural Information Processing Systems (NeurIPS) (2020) [47] Yoon, H.S., Yoon, E., Tee, J.T.J., Hasegawa-Johnson, M., Li, Y., Yoo, C.D.: C-tpt: Calibrated test-time prompt tuning for vision-language models via text feature dispersion. In: International Conference on Learning Representations (ICLR) (2024). https://doi.org/10.48550/arXiv.2403.14119 
+
+[48] Yu, J., Wang, Z., Vasudevan, V., Yeung, L., Seyedhosseini, M., Wu, Y.: Coca: Contrastive captioners are image-text foundation models. Transactions on Machine Learning Research (2022), https://openreview.net/forum?id= Ee277P3AYC 
+
+[49] Zhang, C., Bengio, S., Hardt, M., Recht, B., Vinyals, O.: Understanding deep learning requires rethinking generalization. In: International Conference on Learning Representations (ICLR) (2017) [50] Zhang, Y., Niu, G., Sugiyama, M.: Learning noise transition matrix from only noisy labels via total variation regularization. In: Proceedings of the 20 Z. Shao et al. 
+
+38th International Conference on Machine Learning. pp. 12501–12512 (2021), 
+
+https://proceedings.mlr.press/v139/zhang21n.html 
+
+[51] Zhang, Z., Sabuncu, M.R.: Generalized cross entropy loss for training deep neural networks with noisy labels. In: Advances in Neural Information Processing Systems (2018) [52] Zhou, K., Yang, J., Loy, C.C., Liu, Z.: Conditional prompt learning for vision-language models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 16816–16825 (June 2022) [53] Zhou, K., Yang, J., Loy, C.C., Liu, Z.: Learning to prompt for vision-language models. International Journal of Computer Vision 130 (9), 2337–2348 (2022). 
+
+https://doi.org/10.1007/s11263-022-01653-1 1
+
+# TecoPrompt: Temporal-Conservative Prompt Learning for Vision-Language Models 
+
+## Supplementary Material A Additional Experiments 
+
+A.1 Generalization of TecoPrompt 
+
+Notably, our method is not specific to CoOp, and can be readily extended to other prompt learning frameworks, such as PromptSRC and MaPLe. As shown in Tab. 5, we further validate its effectiveness on the UCF101 dataset, where integrating our method with both PromptSRC and MaPLe consistently yields excellent performance. These results suggest that our approach is generally applicable across different prompt learning paradigms and possesses strong robustness and transferability. 
+
+Table 5: The generalization of TecoPrompt.               
+
+> Method/Noise Ratio 12.5% 25.0% 37.5% 50.0% 62.5% 75.0% MaPLe 80.25 79.16 75.27 71.10 60.43 53.14 MaPLe+Ours 81.96 81.82 80.65 79.57 78.68 76.95
+> PromptSRC 82.82 80.85 78.13 75.37 71.39 63.06 PromptSRC+Ours 83.62 82.51 81.90 80.47 79.89 77.14
+
+A.2 Experiments on SUN397 
+
+In Tab. 6, TecoPrompt consistently delivers the best performance on SUN397 under both symmetric and asymmetric label noise. Our method shows clear and consistent improvements across all noise rates. These results further verify the robustness and effectiveness of our approach on challenging noisy-label settings. 
+
+Table 6: Test accuracy(%) on SUN397. Dataset Method Noise Rate: Sym Noise Rate: Asym 12.5% 25.0% 37.5% 50.0% 62.5% 75.0% 12.5% 25.0% 37.5% 50.0% 62.5% 75.0% SUN397 CoOp 65.50 62.9 59.3 55.5 48.3 37.8 63.5 56.1 45.5 33.8 22.1 11.4 GCE 67.6 66.3 65.4 64.2 62.0 59.2 68.4 66.4 63.8 60.0 53.6 43.8 NLPrompt 68.4 67.5 66.4 64.8 64.1 61.7 68.7 67.5 66.1 64.0 61.4 53.0 TecoPrompt 68.9 68.5 68.1 67.3 66.0 65.6 69.4 68.3 67.4 66.1 65.1 60.1 
+
+A.3 Additional Ablation Study 
+
+Table 7 further evaluates the effects of EMA, the temporal window size K, and the loss design on EuroSAT. The results show that EMA or temporal consistency alone provides limited gains, while their combination significantly improves robustness, with β = 0 .8 and K = 8 achieving the best average accuracy. This 2
+
+Table 7: Additional Ablation study on the EuroSAT dataset. 
+
+β(EMA) K Loss Noise Rate Average 10% 30% 50% 70% — ∞ Ours 78.23 75.84 41.15 19.29 53.63 0.8 ∞ Ours 79.34 75.92 51.76 11.88 54.73 — 8 Ours 78.69 76.15 65.61 20.36 60.20 0.4 4 Ours 77.90 75.95 65.59 40.33 64.94 8 Ours 80.25 76.87 68.58 42.68 67.09 12 Ours 79.32 79.46 67.11 33.15 64.76 0.6 4 Ours 77.73 75.45 66.41 27.83 61.86 8 Ours 80.24 76.42 68.62 31.57 64.21 12 Ours 80.75 77.04 68.01 25.05 62.71 0.8 4 Ours 79.13 75.12 67.24 42.85 66.08 8 Ours 80.23 77.03 70.53 43.83 67.91 
+
+12 Ours 80.94 77.51 68.65 32.45 64.89 0.8 8 CE 79.28 72.33 58.76 33.32 60.92 8 GCE 78.89 74.47 65.67 35.61 63.66 8 MAE 76.33 72.03 45.37 21.46 53.80 
+
+confirms that EMA smoothing stabilizes confidence estimation and the K-epoch window helps avoid unreliable rewriting. Meanwhile, the performance drop with smaller or larger K indicates that a moderate window better balances correction precision and coverage. In addition, the proposed tri-group loss outperforms CE, GCE, and MAE, demonstrating the benefit of applying different losses to samples with different reliability levels. 
+
+## B Theoretical Analysis of Temporal-Consistency-Triggered OT Label Rewriting 
+
+In this section, we analyze when a temporally stable OT assignment can serve as a reliable rewriting candidate in TecoPrompt, and how enlarging the consistency window K improves rewrite precision. 
+
+B.1 Notation and Definitions 
+
+Let D = {(xi, ˜yi)}Ni=1 be a dataset with observed labels ˜ yi ∈ { 1, . . . , C }. Each sample has an unknown ground-truth label y⋆i . All probabilities are taken with respect to a uniformly random index i together with any algorithmic randomness. Define the noise indicator and the noise rate as 
+
+Zi ≜ 1[˜ yi̸ = y⋆i ], η ≜ P(Zi = 1) . (1) At epoch s, let ˆ y(s) 
+
+> i
+
+∈ { 1, . . . , C } denote the OT-induced pseudo-label of sample i, and let c(s) 
+
+> i
+
+∈ [0 , 1] be the corresponding confidence score. Define the flip indicator of the OT pseudo-label trajectory by 
+
+d(s) 
+
+> i
+
+≜ 1
+
+[
+
+ˆy(s+1) 
+
+> i
+
+̸ = ˆ y(s)
+
+> i
+
+]
+
+. (2) 3
+
+Fix a window [ t0, t 0 + Tw − 1] and define the flip rate as 
+
+ϕi ≜ 1
+
+Twt0+Tw −1∑
+
+> s=t0
+
+d(s) 
+
+> i
+
+∈ [0 , 1] . (3) Given a threshold ϕ0 ∈ (0 , 1), define the OT-forgettability indicator by 
+
+Fi ≜ 1[ϕi > ϕ 0], τ ≜ P(Fi = 1) . (4) We refer to samples with Fi = 0 as OT-unforgettable and to samples with 
+
+Fi = 1 as OT-forgettable . Unlike the classical notion of forgetting, which is defined in terms of correctness with respect to y⋆i , both ϕi and Fi are directly observable from the OT pseudo-label trajectory. The pair ( Zi, F i) induces the partition 
+
+Fi = 0 , OT-unforgettable Fi = 1 , OT-forgettable 
+
+Zi = 0 , clean Sc,u Sc,f 
+
+Zi = 1 , noisy Sn,u Sn,f 
+
+(5) To characterize the coupling between noise and OT-forgettability, define 
+
+ρu ≜ P(Fi = 0 | Zi = 1) ∈ [0 , 1] (η > 0) . (6) Then the block masses are given by 
+
+πn,u = ηρ u, πn,f = η(1 − ρu), πc,f = τ − η(1 − ρu), πc,u = 1 − τ − ηρ u. (7) Define the K-epoch stable-mismatch event by 
+
+EK (i) ≜ {ˆy(t−K+1)  
+
+> i
+
+= · · · = ˆ y(t)
+
+> i
+
+̸ = ˜ yi}. (8) On EK (i), define the stable label as ¯ yi ≜ ˆy(t) 
+
+> i
+
+.Define the K-epoch confidence gate by 
+
+DK (i) ≜ {c(t−K+1)  
+
+> i
+
+≥ θ, . . . , c (t) 
+
+> i
+
+≥ θ}. (9) Finally, define the rewrite-candidate event by 
+
+AK (i) ≜ EK (i) ∩ D K (i). (10) 
+
+B.2 Assumptions Assumption 1. A one-step stability separation holds: conditional on past sta-bility, OT-unforgettable samples retain the same OT pseudo-label with probabil-ity at least pu, whereas OT-forgettable samples do so with probability at most 
+
+pf . Specifically, there exist constants 0 < p f < p u < 1 such that for every 
+
+s ∈ { t − K + 1 , . . . , t − 1},
+
+P
+
+(
+
+ˆy(s+1) = ˆ y(s)
+
+∣∣∣ F = 0 , ˆy(t−K+1) = · · · = ˆ y(s))
+
+≥ pu, (11) 4
+
+whereas 
+
+P
+
+(
+
+ˆy(s+1) = ˆ y(s)
+
+∣∣∣ F = 1 , ˆy(t−K+1) = · · · = ˆ y(s))
+
+≤ pf . (12) 
+
+where pu and pf denote the corresponding one-step stability bounds. 
+
+Assumption 2. The confidence gate preserves stable candidates on the two OT-unforgettable blocks with probabilities bounded below by qc,u and qn,u . Concretely, there exist constants qc,u , q n,u ∈ (0 , 1] such that 
+
+P(DK | S c,u , EK ) ≥ qc,u , P(DK | S n,u , EK ) ≥ qn,u . (13) 
+
+This assumption captures the idea that stable candidates are not frequently dis-carded by confidence thresholding. 
+
+Assumption 3. On the target block Sn,u , rewritten labels are correct up to a residual error ε⋆. That is, there exists ε⋆ ∈ [0 , 1) such that 
+
+P(¯ y = y⋆ | S n,u , AK ) ≥ 1 − ε⋆. (14) 
+
+where ε⋆ denotes the residual error rate on Sn,u .
+
+Assumption 4. The stable-mismatch event is exponentially most likely on Sn,u .Specifically, there exist constants 
+
+0 < p f < p c,u < p n,u < 1, εc, ε n ∈ [0 , 1) , (15) 
+
+such that for every K ≥ 2,
+
+P(EK | S n,u ) ≥ (1 − εn)pK−1 
+
+> n,u
+
+, P(EK | S c,u ) ≤ εcpK−1 
+
+> c,u
+
+, (16) 
+
+and 
+
+P(EK | S c,f ) ≤ pK−1 
+
+> f
+
+, P(EK | S n,f ) ≤ pK−1 
+
+> f
+
+. (17) 
+
+Thus, pn,u is the dominant rate. 
+
+B.3 Main Results and Proofs Lemma 1. The following lemma quantifies the stability gap between OT-unforgettable and OT-forgettable samples over a K-epoch window. Under Assumption 1, for any K ≥ 2,
+
+P(ˆ y(t−K+1) = · · · = ˆ y(t) | F = 0) ≥ pK−1 
+
+> u
+
+,
+
+P(ˆ y(t−K+1) = · · · = ˆ y(t) | F = 1) ≤ pK−1 
+
+> f
+
+. (18) 
+
+Proof. For s ∈ { t − K + 1 , . . . , t − 1}, let Gs ≜ {ˆy(s+1) = ˆ y(s)}. Then 
+
+{ˆy(t−K+1) = · · · = ˆ y(t)} =
+
+> t−1
+
+⋂
+
+> s=t−K+1
+
+Gs.5
+
+If F = 0, the chain rule gives 
+
+P
+
+( t−1
+
+⋂
+
+> s=t−K+1
+
+Gs
+
+∣∣∣∣∣F = 0 
+
+)
+
+=
+
+> t−1
+
+∏
+
+> s=t−K+1
+
+P(Gs|F = 0 , G t−K+1 , . . . , G s−1) . (19) 
+
+Since Gt−K+1 , . . . , G s−1 imply ˆ y(t−K+1) = · · · = ˆ y(s), each factor is at least pu
+
+by (11). As there are K − 1 such factors, we obtain 
+
+P(ˆ y(t−K+1) = · · · = ˆ y(t) | F = 0) ≥ pK−1 
+
+> u
+
+.
+
+The case F = 1 is analogous: by (12), each factor is at most pf , so 
+
+P(ˆ y(t−K+1) = · · · = ˆ y(t) | F = 1) ≤ pK−1 
+
+> f
+
+.
+
+Theorem 1. The following result reduces rewrite precision to the proportion of 
+
+Sn,u within the candidate set AK .Under Assumption 3, 
+
+P(¯ y = y⋆ | A K ) ≥ (1 − ε⋆) P(Sn,u | A K ). (20) 
+
+Proof. Since Sc,u , Sc,f , Sn,u , and Sn,f form a partition, the law of total probability under AK gives 
+
+P(¯ y = y⋆ | A K ) = ∑  
+
+> B∈{S c,u ,Sc,f ,Sn,u ,Sn,f }
+
+P(¯ y = y⋆ | A K , B ) P(B | A K ). (21) Retaining only the nonnegative term corresponding to Sn,u yields 
+
+P(¯ y = y⋆ | A K ) ≥ P(¯ y = y⋆ | A K , Sn,u ) P(Sn,u | A K ).
+
+Assumption 3 bounds the first factor from below by 1 − ε⋆, proving (20). 
+
+Theorem 2. The following theorem shows that, as K increases, the candidate set AK becomes increasingly concentrated on the noisy OT-unforgettable block. Under Assumptions 4 and 2, for every K ≥ 2,
+
+P(Sn,u | A K ) ≥ qn,u (1 − εn)πn,u 
+
+qn,u (1 − εn)πn,u + εc
+
+( pc,u 
+
+> pn,u
+
+)K−1
+
+πc,u +
+
+( pf
+
+> pn,u
+
+)K−1
+
+(πc,f + πn,f )
+
+.
+
+(22) 
+
+Moreover, the right-hand side is nondecreasing in K and converges to 1 as 
+
+K → ∞ .Proof. By Bayes’ rule and the four-block partition,                 
+
+> P(Sn,u | A K) = P(AK| S n,u )πn,u
+> P(AK| S n,u )πn,u +P(AK| S c,u )πc,u +P(AK| S c,f )πc,f +P(AK| S n,f )πn,f
+> .
+> (23)
+
+For the target block, 
+
+P(AK | S n,u ) = P(DK | S n,u , EK ) P(EK | S n,u ) ≥ qn,u (1 − εn)pK−1 
+
+> n,u
+
+,6
+
+where we used Assumptions 2 and 4. For the remaining blocks, the inclusion 
+
+AK ⊆ E K gives 
+
+P(AK | S c,u ) ≤ εcpK−1 
+
+> c,u
+
+, P(AK | S c,f ) ≤ pK−1 
+
+> f
+
+, P(AK | S n,f ) ≤ pK−1 
+
+> f
+
+.
+
+Substituting these bounds into (23) yields 
+
+P(Sn,u | A K ) ≥ qn,u (1 − εn)pK−1 
+
+> n,u
+
+πn,u 
+
+qn,u (1 − εn)pK−1 
+
+> n,u
+
+πn,u + εcpK−1 
+
+> c,u
+
+πc,u + pK−1 
+
+> f
+
+(πc,f + πn,f ) . (24) 
+
+Dividing the numerator and denominator by pK−1 
+
+> n,u
+
+gives (22). Since 
+
+0 < pc,u 
+
+pn,u 
+
+< 1, 0 < pf
+
+pn,u 
+
+< 1,
+
+the two contamination terms decrease monotonically to zero as K increases, whereas the leading term qn,u (1 − εn)πn,u remains constant. Hence, the lower bound is nondecreasing in K and converges to 1. 
+
+Theorem 3. Combining the previous two results yields an explicit lower bound on rewrite precision. Under Theorem 1 and Assumptions 2–4,                
+
+> P(¯ y=y⋆| A K)≥(1 −ε⋆)qn,u (1 −εn)πn,u
+> qn,u (1 −εn)πn,u +εc
+
+( pc,u pn,u 
+
+)K−1 
+
+> πc,u +
+
+( pfpn,u 
+
+)K−1   
+
+> (πc,f +πn,f )
+> .
+> (25)
+
+Hence, the lower bound on rewrite precision is nondecreasing in K and converges to 1 − ε⋆ as K → ∞ .Proof. Theorem 1 gives 
+
+P(¯ y = y⋆ | A K ) ≥ (1 − ε⋆) P(Sn,u | A K ),
+
+and Theorem 2 lower-bounds the second factor by the fraction in (22). Sub-stituting this bound proves (25). The monotonicity and limiting value follow immediately from Theorem 2, since the prefactor (1 − ε⋆) is independent of K.
