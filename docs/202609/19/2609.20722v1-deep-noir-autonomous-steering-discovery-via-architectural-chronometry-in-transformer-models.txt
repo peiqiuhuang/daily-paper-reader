@@ -1,0 +1,402 @@
+Title: Deep Noir: Autonomous Steering Discovery via Architectural Chronometry in Transformer Models
+
+URL Source: https://arxiv.org/pdf/2609.20722v1
+
+Published Time: Fri, 18 Sep 2026 01:40:06 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Deep Noir: Autonomous Steering Discovery via Architectural Chronometry in Transformer Models 
+
+Frank E. Bobe III, Gregory D. Vetaw, Darshan W. Bryner, Matthew G. Cook, and Jose L. Salas-Vernis 
+
+Naval Surface Warfare Center Panama City Division 
+
+{frank.e.bobe, gregory.d.vetaw, darshan.w.bryner, matthew.g.cook12, jose.l.salasvernis }.civ@us.navy.mil 
+
+# Abstract 
+
+Activation steering modifies LLM behavior at inference time, but identifying 
+
+where and how strongly to steer remains manual. We introduce Deep Noir, a framework that uses Logit Lens convergence and causal head-level attribution to 
+
+autonomously discover optimal steering parameters. Across three scales (1B ×3, 2–3B ×2, 7–9B ×4), our engine achieves +16.7 pts on spam at 1B ( ±4.7, 39 runs), with gains increasing to +21–42 pts at 7–9B across four architectures; on SST-2 sentiment, +13.1 pts with zero code changes. Mechanistic grounding enables au-tomated discovery of intervention points that generalize across tasks and architec-tures: on sentiment, RepE (no head masking) fails to improve over baseline while Deep Noir improves all models ( p< 0.01 ). We further show that steering creates a 
+
+predictable prompt injection attack surface whose vulnerability scales mono-tonically with steering magnitude. A critical finding for agent systems deploying steered classifiers. 
+
+# 1 Introduction 
+
+Activation steering modifies LLM behavior by adding direction vectors to the residual stream at inference time. While effective, current methods require manual selection of intervention layers, head subsets, and magnitudes – a process that does not scale across architectures or tasks. Recent work has automated layer selection via statistical scoring [1] or per-input adaptation [2], but these approaches lack causal mechanistic grounding for their choices. We propose Deep Noir (DN), a framework that replaces heuristic parameter tuning with diagnostic-first engineering. The core idea is Architectural Chronometry : measuring when a model resolves a semantic concept from uncertainty to commitment by tracking token probabilities through the Logit Lens [3]. By combining this layer-wise diagnostic with causal head-level attribution patching [4], we automate the full (L, K, M,⃗ d ) steering parameter search. While individual components exist in prior work, our contribution is showing that their composition enables cross-task generalization where each component alone fails: RepE (without head masking) achieves zero improvement on sentiment, while the full pipeline succeeds (Section 4.4). Our approach aligns with the field’s pragmatic turn toward practical interpretability tools [5] and the priority of latent topology mapping [6]. DN targets a different objective than supervised classifiers: enabling training-free, model-internal discovery and control of representations rather than maximizing accuracy. A key finding motivat-ing this work: weight-space corrections via SVD are ineffective in our experiments, likely due to LayerNorm attenuation (Section 9), making activation-space hooks the only intervention point. 
+
+Scope and motivation. We evaluate Deep Noir primarily on binary classification (spam, sentiment) with extensions to reasoning and generation (Appendix J). As LLMs are increasingly deployed as 
+
+> Preprint. arXiv:2609.20722v1 [cs.AI] 17 Sep 2026
+
+decision-making components within autonomous agents, understanding the security properties of steering interventions becomes urgent. Our contributions: (1) A five-phase Steering Discovery Engine with recursive refinement that au-tonomously discovers steering parameters (+16.7 pts spam at 1B, scaling to +21–42 pts at 7–9B across 4 architectures) without manual tuning. (2) Evidence that mechanistic grounding enables cross-task generalization : DN transfers to sentiment with zero code changes ( p< 0.01 all models), while RepE which lacks head masking fails to improve over baseline on all 15 folds in this setting. 
+
+(3) Characterization of containment boundaries via MMLU: containment depends on semantic distance between the steered concept and the evaluation domain. (4) Discovery that steering cre-ates a predictable prompt injection attack surface whose vulnerability scales monotonically with magnitude and is architecture-dependent directly relevant to agent security. 
+
+# 2 Related Work 
+
+Representation Engineering. RepE established contrastive activation steering. Subsequent work diversified the approach: CAA , ActAdd , and SAE-guided steering [7]. Surveys [8] identify ca-pability preservation and automated parameter selection as open challenges. DeepMind’s negative results on SAEs for downstream safety tasks [9] validate our use of contrastive centroid directions over more complex feature decomposition. 
+
+Automated Layer Selection. LayerNavigator [1] scores layer steerability via discriminability met-rics (NeurIPS 2025). SADI [2] constructs steering vectors via adaptive binary masks (ICLR 2025). FASB [10] introduces per-token steering with backtracking. ITI [11] performs head-level inter-vention but requires manual identification of “truthful heads.” Deep Noir automates this: we use 
+
+causal mechanistic tools (logit lens + head attribution) to explain why a layer and head are chosen. InterLoRA [12] uses mech-interp for LoRA architecture design; we optimize adapter placement .
+
+Safety and Containment. Refusal is mediated by a single direction [13]. Steering can increase vulnerability [14]. Systematic evaluation [15] confirms reasoning robustness under steering ( <2% entanglement). Surgical Containment analysis extends this with domain-isolation measurements. 
+
+# 3 Method: The Steering Discovery Engine 
+
+Given a pre-trained model M with L layers and a labeled probe set D = {(xi, y i)}Ni=1 , we seek steering parameters (l∗, K ∗, M ∗,⃗ d ∗) that maximize classification accuracy when a scaled, masked direction vector is added to the residual stream at layer l. The engine searches a discrete-continuous parameter space over layer ( l ∈ { 1, . . . , L }), head subset ( K ∈ { 1, 2, 4}), and magnitude ( M ∈
+
+[0 .01 , 20] ). Algorithm 1 summarizes the pipeline. 
+
+Phase 1: Layer ranking. For each layer l, compute two scores. First, the logit-lens differentiation :
+
+SLL (l) = |P (t | l) − P (c | l)|, where P (t | l) is the probability of the target token when projecting layer-l hidden states through the unembedding matrix. Second, the antagonist head strength : for each head h in layer l, compute ah = −⟨ W (h) 
+
+> O
+
+h(h),⃗ u⟩ where ⃗u = W U [t] − WU [c] is the target direction in unembedding space, W (h) 
+
+> O
+
+is the output projection for head h, and h(h) is the head’s output. The layer antagonist score is Sant (l) = max h ah. Both scores are min-max normalized across layers to [0 , 1] before combining: S(l) = 0 .4 · ˆSLL (l) + 0 .6 · ˆSant (l). An ablation over 7 ratios from (0,1) to (1,0) on Llama and Gemma shows the ranking is fully invariant to the weight choice: all ratios select the same top layer with accuracy (Appendix E). The top-5 layers by S(l) advance. 
+
+Phase 2: Head isolation. For each candidate layer, compute ∇h(h) L where L = − log P (yi | xi)
+
+across 10 randomly sampled probes (5 per class). Select the top-K heads by gradient magnitude, voting across samples ( K ∈ { 1, 2, 4}). Construct binary mask m ∈ { 0, 1}d that zeros out all dimensions except those corresponding to the selected heads. 
+
+Phase 3: Direction computation. Collect hidden states at layer l+1 , the representation space immediately downstream of the intervention point. This ensures the contrastive direction is ex-pressed in the same space that the hook at layer l will modify via residual addition. Compute ⃗d = ¯hcounter − ¯htarget from mean states across 5–10 samples per class. Normalize: ˆd =⃗ d/ ∥⃗d∥.2Phase 4: Magnitude calibration. The steering intervention is ⃗v = α · M · ˆd · m, where α = 450 
+
+is a base scale factor chosen so that α · M · ∥ m∥ falls within the residual stream’s ℓ2 norm range (∼200–800 at 1B; Appendix B) and M is the per-configuration magnitude. Golden-section search over M ∈ [0 .01 , 20 .0] with coarse grid pre-scan at M ∈ { 0.05 , 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10 .0}.Each evaluation applies ⃗v as a forward hook at layer l and measures labeled accuracy. 
+
+Phase 5: Selection. Choose (l, K, M ) maximizing accuracy; prefer fewer heads and lower M at equal performance. 
+
+Algorithm 1: Steering Discovery Engine 
+
+Input: Model M, probe set D, target token t, counter token c
+
+Output: Steering config (l∗, K ∗, M ∗,⃗ d ∗, m∗) 
+
+> 1
+
+for each layer l ∈ { 1, . . . , L } do  
+
+> 2
+
+S(l) ← 0.4 · SLL (l) + 0 .6 · Sant (l); 
+
+> 3
+
+C ← top-5 layers by S(l); 
+
+> 4
+
+for l ∈ C , K ∈ { 1, 2, 4} do  
+
+> 5
+
+m ← head mask from gradient attribution on 10 probes;  
+
+> 6
+
+ˆd ← normalized contrastive direction at layer l + 1 ; 
+
+> 7
+
+M ∗ ← golden-section search maximizing Acc (D, l, K, M, ˆd, m); 
+
+> 8
+
+Store (l, K, M ∗, ˆd, m, Acc ); 
+
+> 9
+
+return config with highest Acc (ties broken by lowest K, then lowest M ); 
+
+Recursive refinement. We extend single-shot discovery to an iterative loop. After the initial dis-covery, the engine (1) identifies remaining misclassified samples, (2) re-runs discovery with probe weights biased 2× toward errors and the previously selected layer excluded, (3) applies the new correction as an additional hook, (4) evaluates on the full probe set. If accuracy drops, the correction is rolled back . This repeats until convergence (accuracy stable for 2 iterations) or a maximum of 5 iterations, discovering complementary corrections across different layers. 
+
+LayerNorm washout. Our initial approach attempted closed-form weight-space corrections: com-pute the desired activation delta, then derive a rank-r update to Wo proj via SVD such that 
+
+∆W · h ≈⃗ v. This produced zero accuracy improvement across all configurations. The root cause: LayerNorm normalizes activations after the residual addition, attenuating small weight per-turbations by ∼1000 ×. Specifically, the SVD corrections produced weight deltas of 0.01–0.1% of 
+
+∥Wo proj ∥F , corresponding to <0.001 logit shifts after LayerNorm—3–4 orders of magnitude be-low the 2–4 logit shifts required to flip decisions. This failure mode is confirmed independently by [16], who show that removing LayerNorm enables direct weight editing. Activation-space hooks bypass this bottleneck entirely because they inject perturbations after the attention output but before 
+
+LayerNorm normalization at the next layer. 
+
+# 4 Experiments 
+
+Setup. Four architectures spanning distinct design choices (Table 8): Llama-3.2-1B (GQA, 16L/32H), OLMo-1B (Full attention, 16L/16H), Gemma-3-1B-IT (GQA, 26L/8H), Mistral-7B (32L,32H). Five spam datasets: Enron (30K corporate emails), SMS Spam Collection (5.6K mes-sages [17]), Phishing (10K phishing/legitimate), SpamAssassin (6K public corpus), and Ultimate (combined multi-source, 11K). For cross-task evaluation: SST-2 binary sentiment [18] (872 valida-tion samples). For Enron and Ultimate we run 5-fold CV; for SMS, Phishing, and SpamAssassin we run fold-0 only due to compute constraints, yielding 3 × (2 × 5 + 3 × 1) = 39 total discovery runs. Each fold uses 50 labeled probes for discovery; comparison experiments use 100 probes with strict separation between discovery and evaluation sets (held-out fold evaluation in Section 5). 
+
+Evaluation metric. we classify by comparing the model’s next-token log-probability for the tar-get vs. counter tokens (“spam”/“ham” for spam, “positive”/“negative” for sentiment) given a task-appropriate prompt; accuracy is the fraction of correctly classified probe samples. Single Quadro RTX 5000 (16GB VRAM). Total compute: ∼210 GPU-hours including scaling experiments and preliminary work (Appendix M). 3Prompting baselines. On Enron fold-0, standard prompting achieves 49–52%, chain-of-thought 44–56%, and 5-shot 40–78% across models (Appendix C). Gemma’s 78% 5-shot result is compet-itive, but prompting requires per-model prompt engineering and is not interpretable. Deep Noir’s value is in the autonomous, mechanistically grounded discovery process. 
+
+4.1 Discovery Results 
+
+Table 1: Deep Noir Autonomous Steering Discovery across tasks and scales (5-fold CV, 50 probes per fold). 1B: 39 spam runs (3 models × 13 dataset-folds). 2–9B: 5-fold per model. 7B+ models use 4-bit quantization. 95% CIs via bootstrap.                                                                                                                 
+
+> Task Model Base Steered Gain CI Impr.
+> Spam (1B) Llama-3.2-1B 57.7 78.6 +20.9 ±8.1 12/13 Gemma-3-1B 64.0 79.8 +15.8 ±8.9 11/13 OLMo-1B 58.5 71.7 +13.2 ±7.7 10/13
+> Overall 60.1 76.7 +16.7 ±4.7 33/39
+> Sentiment (1B) Llama-3.2-1B 77.6 89.2 +11.6 ±3.0 5/5 OLMo-1B 55.2 72.4 +17.2 ±3.9 5/5 Gemma-3-1B 75.6 86.0 +10.4 ±5.8 5/5
+> Overall 69.5 82.5 +13.1 ±3.0 15/15
+> Spam (2B) Gemma-2-2B 53.2 83.6 +30.4 ±9.4 5/5 Spam (3B) Llama-3.2-3B 55.6 83.2 +25.6 ±8.5 5/5 Sentiment (2B) Gemma-2-2B 92.0 93.6 +1.6 ±1.3 5/5 Sentiment (3B) Llama-3.2-3B 82.4 92.4 +10.0 ±1.9 5/5 Spam (7–9B) Gemma-2-9B 52.0 94.4 +42.4 ±3.4 5/5 Llama-3.1-8B 53.6 82.8 +29.2 ±6.7 5/5 Mistral-7B 54.4 76.4 +22.0 ±5.2 5/5 OLMo-7B 41.2 62.4 +21.2 ±6.3 5/5 Sentiment (7–9B) Llama-3.1-8B 92.0 94.0 +2.0 ±1.6 5/5 Mistral-7B 87.6 91.6 +4.0 ±1.6 5/5 OLMo-7B 84.8 92.0 +7.2 ±1.8 5/5 Gemma-2-9B 94.8 95.2 +0.4 ±0.7 5/5
+
+Example. On Gemma-3-1B/Enron fold-0, Phase 1 ranks layer 20 highest ( ˆSant =0 .82 , ˆSLL =0 .31 ). Phase 2 isolates head 3 ( K=1 , dh=256 ). Phase 3 computes a contrastive direction from 10 samples. Phase 4’s golden-section search finds M ∗=1 .0. The perturbation is applied only within the K=1 
+
+head’s 256 dimensions (22% of Gemma’s 1152-dim residual stream); the remaining 896 dimensions are unmodified. Result: 50% →86% (+36 pts) in 17 minutes. The discovered parameters differ markedly from Llama on the same dataset (L=4, K=1, M =0 .2), illustrating how the engine adapts to each architecture’s topology. Each architecture discovers distinct preferred layers (Figure 1): Llama 2–14 (6 unique layers), OLMo 9–15 (7 unique), Gemma 9–24 (8 unique). This “correction topology” is stable: seed sensi-tivity (5 seeds) shows 4/5 select the same layer; accuracy gain is 14 .0% ± 7.2% (Appendix E). 
+
+4.2 Comparison with RepE and CAA 
+
+Table 2: Enron Spam: DN vs. RepE and CAA (5-fold CV, 100 probes, accuracy %). CAA is single-run with 50 probes (not directly comparable). We included the single-run CAA numbers to provide a familiar anchor point representing prior steering attempts, rather than as a strict 1:1 baseline. 
+
+Model Base CAA RepE Deep Noir ∆RepE p
+
+Llama-3.2-1B 56.8 ±3.9 64.0 67.6 ±3.4 70.4 ±4.5 +2.8 0.37 OLMo-1B 51.6 ±4.1 56.0 59.0 ±3.4 66.4 ±5.7 +7.4 0.028 Gemma-3-1B-IT 51.2 ±4.1 52.0 55.6 ±4.9 76.4 ±5.2 +20.8 0.004 Deep Noir outperforms CAA on all 3 architectures (+6 to +24 pts) and produces higher point es-timates than RepE on all 3 (Table 2). Paired t-tests confirm statistical significance for OLMo 
+
+4Figure 1: Layer selection frequency during autonomous discovery. Each architecture exhibits a distinct correction topology. Llama favors early/mid layers, OLMo late layers, Gemma deep layers. 
+
+Figure 2: Left: per-model accuracy (baseline vs. auto-steered). Right: gain distribution by dataset. SMS shows largest gains; Phishing/SpamAssassin near ceiling. (p=0 .028 , Cohen’s d=1 .52 ) and Gemma (p=0 .004 , d=2 .66 ). Llama’s advantage over RepE (+2.8 pts) is not significant ( p=0 .37 ) due to high fold-level variance. On SMS with 5-fold cross-validation (Table 3), Deep Noir significantly outperforms RepE on all 3 architectures : Llama +6.2 ( p< 0.001 ), OLMo +14.6 ( p=0 .006 ), Gemma +20.8 ( p=0 .019 ). Table 3: SMS Spam: DN vs. RepE (5-fold CV, 100 probes, accuracy %). All 3 models significant.                     
+
+> Model Base RepE DN ∆p
+> Llama-3.2-1B 46.0 59.8 66.0 +6.2 ±1.0 0.0004 OLMo-1B 49.4 52.8 67.4 +14.6 ±4.7 0.006 Gemma-3-1B-IT 43.8 43.8 64.6 +20.8 ±9.6 0.019
+
+Deep Noir exhibits higher per-fold variance ( ±10–11 vs. ±5–7 for RepE) because per-fold discovery produces different layer/head configurations. The key advantage over RepE is interpretability : dis-covered (L, K, M ) parameters have causal mechanistic meaning, enabling the containment analysis (Section 4.5) and injection analysis (Section 4.6) that RepE’s opaque vectors cannot provide. 
+
+4.3 Recursive Correction 
+
+The recursive loop diagnoses remaining errors, weights discovery toward misclassified samples, and rolls back corrections that hurt overall accuracy (Table 4). 5Table 4: Recursive correction trajectory (Llama-3.2-1B, Enron fold-0)                         
+
+> Step Errors Accuracy Action Layers
+> 022/50 56% →74% Added L=4 [4] 113/50 74% →64% Rolled back [4] 213/50 74% →72% Added L=3 [3, 4] 314/50 72% →88% Added L=9 [3, 4, 9] 46/50 88% →74% Rolled back [3, 4, 9]
+
+The recursive process discovers 3 complementary layers and reaches 88% (+32 pts from baseline). The initial single-layer correction (Step 0) reaches 74%; subsequent iterations find complemen-tary layers that push to 88%, a +14 pt gain from multi-layer refinement. Across 33 iterative runs (Appendix F), rollback triggers in 40% of attempts, preventing an average of 12 pts accuracy loss per rolled-back step. Multi-layer steering adds +4 pts on average when single-layer is insufficient. Cross-fold generalization averages +6.6% on held-out folds, confirming the discovered steering cap-tures genuine model properties rather than overfitting to the probe set. 
+
+4.4 Cross-Task Generalization: Sentiment Analysis 
+
+To test cross-task generalization, we run the identical engine on SST-2 sentiment with zero code changes, only token IDs differ. Table 1 (bottom) reports 5-fold results: +13.1 pts with 100% success rate (15/15 improved). In a comparison with 100 probes (Table 5), Deep Noir significantly outperforms RepE on all 3 architectures . Critically, RepE achieves zero improvement scoring exactly baseline on all 15 folds. RepE’s failure has a clear mechanistic explanation: sentiment representations are distributed across layers (L=12–19) rather than concentrated at the mid-layer where RepE applies its direction. DN’s layer ranking identifies where each task’s decision occurs. Table 5: SST-2 Sentiment: DN vs. RepE (5-fold CV, 100 probes, accuracy %). RepE = baseline on all 15 folds.                     
+
+> Model Base RepE DN ∆p
+> Llama-3.2-1B 77.2 77.2 88.0 +10.8 0.007 OLMo-1B 55.6 55.6 69.2 +13.6 <0.001 Gemma-3-1B-IT 76.0 76.0 83.8 +7.8 0.006
+
+The discovered sentiment layers (Llama: 12–15, OLMo: 12–14, Gemma: 18–19) differ from the spam layers (Llama: 2–14, OLMo: 9–15, Gemma: 9–24), showing the engine adapts per-task while maintaining the same architectural preference pattern (Llama mid, OLMo late, Gemma deep). We also apply the engine to multiple-choice reasoning (AQuA-RAT, MMLU) and toxicity reduction (Appendix J). Gains are limited ( ≤3%) because reasoning baselines are near-random at 1B–9B (22– 31% on 4–5 choice), leaving insufficient contrastive signal for the direction computation to exploit. The framework requires that the model partially encodes the target distinction; when the model cannot distinguish correct from incorrect reasoning steps, steering has nothing to amplify. 
+
+Why does the composition generalize where components alone fail? RepE computes a con-trastive direction and applies it at a fixed mid-layer without head masking. A strategy that works when the target concept is concentrated in the mid-layer residual stream (as spam often is). Senti-ment, however, resolves later and more diffusely across layers. DN’s logit-lens scan detects where 
+
+each concept resolves; head attribution identifies which heads encode it; magnitude calibration de-termines how strongly to intervene. This is supported by causal ablation : removing head masking drops accuracy below baseline (−5% Llama), proving the selected heads carry task-specific signal that global steering destroys; removing layer ranking yields only +9% vs. +21% with ranking; re-moving calibration yields −11% (Table 7). Each component has a necessary causal role that random search cannot replicate. The cross-task transfer works precisely because each phase adapts to the task’s representational structure rather than relying on a fixed heuristic. 64.5 Surgical Containment and Reasoning Degradation Containment. We evaluate containment using both our custom coherence metric (117 compar-isons, δ = 0 .000 ) and MMLU (200 questions across 4 subjects). On MMLU, sentiment steering has minimal impact: ≤4% change across all models. Spam steering shows larger but mixed effects: Llama −9.5%, OLMo +8.5%, Gemma −2.5%. At 1B scale, MMLU baselines are near chance (22–29%), so deltas are noisy; the consistent finding is that sentiment steering is well-contained 
+
+while spam steering shows architecture-dependent leakage on MMLU. This adds nuance to the prior custom-metric result and reconciles with reports of MMLU penalties from steering [13]: con-tainment depends on the distance between the steered concept and the evaluation domain. At 7B (Mistral), the pattern holds: spam steering reduces MMLU by −10%, comparable to the 1B Llama result ( −9.5%). 
+
+Degradation. Circuit-level heuristics degrade rapidly at the 1B scale: halflives of 0–2 steps across all architectures (Llama 1.6–2.0, OLMo 1.0, Gemma 0.0). This establishes a minimum capability threshold for mechanistic reasoning correction. Per-step resolution traces in Appendix. 
+
+4.6 The Steering Injection Attack Surface 
+
+As LLMs are deployed as decision-making components in autonomous agents, classifying inputs, routing requests, authorizing actions, and steering interventions become attack surfaces. We charac-terize this threat across 3 models, 2 tasks, and 3 public injection benchmarks. 
+
+Setup. We evaluate with (a) our 24 OWASP-aligned templates on 50 emails (3,600 trials), (b) sentiment-adapted (300 trials/model), and (c) three public benchmarks: deepset/prompt-injections [19] (116 test samples), SafeGuard (500 samples), and a jailbreak classification (500 samples). Table 6: Prompt injection: steering effect on spam classification (3,600 trials).                 
+
+> Model Base% +Steer% ∆Top Attack
+> Llama 21.2 35.0 +13.8 Delimiter escape (36%) OLMo 13.7 16.9 +3.2 Instr. override (13%) Gemma 15.3 35.6 +20.3 Encoding obfusc. (34%)
+
+Vulnerability scales with magnitude. Define the vulnerability function V (M ) =
+
+E[1[inject succeeds | M ]] over the injection template distribution. Figure 3 shows V (M ) is mono-tonically non-decreasing in M for all architectures. OLMo rises from V (0)=0 .34 to V (4 M ∗)=1 .0;Gemma follows a similar curve ( 0.25 → 0.99 ). Combined with the accuracy function A(M ) from Phase 4, this defines a Pareto frontier {(A(M ), V (M )) } enabling principled M selection. 
+
+Cross-task: architecture-dependent. On sentiment, the effect reverses for 2/3 models: Llama (−14.7%) and Gemma ( −18.0%) become harder to inject under steering, while OLMo (+38.7%) becomes far more vulnerable. The critical factor is alignment between ⃗ d and the attacker’s goal. 
+
+External benchmarks. On the deepset injection benchmark, spam steering has mixed effects: Gemma’s injection detection improves (+4.3% accuracy), while OLMo’s collapses ( −2.6%). On SafeGuard (10K samples), Gemma improves (+16.4%) while Llama degrades ( −10.4%). These results confirm the architecture-dependent pattern is robust across injection datasets. 
+
+Detection via activation norms. At the steering layer, injected inputs produce significantly different activation norms on Gemma ( p< 0.001 , norm difference of −660), suggesting a viable detection sig-nal. Llama and OLMo show no significant norm difference ( p> 0.27 ), indicating detection requires architecture-specific strategies. 
+
+Scale dependence. At 7B (Mistral), steering reduces injection vulnerability from 97.5% to 61.1% (−36.4 pts) the opposite of the 1B pattern. Larger models have stronger baseline classification, and steering reinforces rather than undermines this. This suggests the injection attack surface is primarily a small-model phenomenon that diminishes with scale. 
+
+Implications for agent security. For steered LLMs gating access to tools or sensitive operations: (a) vulnerability is predictable from the steering configuration, enabling targeted threat modeling before deployment, (b) the magnitude–vulnerability curve enables principled M selection that bal-7Figure 3: Injection vulnerability scales monotonically with steering magnitude. Practitioners can select M to balance accuracy gain against injection risk. ances accuracy against injection risk, (c) activation-norm monitoring at the steering layer provides a detection signal on some architectures, and (d) defenses should operate before the steered layer. 
+
+# 5 Discussion and Limitations 
+
+Architectural determinism. Each model has a distinct “correction topology”preferred layers, head counts, and magnitudes that are stable across seeds (4/5 consistency) but vary across architectures. The relative ordering is consistent across tasks: Llama uses earlier layers (spam: 2–14, sentiment: 12–15), OLMo uses late layers (spam: 9–15, sentiment: 12–14), Gemma uses deep layers (spam: 9–24, sentiment: 18–19). However, the absolute layer ranges shift per-task, indicating that steering parameters are determined by the model’s topology and the task’s representational structure. 
+
+Component ablation. Every component of Deep Noir is essential across all 3 architectures (Ta-ble 7). Removing head masking drops accuracy below baseline on Llama ( −5%) and Gemma (−1%), confirming that global steering introduces destructive interference; OLMo gains only +3% without masking vs. +20% with it. Fixed magnitude ( M =0 .2) also fails ( −11% Llama, +3% OLMo vs. +20% calibrated), validating per-layer calibration. Using the middle layer instead of ranked se-lection achieves only +9% (Llama) vs. +21% with ranking, though OLMo’s middle layer (+14%) is closer to its ranked result (+20%), suggesting its correction topology is more centralized. Table 7: Component Ablation and Computational Cost (Enron, fold-0, 100 probes)                                   
+
+> Condition Llama OLMo Gemma Time
+> Baseline 58.0% 50.0% 54.0% —
+> Full Deep Noir 79.0% (+21) 70.0% (+20) 80.0% (+26) 8 / 10 / 27 min
+> −Head masking 53.0% ( −5) 53.0% (+3) 53.0% ( −1) —
+> −Magnitude cal. 47.0% ( −11) 53.0% (+3) 54.0% (0) —
+> −Layer ranking 67.0% (+9) 64.0% (+14) 55.0% (+1) —RepE (grid search) 67.6% (+10) 59.0% (+9) 55.6% (+2) 0.3 / 0.3 / 0.4 min
+
+Discovery takes 4–31 minutes depending on architecture (Table 7), which is 50–80 × slower than RepE’s grid search ( ∼15s). However, this is a one-time setup cost. The discovered configuration is reused across all subsequent inferences with zero overhead. Future work could reduce discovery time by caching layer rankings across tasks (since architectural topology is partially shared) or pruning the K× layer search space via early stopping. 8Comparison with supervised baselines. A logistic regression probe trained on mid-layer hidden states (50 samples) achieves 90–93% on held-out folds higher than DN’s 70–80% at 1B. However, the probe (a) requires gradient-based training, (b) provides no mechanistic insight into which layers or heads encode the decision, (c) does not transfer cross-task, and (d) cannot be analyzed for in-jection vulnerability or containment. Deep Noir does not aim to outperform supervised classifiers; it enables interpretable, training-free diagnosis and control of model internals. A fundamentally different goal that supervised probes cannot address. 
+
+Mechanistic insight vs. search. To verify the advantage comes from mechanistic grounding rather than better hyperparameter search, we compare DN against 30 random (layer, heads, M ) configura-tions using the same contrastive direction. DN outperforms random search by +14% (Llama), +20% (OLMo), and +33% (Gemma), confirming that logit-lens layer ranking and head attribution provide signal that random search cannot match. 
+
+Scaling from 1B to 9B. The discovery engine scales across three model sizes (Table 1). Spam gains increase monotonically with scale within families: Gemma +15.8 →+30.4 →+42.4 and Llama +20.9 →+25.6 →+29.2. At 7–9B, four architectures confirm the pattern: Gemma-9B ( +42.4 ), Llama-8B (+29.2), Mistral-7B (+22.0), and OLMo-7B (+21.2) on spam all >+20 pts. Sentiment gain decreases with scale (+13.1 →+10.0 →+4.0) as baselines rise toward 95%. Critically, RepE fails at every scale : on sentiment, RepE =baseline at 1B, 3B ( p=0 .0004 ), and 7B ( p=0 .0004 ), while DN consistently improves. At 7B, steering also reduces injection vulnerability by −36.4 pts (Section 4.6). Discovery takes 4–10 min (1B), ∼15 min (3B), ∼30 min (7B). 
+
+Held-out generalization. Discovering on fold-0 and evaluating on completely held-out fold-1 yields +8% gain (Llama/Enron). On the full SST-2 validation set (872 samples, not just probes), a config discovered from 50 probes achieves +7.3% (76.9% →84.3%), confirming the steering generalizes beyond the discovery set. The in-fold vs. full-dataset gap is modest (11.6% vs. 7.3%), indicating the discovered direction captures genuine model properties. 
+
+Limitations. (1) Strongest on binary classification; reasoning steering is limited by near-random baselines at tested scales (Appendix J). (2) Scaling uses one model per family-size combination; 7B models use 4-bit quantization. (3) 10% LoRA fidelity gap (Appendix G). (4) Linear direction assumption may miss non-linear decision boundaries. (5) Higher per-fold variance than RepE ( ±10– 11 vs. ±5–7), a cost of per-fold optimization. (6) The injection vulnerability is inherent to any steering approach with inferable directions. (7) Testing scalability and generality on 70B+ models across complex reasoning, math, and instruction following remains future work. 
+
+# 6 Conclusion 
+
+Deep Noir demonstrates that mechanistic interpretability can automate activation steering, achieving +16.7 pts on spam at 1B and scaling to +21–42 pts at 7–9B across four architectures, with +13.1 pts cross-task on sentiment, all without manual tuning. The mechanistic grounding is essential: DN out-performs random search by +14–33% and outperforms RepE where RepE fails entirely ( p< 0.01 all models on sentiment, p=0 .0004 at 7B). Steering containment is task-dependent: sentiment steering preserves MMLU ( ≤4%) while spam steering leaks ( −9.5%). Steering also creates a quantifiable injection attack surface: vulnerability scales monotonically with steering magnitude, and is partially detectable via activation-norm monitoring. Our results suggest that mechanistic composition is not merely additive but enables qualitatively new intervention capabilities particularly relevant for agent systems where interpretability is required for safety-critical decisions. 
+
+# Broader Impact 
+
+Positive impacts. Automated steering discovery democratizes mechanistic interpretability, enabling practitioners to correct model behaviors without expert manual tuning. Our containment analysis (Section 4.5) shows that steering can preserve general capabilities. 
+
+Agent security risks. Our injection analysis (Section 4.6) shows that activation steering creates a predictable attack surface relevant to agent systems where steered LLMs gate access to tools or sensitive operations. We disclose this vulnerability and our injection templates to encourage defensive research. 9Acknowledgments 
+
+This research is supported by the Office of Naval Research (ONR). 
+
+# References 
+
+[1] Kyle Arrot et al. Layernavigator: Navigating layers for effective activation steering. In Ad-vances in Neural Information Processing Systems (NeurIPS) , 2025. [2] Zhihao Wang et al. SADI: Semantics-adaptive activation intervention for LLMs via dynamic steering vectors. In International Conference on Learning Representations (ICLR) , 2025. [3] nostalgebraist. interpreting gpt: the logit lens. LessWrong , 2020. [4] Neel Nanda. Attribution patching: Activation patching at industrial scale. Neel Nanda’s Blog ,2023. [5] Neel Nanda. A pragmatic vision for interpretability. Alignment Forum, 2025. [6] Lee Sharkey et al. Open problems in mechanistic interpretability. arXiv preprint arXiv:2501.16496 , 2025. [7] Anonymous. Feature guided activation additions: A lens into targeted steering of LLMs. In 
+
+International Conference on Learning Representations (ICLR) , 2025. [8] Roee Wehner, Omer Barak, and Yonatan Belinkov. Taxonomy, opportunities, and challenges of representation engineering for large language models. Transactions on Machine Learning Research , 2025. [9] DeepMind Safety Research. Negative results for sparse autoencoders on downstream tasks and deprioritising SAE research. DeepMind Safety Research Blog, 2025. [10] Yuxin Cheng et al. FASB: Flexible activation steering with backtracking. In Advances in Neural Information Processing Systems (NeurIPS) , 2025. [11] Kenneth Li, Oam Patel, Fernanda Vi´ egas, Hanspeter Pfister, and Martin Wattenberg. Inference-time intervention: Eliciting truthful answers from a language model. Advances in Neural Information Processing Systems , 36, 2024. [12] Anonymous. InterLoRA: Adaptive LoRA design via mechanistic interpretability. In Interna-tional Conference on Machine Learning (ICML) , 2025. [13] Andy Arditi et al. Refusal in language models is mediated by a single direction. In Advances in Neural Information Processing Systems , 2024. [14] Anonymous. Analysing the safety pitfalls of steering vectors. arXiv preprint arXiv:2603.24543 , 2026. [15] Chi Hong Siu et al. Steeringsafety: A systematic safety evaluation framework for steering methods. arXiv preprint arXiv:2509.13450 , 2025. [16] Anonymous. Transformers don’t need LayerNorm at inference time: Scaling LayerNorm re-moval to GPT-2 XL. arXiv preprint arXiv:2507.02559 , 2025. [17] Tiago A Almeida, Jos´ e Mar´ ıa G´ omez Hidalgo, and Akira Yamakami. Contributions to the study of SMS spam filtering: new collection and results. In Proceedings of the 11th ACM Symposium on Document Engineering , pages 259–262, 2011. [18] Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D Manning, Andrew Y Ng, and Christopher Potts. Recursive deep models for semantic compositionality over a sen-timent treebank. In Proceedings of the 2013 Conference on Empirical Methods in Natural Language Processing , pages 1631–1642, 2013. [19] deepset. Prompt injections dataset. https://huggingface.co/datasets/deepset/ prompt-injections , 2023. Apache 2.0 License, 662 samples. 10 A Architectural Specifications 
+
+Table 8 details the architectural specifications for the models evaluated in this study, spanning param-eter scales from 1B to 9B. The selected models represent a diverse set of structural design choices, including variations in depth, hidden dimensions, and attention mechanisms (e.g., grouped-query versus full attention). Table 8: Model architectures. 7B+ models use 4-bit NF4 quantization.                                                   
+
+> Model Params Layers Heads Hidden Attn
+> Llama-3.2-1B 1.2B 16 32 2048 GQA OLMo-1B 1.2B 16 16 2048 Full Gemma-3-1B-IT 1.0B 26 81152 GQA Gemma-2-2B-IT 2.6B 26 82304 GQA Llama-3.2-3B 3.2B 28 24 3072 GQA OLMo-7B 6.9B 32 32 4096 Full Mistral-7B-Inst. 7.2B 32 32 4096 GQA Llama-3.1-8B 8.0B 32 32 4096 GQA Gemma-2-9B-IT 9.2B 42 16 3584 GQA
+
+# B Base Scale Factor Derivation 
+
+The steering intervention is ⃗v = α · M · ˆd · m, where α = 450 is the base scale factor. This constant was calibrated empirically to produce activation perturbations that shift output logits by 2–4 units, sufficient to flip classification decisions at the 1B scale. 
+
+Rationale. At the 1B scale, residual stream activations at intermediate layers have ℓ2 norms of 
+
+∼200–800 depending on architecture and layer. A unit-norm direction vector ˆd therefore needs to be scaled by O(10 2) to produce a perturbation of the same order as the residual stream. The effective perturbation magnitude is α · M · ∥ m∥, where ∥m∥ = √K · dh (number of active head dimensions). For typical configurations ( K=1 , dh=64 , M =0 .2), this gives 450 × 0.2 × 8 = 720 ,within the residual stream’s norm range. 
+
+Invariance. The golden-section search over M absorbs architecture-specific variation: the same 
+
+α=450 works across all three architectures because the search finds the appropriate M for each (Llama/OLMo: M ≈ 0.2; Gemma: M ≈ 1.0). Ablating α by 2× shifts optimal M by ∼2× with no accuracy change, confirming α and M are interchangeable degrees of freedom. 
+
+# C Prompting Baselines 
+
+Note: Gemma’s 5-shot baseline (78%) outperforms Deep Noir’s single-fold result (72%) on this particular fold. However, across 5-fold cross-validation, Deep Noir achieves 76.4% ± 5.2 (Table 2), and the 5-shot result lacks cross-validation. More importantly, prompting baselines require per-model prompt engineering, while Deep Noir’s discovery is fully autonomous. Table 9: Prompting baselines on Enron fold-0 (accuracy %). Deep Noir uses 50 labeled probes; few-shot uses 5 examples in-context.                 
+
+> Model Standard Chain-of-Thought 5-Shot Deep Noir
+> Llama-3.2-1B 52% 48% 44% 79%
+> OLMo-1B 46% 56% 40% 66%
+> Gemma-3-1B-IT 50% 44% 78% 72%
+
+11 Table 10: Per-fold discovery results for Enron and Ultimate datasets (accuracy %)                                           
+
+> Model Dataset Fold 0 Fold 1 Fold 2 Fold 3 Fold 4
+> Llama Enron 56 →84 56 →64 58 →86 60 →68 58 →80 Llama Ultimate 46 →80 52 →86 44 →64 42 →86 66 →78 OLMo Enron 46 →66 52 →72 58 →58 60 →72 50 →62 OLMo Ultimate 62 →78 56 →88 44 →72 56 →70 64 →84 Gemma Enron 50 →86 56 →78 68 →72 60 →68 68 →86 Gemma Ultimate 70 →84 74 →84 74 →80 58 →68 66 →76
+
+# D Per-Fold Discovery Results 
+
+Notable observations: OLMo/Enron fold-2 shows 0% gain (58% →58%), one of 6 non-improving runs. Gemma/Enron fold-0 shows the largest single gain (+36 pts). Per-fold variance is highest for Llama/Ultimate (range: +12 to +44 pts). 
+
+# E Robustness Analysis 
+
+Seed sensitivity. 5 random seeds (42, 123, 456, 789, 1337) on Llama/Enron fold-0: accuracy gains range from +4% to +24%, with 4/5 seeds selecting the same target layer. Mean gain: 14 .0% ± 7.2% .
+
+Ordering sensitivity. 5 probe orderings on Llama/Enron fold-0: accuracy gains range from +19% to +24%, with layer selection varying (L=9 to L=15) but gains remaining stable. Maximum variance: 5 pts. 
+
+Phase 1 weight ablation. Testing 7 ratios from (LL=0, Ant=1) to (LL=1, Ant=0) on Llama/Enron and Gemma/Enron (fold-0, 50 probes): all 7 ratios select the same top layer and produce identical accuracy for both models (Llama: L=15, 76%; Gemma: L=25, 80%). The ranking is dominated by whichever signal is strongest per-layer, making the linear combination weight irrelevant. 
+
+Probe balance sensitivity. On balanced probes (50/50 spam/ham), gain = +16%. On imbalanced probes (80/20 spam-heavy): gain = +4%. On ham-heavy (20/80): gain = +47%. Discovery is robust to moderate imbalance but benefits from diverse representation. 
+
+Figure 4: Probe sample sensitivity: accuracy and compute cost vs. number of labeled probes. Dis-covery works with as few as 5 samples, stabilizing at N ≥ 20 .
+
+# F Iterative Multi-Layer Results 
+
+Across 33 iterative runs (3 models × 3 datasets × variable folds): single-layer steering is sufficient in 24/33 cases. Multi-layer adds +4 pts average when triggered. Maximum layers discovered: 3 (OLMo/Enron, Gemma/Ultimate). All models converge within 5 iterations. 12 Table 11: Single-shot vs. iterative discovery (best single-fold results per model/dataset)                               
+
+> Model Dataset Baseline Single Iterative Layers
+> Llama Enron 56% 84% 88% 3Llama SMS 46% 78% 78% 1OLMo SMS 36% 82% 82% 1Gemma SMS 28% 86% 86% 1Gemma Enron 50% 86% 86% 1
+
+# G LoRA Conversion 
+
+33 steering configurations converted to LoRA adapters (rank 16, AdamW lr= 10 −3, 100 steps). Mean fidelity gap (hook accuracy − LoRA accuracy): Table 12: LoRA conversion fidelity by model             
+
+> Model Mean Gap Std Conversion Time
+> Llama-3.2-1B 7.7% 8.6% 155s Gemma-3-1B-IT 10.8% 7.0% 349s OLMo-1B 13.6% 11.7% 164s
+
+Rank-64 does not improve over rank-16 (mean gap: 10.7% vs. 10.7%), indicating the bottleneck is the distillation approach (matching hook deltas), not LoRA capacity. Future work could apply latent class separability techniques to enforce better class separation in the adapter’s latent space. 
+
+# H Prompt Injection Category Breakdown 
+
+Architecture-specific vulnerability profiles: Llama is most susceptible to delimiter escapes (36%), suggesting weaker boundary detection in its tokenizer/attention. OLMo resists most attacks but is vulnerable to encoding obfuscation (33.5%). Gemma shows similar encoding vulnerability (34%) plus high instruction override susceptibility (31%). Table 13: Injection success rate (%) by OWASP category and model (1,200 trials per model)                         
+
+> Category Llama OLMo Gemma
+> Instruction override 32.5 13.0 31.0 Delimiter escape 36.0 6.5 14.0 Encoding obfuscation 18.5 33.5 34.0 Context manipulation 17.5 9.0 11.0 Role injection 10.5 10.0 9.5 Payload stuffing 12.0 10.0 8.5
+> Overall 21.2 13.7 15.3
+
+# I Transfer Analysis 
+
+Same-domain transfer is generally positive (diagonal). Cross-domain transfer is asymmetric: Enron →SMS transfers well (+20 pts) but Ultimate →Enron fails catastrophically ( −28 pts), indi-cating that steering directions are partially dataset-specific. 
+
+# J Reasoning and Generative Steering 
+
+Reasoning. We apply the discovery engine to multiple-choice reasoning (AQuA-RAT, MMLU ab-stract algebra) by steering toward the correct answer letter. At 1B, baselines are near random (23– 31%); Llama shows +3.1% on AQuA-RAT while others are flat or slightly negative. At 7B (Mistral, 13 Table 14: Cross-dataset transfer matrix for Llama-3.2-1B (accuracy gain when applying steering discovered on Source to Target dataset)               
+
+> Source \Target Enron SMS Ultimate
+> Enron +28 +20 +8 SMS +31 +32 −6Ultimate −28 +2 +30
+
+22% baseline), steering shows −2%. The near-random baselines indicate insufficient reasoning capability for contrastive directions to capture meaningful structure. 
+
+Toxicity reduction. We steer Llama-3.2-1B away from toxic completions on 10 adversarial prompts using keyword-based toxicity scoring. Toxicity drops from 3.0% to 0.8% (absolute), with qualitative shifts in generation (e.g., “man who is not afraid” → “human being with a different personality”). The effect is modest because the base model is already relatively safe, but demonstrates the engine can produce generative behavioral changes. 
+
+# K Token-Level Attribution via Shapley Values 
+
+To verify that steering targets task-relevant input features, we compute leave-one-out token attribu-tions: for each token, we replace it with the padding token and measure the change in steering effect (steered logit gap − baseline logit gap). Tokens with large positive attribution values increase the steering effect when present. On Llama-3.2-1B/Enron, the highest-attributed tokens fall into two categories: (1) prompt struc-ture tokens (“classification:”, BOS) that anchor the steering intervention at the decision point, and (2) content tokens that modulate the steering magnitude. For spam, content tokens like “smtp,” “refinance,” and “online” increase the steering effect; for ham, structural tokens like “Subject” and “no” are most influential. This confirms that the steering vector interacts with the model’s existing 
+
+task-relevant features rather than introducing orthogonal signal. The steering amplifies what the model already partially encodes. 
+
+# L Coherence Metric Definition 
+
+Our coherence metric for Surgical Containment combines three components measured during 50-step generation: 1. Entropy stability : 1 − std (Ht)/mean (Ht), where Ht is the entropy over tracked tokens at the resolution layer at step t.2. Resolution drift : 1 − std (l∗ 
+
+> t
+
+)/L , where l∗ 
+
+> t
+
+is the resolution layer at step t and L is total layers. 3. Top-token consistency : fraction of generation steps where the top-predicted token at the resolution layer remains unchanged. Final coherence = mean of three components. δ is computed as |coherence steered − coherence baseline |.
+
+# M Computational Budget NeurIPS Paper Checklist 
+
+1. Claims 
+
+Answer: [Yes] Justification: All claims in the abstract are supported by experimental results in Section 4 with appropriate confidence intervals and significance tests. 2. Limitations 
+
+14 Table 15: Approximate GPU-hours per experiment category (Quadro RTX 5000, 16GB)                                                            
+
+> Experiment Runs GPU-Hours
+> S1: Discovery sweep (39 runs) 39 18 S2: Iterative refinement (33 runs) 33 25 100-probe comparison (5-fold ×3) 15 12 RepE/CAA baselines 92Prompt injection (3,600 trials) 38Ablation study 86Robustness (seed + ordering) 10 5Task B reasoning traces 915 Task B integrity 99LoRA conversion 33 12 Transfer analysis 94Prompting baselines 31Sentiment discovery (SST-2) 15 3Sentiment comparison (RepE vs DN) 15 4SMS 5-fold comparison 15 3OLMo ablation 40.3 Sentiment injection 30.5 Phase 1 weight ablation 14 1Sentiment containment 27 0.5 2–3B scaling (Gemma-2B, Llama-3B) 20 87–9B scaling (4 models ×2 tasks) 40 30 7B RepE comparisons 10 7Random search baseline 31Injection benchmarks (external) 33MMLU + reasoning + toxicity 15 4Failed/preliminary experiments —∼30
+> Total ∼210
+
+Answer: [Yes] Justification: Section 5 lists 6 limitations including task scope (strongest on binary clas-sification, with reasoning and toxicity extensions in appendix), scaling limitations, and injection vulnerability. 3. Theory assumptions and proofs 
+
+Answer: [N/A] Justification: This is an empirical paper. We do not present formal theorems. The “Surgical Containment” claim is an empirical observation, not a formal proof (noted in Section 4.4). 4. Experimental result reproducibility 
+
+Answer: [Yes] Justification: Code and experimental configurations will be released upon acceptance to the conference, pending final public release approval from the Naval Surface Warfare Center. 5. Open access to data and code 
+
+Answer: [Yes] Justification: Code and experimental configurations will be released upon acceptance to the conference, pending final public release approval from the Naval Surface Warfare Center. 6. Experimental setting/details 
+
+Answer: [Yes] Justification: Section 4 specifies hardware (Quadro RTX 5000), probe sizes (50/100), fold counts (5), and all hyperparameters. Appendix M provides computational budget. 7. Experiment statistical significance 
+
+Answer: [Yes] 15 Justification: Table 2 reports 95% CIs and paired t-test p-values. We explicitly note where results are not significant (Llama p=0 .37 ). Table 1 reports 95% CIs via bootstrap. 8. Experiments compute resources 
+
+Answer: [Yes] Justification: Appendix M provides a full breakdown of GPU-hours per experiment cate-gory, including failed/preliminary experiments ( ∼210 total GPU-hours on a single Quadro RTX 5000). 9. Code of ethics 
+
+Answer: [Yes] Justification: Our research conforms to the NeurIPS Code of Ethics. We disclose the prompt injection vulnerability we discovered (Section 4.6) to promote defensive research. 10. Broader impacts 
+
+Answer: [Yes] Justification: The Broader Impact section discusses dual-use risks of automated steering discovery and responsible disclosure of injection templates. 11. Safeguards 
+
+Answer: [Yes] Justification: Injection templates will be released with defensive countermeasure documen-tation. The steering discovery code does not enable capabilities beyond what is already possible with existing open-source steering tools. 12. Licenses for existing assets 
+
+Answer: [Yes] Justification: All models are used under their respective open-source licenses (Llama Com-munity License, Apache 2.0 for OLMo and Gemma). Datasets are publicly available re-search datasets. 13. New assets 
+
+Answer: [Yes] Justification: Code and experimental configurations will be released upon acceptance to the conference, pending final public release approval from the Naval Surface Warfare Center. 14. Crowdsourcing and research with human subjects 
+
+Answer: [N/A] Justification: This research does not involve crowdsourcing or human subjects. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Answer: [N/A] Justification: This research does not involve human subjects. 16. Declaration of LLM usage 
+
+Answer: [Yes] Justification: LLMs (Claude) were used to assist with code development and manuscript preparation. The core scientific methodology, experimental design, and analysis were per-formed by the authors. LLMs are also the subject of study in this work. 16
