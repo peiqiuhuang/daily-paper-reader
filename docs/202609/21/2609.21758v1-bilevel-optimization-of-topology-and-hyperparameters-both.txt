@@ -1,0 +1,1489 @@
+Title: Bilevel Optimization of Topology and Hyperparameters (BOTH)
+
+URL Source: https://arxiv.org/pdf/2609.21758v1
+
+Published Time: Mon, 21 Sep 2026 00:59:04 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# BILEVEL OPTIMIZATION OF TOPOLOGY AND HYPERPARAMETERS 
+
+# (BOTH) 
+
+Suryanarayanan Manoj Sanu, Alejandro M. Aragón 
+
+Faculty of Mechanical Engineering Delft university of technology Delft The Netherlands  
+
+> {s.manojsanu, a.m.aragon}@tudelft.nl
+
+Miguel A. Bessa 
+
+School of engineering Brown University Providence United States of America 
+
+> miguel_bessa@brown.edu
+
+# ABSTRACT 
+
+Topology optimization (TO) represents a significant step towards automating the design process: given a working simulation, TO can produce a viable prototype at the press of a button by differentiating the simulation and iteratively improving the design. In practice, however, TO is riddled with “magic numbers”—hyperparameters whose tuning significantly affects the outcome. Finding the right values typically requires not only deep problem-specific knowledge but also extensive trial-and-error. While practitioners can use surrogate-assisted hyperparameter optimization as an alternative, this approach requires strictly limiting the number of hyperparameters through careful problem formulation. Here, we propose differentiating TO itself using automatic differentiation. This yields “hypergradients” that allow us to tune these hyperparameters in tandem with the primary optimization. We show that evaluating just one or two steps of TO is sufficiently informative and that the method scales favorably to thousands of hyperparameters at an expense comparable to only a few standard TO runs. We demonstrate this approach on stress-constrained and compliance problems, with the latter utilizing a neural parameterization of the density field. 
+
+Keywords hyperparameter tuning, automatic differentiation, topology optimization, stress constraints, bilevel programming 
+
+# 1 Introduction 
+
+Topology optimization (TO, [1]), particularly the density-based formulation [2], gives rise to a high-dimensional design space in which each pixel (or voxel) can independently influence the evolving topology. This design freedom has enabled TO to generate structures with performance and complexity that often exceed human intuition [3, 4, 5, 6]. Yet, in practice, TO’s ap-parent automation of the design process conceals a substantial layer of algorithmic complexity. The optimized design depends not only on the physical problem definition, but also on numer-ous hyperparameters —externally chosen parameters that govern 
+
+how the optimization problem is solved rather than what is being designed. Unlike the design variables, they are set by the user be-fore the optimization begins and are not updated by the optimizer itself. Combined with the non-convexity of TO, this sensitivity means that obtaining good designs still relies heavily on expert intuition and manual trial-and-error rather than on principled selection. In practical TO workflows, hyperparameters enter at nearly ev-ery stage of the algorithm. The material interpolation model (e.g., solid isotropic material with penalization (SIMP)) intro-duces interpolation exponents governing the drive toward dis-creteness. The Design parameterization requires choosing an initial state (either a density field or a level-set function) that can strongly bias or even dictate the final topology. This dependency is especially critical in level-set methods, where standard for-mulations cannot nucleate new holes. On top of this, nearly all TO workflows incorporate one or more filtering and projection techniques for controlling length scales, discreteness, and—in some formulations—manufacturability, which introduce addi-tional hyperparameters [7, 8]. The state and adjoint solvers then add preconditioners, convergence tolerances, and initialization strategies; these choices not only affect computational cost but can even change the final topology [9]. Problems with many constraints, such as stress-constrained formulations [10, 11, 12], further require aggregation strategies (e.g., p-norm), which intro-duce aggregation exponents, relaxation parameters for singular-ity removal, and penalty or augmented Lagrangian parameters. The optimizer contributes its own set: method of moving asymp-totes (MMA, [13]), for instance, introduces move limits and asymptote-adaptation parameters. Finally, recent learning-based components such as neural reparameterizations and learned sur-rogates [14, 15] add yet another layer, spanning network architec-ture, training, and regularization choices. Recent work [16] has shown that even for compliance minimization, nearly half of runs arXiv:2609.21758v1 [cs.LG] 18 Sep 2026 in a large hyperparameter sweep failed to progress, highlighting the sensitivity of TO to hyperparameter selection. Historically, experts have relied on heuristic rules to set hy-perparameters. In density-based compliance minimization, for instance, the SIMP penalty parameter is often fixed at a value of three [17], although certain formulations benefit from start-ing at one—which yields a convex sub-problem—and increas-ing it according to a schedule, a procedure known as contin-uation [18, 19]. Projection filter parameters, which sharpen the density field toward a discrete design, are similarly ramped heuristically [7, 20]. Yet despite widespread adoption, optimiza-tion under these schedules is fragile: it can fail to converge even on simple benchmark problems [21], and the choice of when and how aggressively to increase parameters remains largely at the practitioner’s discretion. In more challenging settings such as stress-constrained optimization, the situation deterio-rates further—heuristic choices for relaxation and aggregation parameters often determine whether optimization succeeds or fails [22]. The underlying difficulty is that the appropriate hyper-parameter values depend strongly on the problem formulation, mesh resolution, and objective, leaving heuristic rules without reliable transferability. This need for systematic hyperparameter selection has prompted a growing body of research aimed at replacing ad hoc heuristics with principled, automated approaches. Within this paradigm, black-box optimization methods such as Bayesian optimization (BO) learn to predict the final design performance from a given hyperparameter configuration, enabling efficient search over the hyperparameter space. For instance, [23] proposed a two-stage approach in which a new problem’s features are first matched against a dataset of prior TO runs to suggest an initial hyperpa-rameter configuration based on similarity, which is then refined through BO. [24] trained an image-based classifier on prior TO runs to predict design feasibility, coupling it with particle swarm optimization to identify MMA hyperparameter configurations that reliably produce feasible designs in the context of Moving Morphable Components TO. In a related but distinct context, [25] applied polynomial regression within similarity-based TO, where the optimization additionally seeks designs that resemble a reference structure; their model predicts the energy scaling factor that achieves a target similarity level, bypassing the need to sweep over multiple TO runs. [26] employed a neural network surrogate trained on pre-computed datasets alongside BO to tune hyperparameters for frequency optimization problems. Despite their differences in scope and problem setting, all of these approaches share a common dependency: they require pre-collected datasets of TO runs, which can be expensive to generate. [16] addressed this by casting hyperparameter tun-ing as a bilevel optimization problem, eliminating the need for any pre-collected dataset. In their formulation, the upper-level (UL) employs surrogate-based optimization—iteratively con-structing and minimizing an interpolating surrogate of the UL objective—to propose hyperparameter configurations, while the lower-level (LL) solves the TO problem from scratch for each proposal. Across compliance, mechanism design, and buckling problems, this approach substantially reduced the rate of failed or poorly converged runs and showed that hyperparameter sensi-tivity becomes more pronounced in nonlinear and multiphysics settings [16]. However, all methods discussed thus far rely on derivative-free optimizers. These approaches face intrinsic scal-ing limits as the number of hyperparameters grows: constructing a reliable surrogate requires sample counts that grow rapidly with dimensionality, and each sample requires solving the full in-ner TO problem. This limitation also constrains the formulations themselves: TO works only with a handful of hyperparameters because no available tuning method could effectively handle larger hyperparameter spaces. Removing this limitation would open the door to richer parameterizations—spatially varying fil-ters, element-wise penalization, and beyond—that have remained largely unexplored. To overcome this limitation, we propose—for the first time in TO—a bilevel gradient-based framework that simultaneously optimizes the design variables and the hyperparameters ( BOTH ). The framework draws on the use of hypergradients in the ma-chine learning (ML) community, where differentiation through optimization loops has enabled the tuning of millions of hyper-parameters [27, 28, 29, 30]. Transferring this machinery to TO is not straightforward. Usual bilevel formulations in ML distin-guish the two levels only through the data used—the same loss function evaluated on training and validation sets, respectively— and the cost of evaluating the LL loss is relatively inexpensive. TO, by contrast, demands for vast computational resources due to the nested physics simulation, while also having to satisfy constraints. We address these challenges through three explicit design choices: we construct distinct LL and UL objectives tai-lored to the engineering problem; we treat constraints through a quadratic penalty method; and we mitigate the computational bur-den and the well-known instabilities of hypergradient estimation by truncating the inner trajectory to only a few steps, beginning with only one or two . We first verify the framework on standard bilevel benchmarks, where we identify the key challenges of hypergradient construction and show that the framework miti-gates them. We then demonstrate that even a few steps of TO yield gradient information sufficient to drive the UL optimization effectively. The framework is then applied to TO problems of increasing difficulty: compliance minimization, including the hyperparameter-sensitive case of neural reparameterizations [31], and stress-constrained optimization. The result is a framework that enables simultaneous tuning of large hyperparameter spaces at a cost that scales favorably with their dimensionality, thereby enabling TO formulations that were previously inaccessible. 
+
+# 2 Bilevel optimization formulation 
+
+Hyperparameter optimization [32, 33] is naturally cast as a bilevel optimization problem [34], with the general formula-tion 1: min  
+
+> y
+
+F (y, x⋆(y)) 
+
+such that x⋆ = arg min 
+
+> x
+
+f (x; y) (1)     
+
+> 1Specifically, this is the optimistic formulation, in which the LL solver is assumed to return the solution most favorable to the UL objec-tive. This is consistent with standard practice in the machine learning literature [35, 36, 27] and is more scalable than the pessimistic alterna-tive [37].
+
+2where y ∈ Y = {y ∈ Rm : ymin ≤ y ≤ ymax } are the UL variables corresponding to the hyperparameters to be tuned, and 
+
+x ∈ X (y), X (y) = {x ∈ Rn : xmin ≤ x ≤ xmax , g (x; y) ≤
+
+0, h (x; y) = 0} are the LL variables, i.e., the design variables of the original optimization problem. F and f are the UL and LL objective functions, respectively. The general inequality and equality constraints at the LL, respectively g and h, are handled via quadratic penalty or augmented Lagrangian methods, while the box constraints on x and y are enforced via projection or reparameterization, as discussed later. Finding an optimized solution (y⋆, x⋆) to Eqn. (1) when the UL dimensionality is high requires a gradient-based approach [32]. We maintain the nested (or bilevel) formulation, in which the LL variables optimize only the LL objective while the UL variables optimize only the UL objective, preserving the role separation between design variables and hyperparameters. UL updates are then performed using gradients computed through the LL optimization, a class of methods known as hypergradient meth-ods [27, 38]. The hypergradient—the total derivative of F with respect to y—is given by: 
+
+dF dy = ∂F ∂y + ∂F ∂x⋆
+
+∂x⋆
+
+∂y , (2) where the first term is the direct partial term (often zero unless the function F depends explicitly on hyperparameters), and the second term is the gradient through the LL optimization, utilizing the best-response Jacobian 2 (i.e., ∂x⋆
+
+∂y ). Applying the Implicit Function Theorem (IFT) [40] to the LL optimality condition for unconstrained optimization, i.e., the gradient of the LL objective with respect to the LL parameters vanish at the optimum ( ∇xf (x⋆; y) = 0), we obtain: 
+
+∂x⋆
+
+∂y = −H−1
+
+> f
+
+∂2f∂y∂x x⋆
+
+, (3) where Hf = ∂2f∂x2 x⋆
+
+∈ Rn×n is the Hessian matrix of the LL objective function evaluated at a LL optimum [41]. Each UL update requires solving an n × n linear system, for which a range of techniques have been developed to avoid forming H−1
+
+> f
+
+explicitly [27]. While Eqs. (2)–(3) represent the exact hypergradient, this IFT-based formulation has several practical limitations: First, each UL update requires solving a large linear system whose matrix may be severely ill-conditioned. Second, the hypergradient is exposed to two distinct sources of error [42]: the inexactness of the LL solution (since attaining true optimality for every hy-perparameter configuration is computationally prohibitive for TO), and the convergence tolerance of the iterative linear solve, which amplifies with the condition number of the matrix. Third,     
+
+> 2The best-response Jacobian is structurally analogous to the sensitiv-ity term in adjoint analysis in TO, where the derivative of the displace-ment field uwith respect to the densities ρis obtained implicitly: in both cases, the sensitivity of an implicitly defined quantity to upstream parameters follows from applying the IFT to a defining equation—LL optimality here, the equilibrium equation there [39].
+
+the IFT framework formally requires the LL to be both strongly convex (so that Hf is invertible) [43] and smooth [44]. Finally, hyperparameters that only affect the LL optimization trajectory (and not LL loss landscape itself)—such as initializations, toler-ances, relaxations, and optimizer hyperparameters—cannot be tuned under the IFT formulation, since the optimality criterion does not depend on any of them [30, 27]. For these reasons, we adopt an automatic differentiation (AD) approach that estimates hypergradients by explicitly differen-tiating through the LL optimization trajectory. We relax the requirement of LL optimality by replacing x⋆ with a finite-step estimate xt, obtained after running t LL iterations with a chosen first-order optimizer. Each optimizer step can be represented as the function ψj : Rn × Rm → Rn, which gives the next iterate xj = ψj (xj−1, y), ∀j = {1, . . . , t }. The subscript on 
+
+ψj reflects the history dependence of the optimizer: the update at iteration j may depend not only on xj−1 and y, but also on accumulated quantities from previous iterations—such as momentum buffers and adaptive learning rate estimates—that together constitute the optimizer’s internal state. The initial iter-ate may or may not depend on the UL variables, depending on the formulation; we include this dependence for completeness as x0 = ψ0(y). Defining the Jacobians: 
+
+Aj = ∂ψ j
+
+∂xj−1
+
+= ∂xj
+
+∂xj−1
+
+and Bj = ∂ψ j
+
+∂y = ∂xj
+
+∂y ,
+
+which represent the partial derivatives of the optimizer step (at a given iteration) with respect to the previous iterate and UL variables, respectively. Note that the Jacobian Bj is non-zero whenever the UL variables enter the LL update—either through the LL objective f (and hence its gradient), or through the op-timizer’s dynamics (e.g., step size, preconditioner, momentum coefficient). Assuming that t is sufficiently large, chain rule on the whole trajectory gives a estimate of the best-response 
+
+Jacobian [28]: 
+
+∂x⋆
+
+∂y ≈ ∂xt
+
+∂y =
+
+> t
+
+X
+
+> j=0
+
+
+
+> t
+
+Y
+
+> k=j+1
+
+Ak
+
+ Bj
+
+= Bt + AtBt−1 + AtAt−1Bt−2
+
++ · · · + AtAt−1 · · · A1
+
+| {z } 
+
+> tterms
+
+B0
+
+(4) This sum denotes the sensitivity of a given iterate to y through each optimizer step; note that since ψj uses the gradient of the LL objective, the Jacobians Aj and Bj contain second-order derivatives of f . As t increases, this estimate converges to the true IFT hypergradient under mild conditions; even at small 
+
+t, it remains informative because it captures the optimization trajectory rather than only the final iterate [27, 28]. For large n and m, forming the Jacobian in Eqn. (4) explicitly is prohibitive. However, the hypergradient itself only requires the product of this Jacobian with vectors (Eqn. (2)), which AD computes without ever materializing the Jacobian. This vector-Jacobian product can be obtained via either forward- or reverse-mode AD. Since the UL objective is a scalar function, forward-mode requires m passes (one per hyperparameter) to construct 3y ψ0 x0 ψ1 x1 · · · ψt−1 xt−1 ψt xt UL obj. F
+
+1.0
+
+t
+
+et = ∂F ∂xt
+
+t − 1 et−1 = etAt
+
+· · · et−2 = et−1At−1
+
+0 e0
+
+∂F ∂y
+
+> ct
+
++
+
+∂F ∂xt
+
+Bt
+
+> ct−1
+> etBt
+
++
+
+∂F ∂xt
+
+AtBt−1
+
+> ct−2
+> et−1Bt−1
+
+· · · +
+
+∂F ∂xt
+
+∑tj=1 Aj B0
+
+> c0
+> e0B0
+
+dF dy =Figure 1: Reverse-mode automatic differentiation of the hypergradient. Top: forward computational graph for the bilevel problem, showing each optimizer step ψj as a node taking both the previous iterate xj−1 and the UL variables y as inputs, with the UL objective F evaluated at the final iterate xt. Bottom: reverse-mode backward pass. A unit seed enters at F and propagates backward through the trajectory (blue arrows) via the recursion ej−1 = ej Aj . At each step, a second branch (red arrows) contributes ej Bj to the register, where the hypergradient is accumulated as cj−1 = cj + ej Bj . The final hypergradient dF/d y is read off as c0 at the leftmost endpoint of the register. the full hypergradient. Reverse-mode, by contrast, computes the hypergradient in a single backward pass and is therefore more efficient 3.To achieve this, the entire computation—from the UL variables through the LL optimization (including the optimizer dynamics) to the evaluation of the UL objective—must be expressed within an AD framework. Fig. 1 (top) shows a simplified computational graph, with each operation (optimizer steps, UL objective evalu-ation) represented by an orange node. Arrows denote the flow of data and show the dependencies; in particular, each optimizer step takes as input not only the previous iterate but also the UL variables y.In reverse-mode, the gradient signal is accumulated by traversing the graph backwards, starting from the final output with a seed of 
+
+1.0 (Fig. 1, bottom). At each node, the local partial derivatives are computed and used to propagate the gradient to its inputs. A detailed treatment of this process in the TO context is given in [39]; here we summarize the result. The entire reverse-mode computation can be expressed by two recursion rules, illustrated in Fig. 1. Initializing et = ∂F/∂ xt and ct = ∂F/∂ y—the latter being the direct partial term already encountered in Eqn. (2)—the recursion proceeds from j = t down to 1:
+
+ej−1 = ej Aj , cj−1 = cj + ej Bj , (5) with the hypergradient given by c0 at the end of the backward pass. Although reverse mode is independent of the number of hyperparameters in computational cost, it requires storing the full LL trajectory of length t, incurring a memory cost proportional to t · n [28]. 
+
+> 3Randomized forward mode estimators exist that can be both compute- and memory-efficient [42].
+
+# 3 Methodology and implementation 
+
+The UL objective F (y(k), x(k) 
+
+> t
+
+) (where the superscript denotes the UL iteration and the subscript the LL iteration) depends not only on the current UL variables y(k) but also on the final LL iterate x(k) 
+
+> t
+
+. Because the LL is not run till convergence (finite t), this iterate is not necessarily the LL optimum but the endpoint of a trajectory, which depends on (1) the LL initialization x(k)0 ,(2) the LL optimizer, (3) the horizon t, and (4) the UL vari-ables y(k). The UL variables affect the LL in two ways: some reshape the LL objective f directly, while others (such as the learning rate or momentum) affect only how the optimizer tra-verses the landscape. We introduce four modifications targeting these components, to reduce computational cost and improve the stability of the bilevel optimization. We motivate and describe each below. 
+
+First-order hypergradient From Eqn. (4), and the definitions of At and Bt, computing the hypergradient in general involves second-order terms of the LL objective f . To see this, consider gradient descent as the LL optimizer, giving the update rule 
+
+xt = ψ (xt−1) = xt−1 − η∇xf (xt−1), for which: 
+
+At = ∂ψ t
+
+∂xt−1
+
+= I − ηHf (xt−1), (6) 
+
+Bt = ∂ψ t
+
+∂y = −η ∂2f∂y ∂xt−1
+
+, (7) where η is the learning rate or step size, Hf is the Hessian of 
+
+f evaluated at xt−1 and I is the identity matrix. To reduce computational cost, we set Hf = 0, so that At ≈ I (In Fig. 1, this corresponds to stopping gradient flow along the blue route) 4Algorithm 1 Both levels use Adam, with Adam (·) denoting a single step; the LL optimizer’s hyperparameters (e.g., learning rate) are contained in ydyn and are themselves tuned. The hyperparameters are partitioned as y = ( yloss , ydyn ), affecting the LL loss landscape and optimizer dynamics respectively. The operators sg (·) and clip (·, d c) denote stop-gradient and gradient clipping. UL stagnation is defined as both the EMA-smoothed relative change in F and the EMA-smoothed relative change in y falling below user-specified thresholds (see Appendix A for values). LL optimizer state is reinitialized at each UL iteration. 
+
+Input: LL objective f , UL objective F ; initial design x(0) 0 ; initial hyperparameters y(0) ; budget Bmax ; gradient clipping threshold 
+
+dc; UL Adam learning rate ηU.
+
+Output: (y⋆, x⋆) 
+
+> 1:
+
+B ← 0, t ← tstart , k ← 0, x(−1)  
+
+> t
+
+← x(0) 0 
+
+> 2:
+
+while B < Bmax  
+
+> 3:
+
+x(k)0 ← x(k−1)  
+
+> t
+
+– Warmstart LL from previous UL iterate  
+
+> 4:
+
+for j = 0 , . . . , t − 1 do – Run LL optimization for t steps  
+
+> 5:
+
+¯d(k) 
+
+> j
+
+← clip 
+
+
+
+∇xf  sg (x(k) 
+
+> j
+
+); y(k)
+
+> loss
+
+, d c
+
+
+
+– Stop-gradient for pseudo first-order approx.  
+
+> 6:
+
+x(k) 
+
+> j+1
+
+← Adam 
+
+
+
+x(k) 
+
+> j
+
+, d(k) 
+
+> j
+
+, y(k)
+
+> dyn
+
+ 
+
+> 7:
+
+F (k) ← F (y(k), x(k) 
+
+> t
+
+) – Evaluate UL objective using final LL iterate  
+
+> 8:
+
+¯d(k) 
+
+> y
+
+← clip 
+
+ dF (k) 
+
+> dy
+
+, d c
+
+
+
+– Clipped hypergradient through unrolled LL steps  
+
+> 9:
+
+y(k+1) ← P [ymin ,ymax ]
+
+
+
+Adam (y(k), d(k) 
+
+> y
+
+, η U)
+
+
+
+– UL update with box projection  
+
+> 10:
+
+if UL stagnates then t ← min( t + 1 , t max ) 
+
+> 11:
+
+B ← B + (4 t + 2) , k ← k + 1  
+
+> 12:
+
+return (y(k), x(k) 
+
+> t
+
+) – Final iterates at termination 
+
+[45]. Notably, we keep the mixed partial term in Bt, thereby preserving the dependence of the LL gradient on y and keeping the hypergradient estimate meaningful. This yields a pseudo first-order hypergradient, which is used throughout all experiments. While the above derivation uses gradient descent for clarity, the same approximation extends to other optimizers, including adaptive ones such as Adam [46], which we use at both levels in all experiments. 
+
+Annealing the number of LL iterations Since the hypergra-dient is computed via AD, the number of LL iterations t is a free algorithmic choice. Larger t enforces LL optimality more strictly and yields a more accurate hypergradient, but at greater computational cost. A single UL update requires approximately 
+
+4t + 2 evaluations of the LL objective f , which dominates the cost in TO 4. To keep this manageable, t should remain small for most of the optimization. Although t is discrete and could in principle be relaxed to a continuous UL variable [47, 48], we do not pursue this here. Instead, we adopt a simple annealing strategy: the bilevel op-timization is initialized with t = tstart (typically set to 1 or 2), updating y after a single LL step. This gives a computation-ally cheap hypergradient estimate and supports the framework’s 
+
+nearly simultaneous-optimization spirit, in which hyperparame-                        
+
+> 4The tLL updates contribute 2tf to the cost, since each step in-volves one objective evaluation and one adjoint-gradient computation of comparable cost. Computing the UL objective Fadds another 1f,giving 2tf + 1 ffor the forward pass. The backward pass differentiates this entire computation: 1ffor Fand 2tf for the tLL updates, con-tributing 2tf + 1 fmore. Summing the two passes gives the total of
+> 4t+ 2 function-equivalent evaluations.
+
+ter and design updates progress concurrently. When the UL fails to make meaningful progress—measured by the exponentially weighted moving averages of the relative changes in both the UL objective F and the variables y falling below a threshold— t is incremented by one, up to a prescribed maximum tmax = 10 .Starting from t = tstart can be seen as relaxing the LL optimality condition in the early iterations, smoothing the UL landscape and promoting broader exploration [49], akin in spirit to contin-uation schemes in TO. However, operating at low t introduces 
+
+short-horizon bias [49]: the UL objective is evaluated before LL convergence is reached, which can shift the apparent UL optimum and yield suboptimal LL solutions. Progressively in-creasing t as the UL matures restores LL accuracy and mitigates this bias, as demonstrated empirically in Section 4. 
+
+Warmstarting the LL initialization In the current bilevel formulation, the LL initialization is independent of the UL vari-ables and must be chosen by the user 5. The simplest choice is to initialize every LL solve from the same fixed starting point (coldstarting ). We instead use warmstarting , in which the final LL iterate of the previous UL iteration becomes the initial point for the next LL solve [51]: 
+
+x(k)0 = x(0) 0 (coldstarting) , (8) 
+
+x(k+1) 0 = x(k) 
+
+> t
+
+(warmstarting) . (9) Both strategies apply to any bilevel solver, including ours; to iso-late their effect, we hold everything else fixed—the LL horizon 
+
+> 5In some settings, such as meta-learning, the UL variables directly determine the LL initialization [50]; we do not pursue that coupling here.
+
+5t and the optimizer—so that the only difference is how each LL solve is initialized. The distinction is clearest by writing out the dependencies of the UL objective at iteration k + 1 :
+
+F (k+1) = F  y(k+1) , x(k+1) 
+
+> t
+
+, (10) The two strategies differ only in how the initialization x(k+1) 0 is set at each iteration. Coldstarting fixes it at the same value across all iterations and hence function evaluations are completely inde-pendent. Warmstarting instead sets the current LL initialization to the previous endpoint (see Eqn. (9)). Combined with the t-step LL optimization denoted as x(k+1)  
+
+> t
+
+= Ψ(x(k+1) 0 ; y(k+1) ),this produces a recursion: 
+
+x(k+1)  
+
+> t
+
+= Ψ x(k+1) 0 ; y(k+1) 
+
+= Ψ x(k) 
+
+> t
+
+; y(k+1) 
+
+= Ψ Ψ(x(k)0 ; y(k)); y(k+1) 
+
+= Ψ  · · · Ψ x(0) 0 ; y(0)  · · · ; y(k+1) .
+
+(11) The endpoint, and therefore F (k+1) , now depends on the entire history (y(0) , . . . , y(k+1) ). The bilevel optimization becomes a dynamical system rather than a static optimization: the UL variables act as control inputs steering the joint state (x, y) along a trajectory. Under coldstarting, the UL objective is a static func-tion of y, and optimizing it yields a single point y⋆. Under warm-starting, the objective is path-dependent, and the optimization instead traces out an ordered sequence {y(k+1) }, each element tuned for the warmstarted state at its iteration rather than for the cold initialization. We refer to this sequence as a learned hyperparameter schedule .Warmstarting offers two practical benefits. First, it enhances the smoothness of the map y 7 → xt: since the LL solver is initialized close to the previous solution, small changes in y produce small changes in the converged LL state. This smoothness controls the variance of the hypergradient and keeps it informative across UL iterations. Second, it makes our annealing strategy viable. Using a small t to estimate the hypergradient is only useful if meaning-ful progress toward the LL optimum can be made. Warmstarting ensures this since the LL optimality gap shrinks progressively across UL iterations. Without warmstarting, few LL step from a cold initialization would carry very little information about the LL optimum, and the annealing schedule’s preference for small 
+
+t would fail. The progressive reduction of the LL optimality gap also improves the hypergradient estimate. 
+
+Gradient clipping and learning rate selection For the hyper-gradient to be well-behaved at a given UL iteration k, the map-ping from the UL variables to the final LL state ( y(k) 7 → x(k) 
+
+> t
+
+)must be smooth. This is achieved by keeping per-step updates small at both levels through two complementary mechanisms: gradient clipping and conservative learning rates. Gradient clipping rescales the gradient vector when its norm exceeds a threshold gc:
+
+¯d =
+
+
+
+d
+
+∥d∥2
+
+dc if ∥d∥2 ≥ dc,
+
+d otherwise. We apply it to the raw gradient at both levels ( d can be either 
+
+∇f or dF dy ) with dc set to 10 times the initial gradient norm in all experiments. This serves primarily as a numerical safe-guard against overflow, especially when many LL iterations are unrolled: the long chains of Jacobian products in Eqn. (4) may occasionally produce extreme gradient magnitudes (as we demonstrate empirically in Section 4), and clipping prevents these from propagating into subsequent updates. Although several first-order optimizers can be used with the framework, we use Adam [46] at both levels for all experiments. Since we differentiate through the LL, the LL Adam requires an additional numerical safeguard. The update rule, for t = 1 , is 
+
+x1 = x0 − η ¯d
+
+q
+
+¯d2 + τ1 + τ2
+
+, (12) where all vector operations are element-wise and ¯g is the gradient after clipping. The constants τ1 = τ2 = 10 −8 guard against division by zero. Here τ1 is placed inside the square root so that the derivative of the square-root operation remains finite during AD through the LL Adam updates. Since we do not differentiate through the UL update, this is unnecessary there, and we set 
+
+τ1 = 0 at the UL. When each gradient component satisfies | ¯di| ≫ √τ1 = 10 −4,the Adam denominator is approximately | ¯di| and the update reduces to x0 − η sign( ¯d) [52]: the step magnitude is controlled entirely by η, independent of the gradient magnitude. This sign-descent behaviour has a consequence for the hypergradient. For UL variables that affect the LL landscape but have no direct term in the hypergradient (Eqn. 2), t = 1 is a poor choice: because the t = 1 update ignores gradient magnitude, the hypergradient signal is nearly zero and dominated by noise. The suppression is worst if Adam’s moment estimates are reset at every UL iteration, which is what we do. A simple remedy is to use t = 2 instead. Because η largely determines the step magnitude, especially early in the optimization, the LL learning rate requires care at initialization. A low initial value provides stability but the framework may waste many UL iterations bringing it up to an appropriate level; too high a value risks divergence. We therefore set η0 by a one-dimensional probe over a wide geometric grid on 
+
+[ηmin , η max ]. Starting from the lower end of the bracket, we run the LL optimizer for tstart steps at each candidate and compare the losses at the start and end of the run. A candidate is accepted if (i) it produces a loss decrease, and (ii) that decrease stays below a target bound; the exact criteria are given in Appendix A.4. The probe uses exactly the optimizer that is used later in the bilevel optimization, and each trial evaluates the LL only, so no hypergradients are required. The framework subsequently adapts η via the hypergradient during the bilevel optimization. For the UL learning rate we use 10 −2 across all experiments unless stated otherwise, which controls the convergence speed of the bilevel optimization. The overall methodology is summarized in Algorithm 1. Each UL iteration k proceeds in three steps. First, the LL is warm-started from the final iterate of the previous UL iteration (x(k−1)  
+
+> t
+
+); this preserves proximity to the LL optimum across UL updates and reduces the number of LL steps required for con-6(0 , 0) (0 , 1.9)                 
+
+> −510
+> −510 UL variable y1
+> UL variable  y2
+> (a) UL objective landscape 1510 20 50 100
+> −505Steps taken at LL t
+> |y⋆
+> 2 − yt
+> 2|
+> (b) UL minimizer shift 10 010 110 210 3
+> 01Steps taken at LL t
+> Cosine similarity (c) Hypergradient alignment First-order Unrolled 10 010 110 210 3
+> 10 0
+> 10 2
+> 10 4
+> Steps taken at LL t
+> Hypergradient norm ratio  (d) Hypergradient magnitude
+
+Figure 2: Illustration of challenges in gradient-based bilevel optimization using the SMD-1 benchmark with two upper-level (UL) and two lower-level (LL) variables. (a) True UL objective landscape (solid contours), obtained using the analytical LL optimum at each UL point, overlaid with an approximate landscape (dashed) obtained from a single Adam step at the LL from a random initialization. The true optimum at (0 , 0) and the shifted apparent optimum are marked. (b) Short-horizon bias: shift in the UL minimum from the true location y⋆ 
+
+> 2
+
+to the apparent minimum yt 
+
+> 2
+
+when the LL is run for t steps, shown for several LL initializations. (c) Cosine similarity between the estimated hypergradients (pseudo first-order approximation and vanilla unrolling) and the true hypergradient; dashed lines show individual runs and solid lines show medians. (d) Ratio of the L2 norms of the estimated and true hypergradients, illustrating gradient norm explosion at large LL horizons. vergence. Second, the LL is unrolled for t steps of Adam, with the pseudo first-order approximation enforced via stop-gradient to keep the hypergradient computation tractable. Third, the hy-pergradient of the UL objective with respect to y is computed by reverse-mode AD through the unrolled trajectory and used to update y, with gradient clipping and box-constraint projec-tion for numerical safety. The LL horizon t controls the cost of each UL iteration. We increase it adaptively when the UL optimization stagnates, up to a maximum tmax . The total cost is tracked in cumulative LL iterations Bmax , which provides a budget measure independent of the t-schedule and therefore en-ables fair comparison across different bilevel runs. More details on the numerical implementation are given in Appendix A. 
+
+# 4 Verification on a benchmark bilevel problem 
+
+To illustrate the challenges of hypergradient-based bilevel op-timization and demonstrate how the proposed framework ad-dresses them, we first consider a bilevel optimization test prob-lem that has an analytical solution. Specifically, we borrow a problem from the SMD test suite [53], which is a collection of benchmark problems designed to exhibit characteristic dif-ficulties encountered in bilevel optimization. Unlike practical applications, these benchmark problems possess analytically tractable LL optima, allowing the exact UL objective landscape and corresponding hypergradients to be computed. This makes it possible to directly compare the true UL landscape against the approximate landscape obtained when the LL optimization is solved only approximately using a finite number of optimization iterations. The bilevel optimization problem SMD-1, which is the simplest problem in the SMD suite, is given by 
+
+min  
+
+> y
+
+F = ∥y1∥2 + ∥x1⋆∥2 + ∥y2∥2
+
++ ∥y2 − tan( x2⋆)∥2
+
+s.t. x⋆ = arg min 
+
+> x
+
+f = ∥y1∥2 + ∥x1∥2
+
++ ∥y2 − tan( x2)∥2
+
+−5 ≤ (y1)i ≤ 10 , i = 1 , . . . , p, 
+
+−5 ≤ (y2)i ≤ 10 , i = 1 , . . . , r, 
+
+−5 ≤ (x1)i ≤ 10 , i = 1 , . . . , q, 
+
+−π/ 2 < (x2)i < π/ 2, i = 1 , . . . , r, 
+
+(13) where the UL and LL variables are each partitioned into two groups, y = ( y1, y2) and x = ( x1, x2), with the second group of each level coupling the two problems and the first group adding within-level complexity. Problem (13) has a convex UL objective and a unimodal LL landscape for each UL point 6.Despite its simplicity, this problem already exhibits several chal-lenges characteristic of gradient-based bilevel optimization, sug-gesting that similar difficulties will be more pronounced in TO problems involving high-dimensional, nonlinear physical simu-lations. Fig. 2a shows isocontours of the true UL objective landscape (solid lines), where the UL variables are denoted y1 and y2. Since the LL optimum is known analytically, the true UL landscape is a function of y alone. We sample F on a 40 × 40 uniform grid over the range to produce the isocontours shown. The resulting landscape is convex, with the global optimum at y⋆ = (0 , 0) .Overlaid on the same figure is an approximate UL landscape 
+
+> 6
+
+Although the original work reported the LL problem to also be convex, our verification shows this holds only when y2 ∈ [−√3, +√3] ,as confirmed by checking positive semi-definiteness of the LL Hessian over this range. 
+
+710 0 10 1 10 2           
+
+> 10 −4
+> 10 −1
+> 10 2
+> Cumulative LL iterations UL objective  F
+> (a) Convergence 1234501LL iterations t
+> Normalized UL iterations  k (b) Allocation of LL iterations 50 150 250 350 06Cumulative LL iterations
+> ∥y(k) − y⋆∥
+> (c) Distance to UL optimum 10 010 110 2
+> 0510 Cumulative LL iterations LL gradient norm (d) LL optimality Warmstart Coldstart
+
+Figure 3: Effect of warmstarting on the bilevel optimization of SMD-1. All four panels compare warmstarting and coldstarting under otherwise identical settings (Adam at both levels, gradient clipping, annealing schedule). Results are aggregated over 72 runs combining 9 UL and 8 LL initializations; solid lines show medians and shaded bands show one standard deviation. (a) Convergence history of the UL objective; the horizontal axis is the cumulative number of LL steps. (b) Fraction of UL iterations spent at each value of the LL horizon t, illustrating how the annealing schedule allocates the budget. For each scheme, the bar heights sum to one. (c) Euclidean distance between the UL iterate y(k) after k UL iterations and the true UL optimum y⋆ = (0 , 0) . (d) LL optimality measured by the norm of the LL objective gradient ∥∇ xf ∥ at the final LL iterate. (dashed isolines), obtained by replacing the exact LL solution 
+
+x⋆ with the finite-step approximation xt. For each grid point, we initialize the LL at a random point (held fixed across the grid) and take a single Adam step ( t = 1 with learning rate 10 −2)to compute xt. As shown in the figure, a shift in the apparent UL minimum is visible along y2, which is the only UL variable coupled to the LL optimum through the term ∥y2 − tan( x2⋆)∥2.The other component ( y1) enters the UL objective independently of the LL solution. This phenomenon, whereby the UL optimum is shifted due to the lack of convergence in the LL problem, is known as short-horizon bias [54]. We therefore see that the approximate UL objective therefore depends not only on the UL variables, but also on the LL optimization trajectory, its initialization, and the number of iterations performed—none of which affect the true UL landscape. Fig. 2b shows how this bias varies as more LL steps are taken. To produce the plot, we consider 50 random LL initializations. For each, we evaluate the UL objective densely along y2 (100 
+
+grid points) keeping y1 fixed at 0 and identify the apparent minimum yt
+
+> 2
+
+. This procedure is repeated for varying t. The bias (|y⋆ 
+
+> 2
+
+− yt
+
+> 2
+
+|) decreases with t and vanishes at sufficiently large t,as xt converges to x⋆ and the approximate landscape coincides with the true one. Reducing the bias, however, comes at a dual cost: increased com-putational expense and a potential deterioration in hypergradient quality. The latter is illustrated in Fig. 2c, which compares the cosine similarity between the true hypergradient—computed ana-lytically via Eqn. (3)—and the estimates obtained from Eqn. (4), both with and without the pseudo first-order approximation. For each value of t, we sample 225 uniformly distributed UL points and compute the hypergradient from 100 random LL initial-izations per UL point, since the estimates depend on the LL initialization. Although both estimators initially agree well with the true hypergradient, accuracy degrades as t grows [55, 49]. This degradation arises because AD-based estimators involve products of Jacobian matrices of increasing length, which be-come numerically unstable as t grows. Fig. 2d confirms that this numerical instability is in fact respon-sible for the degradation. For the same points as in the previous plot, we evaluate the ratio between the L2 norm of the estimated hypergradients and the true hypergradient. The ratio becomes extremely large, exceeding the true gradient magnitude by sev-eral orders of magnitude. The pseudo first-order estimator is more stable because it eliminates the Hessian terms whose ac-cumulation through the unrolled trajectory drives part of the amplification (see Eqn. (4)). This behavior motivates the use of gradient clipping as a practical safeguard. The issues highlighted above can be addressed by the proposed framework—pseudo first-order hypergradients, gradient clip-ping, annealing, and warmstarting. Of particular importance is the use of warmstarting rather than coldstarting at each UL iteration. Recall that, by coldstarting we mean that the LL ini-tialization is fixed at the same user-chosen value across all UL iterations. Fig. 3 compares the two strategies on SMD-1; aside from the choice of warmstarting versus coldstarting, all other algorithmic details are kept identical (Adam at both levels, gradi-ent clipping, and the annealing schedule described earlier). The experiment uses 72 runs corresponding to all combinations of 
+
+9 UL initializations and 8 LL initializations sampled on a grid spanning the UL and LL ranges. We start the bilevel optimiza-tion from each of these combinations. As is evident from Fig. 3a, warmstarting converges significantly faster and reaches lower UL objective values than coldstarting with medians shown as thick lines, and the shaded bands indicating one standard deviation. Fig. 3b shows how the annealing schedule allocates the total budget of 1500 LL iterations (here with tmax = 5 ). The hori-zontal axis is t and the vertical axis reports the fraction of UL iterations spent at each t value. The majority of UL iterations operate at t = 1 , confirming that even the cheapest hypergra-8dient estimate carries useful directional information. Fig. 3c shows that warmstarting consistently drives the solution closer to the true UL optimum, while coldstarting frequently stagnates in suboptimal regions. This is a consequence of coldstarting encountering more non-convexities at each UL iteration, as illus-trated in Appendix B. Finally, Fig. 3d shows that warmstarting enables simultaneous progress toward LL optimality, whereas coldstarting fails to reduce the LL gradient norm reliably. 
+
+# 5 Bilevel compliance minimization 
+
+We now demonstrate the proposed framework in the context of compliance minimization, a standard benchmark problem in density-based TO [56, 57, 17]. Although the formulation contains a constraint, feasibility is enforced implicitly through projection operations, keeping the LL optimization effectively unconstrained. The TO problem, which forms the LL, is formu-lated as: 
+
+x⋆ = arg min 
+
+> x∈RM
+
+f = u⊺f ,
+
+s.t. K(ρ) u = f ,
+
+˜ρ = Φ( x) ∈ [0 , 1] N , with 
+
+> N
+
+X
+
+> i=1
+
+vi ˜ρi = V0,
+
+ρ = F(˜ ρ),
+
+(14) where u ∈ RN is the static equilibrium displacement vector obtained via finite element analysis, f is the force vector, and 
+
+K is the global stiffness matrix. The objective f measures the structure’s compliance. The stiffness matrix depends on the element-wise physical density field ρ via the solid isotropic material with penalization (SIMP) interpolation: 
+
+E(ρe) = Emin + ( E0 − Emin ) ρpe , (15) where p ≥ 1 is the SIMP penalty parameter, E0 = 1 .0 is the solid material’s Young’s modulus, and Emin = 10 −6 is the void stiffness. The physical density field ρ is obtained from the optimization variables x through a chain of operations: starting with a para-metric sigmoidal projection Φ followed by a series of filters F.In the standard parameterization , x is itself an element-wise density field with M = N (the number of finite elements). In the 
+
+neural topology optimization parameterization [14, 58], x is the weights and biases of an untrained neural network whose output is the element-wise density field. In both cases, this field (not yet the physical density) serves as the input to the subsequent projection and filtering operations. Such a reparameterization distorts the landscape—often making it non-convex—and sub-stantially increases sensitivity to hyperparameter selection [31], providing a challenging test for the framework. The values entering Φ (from either parameterization) are then mapped to [0 , 1] and the sigmoid is adaptively shifted via bi-section so that the global volume constraint is satisfied at every iteration [14]. This enables the use of unconstrained optimiz-ers such as Adam at the LL. The projected densities ˜ρ are then passed through a filtering stage F, which consists of two op-erations. First, a density filter smoothens the design field to Grid-search minima      
+
+> −7−2115
+> y1= log 10 ηy2 = β
+> (a) With coldstarting
+> 10 0
+> 10 2
+> k=5 , t =2 k=25 , t =2
+> k=100 , t =2 k=300 , t =3
+> (b) With warmstarting
+
+Figure 4: The UL landscape for neural topology optimization with a CNN architecture. (a) Landscape obtained by indepen-dently solving the lower-level problem from the same fixed initialization for each hyperparameter pair (η, β ), corresponding to the landscape observed by BO. (b) Effective landscape en-countered by BOTH under warmstarted optimization, illustrating the path-dependent nature of hypergradient-based tuning; the red asterisk marks the current UL iterate and the trailing line shows the trajectory followed.. Here, k denotes the UL iteration index and t denotes the number of LL optimization steps performed at that iteration. prevent checkerboard patterns and enforce a minimum length scale [59, 60]: 
+
+¯ρe =
+
+P 
+
+> i∈N e
+
+hei ˜ρi
+
+P 
+
+> i∈N e
+
+hei 
+
+,hei = max  0, r min − dist(Ω i, Ωe),
+
+(16) 9where Ne = {i | dist(Ω i, Ωe) ≤ rmin } is the neighborhood of element Ωe, dist( ·, ·) denotes the centre-to-centre distance, and 
+
+rmin is the filter radius. Second, a Heaviside projection sharpens the filtered field ¯ρe to remove intermediate densities [61]: 
+
+ρe = tanh( βη h) + tanh  β(¯ ρe − ηh)
+
+tanh( βη h) + tanh  β(1 − ηh) , (17) where β controls the sharpness of the projection and ηh is the threshold, either determined via bisection to enforce volume conservation across the projection or fixed to 0.5.Following [16], we define the UL objective as a weighted com-bination of compliance and discreteness: 
+
+F (y, x⋆) = c(x⋆)
+
+cref 
+
++ k D(ρ⋆)
+
+dref 
+
+, with 
+
+D(ρ⋆) = 
+
+PNe=1 4 ρ⋆,e (1 − ρ⋆,e ) ve
+
+PNe=1 ve
+
+,
+
+(18) where D ∈ [0 , 1] measures the discreteness of the design ( D = 0 
+
+for a fully discrete design) [62], ve is the volume of element e,and k is a user-chosen weight. The physical density ρ⋆, on which FEA is performed, is obtained from x⋆ through the projection and filtering operations defined earlier.The compliance c(x⋆) is evaluated on the terminal LL design with the penalization expo-nent set to p = 1 ; every other quantity entering the evaluation is taken at its current LL value. A volume violation penalty is not required, since the volume constraint is enforced exactly at every LL iteration through the adaptive projection threshold in Φ. We fix k = 1 and normalize both terms to near-equal magnitude at initialization using cref and dref ; an ablation study on k and β at the UL is given in Appendix C. 
+
+5.1 Results 
+
+We begin by selecting two UL variables: the LL optimizer’s learning rate η and the Heaviside projection sharpness β. This two-dimensional hyperparameter space allows us to visualize the UL landscape. All other hyperparameters such as the SIMP penalty and the filer radius are fixed. We present results for the over-parameterized convolutional neural network architec-ture proposed by [14]; results for the standard element-wise parameterization are provided in Appendix C 7.The UL landscape in Fig. 4a is obtained by sampling y =(log 10 η, β ) on a 20 × 20 grid within the range [−8.0, −1.5] ×
+
+[0 .1, 15] and evaluating F after t = 150 LL Adam steps from a fixed initialization at each grid point. Methods such as BO evaluate each hyperparameter configuration independently (from the same network initialization x(0) ), and therefore optimize over precisely this static landscape. BOTH, by contrast, uses warmstarting, so the landscape it ef-fectively traverses evolves over the course of the optimization and depends on the trajectory taken. To visualize this, we run an actual bilevel optimization and take snapshots at several points along its trajectory. At each snapshot k, we hold the warmstarted 
+
+> 7The landscape for CNN is notably more challenging than the one obtained under the standard parameterization (Fig. 13a).
+
+state x(k)0 fixed and reconstruct the landscape by sampling the same 20 × 20 grid, this time evaluating F after t LL steps (with 
+
+t set by the annealing schedule at that snapshot rather than the fixed t = 150 used for the static landscape). Fig. 4b shows the resulting sequence of landscapes. Unlike the non-convex static landscape in Fig. 4a, these warmstarted landscapes are notice-ably smoother near the trajectory, consistent with the reduced non-convexity quantified in Fig. 12. We compare BOTH against BO, a strong baseline for low-dimensional hyperparameter optimization. We tune four hy-perparameters: the LL learning rate η, the Heaviside sharpness 
+
+β, the SIMP penalty exponent p, and the filter radius rmin . BO proceeds by sampling an initial set of configurations uniformly at random, evaluating each by running TO to convergence (conver-gence criteria given in Appendix C), and computing the UL ob-jective. A Gaussian process surrogate is then fit to the observed configuration–performance pairs, and an acquisition function is optimized to propose the next configuration. Each evalua-tion updates the surrogate, and the procedure repeats until the budget is exhausted. Since the number of LL iterations per BO sample varies with convergence speed, cumulative LL iterations serves as the common basis for comparison (further details in Appendix C). The convergence histories for both methods are shown in Fig. 5a. The objective values F are comparable since we use the same reference values for all runs. Since BO’s initial sampling is stochastic, we repeat it with 4 random seeds and five neural network initializations per seed, giving 24 runs in total. For BOTH, 20 runs are obtained from 5 neural network initializations crossed with 4 values of β(0) ; the UL optimizer is Adam with learning rate 10 −1. Dashed lines show individual runs and thick curves show the median across runs. Unlike BOTH, BO curves do not begin near zero on the x-axis: each BO sample requires a full TO run to convergence (roughly 100 LL iterations) before contributing a single data point, so the first BO observation appears only after this fixed startup cost. BOTH produces designs with lower compliance and discrete-ness penalty, while BO produces a wider spread of final values (Fig. 5b), with a representative design shown in Fig. 5c. Even in this low-dimensional setting where BO is expected to be compet-itive, BOTH converges to a lower UL objective within the same computational budget. The hyperparameter schedules y(k) found by HyperTO are shown in Fig. 5d for a subset of runs, with the median plot-ted in thick lines. The learning rate schedule exhibits an initial increase to accelerate early progress, followed by a gradual de-cay to stabilize convergence. The learned β remains small for most of the optimization, increasing only in the later stages; this allows the optimizer to first explore smoother intermediate density fields before enforcing discreteness near convergence. The evolution of rmin serves as a sanity check: for compliance minimization, the filter radius should be as small as possible, and indeed rmin converges to its lower bound (set to rmin = 2 .0
+
+to prevent checkerboard patterns). Finally, runs from different initializations follow distinct schedules, indicating that BOTH adapts to each run’s specific optimization trajectory rather than converging to a single universal schedule. 10 10 1 10 2 10 3 10 4                
+
+> 2
+> Number of linear solves UL Objective  F
+> (a) Convergence: BO vs. BOTH
+> BOTH BO
+> Compliance Discreteness
+> 265 325
+> Compliance (b) UL objective components BOTH BO
+> 1350 700 0510 15
+> UL iterations
+> y(k)
+> (d) Hyperparameter evolution
+> pβrmin
+> 2345678910
+> 00.75
+> LL iterations t
+> Normalized UL iterations  k
+> (e) Allocation of LL iterations
+> 1350 700 10 −2
+> 10 −1
+> 10 0
+> UL iterations
+> ∇f
+> (f) LL convergence
+> 0.00 0.15 Discreteness
+> 10 −8
+> 10 −3
+> y4 = η
+> (c) Designs
+> BO :F= 0 .77 , c ?= 285 .8,D= 0 .09
+> BOTH :F= 0 .67 , c ?= 287 .6,D= 0 .002
+
+Figure 5: Comparison between Bayesian optimization (BO) and our method (BOTH) for neural topology optimization with a CNN architecture. (a) Convergence histories as a function of cumulative number of linear solves used by each method. Dashed lines show individual runs from different initializations; the bold line shows the median. (b) Decomposition of the final UL objective into its compliance and discreteness components across runs, with medians marked by horizontal lines. (c) Typical topologies obtained for the MBB beam together with their UL objective values, where c⋆ denotes compliance (evaluated at p = 1 ) and D measures discreteness. (d) Evolution of the four tuned hyperparameters: learning rate η, Heaviside sharpness β, SIMP penalty exponent p, and filter radius 
+
+rmin ; η is shown on the right y-axis. (e) Mean number of UL iterations (normalized against the total UL iterations) spent at each LL horizon t, averaged across all runs, with one standard deviation shown as error bars; k denotes the UL iteration index. (f) LL objective value at the final LL iterate f (x(k) 
+
+> t
+
+) as a function of UL iteration k.Fig. 5e shows the fraction of UL iterations spent at each anneal-ing stage t, confirming that the budget is concentrated at low t
+
+values. This supports the argument that even a small number of LL steps produces a sufficiently informative hypergradient estimate. Fig. 5f shows the evolution of the LL objective as a function of UL iterations k, recording the final LL value at each stage (i.e., f (x(k) 
+
+> t
+
+)). The LL objective decreases by approxi-mately an order of magnitude before plateauing, consistent with the LL solve being warmstarted from a near-optimal point at each UL iteration. We extend the previous example by assigning each element its own projection sharpness βe instead of a single global β,yielding a high-dimensional (high-D) UL with 6915 variables. This scale is only tractable because the hypergradient cost is independent of the UL dimension—a regime inaccessible to derivative-free tuning. Fig. 6 contrasts the high-D convergence (green) against the earlier low-D case (black), for two UL Adam learning rates. The high-D case converges comparably to the low-D case, at nearly the same per-iteration cost, demonstrating the framework’s scaling. The learned βe field concentrates high values along the edges, consistent with intuition: sharper pro-jection there counteracts the grayness introduced by the density filter. 
+
+# 6 Constrained LL optimization 
+
+To showcase the use of hypergradients in the presence of LL non-trivial stress constraints, we first consider a canonical two-bar benchmark problem from [10]. The problem consists of two bars connected at a shared node where an axial force is applied, while the left and right end nodes are fixed (see Fig. 7). These loading and boundary conditions induce tensile stress in one bar and 11 10 1 10 2 10 3 10 4
+
+## 0.52Number of linear solves UL Objective  F
+
+high-D (10 −1)high-D (10 −2)low-D (10 −1)low-D (10 −2)
+
+Design : c⋆ = 253 .8, D = 0 .01 
+
+β-distribution Figure 6: Scaling to a high-dimensional UL via per-element pro-jection sharpness. Each element is assigned its own βe, giving 6915 UL hyperparameters (high-D, green), compared against the earlier single-β case (low-D, gray), each shown for two UL Adam learning rates. The high-D and low-D cases converge comparably at similar per-iteration cost. Bottom: a representa-tive final design and the corresponding learned βe field. compressive stress in the other, making the example a simple yet instructive setting for studying stress-constrained optimization. The cross-sectional areas of the two bars ( a = ( a1, a 2)) are the design variables. We seek to minimize the total mass of the structure subject to upper bounds on the magnitude of the stresses. The formulation is given by: 
+
+a⋆ = arg min 
+
+> a∈R2
+
+f (a1, a 2) = 0 .6a1 + 0 .8a2,
+
+such that ¯gi =   ai
+
+> 2
+
+ gi ≤ 0,
+
+0 ≤ ai ≤ 2, i ∈ { 1, 2} ,
+
+(19) where the unscaled stress constraint is gi = |σi| 
+
+> σmax
+
+− 1, and 
+
+σmax = 1 is the allowable stress (all details pertaining to this problem are detailed in Appendix D). This scaling of the con-straints with the design variables ensures that the constraint function is “design-independent”, so that the function is defined over the whole design domain and not just where material exists (from ai > 0 to ai ≥ 0) [63]. This also helps the constraints van-ish when the area is zero, and such constraints are thus known as 
+
+vanishing constraints . However, the optimization problem (19) suffers from singular optima, which are solutions (in this case the global optima) existing in lower dimensional extensions to the feasible design space. Accessing such optima using gradient-based optimizers is extremely difficult unless some form of constraint relaxation is applied. As shown in Fig. 7a, the global minimum can only be accessed through the one-dimensional extension of the feasible domain (shown hashed). Note that each constraint has two branches, one corresponding to the sloped line and another to the coordinate axis itself (a consequence of the vanishing constraint). Relax-ation methods such as ϵ- relaxation [64] or qp -relaxation [65], create a larger access zone by allowing the constraint to be of the form ¯gi ≤ ϵ, where ϵ is a small scalar; the latter is gradually reduced to zero so that optimization converges to the original problem. After relaxation, the global minimum becomes acces-sible and optimizers like MMA [13] may converge to the global optimum. To compute hypergradients, we prefer first-order unconstrained optimizers such as Adam over constrained optimizers like MMA: AD through Adam’s simple update rule is numerically more sta-ble than through MMA’s constrained subproblem solves. We therefore convert the constrained optimization to an uncon-strained one using the quadratic penalty method (QPM) 8:
+
+a⋆ = lim  
+
+> μ→∞
+
+arg min 
+
+> a∈[0 ,2] 2
+
+h
+
+Q(a; μ) = f (a) + μ
+
+2
+
+X
+
+> i
+
+¯gi(a)2i
+
+. (20) where the augmented objective ( Q) adds a penalty ( μ) for con-straint violations to the original objective f . As μ → ∞ , the minimizer of Q recovers a KKT point of the original constrained problem (19) [66]. In practice, QPM is solved iteratively. Start-ing from a small penalty μ0, the augmented objective is approx-imately minimized over the design variables a; the penalty is     
+
+> 8The squared-penalty form ¯g2
+> icorresponds to equality constraints; inequality constraints would use [max(0 ,¯gi)] 2. We adopt the equality form here because both constraints are active at the local and global optima, so they behave as equalities.
+
+12 0 1 212                   
+
+> ag= (1 ,0)
+> al= (0 ,1)
+> a1
+> a2
+> (a) Original design space ¯g1= 0 ¯g2= 0 (b) Quadratic penalty objective ( Q)01212
+> a1
+> a2
+> (c) Relaxed constraints ¯g1, μ = 5 ¯g2, μ = 5 ¯g1, μ = 200 ¯g2, μ = 200 a1a23525
+> μ= 1 .0μ= 5 .0
+> μ= 50 .0μ= 500 .0
+
+Figure 7: Two-bar stress-constrained optimization benchmark problem, borrowed from [10]. (top) Schematic of the structure and boundary conditions for the two dimensional toy problem, with the areas of the bars a = ( a1, a 2) being the design variables. Load is applied axially at the point of contact. (a) The problem’s design space, outlining the two vanishing stress constraints ( ¯g1, ¯g2). Note that the constraint boundaries also include the coordinate axes. The main feasible region (in white) has an one-dimensional extension along the a1 axis (hashed) allowing access to the singular global optimum at (1 , 0) . (b) The augmented objective of the quadratic penalty method, consisting of the mass and the sum of the squares of the constraints for different values of the penalty factor ( μ) is shown. (c) The equivalent relaxed constraints (using the optimal Lagrange multipliers at (1 , 0) ) for two values of μ.then increased and the minimization repeated, continuing until μ
+
+is sufficiently large or the constraints are satisfied to a prescribed tolerance. Small μ keeps Q smooth and lets the optimizer ex-plore broadly while remaining infeasible with respect to the true constraints; as μ grows, the penalty progressively enforces feasi-bility (we keep an upper bound of 10 4 for numerical stability). Fig. 7b shows the augmented objective for several values of μ.We observe that each QPM subproblem, min a Q(a; μ(k)), can be reformulated as a relaxed constrained problem closely anal-ogous to existing ϵ-relaxation methods. Whereas ϵ-relaxation adds and controls an explicit scalar ϵ to open up the feasible region, QPM produces this relaxation implicitly. We relate the two formulations in Appendix D.1 and show that, at the exact subproblem minimizer, the constraint is relaxed by an amount  
+
+> 9
+
+ϵ(k) 
+
+> i
+
+= λ⋆i /μ (k). Fig. 7c shows the relaxed constraint bound-aries at two values of μ, using the global optimum’s multipliers 
+
+λ⋆ = (1 .2, 0.4) (obtained analytically). As μ increases, the re-laxed boundaries contract toward the true constraints, equivalent to taking ϵ → 0 in ϵ-relaxation. 
+
+> 9
+
+Here λ⋆i is the Lagrange multiplier of the i-th constraint in the original constrained problem (19), obtained by solving its Karush-Kuhn-Tucker (KKT) conditions. Because the problem is non-convex with two KKT points (a local and a global minimum), each admits its own multiplier vector, and the relaxation is therefore dependent on the basin toward which QPM converges. 
+
+However, which minimum QPM converges to depends strongly on the hyperparameters. Fig. 8 demonstrates this for the stress-constrained problem. We increase the penalty multiplicatively as μ(k) = μinc μ(k−1) , and consider two growth factors μinc ∈{1.01 , 1.02 } and two Adam learning rates η ∈ { 0.01 , 0.02 }.Starting from a = (1 .2, 1.2) , we run all four combinations, incrementing the penalty after each single LL step. Only one of the four trajectories converges to the global optimum, and which one does depends sensitively on the joint interaction between the penalty growth and the step size. This is exactly the kind of multi-hyperparameter sensitivity that BOTH is designed to resolve. Building on the QPM-ϵ relaxation equivalence and the hyper-parameter sensitivity it inherits, we reformulate the constrained problem (19) as a bilevel optimization problem with two UL hyperparameters (the QPM penalty μ and Adam’s learning rate 
+
+η): 
+
+min  
+
+> y={μ,η }
+
+F (x⋆) = f (x⋆)
+
+f u
+
+> ref
+
++ k X
+
+> i
+
+¯gi(x⋆)2
+
+pu
+
+> ref
+
+such that x⋆ = arg min 
+
+> x
+
+f (x)
+
+f l
+
+> ref
+
++ μ X
+
+> i
+
+¯gi(x)2
+
+pl
+
+> ref
+
+,
+
+(21) where the reference values fref and pref are chosen so that the objective and penalty terms are of unit magnitude at initialization. The same normalization is applied independently at both levels, with the reference values evaluated from the respective level’s 13 10 2 10 3
+
+1.60.80.6Iteration ( k)Mass (a) Objective convergence 10 2 10 3
+
+−0.30Iteration( k)¯g2
+
+(b) Constraint convergence 
+
+al = (0 , 1) 
+
+ag = (1 , 0) 
+
+a1
+
+> a2
+
+(c) Trajectories 
+
+−0.20¯g1            
+
+> η= 0 .01, μinc =1.01 η= 0 .01, μinc =1.02 η= 0 .02, μinc =1.01 η= 0 .02, μinc =1.02 Constraint ¯ g1Constraint ¯ g2
+
+Figure 8: Sensitivity of the quadratic penalty method (QPM) to hyperparameters on the benchmark two-bar stress-constrained optimization problem. The original constrained problem is converted via QPM into an unconstrained formulation and solved by Adam, with the penalty μ incremented following μ(k) = μinc μ(k−1) . Four trajectories are shown, corresponding to two values of μinc 
+
+paired with two learning rates η = {0.01 , 0.02 }. (a) Convergence of the objective: only one trajectory reaches the globally optimum 
+
+f (a⋆) = 0 .6; (b) Evolution of the constraints for each of the runs, with feasible values ¯gi = 0 (One constraint with dashes and other with dots); (c) Trajectories in the design space a, with constraint boundaries shown in black lines. own objective and penalty terms. The LL design variables x
+
+are mapped to bar areas a = h(x) via a parameterization that enforces the box bounds ai ∈ [0 , a max ]. For the standard pa-rameterization used here, hi = amax s(xi), where y = s(x) is the sigmoid function, giving two LL variables for our two-bar problem. The factor k in the UL objective is an initialization-dependent weight, and its role is best understood through a degeneracy in the limiting case. Unlike the compliance example in Section 5.1, the UL and LL objectives here share the same functional form and differ only in the penalty weight ( k at the UL, μ at the LL). If k = μ the two are identical functions of x, so the LL optimum x⋆ is also a stationary point of the UL objective; the hypergradient, which flows entirely through x⋆, then vanishes because ∂F/∂ x⋆ = 0. The separation k̸ = μ is therefore what generates hypergradient signal at all, and the size of the separation sets how strongly the UL drives μ upward. This makes k a target rather than a free parameter. Under QPM, the constraint is satisfied exactly only as μ → ∞ , so the design is always slightly infeasible and the meaningful specification is a tolerance on satisfying the constraints rather than feasibility itself. We therefore set k to an estimate of the penalty multiplier at which the worst-violating element would reach a prescribed tolerance on the stress margin (we set tol = 10 −3) at the end of optimization. The estimate reduces to 
+
+k = |gb| 
+
+> tol
+
+, (22) where ge = σe/σ max − 1 is the raw stress margin and b is the worst-violating element at the initial design variables. The tolerance thus bounds the physical stress margin directly, and the estimate requires only quantities available at initialization, with no unrolling. The general form, its derivation, and the conditions under which it collapses to Eqn. (22) are given in Appendix A.3. The results for the standard parameterization are shown in Fig. 9, where we run the bilevel optimization from several starting points. Both μ and η are reparameterized in log space (e.g., 
+
+μ = 10 y1 ), since they span orders of magnitude, and μ is con-strained to be non-decreasing, in line with standard QPM con-vergence requirements [66]. The black dots in Fig. 9a show the initial LL variables for each run, uniformly spread across the design space. For each run, we tune the LL learning rate and the QPM penalty using our framework. The square surrounding each dot indicates the outcome: green for convergence to the global optimum, gray for entrapment in the local optimum. The broad spread of green squares across the design space empiri-cally confirms the relaxation effect of QPM: without any explicit constraint relaxation, many runs nonetheless reach the global optimum. Three runs are marked A, B, and C in Fig. 9a: B and C converge to the global optimum, while A becomes trapped in the local optimum. The objective and the two constraints (Figs. 9b and 9c) show the constraints being satisfied and the mass settling to 
+
+0.6 (global) or 0.8 (local), confirming convergence to a KKT point of the constrained problem. Because we use QPM, exact feasibility is never reached; the constraints are met only up to a tolerance that tightens as μ increases. Oscillations can appear as the augmented landscape becomes increasingly ill-conditioned at large μ (Fig. 7b). The learned schedules for μ and η (Figs. 9d and 9e) are qual-itatively similar across the three runs but differ in detail—for 14 ag               
+
+> al
+> ABC
+> 0101
+> a1
+> a2
+> (a) Convergence from different initializations 0200 400 0.62UL iterations
+> Mass
+> (b) Objective 0200 400
+> −0.600.2UL iterations ¯g1
+> (c) Constraints 0200 400 1100 UL iterations
+> μ
+> (d) Penalty evolution 0200 400 10 −3
+> 10 −2
+> 10 −1
+> UL iterations
+> η
+> (e) Learning rate evolution 012012
+> ag
+> al
+> ABC
+> a1
+> a2
+> (f) Trajectories (projected)
+> −0.600.2¯g2
+> ¯g1¯g2run A run B run C
+
+Figure 9: Results for the two-dimensional stress problem with standard parameterization. (a) Each dot represents one optimization run from a distinct LL initialization; green indicates convergence to the global optimum, gray indicates convergence to the local minimum. (b, c) Convergence histories of the objective and the two constraints for three representative runs (A, B, C). (d, e) Learned schedules for the LL learning rate η and the QPM penalty μ (both parameterized in log scale) along these three runs. (f) Trajectories projected into the (a1, a 2) space. example, μ stays near its initial value for the first few iterations in all runs but subsequently grows at different rates. Projecting the trajectories into the (a1, a2) space (distinct from the design space, since a sigmoidal transform is applied) clarifies the out-comes (Fig. 9f). Run A overshoots the local minimum early, when the penalty is small and the local basin is shallow; as the penalty grows, that basin deepens and traps A. Runs B and C instead follow penalty schedules that keep the global minimum’s basin accessible long enough for the trajectory to settle there before the penalty becomes large. 
+
+# 7 Bilevel optimization applied to the benchmark L-shaped bracket problem 
+
+The L-shaped bracket problem (Fig. 23) is a widely used bench-mark for continuum stress TO and remains challenging because of its pronounced sensitivity to the choice of hyperparame-ters [67]. The L-shaped design domain has its top-most edge fixed and a downward force applied at the right-most edge. This choice of boundary conditions results in a stress concentration at the re-entrant corner. Therefore, the expected topology is one that would smoothen that region. The problem is formulated as mass minimization subject to a stress constraint on each element: 
+
+ρ⋆ = arg min 
+
+> ρ∈RN
+
+f (ρ) = 
+
+PNi ρivi
+
+PNi vi
+
+,
+
+such that K(ρ)u = f
+
+¯gi ≤ 0,
+
+0 ≤ ρi ≤ 1, i ∈ { 0, . . . , N } ,
+
+(23) where N is the number of designable elements, ρ the physical densities, ¯gi the vanishing constraints, and vi element volumes. As in the compliance problem (Eqn. 14), we use the SIMP law for stiffness interpolation (with p = 3 ) and the same density and projection filters. The linear elastic equilibrium equation 
+
+Ku = f is solved with a direct solver; further FEA details are in Appendix E. 15 60% 60% Figure 10: Boundary conditions for the L-shaped bracket prob-lem. The top edge is fully fixed, and a downward force is dis-tributed over a non-designable solid region (orange square). A padding layer (hatched) of non-designable void elements sur-rounds the domain and is included in the FEA, so that internal and external boundaries are treated consistently [67]. The des-ignable elements lie within the L-shaped domain. Conventionally, the large number of local stress constraints is aggregated into a single constraint via a p-norm or Kreisselmeier– Steinhauser (KS) function, combined with a relaxation scheme 10 ,and solved with MMA using adjoint sensitivities. As in the two-bar problem (Section 6), we instead treat each constraint locally—without aggregation—using QPM with Adam as the unconstrained optimizer [12, 11]. Relative to the two-bar problem, the L-shape introduces two difficulties. First, the number of constraints is large and grows with mesh resolution, rather than being fixed at two. Second, the stiffness and the stress measure are treated inconsistently: stiffness follows the SIMP interpolation, while the von Mises stress σi at each element centroid is computed assuming solid material ( E0 = 1 ). We define the constraint as gi = σi/σ max −1
+
+with allowable stress σmax = 0 .5. To address the latter, we adopt the density-weighted constraint form of [12], ¯gi = ρpi g2 
+
+> i
+
+, at the LL, where p is the SIMP penalty factor. The standard vanishing form caused QPM to ignore the re-entrant-corner constraints entirely, yielding a design without the expected rounding; the difficulty is compounded by the sigmoid projection, which makes it hard to drive densities fully to zero, so near-void elements still contribute small nonzero constraint terms. At the UL, we adopt the standard vanishing constraint. In addi-tion to the penalty μ and learning rate η, we tune the projection sharpness β and the density filter radius rmin . For these latter 
+
+> 10 [10] show that modifying these functions can eliminate the need for relaxation.
+
+two hyperparameters, the UL objective is evaluated using the same values employed at the LL, consistent with the compliance problem. All other settings match the previous experiments; the LL is initialized with all element densities close to 0.9, following standard practice [67]. The bilevel formulation is: 
+
+min  
+
+> y={μ,η,β,r min }
+
+F (x⋆) = f (x⋆)
+
+f u
+
+> ref
+
++ kN
+
+X
+
+> i
+
+(ρigi(x⋆)) 2
+
+pu
+
+> ref
+
+s.t. x⋆ = arg min 
+
+> x
+
+f (x)
+
+f l
+
+> ref
+
++ μN
+
+X
+
+> i
+
+ ρpi g2 
+
+> i
+
+(x)2
+
+pl
+
+> ref
+
+.
+
+(24) where the reference values fref and pref are set independently at each level, so that at initialization, the two terms of that level’s objective are equal in magnitude, following the same approach as for the two-bar problem. Note that the modified constraint appears only at the LL. The factor k is set by the same strategy as in the two-bar problem, though the resulting formula differs (Appendix A.3) because the two levels no longer share the same loss form. The results of the bilevel optimization of the L-bracket are shown in Fig. 11. Fig. 11a shows the evolution of the two components of the UL objective, the mass and the penalty term. Both decrease as the optimization proceeds, and neither has converged at the point at which the run was stopped by the allotted budget. The design at that stage was correspondingly not fully black-and-white, so we project it at a higher β = 64 ; the result, shown in Fig. 11b, exhibits a rounded re-entrant corner and no structural disconnections. For this nearly binary design, the ratio of von Mises stress to the allowable stress is shown in Fig. 11c for elements with ρi > 0.5.The stresses lie close to the allowable value across the structure, although the maximum remains above the limit and the design is therefore still infeasible—an outcome expected of the QPM, under which the constraint is approached only as the penalty factor grows without bound. The hyperparameter trajectories in Fig. 11d are consistent with this: the penalty factor rises from 
+
+1.0 to approximately 500 , a value at which a residual violation is still expected, while the learning rate increases throughout and stagnates near its upper bound of 0.1, having started two orders of magnitude below it. The projection parameter likewise increases (Fig. 11e), promoting binary designs particularly in the later stages of the optimization. The evolution of the filter radius differs notably from the compliance problem: rather than de-creasing monotonically, it rises early in the optimization before subsequently falling. Comparing the initial and final distribu-tions of the UL constraint over all elements (Fig. 11f) shows that the magnitude of the violations has decreased and that many ele-ments have moved towards a fully stressed state, as the equality form of the constraint intends. 
+
+# 8 Conclusion 
+
+We have introduced a bilevel framework for optimizing hyperpa-rameters and design parameters within a single optimization run, deriving hypergradients by differentiating through TO. A central empirical finding of this work is that the resulting gradients are 16 10 1 10 2 10 3 10 4          
+
+> 0.80.4Total linear solves Mass (a) UL loss components (b) Design (c) Stresses 0400 800 10 −3
+> 10 −2
+> 10 −1
+> UL iterations
+> η
+> (d) Learning rate and penalty evolution 0400 800 03UL iterations
+> β
+> (e) Projection parameter and filter radius evolution
+> −0.75 00.75 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> ρ g
+> Elements (f) UL constraint ρ g histogram initial final
+> 10 −2
+> 10 −1
+> Penalty term 10 0
+> 10 1
+> 10 2
+> μ
+> 4.56rmin
+
+Figure 11: Results for tuning hyperparameters in the design of an L-shaped beam under stress constraints. (a) Convergence of the two components of the upper-level loss, the objective (mass) and the penalty term (sum of squared constraints), against the number of linear solves consumed by the bilevel optimization. (b) Final design, projected with β = 64 . (c) Ratio of von Mises stress σ to the stress limit σmax on elements with density above 0.5, evaluated assuming solid material. (d) Evolution of the lower-level learning rate and of the penalty factor μ of the quadratic penalty method. (e) Evolution of the projection parameter β and the radius of the density filter. (f) Distribution of the upper-level constraint values at the start and end of the bilevel optimization. usable after unrolling only one or two LL steps. Hyperparameter landscapes in TO are highly non-convex, and a hypergradient taken through such a short trajectory has no guarantee of being informative. We find nonetheless that the warmstarting strat-egy, together with annealing the number of inner steps when the UL stagnates, smooths the unrolled trajectory sufficiently for the hypergradient to carry reliable signal. We demonstrated the methodology on both stress-constrained TO and on compliance minimization problems, the latter with a neural parameterization of the density field. Because the cost of an unrolled hypergradi-ent is dominated by the linear solves involved, and the number of those solves is set by the unroll length rather than by the number of hyperparameters, the framework scales naturally to high-dimensional settings such as per-element fields comprising thousands of variables. Even on a problem with four hyperpa-rameters, where Bayesian optimization is at its most competitive, it matches or slightly exceeds the quality of the designs obtained under similar compute budgets. The framework is nevertheless nascent and faces several limi-tations. It is restricted to continuous hyperparameters; discrete algorithmic choices still require continuous relaxations or non-gradient methods. It is also invasive, since differentiating through the optimization trajectory requires an AD-friendly implemen-tation of the entire nested procedure. The search is greedy and explores the region near its starting point, so the initial hyper-parameter values remain a design decision in their own right, alongside the two new hyperparameters at the UL i.e., choosing the factor k and UL optimizer’s learning rate. A further difficulty is that the UL can satisfy its objective by loosening the problem rather than by improving the design: were the allowable stress 
+
+σmax exposed as an unrestricted hyperparameter, for instance, the UL would simply raise it, reducing the penalty without pro-ducing a better structure. Admissible hyperparameter channels must therefore be restricted by construction, and these restric-tions are presently designed by hand for each formulation. More generally, the framework does not eliminate user judgment but relocates it from the choice of individual hyperparameter values 17 to the definition of the bilevel formulation, the normalization of the two objectives, and the initialization heuristics that precede the run. Several directions follow. To make the framework less invasive and more readily transferable across problems, a hypergradient estimate based on the implicit function theorem would be prefer-able. Such estimates capture only those hyperparameters that move the LL optimum. Recovering signal for trajectory hyper-parameters therefore requires modifying the bilevel formulation itself, ensuring these quantities enter the stationarity condition rather than acting only on the path taken; the proximal formu-lation of implicit MAML [30] is one instance of this strategy. Surrogate models offer another route to reducing cost, and their own training settings could in turn be exposed as hyperparame-ters. The treatment of constraints at the LL also merits revisiting: because the quadratic penalty aggregates over elements, the LL can tolerate a few severe violators in exchange for reducing the penalty across the bulk of the domain, an imbalance that the equality form of the constraint does not discourage. Replacing the LL optimizer with MMA would enforce the constraints di-rectly rather than through a penalty, and would expose its own asymptote parameters as hyperparameters in turn. The set of admissible channels is likewise far from exhausted: per-element filter radii, per-parameter learning rates, and preconditioners for the linear solves are all natural candidates. In principle any continuous setting in the nested procedure—in the topology optimization, in the finite element analysis, or in the involved solvers—is admissible, provided the operations concerned are smooth enough for the hypergradient to carry signal. Extend-ing the framework to discrete choices would widen this scope further, bringing neural architecture itself within reach along-side the continuous parameterization hyperparameters already handled. The broader implication is that the algorithmic ingredients of TO need not remain fixed, hand-crafted choices. Penalization factors, projection parameters, aggregation parameters, relax-ation parameters, move limits, and continuation schedules are typically selected through accumulated experience and problem-specific trial and error. Treating these quantities as differentiable variables opens a path toward topology optimization procedures whose algorithmic policies are optimized for the problem class at hand. It also removes a standing reason to keep hyperparameter spaces small. Formulations that would previously have been impractical to tune—because they expose spatially varying or per-parameter settings—become accessible once those settings can be optimized to the problem at hand rather than chosen apriori. 
+
+# Acknowledgments 
+
+All authors sincerely thank Prof. Fred van Keulen, Prof. Mathijs Langelaar, and the whole Computational Design and Mechanics group from the Mechanical Engineering faculty at TU Delft for the fruitful discussions and valuable feedback provided. S.M.S. appreciates the fruitful discussions regarding bilevel optimiza-tion with Prof. Ankur Sinha (Indian Institute of Management Ahmadabad). 
+
+# A Implementation details of BOTH 
+
+The implementation details corresponding to the components of Algorithm 1 are described below. The entire framework, in-cluding the topology optimization routines, is implemented in JAX [68], which provides automatic differentiation infrastruc-ture for computing the unrolled hypergradient through the LL trajectory. 
+
+A.1 Computational budget allocation 
+
+The user specifies a total computational budget Bmax in cumula-tive LL iterations. This budget is distributed across the annealing stages t = 1 , 2, . . . , t max according to an exponentially decaying schedule with decay factor 0.1, biasing allocation toward early stages where each UL update requires fewer LL evaluations. Two hard reserves are imposed regardless of convergence behavior: 
+
+20% of Bmax is reserved for t = 1 and 10% for t = tmax . These floors ensure sufficient exploration in the cheap early regime (t = 1 ) and adequate optimality enforcement in the final regime (t = tmax ). Within each stage, convergence checks (Appendix A.2) are dis-abled during the first 10% of that stage’s allocated budget. This 
+
+patience window prevents premature stage transitions caused by transient behavior immediately following a change in t.
+
+A.2 Convergence and annealing triggers 
+
+A transition from stage t to stage t+1 is triggered when optimiza-tion at the current stage has stagnated. Stagnation is detected through two quantities: the relative change in the UL objective 
+
+F and the relative change in the UL variables y, defined as 
+
+∆(k) 
+
+> F
+
+= |F (k) − F (k−1) ||F (k−1) | , ∆(k) 
+
+> y
+
+= ∥y(k) − y(k−1) ∥∥y(k−1) ∥ . (25) Rather than using instantaneous values, , both quantities are tracked via their exponentially weighted moving averages (EMA), 
+
+s(k) = 0 .9 s(k−1) + 0 .1 ∆ (k), s(0) = ∆ (0) , (26) where ∆(k) is either ∆(k) 
+
+> F
+
+or ∆(k) 
+
+> y
+
+. The smoothing factor 0.1
+
+corresponds to an effective window of approximately ten UL iterations. A plateau transition is triggered when both EMA-smoothed quantities fall below 10 −3.In addition, oscillation is monitored via the ratio of the EMA of the signed loss change to the EMA of the absolute loss change. Formally, the oscillation ratio at iteration k is 
+
+r(k) = EMA (F (k) − F (k−1) )
+
+EMA (|F (k) − F (k−1) |) , (27) where both EMAs use a smoothing factor of 0.1, consistent with the plateau check above. A ratio r(k) < 0.5 indicates that signed and absolute changes are of comparable magnitude, i.e., progress is made in fewer than half of recent iterations. If this condition persists for 30 consecutive UL iterations, the stage is incremented regardless of whether the plateau criterion is 18 met. EMAs are carried across stage transitions, except for the oscillation tracking EMA, which is reset at each transition. A forced transition to t = tmax is triggered when the remaining budget Bmax − B equals the reserve allocated to t = tmax ,ensuring that the final stage receives its full allotment. 
+
+A.3 Estimating UL factor 
+
+We derive the general form of Eqn. (22), state the conditions under which it collapses to the expression used in the main text, and records the assumptions that the estimate rests on. This is applicable for the two stress constrained examples that we consider where, both levels minimize an objective of the form 
+
+mmref 
+
++ w op  h2
+
+pref 
+
+, (28) with penalty weight w = μ at the lower level and w = k at the upper, and with level-specific normalization scales (ml
+
+> ref
+
+, p l
+
+> ref
+
+)
+
+and (mu
+
+> ref
+
+, p u
+
+> ref
+
+). Here m is the mass, op is the aggregation used by the constraint form, and 
+
+he = ρ pe g qe , ge = σe
+
+σmax 
+
+− 1, (29) is the penalized quantity, with ge the raw stress margin at element 
+
+e and (p, q ) fixed by the constraint form. The two-bar problem uses p = q = 1 and the L-bracket problem sets p = 3 , q = 2 .The derivation proceeds in three steps: extracting an effective multiplier from the lower level, converting a tolerance on g into a target multiplier, and converting that LL weight into an UL one. 
+
+Step 1: effective multiplier. Comparing the stationarity con-dition of the loss the LL actually minimizes (gradient of the augmented objective is zero at the minimizer), 
+
+∇mml
+
+> ref
+
++ 2μpl
+
+> ref
+
+X
+
+> e
+
+he∇he = 0, (30) against the KKT condition of the unnormalized constrained prob-lem, ∇m + P 
+
+> e
+
+λe∇he = 0, gives 
+
+λe = 2 μe
+
+ml
+
+> ref
+
+pl
+
+> ref
+
+he. (31) This identity is exact with respect to the objective the LL is optimizing, since the normalization scales are part of tne that objective (fixed at initialization). Two consequences follow. First, the residual violation at an LL stationary point is he =(pl
+
+> ref
+
+/2ml
+
+> ref
+
+) λe/μ e, which vanishes only as μ → ∞ : under a quadratic penalty the constraint is approached but never met, which is what makes a tolerance the appropriate specification. Second, the LL scales appear inside λ and therefore never need to be retrieved separately. 
+
+Step 2: tolerance conversion. Let b = arg max e |λe| =arg max e |μehe| denote the binding element; by Eqn. (31) the two definitions coincide, and the form using μehe accommodates a per-element multiplier field without special handling (we use 
+
+μe = μ for all elements). Requiring the margin at the element b
+
+to satisfy |gb| ≤ tol and converting through the same constraint form at the same element, htarget = ρ pb tol q , yields 
+
+μtarget = μb
+
+|hb|
+
+htarget 
+
+= μb
+
+ρ pb |gb| q
+
+ρ pb tol q = μb
+
+ |gb|
+
+> tol
+
+q
+
+. (32) The density factor ρ pb cancels identically between the current and target values. This is the reason the tolerance is specified on 
+
+g rather than on h: tol then bounds the physical stress margin, and the constraint form enters only through the exponent q.
+
+Step 3: lower- to upper-level conversion. Eqn. (32) is a target specification for the LL weight, whereas k is associated to the UL. The two are linked by the UL stationarity condition M +
+
+kP = 0 , where M = ∇m · J/m u
+
+> ref
+
+, P = ∇p · J/p u
+
+> ref
+
+, and J =dxt/dμ is the sensitivity of the LL terminal state to the multiplier. Substituting LL stationarity and writing each penalty-gradient projection as ∇p · J = ∥∇ p∥ ∥ J∥ cos θ gives k = μtarget C with 
+
+C = ml 
+
+> ref
+
+pu 
+
+> ref
+
+∥∇ pl∥
+
+mu 
+
+> ref
+
+pl 
+
+> ref
+
+∥∇ pu∥
+
+| {z }
+
+> Cknown
+
+· cos θl
+
+cos θu
+
+| {z } 
+
+> Calign
+
+. (33) Collecting Eqns. (32) and (33), 
+
+k = μb
+
+ |gb|
+
+> tol
+
+q
+
+Cknown Calign . (34) The factor Cknown requires only the four normalization scales and the two penalty-gradient norms, all available at initialization without unrolling. The factor Calign is taken as unity. For the stress-constrained problems in this work, q = 1 , both levels are conditioned on the same mass term so Cknown = 1 , both penalize the same function so Calign = 1 , and the multiplier is initialized uniformly at μ0 = 1 . Eqn. (34) then reduces to k = |gb|/tol ,as used in Eqn. (22). 
+
+A.4 Initial LL learning rate selection 
+
+The learning rate at which the LL is stable depends strongly on the parameterization. The stable range of the CNN parameteri-zation, for instance, differs from that of the standard parameteri-zation often by orders of magnitude, and additionally depends on the network width, depth and initialization scheme. A fixed default therefore does not transfer between the parameterizations used in this work, and we determine η0 per problem with the following heuristic. 
+
+Acceptance criteria Let f denote the LL objective and let 
+
+pk = xk+1 − xk be the update actually applied by the LL optimizer at step k. A candidate learning rate η must satisfy two tests, applied at different scopes. The first is a per-step sufficient-decrease test. At every step 
+
+k = 0 , . . . , t start − 1 we require 
+
+f (xk+1 ) − f (xk) ≤ 12 ∇f (xk)⊤pk, (35) i.e. the realized decrease must be at least half the decrease predicted by the first-order model along the step actually taken. The trial is terminated at the first step that violates Eqn. (35). 19 The second test is applied once, to the trial as a whole, on the cumulative displacement: 
+
+f (xtstart ) − f (x0)
+
+f (x0) ≤ εrel . (36) with εrel = 0 .1% . A candidate is accepted if it completes all tstart 
+
+steps under Eqn. (35) and then satisfies Eqn. (36). The two are complementary—Eqn. (35) rejects learning rates that overshoot within a step, Eqn. (36) rejects those that make well-behaved steps but travel too far overall—and together they select the largest learning rate that is both productive and conservative. 
+
+Search. We place N candidates on a geometric grid spanning 
+
+[10 −8, 10 0] and scan upward from the lower bound, evaluating Eqns. (35)–(36) at each candidate and stopping at the first failure. Scanning in this direction and stopping at the first failure ensures that the accepted value lies in the stable region contiguous with the smallest learning rates rather than in an isolated pocket higher up the grid. The last passing candidate η− and the first failing candidate η+ bracket the stability boundary. We then bisect in 
+
+log η, maintaining the invariant that η− passes and η+ fails, for 
+
+8 steps. The resulting boundary estimate η⋆ is the final passing endpoint, and we initialize 
+
+η0 = 0 .5 η⋆, (37) backing off by a factor of two so that the bilevel optimization does not begin at the edge of the stable region. 
+
+Cost. The scan uses at most 20 trials and the bisection at most 
+
+8, so the probe requires at most 28 trials of tstart LL steps each. Every step requires one forward evaluation of the LL objective and one LL gradient evaluation; no hypergradient, no unrolling and no UL evaluation is involved, and the optimizer used in the probe is exactly the one used subsequently in the bilevel optimization (but with its state reset). 
+
+A.5 Pseudo-first-order approximation 
+
+The pseudo-first-order approximation of the hypergradient re-duces to a single line in JAX: when computing the LL gradient,  
+
+> jax.lax.stop_gradient
+
+is applied to the design variables before the gradient call, jax.value_and_grad(f_LL)(jax.lax. stop_gradient(x), y) This prevents JAX from differentiating through the dependence of x on y across LL iterations, set-ting Aj = I in the reverse-mode recursion and eliminating the Hessian term from the hypergradient computation. 
+
+# B Analytical SMD problems 
+
+For the results presented in Fig. 2 and Fig. 3, the LL di-mensionality is set to two. The analytical LL optimum is 
+
+x⋆ = [0 , arctan( y2)] . The LL optimizer is Adam with learn-ing rate 10 −2 and gradient clipping threshold gc = 1 .0; the UL optimizer is Adam with learning rate 10 −1, also with clipped gradients ( gc = 1 .0). The histogram in Fig. 3b is constructed as follows. For each bilevel optimization run and each annealing stage t, the number of UL iterations k performed at that stage is accumulated across all runs. The resulting counts are then normalized by the total number of UL iterations across all runs and stages, so that the histogram reflects the fraction of the total optimization budget spent at each value of t.
+
+B.1 Warmstarting and non-convexity at the lower-level 
+
+To examine why warmstarting yields smoother bilevel optimiza-tion than coldstarting, we measure the non-convexity of the LL landscape along the trajectory traversed by the optimizer under each initialization scheme. We construct a modified bilevel test problem with a 2D convex UL objective and a 2D multimodal LL whose basin centers shift with the UL variables: 
+
+F (y, x⋆) = y21 + x21⋆ + y22 +  y22 − tan x2⋆
+
+2 ,f (y, x) = y21 + 1 + ( x1 − y1)2 − cos 2 π(x1 − y1)+  y22 − tan x2
+
+2 ,
+
+(38) where y = ( y1, y 2) and x = ( x1, x 2) are the UL and LL vari-ables respectively. The Rastrigin-style term makes the LL multi-modal, with basin centers tracking y1 so that the basin structure is genuinely UL-dependent; the global LL minimum lies at 
+
+x⋆ = ( y1, arctan  y22
+
+). The resulting UL objective is convex in 
+
+y, similar to SMD-1 but the LL landscape, shown in Fig. 12a, exhibits clearly separated local minima. To quantify the non-convexity of the LL regions traversed at each UL iteration k, we use a midpoint-defect criterion [69]. For any two LL points a, b and UL point y(k),
+
+∆( a, b; y(k)) = f
+
+
+
+y(k), a+b
+
+> 2
+
+
+
+− 12
+
+ f (y(k), a) + f (y(k), b),
+
+(39) with ∆ > 0 indicating a non-convex barrier between a and b.The non-convexity ratio at iteration k is the fraction of trajectory pairs for which this defect is positive: 
+
+NCR( k) = 1
+
+|P k|
+
+X 
+
+> (a,b)∈ P k
+
+1
+
+h
+
+∆( a, b; y(k)) > 0
+
+i
+
+, (40) where Pk is the set of unordered pairs of distinct points along the LL trajectory at iteration k, subsampled to at most 1000 
+
+pairs when the trajectory length exceeds this limit. A value near zero indicates the trajectory remains within a locally convex region; values near one indicate frequent crossing of non-convex barriers. 
+
+Experimental setup. We run paired coldstart and warmstart optimizations from 75 initializations sampled uniformly at ran-dom over both the UL and LL variable ranges. Both levels use Adam with gradient clipping ( gc = 1 .0): the LL optimizer uses learning rate 10 −2 and the UL optimizer uses learning rate 10 −2.The pseudo-first-order approximation and gradient clipping are applied identically in both regimes. No annealing is performed; each run uses a fixed LL horizon t = 40 and performs 50 UL iterations. 11 The NCR is computed from the LL trajectory at    
+
+> 11 Results for t= 20 follow the same trend and are omitted for brevity.
+
+20 −5 10       
+
+> −11
+> x1
+> x2
+> (a) LL landscape at y= (1 .7,0.7) 040 01UL iterations Non-convexity ratio (b) Evolution of non-convexity ratio 040 00.1UL iterations Distance (c) Evolution of mean pair-wise distance Warmstart Coldstart
+
+Figure 12: Non-convexity exposure of the LL trajectory in the modified bilevel problem of Eqn. (38). Several bilevel optimizations are run from randomly sampled UL–LL initializations with a fixed LL horizon t = 40 , differing only in the LL initialization scheme (coldstart or warmstart). At each UL iteration k, pairs of points are sampled from the LL trajectory and the non-convexity ratio (Eqn. (40)) is computed; results are aggregated across all runs. (a) An example LL landscape showing multiple local minima. (b) Non-convexity ratio versus UL iteration k for coldstart and warmstart; shaded regions show one standard deviation across runs. (c) Mean pairwise distance within the LL trajectory at each UL iteration. each UL iteration, with pairs subsampled to at most 1000 per trajectory. Fig. 12b shows that warmstarting consistently produces lower NCR than coldstarting across all UL iterations and both values of 
+
+t, confirming that warmstarted trajectories remain within locally convex neighborhoods of the LL optimum. Fig. 12c shows that warmstarted trajectories are also substantially shorter in mean pairwise distance, reflecting that the LL solve is initialized near the previous optimum and therefore traverses only a small neighborhood. Combined with the LL residual results in the main text (Fig. 3d), these results establish that warmstarting’s contribution to UL smoothness operates through LL convergence: by keeping the LL trajectory close to the optimum, warmstarting confines it to a locally convex region and yields well-behaved hypergradients. 
+
+# C Compliance minimization: experimental details 
+
+We use the standard MBB beam boundary conditions [17] with a unit load applied at the top-left node. The mesh resolution is 
+
+Nx × Ny = 144 × 48 , chosen to be divisible by eight for com-patibility with the CNN architecture of [14]. The target volume fraction is 30% , with material properties E = 1 , Emin = 10 −6,and ν = 0 .3. We use bilinear quadrilateral (Q4) elements under plane stress and solve the equilibrium equations with a direct solver. For the 2D landscape visualization, rmin = 2 .0 and 
+
+p = 3 .0 are held fixed. For the four-hyperparameter tuning experiment, bounds are given in Tab. 1 and the learning rate is parameterized in log space. The initial LL learning rate is set to 
+
+η(0) ≈ 1 × 10 −8 as selected by the probe procedure described in Appendix A.4. To normalize the UL loss, reference values were calculated based on a random network initialization and kept fixed across all runs. Consequently, the UL objective is indepen-dent of the run settings, enabling direct comparisons between BO and BOTH. All other BOTH settings follow Appendix A. Table 1: Bounds on UL variables for hyperparameter tuning experiment. UL variable ymin ymax 
+
+Learning rate η 10 −8 10 −1.5
+
+Heaviside projection β 0.05 15 .0
+
+Filter radius rmin 1.5 10 .0
+
+SIMP penalty p 1.0 10 .0
+
+C.1 Network architecture 
+
+We use the CNN architecture from [14], which is the decoder of a U-Net. The network receives a trainable latent vector of size 
+
+128 as input, passed through a fully connected layer with tanh 
+
+activation to produce a tensor of shape (Nx/8, N y /8, 32) . This tensor is then processed through five successive hidden layers: each layer applies bilinear interpolation to double the spatial resolution, followed by layer normalization (zero mean, unit variance), a convolution, addition of a per-pixel trainable bias, and a tanh activation. This is repeated until the output matches the target mesh resolution (Nx, N y ). We refer the reader to [14] and the associated code for full architectural details. 21 Grid-search minima      
+
+> −7−2115
+> y1= log 10 ηy2 = β
+> (a) With coldstarting 00.10.20.3
+> k=5 , t =2 k=25 , t =2
+> k=100 , t =2 k=300 , t =4
+> (b) With warmstarting
+
+Figure 13: The UL landscape for standard topology optimization. (a) Landscape obtained by independently solving the lower-level problem from the same fixed initialization for each hyperpa-rameter pair (η, β ), corresponding to the landscape observed by BO. (b) Effective landscape encountered by BOTH under warmstarted optimization; the red asterisk marks the current UL iterate and the trailing line shows the trajectory followed. Here, 
+
+k denotes the UL iteration index and t denotes the number of LL optimization steps performed at that iteration. 
+
+C.2 Additional results and ablation study 
+
+Fig. 13 shows the result of applying BOTH to the standard density parameterization, i.e., without a neural network. To use Adam, the sigmoidal projection is applied at each LL iteration to enforce the volume constraint. For this parameterization, the initial density field is fixed at the uniform value (x(0) 0 )e =
+
+V0/V = 0 .3, as per standard practice. We tune the learning rate 
+
+η and Heaviside sharpness β, holding the SIMP penalty exponent and filter radius fixed at p = 3 .0 and rmin = 2 .0 respectively. The initial LL learning rate is determined by the probe procedure and is approximately η(0) ≈ 10 −2.5. The coldstart UL landscape is considerably smoother than in the neural reparameterization case. Additionally, we report the sensitivity of BOTH to four user choices: the weighting coefficient k in Eqn. (18), the Heaviside sharpness β used to evaluate F , the LL initialization scheme, and the initial LL learning rate. The configuration used in the main text (Fig. 5) serves as the base: k = 1 , β = βLL at the UL, and warmstarting. Each ablation changes one component at a time. Results are shown in Fig. 14. Fig. 14a shows the effect of varying k. Increasing k amplifies the weight of the discreteness term relative to compliance; since both terms are normalized at initialization, larger k causes the discreteness objective to dominate, producing black-and-white but structurally disconnected designs for a few of the runs. Fig. 14b shows the effect of the β value used in the UL objective. To ensure a fair comparison, all final designs are projected at 
+
+β = 64 before evaluation. BOTH is more robust to this choice; the worst results occur at β = 20 , likely due to the reduced hypergradient signal and increased nonlinearity at high projec-tion sharpness. Notably, using the same β as the LL (which introduces a direct hypergradient term at the UL) yields the best results, suggesting that the direct term provides a useful additional gradient signal. Fig. 14c confirms the importance of warmstarting: all cold-started runs perform substantially worse than their warmstarted counterparts. Fig. 14d shows that BOTH is robust to the choice of initial learning rate across the range tested. 
+
+C.3 Bayesian optimization baseline 
+
+We compare BOTH against BO as a strong baseline for low-dimensional hyperparameter optimization. BO is implemented using the Optuna package [70] with a Gaussian process (GP) surrogate, a Matérn kernel, and expected improvement as the acquisition function (with default kernel hyperparameters as set by Optuna). Each BO run uses 5 startup trials sampled uniformly from the hyperparameter bounds before GP-guided acquisition begins; we tested 5, 10 , and 15 startup trials and found 5 to give the strongest final performance under a matched computational budget. For the neural reparameterization (CNN) case, we run 8 indepen-dent BO trials per network initialization (three initializations), giving 24 BO runs in total; trial independence is enforced by using distinct random seeds for the GP. For the standard density parameterization case (tuning only two hyperparameters), run-to-run variability is introduced by sweeping the SIMP penalty 
+
+p over {2.5, 3.0, 4.0} paired with the same 8 random GP seeds used in the CNN case, yielding 24 runs in total. The two methods are compared on the basis of the number of linear solves used. Each BOTH UL update requires 4t + 2 
+
+linear solves, whereas each BO sample requires 2t + 1 solves: 
+
+2t to run TO for t LL iterations plus one additional solve to evaluate the UL objective. Unlike BOTH, each BO sample 22 k = 1 k = 10 k = 100 10 2         
+
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> Compliance (a) Effect of UL factor
+> β= 10 β= 20 β=βLL
+> 300 450 Compliance (b) Effect of β
+> 0600 12UL iterations UL Objective  F
+> (c) Effect of warmstarting Warmstarted Coldstarted 0600 10 0
+> 10 1
+> 10 2
+> UL iterations UL Objective  F
+> (d) Effect of initial LL learning rate 10 −7
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+
+Figure 14: Ablation study for compliance minimization with neural reparameterization, varying one component of the base configura-tion at a time across 6 BOTH runs; run-to-run variation arises solely from differences in network or hyperparameter initialization. (a) Effect of the weighting coefficient k in the UL objective, which controls the relative contribution of compliance and discreteness. (b) Effect of the Heaviside sharpness β used in the UL objective; β = βLL indicates that the LL value of β is reused at the UL, introducing a direct hypergradient term. (c) Effect of the initialization scheme: warmstarting versus coldstarting. (d) Effect of the initial LL learning rate η(0) , normally selected by the probe procedure but set manually here. runs TO to convergence before contributing a single data point. Convergence within each BO sample is declared when the LL objective does not improve by more than 0.1% over the last 5
+
+iterations, with a maximum of t = 150 LL iterations per sample; only the iterations actually used count toward the budget. The same UL objective F and hyperparameter bounds (Tab. 1) are used for both methods. 
+
+# D Two-dimensional stress example 
+
+D.1 Quadratic Penalty Method and Epsilon Relaxation 
+
+This residual is the tightest relaxation achievable at a given μ(k);approximate (finite-t) minimization yields larger violations. A constrained optimization problem of the form: 
+
+min  
+
+> x
+
+f (x) s.t. g(x) = 0 (41) can be addressed using the quadratic penalty method (QPM), which solves a sequence of unconstrained subproblems with augmented objective: 
+
+min  
+
+> x
+
+Qk(x) = f (x) + μk
+
+2 g(x)2, (42) where μk > 0 is an increasing penalty parameter. Let x⋆ denote the minimizer of Qk. The first-order optimality condition is 
+
+∇xQk(x⋆) = ∇f (x⋆) + μkg(x⋆)∇g(x⋆) = 0 . (43) Now consider the ϵ-relaxed version of the original problem, where the equality constraint is perturbed to g(x) = ϵ. The Lagrangian is L(x, y ) = f (x) + y g(x) − ϵ, where y is the La-grange multiplier. The KKT conditions for the relaxed problem at its optimal point x⋆ are: 
+
+∇xL(x⋆, y ) = ∇f (x⋆) + y∇g(x⋆) = 0 , (44) 
+
+g(x⋆) = ϵ. (45) Comparing (43) and (44), the two stationarity conditions are structurally identical provided we identify 
+
+y = μk g(x⋆). (46) Substituting the relaxed constraint (45) then gives y = μkϵ.Thus, the minimizer of the k-th QPM subproblem is equivalently the solution to the ϵ-relaxed constraint problem with ϵ = g(x⋆)
+
+and optimal Lagrange multiplier y = μkϵ. As μk → ∞ , ϵ → 0
+
+and the relaxed problem recovers the original equality constraint. This result extends naturally to inequality constraints g(x) ≤ 0,where active constraints are handled analogously and inactive constraints do not contribute to the penalty. 
+
+# E L-shaped beam design example 
+
+The stress tensor at the element level is first calculated using 
+
+ˆσe = CB ue, where C is the constitutive matrix assuming E =1 and ν = 0 .3. The von mises estimate is calculated as σv =p
+
+ˆσ⊤.T. ˆσ‘ and is the stress measure i.e. |σi| = σv . We pad the domain according to [67], where all free boundaries except the support locations have void padding. The helps eliminate edge effects of filtering by treating internal and external edges consistently. Loading is made distributed and non-uniform over fixed passive material patch that extends into padding so that filtering does not cause gray values at loading locations. 
+
+# References 
+
+[1] Martin P Bendsøe and Ole Sigmund. Topology optimiza-tion: theory, methods, and applications . Springer Science & Business Media, 2003. [2] M. P. Bendsøe. Optimal shape design as a material distri-bution problem. Structural Optimization , 1(4):193–202, December 1989. [3] Niels Aage, Erik Andreassen, Boyan S. Lazarov, and Ole Sigmund. Giga-voxel computational morphogenesis for structural design. Nature , 550(7674):84–86, October 2017. [4] Ji-Hong Zhu, Wei-Hong Zhang, and Liang Xia. Topol-ogy optimization in aircraft and aerospace structures de-23 sign. Archives of computational methods in engineering ,23(4):595–622, 2016. [5] Bo Wang, Kuo Tian, Caihua Zhou, Peng Hao, Yanbing Zheng, Yunlong Ma, and Jiebing Wang. Grid-pattern opti-mization framework of novel hierarchical stiffened shells allowing for imperfection sensitivity. Aerospace Science and Technology , 62:114–121, 2017. [6] Yu Li, Yaping Lai, Gan Lu, Fucheng Yan, Peng Wei, and Yi Min Xie. Innovative design of long-span steel–concrete composite bridge using multi-material topology optimiza-tion. Engineering Structures , 269:114838, 2022. [7] Fengwen Wang, Boyan Stefanov Lazarov, and Ole Sig-mund. On projection methods, convergence and robust formulations in topology optimization. Structural and Multidisciplinary Optimization , 43(6):767–784, December 2010. [8] Matthijs Langelaar. An additive manufacturing filter for topology optimization of print-ready designs. Structural and Multidisciplinary Optimization , 55(3):871–883, July 2016. [9] Oded Amir. One-shot procedures for efficient minimum compliance topology optimization. Structural and Multi-disciplinary Optimization , 67(3), February 2024. [10] Alexander Verbart, Matthijs Langelaar, and Fred van Keulen. A unified aggregation and relaxation approach for stress-constrained topology optimization. Structural and Multidisciplinary Optimization , 55(2):663–679, July 2016. [11] Gustavo Assis da Silva, Niels Aage, André Teófilo Beck, and Ole Sigmund. Local versus global stress constraint strategies in topology optimization: A comparative study. 
+
+International Journal for Numerical Methods in Engineer-ing , 122(21):6003–6036, 2021. [12] Fernando V. Senhora, Oliver Giraldo-Londoño, Ivan F. M. Menezes, and Glaucio H. Paulino. Topology optimiza-tion with local stress constraints: a stress aggregation-free approach. Structural and Multidisciplinary Optimization ,62(4):1639–1668, August 2020. [13] Krister Svanberg. The method of moving asymptotes—a new method for structural optimization. International Jour-nal for Numerical Methods in Engineering , 24(2):359–373, February 1987. [14] Stephan Hoyer, Jascha Sohl-Dickstein, and Sam Greydanus. Neural reparameterization improves structural optimization. In NeurIPS 2019 Workshop on Solving Inverse Problems with Deep Networks , 2019. [15] Rebekka V. Woldseth, Niels Aage, J. Andreas Bærentzen, and Ole Sigmund. On the use of artificial neural networks in topology optimisation. Structural and Multidisciplinary Optimization , 65(10), October 2022. [16] Dat Ha and Josephine Carstensen. Automatic hyperpa-rameter tuning of topology optimization algorithms using surrogate optimization. Structural and Multidisciplinary Optimization , 67(9), September 2024. [17] Erik Andreassen, Anders Clausen, Mattias Schevenels, Boyan S Lazarov, and Ole Sigmund. Efficient topology optimization in matlab using 88 lines of code. Structural and Multidisciplinary Optimization , 43(1):1–16, 2011. [18] Joakim Petersson and Ole Sigmund. Slope constrained topology optimization. International Journal for Numeri-cal Methods in Engineering , 41(8):1417–1434, 1998. [19] Joshua D Deaton and Ramana V Grandhi. A survey of structural and multidisciplinary continuum topology op-timization: post 2000. Structural and multidisciplinary optimization , 49(1):1–38, 2014. [20] Boyan S. Lazarov, Fengwen Wang, and Ole Sigmund. Length scale and manufacturability in density-based topol-ogy optimization. Archive of Applied Mechanics , 86(1-2):189–218, January 2016. [21] M. Stolpe and K. Svanberg. On the trajectories of pe-nalization methods for topology optimization. Structural and Multidisciplinary Optimization , 21(2):128–139, April 2001. [22] Jikai Liu, Andrew T Gaynor, Shikui Chen, Zhan Kang, Krishnan Suresh, Akihiro Takezawa, Lei Li, Junji Kato, Jinyuan Tang, Charlie CL Wang, et al. Current and future trends in topology optimization for additive manufacturing. 
+
+Structural and multidisciplinary optimization , 57(6):2457– 2483, 2018. [23] Matthew E. Lynch, Soumalya Sarkar, and Kurt Maute. Machine learning to aid tuning of numerical parameters in topology optimization. Journal of Mechanical Design ,141(11), September 2019. [24] Xinchao Jiang, Hu Wang, Yu Li, and Kangjia Mo. Machine learning based parameter tuning strategy for mmc based topology optimization. Advances in Engineering Software ,149:102841, November 2020. [25] Mariusz Bujny, Muhammad Salman Yousaf, Nathan Zur-brugg, Duane Detwiler, Stefan Menzel, Satchit Ramnath, Thiago Rios, and Fabian Duddeck. Learning hyperparame-ter predictors for similarity-based multidisciplinary topol-ogy optimization. Scientific Reports , 13(1), September 2023. [26] Antonio Bacciaglia, Francesco Ciccone, Alessandro Ceruti, and Margherita Peruzzini. 2d frequency-based topological optimization: efficient dataset creation for neural networks to aid in tuning simulation parameters. International Jour-nal on Interactive Design and Manufacturing (IJIDeM) ,July 2025. [27] Jonathan Lorraine, Paul Vicol, and David Duvenaud. Opti-mizing millions of hyperparameters by implicit differentia-tion. In International conference on artificial intelligence and statistics , pages 1540–1552. PMLR, 2020. [28] Amirreza Shaban, Ching-An Cheng, Nathan Hatch, and Byron Boots. Truncated back-propagation for bilevel opti-mization. In The 22nd international conference on artificial intelligence and statistics , pages 1723–1732. PMLR, 2019. [29] Hanxiao Liu, Karen Simonyan, and Yiming Yang. Darts: Differentiable architecture search. arXiv preprint arXiv:1806.09055 , 2018. 24 [30] Aravind Rajeswaran, Chelsea Finn, Sham M Kakade, and Sergey Levine. Meta-learning with implicit gradients. Ad-vances in neural information processing systems , 32, 2019. [31] Suryanarayanan Manoj Sanu, Alejandro M. Aragón, and Miguel A. Bessa. Neural topology optimization: the good, the bad, and the ugly. Structural and Multidisciplinary Optimization , 68(10), October 2025. [32] Luca Franceschi, Michele Donini, Valerio Perrone, Aaron Klein, Cédric Archambeau, Matthias Seeger, Massimiliano Pontil, and Paolo Frasconi. Hyperparameter optimization in machine learning, 2024. [33] Bernd Bischl, Martin Binder, Michel Lang, Tobias Pielok, Jakob Richter, Stefan Coors, Janek Thomas, Theresa Ull-mann, Marc Becker, Anne-Laure Boulesteix, Difan Deng, and Marius Lindauer. Hyperparameter optimization: Foun-dations, algorithms, best practices, and open challenges. 
+
+WIREs Data Mining and Knowledge Discovery , 13(2), Jan-uary 2023. [34] Jonathan F. Bard. Practical Bilevel Optimization . Springer US, 1998. [35] Ankur Sinha and Satender Gunwal. A linear programming-based hyper local search for tuning hyperparameters. Op-erations Research Letters , 61:107287, July 2025. [36] Kristin P Bennett, Gautam Kunapuli, Jing Hu, and Jong-Shi Pang. Bilevel optimization and machine learning. In 
+
+IEEE world congress on computational intelligence , pages 25–47. Springer, 2008. [37] Risheng Liu, Jiaxin Gao, Jin Zhang, Deyu Meng, and Zhouchen Lin. Investigating bi-level optimization for learn-ing and vision from a unified perspective: A survey and beyond. IEEE Transactions on Pattern Analysis and Ma-chine Intelligence , 44(12):10045–10067, December 2022. [38] Luca Franceschi, Paolo Frasconi, Saverio Salzo, Riccardo Grazzi, and Massimiliano Pontil. Bilevel programming for hyperparameter optimization and meta-learning. In Jennifer Dy and Andreas Krause, editors, Proceedings of the 35th International Conference on Machine Learning ,volume 80 of Proceedings of Machine Learning Research ,pages 1568–1577. PMLR, 10–15 Jul 2018. [39] Suryanarayanan Manoj Sanu, Miguel A. Bessa, and Ale-jandro M. Aragón. Leveraging automatic differentiation in modern machine learning frameworks for (neural) topology optimization. Structural and Multidisciplinary Optimiza-tion , 69(5), May 2026. [40] Steven G. Krantz and Harold R. Parks. The Implicit Func-tion Theorem: History, Theory, and Applications . Springer New York, 2013. [41] Stephen Gould, Richard Hartley, and Dylan Campbell. Deep declarative networks. IEEE Transactions on Pat-tern Analysis and Machine Intelligence , 44(8):3988–4004, 2021. [42] Qianli Shen, Yezhen Wang, Zhouhao Yang, Xiang Li, Hao-nan Wang, Yang Zhang, Jonathan Scarlett, Zhanxing Zhu, and Kenji Kawaguchi. Memory-efficient gradient unrolling for large-scale bi-level optimization. Advances in Neural Information Processing Systems , 37:90934–90964, 2024. [43] Han Shen and Tianyi Chen. On penalty-based bilevel gradi-ent descent method. In Andreas Krause, Emma Brunskill, Kyunghyun Cho, Barbara Engelhardt, Sivan Sabato, and Jonathan Scarlett, editors, Proceedings of the 40th Inter-national Conference on Machine Learning , volume 202 of 
+
+Proceedings of Machine Learning Research , pages 30992– 31015. PMLR, 23–29 Jul 2023. [44] Fabian Pedregosa. Hyperparameter optimization with ap-proximate gradient. In Maria Florina Balcan and Kilian Q. Weinberger, editors, Proceedings of The 33rd International Conference on Machine Learning , volume 48 of Proceed-ings of Machine Learning Research , pages 737–746, New York, New York, USA, 20–22 Jun 2016. PMLR. [45] Jelena Luketina, Mathias Berglund, Klaus Greff, and Tapani Raiko. Scalable gradient-based tuning of continuous regularization hyperparameters. In International confer-ence on machine learning , pages 2952–2960. PMLR, 2016. [46] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 ,2014. [47] Eric Jang, Shixiang Gu, and Ben Poole. Categorical reparameterization with gumbel-softmax. arXiv preprint arXiv:1611.01144 , 2016. [48] Yihua Zhang, Yuguang Yao, Parikshit Ram, Pu Zhao, Tianlong Chen, Mingyi Hong, Yanzhi Wang, and Sijia Liu. Advancing model pruning via bi-level optimiza-tion. Advances in Neural Information Processing Systems ,35:18309–18326, 2022. [49] Luke Metz, Niru Maheswaranathan, Jeremy Nixon, Daniel Freeman, and Jascha Sohl-Dickstein. Understanding and correcting pathologies in the training of learned optimizers. In International Conference on Machine Learning , pages 4556–4565. PMLR, 2019. [50] Chelsea Finn, Pieter Abbeel, and Sergey Levine. Model-agnostic meta-learning for fast adaptation of deep networks. In Proceedings of the 34th International Conference on Ma-chine Learning (ICML) , pages 1126–1135. PMLR, 2017. [51] Paul Vicol, Jonathan P Lorraine, Fabian Pedregosa, David Duvenaud, and Roger B Grosse. On implicit bias in over-parameterized bilevel optimization. In International Con-ference on Machine Learning , pages 22234–22259. PMLR, 2022. [52] Abulikemu Abuduweili and Changliu Liu. Revisiting the initial steps in adaptive gradient descent optimization. In 
+
+Conference on Parsimony and Learning , pages 305–322. PMLR, 2025. [53] Ankur Sinha, Pekka Malo, and Kalyanmoy Deb. Test problem construction for single-objective bilevel optimiza-tion. Evolutionary Computation , 22(3):439–477, Septem-ber 2014. [54] Yuhuai Wu, Mengye Ren, Renjie Liao, and Roger Grosse. Understanding short-horizon bias in stochastic meta-optimization. In International Conference on Learning Representations , 2018. 25 [55] Luke Metz, C Daniel Freeman, Samuel S Schoenholz, and Tal Kachman. Gradients are not all you need. arXiv preprint arXiv:2111.05803 , 2021. [56] Ole Sigmund. A 99 line topology optimization code written in matlab. Structural and multidisciplinary optimization ,21(2):120–127, 2001. [57] Federico Ferrari and Ole Sigmund. A new generation 99 line matlab code for compliance topology optimization and its extension to 3d. Structural and Multidisciplinary Optimization , 62(4):2211–2228, 2020. [58] Aaditya Chandrasekhar and Krishnan Suresh. Tounn: Topology optimization using neural networks. Structural and Multidisciplinary Optimization , 63(3):1135–1149, November 2020. [59] Tyler E Bruns and Daniel A Tortorelli. Topology opti-mization of non-linear elastic structures and compliant mechanisms. Computer methods in applied mechanics and engineering , 190(26-27):3443–3459, 2001. [60] Blaise Bourdin. Filters in topology optimization. Inter-national journal for numerical methods in engineering ,50(9):2143–2158, 2001. [61] Shengli Xu, Yuanwu Cai, and Gengdong Cheng. Vol-ume preserving nonlinear density filter based on heaviside functions. Structural and Multidisciplinary Optimization ,41(4):495–505, December 2009. [62] Ole Sigmund. Morphology-based black and white filters for topology optimization. Structural and Multidisciplinary Optimization , 33(4):401–424, 2007. [63] G.I.N. Rozvany. On design-dependent constraints and sin-gular topologies. Structural and Multidisciplinary Opti-mization , 21(2):164–172, April 2001. [64] G. D. Cheng and X. Guo. ϵ-relaxed approach in struc-tural topology optimization. Structural Optimization ,13(4):258–266, June 1997. [65] Matteo Bruggi. On an alternative approach to stress con-straints relaxation in topology optimization. Structural and Multidisciplinary Optimization , 36(2):125–141, January 2008. [66] Jorge Nocedal and Stephen J. Wright. Numerical Optimiza-tion . Springer Series in Operations Research and Financial Engineering. Springer, New York, 2nd edition, 2006. [67] Oded Amir. Efficient stress-constrained topology optimiza-tion using inexact design sensitivities. International Jour-nal for Numerical Methods in Engineering , 122(13):3241– 3272, 2021. [68] James Bradbury, Roy Frostig, Peter Hawkins, Matthew James Johnson, Yash Katariya, Chris Leary, Dougal Maclaurin, George Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, and Qiao Zhang. JAX: composable transformations of Python+NumPy programs, 2018. [69] Kenichi Tamura and Marcus Gallagher. Quantitative mea-sure of nonconvexity for black-box continuous functions. 
+
+Information Sciences , 476:64–82, February 2019. [70] Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta, and Masanori Koyama. Optuna: A next-generation hyperparameter optimization framework. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , 2019. 26
