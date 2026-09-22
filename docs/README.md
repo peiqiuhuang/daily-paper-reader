@@ -6,43 +6,48 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-21
-- 运行时间：2026-09-21 23:08:55 UTC
+- 最新运行日期：2026-09-22
+- 运行时间：2026-09-22 21:54:16 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：4
+- 本次总论文数：9
+- 精读区：6
 - 速读区：3
 
 ### 今日简报（AI）
-今日聚焦双层优化前沿，深度解析拓扑超参数协同设计与随机非凸优化下界。
-重点关注双层优化（Bilevel Optimization）的理论突破，其在拓扑设计与复杂优化收敛性分析中展现了极高价值。
-建议优先研读 BOTH 框架以掌握结构化优化精髓，为解决复杂系统建模提供新思路。
-- 详情：[/202609/21/README](/202609/21/README)
+10 papers on prompt optimization and instruction tuning.
+        *   *Draft:* 建议优先研读两篇 9
+- 详情：[/202609/22/README](/202609/22/README)
 
 ### 精读区论文标签
-1. [Bilevel Optimization of Topology and Hyperparameters (BOTH)](/202609/21/2609.21758v1-bilevel-optimization-of-topology-and-hyperparameters-both)  
+1. [Token Utility Is Selection-Conditioned: Coupled Selection of Prompt Context and Response Supervision for Efficient Instruction Tuning](/202609/22/2609.22943v1-token-utility-is-selection-conditioned-coupled-selection-of-prompt-context-and-response-supervision-for-efficient-instruction-tuning)  
    标签：评分：9.0/10、query:bopl
-   evidence：拓扑与超参数的双层优化
-2. [An $Ω(κ_y^8ε^{-6})$ Lower Bound for Stochastic NC-SC Bilevel Optimization with First-order Oracles](/202609/21/2609.21905v1-an-y8-6-lower-bound-for-stochastic-nc-sc-bilevel-optimization-with-first-order-oracles)  
+   evidence：通过梯度引导交互耦合选择提示上下文和响应
+2. [STEVE: Stabilizing Textual Gradient-Based Prompt Optimization via Error-Driven Refinement and Regularized Verification](/202609/22/2609.23716v1-steve-stabilizing-textual-gradient-based-prompt-optimization-via-error-driven-refinement-and-regularized-verification)  
    标签：评分：9.0/10、query:bopl
-   evidence：随机非凸-强凸双层优化的复杂度
-3. [MOSCOPT: Mixture-of-Skills Collective Optimization for LLM Agents](/202609/21/2609.14399v2-moscopt-mixture-of-skills-collective-optimization-for-llm-agents)  
+   evidence：通过文本梯度进行自动提示词优化
+3. [Beyond Similarity: Coverage-Aware Prompt Selection for Time Series Forecasting with LLMs](/202609/22/2609.22977v1-beyond-similarity-coverage-aware-prompt-selection-for-time-series-forecasting-with-llms)  
    标签：评分：8.0/10、query:bopl
-   evidence：联合优化LLM智能体的技能池和门控技能
-4. [One Prompt Does Not Fit All: Self-Meta-Evolve for Personalized Information Extraction](/202609/21/2609.21626v1-one-prompt-does-not-fit-all-self-meta-evolve-for-personalized-information-extraction)  
+   evidence：从学习到的提示池中进行覆盖感知提示选择
+4. [PETR: Prompt Ensembling with Training-free Routing for Vision-Language Models](/202609/22/2609.23600v1-petr-prompt-ensembling-with-training-free-routing-for-vision-language-models)  
    标签：评分：8.0/10、query:bopl
-   evidence：用于个性化提示词适配和元提示词演化的分层框架
+   evidence：视觉语言模型的提示词集成与学习
+5. [Hierarchical Prompt Learning for Hyperbolic Vision-Language Models](/202609/22/2609.24276v1-hierarchical-prompt-learning-for-hyperbolic-vision-language-models)  
+   标签：评分：8.0/10、query:bopl
+   evidence：视觉语言模型的分层提示学习
+6. [RRSI: Regularized Recursive Self-Improvement of Agent Harnesses](/202609/22/2609.24972v1-rrsi-regularized-recursive-self-improvement-of-agent-harnesses)  
+   标签：评分：8.0/10、query:bopl
+   evidence：迭代地提议和选择代理框架的组件级编辑
 
 ### 速读区论文标签
-1. [Coupled Calibration and Learning: Mitigating Teacher Bias in LLM Distillation without Target-Domain Reward Feedback](/202609/21/2609.17474v1-coupled-calibration-and-learning-mitigating-teacher-bias-in-llm-distillation-without-target-domain-reward-feedback)  
-   标签：评分：6.0/10、query:bopl
-   evidence：在蒸馏中将教师校准与学生更新耦合
-2. [Near-Optimal Pure Single-Loop Extragradient Method for Strongly Convex--Strongly Concave Minimax Optimization](/202609/21/2609.20327v1-near-optimal-pure-single-loop-extragradient-method-for-strongly-convex--strongly-concave-minimax-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：单循环外梯度方法的极小极大优化
-3. [Implicit Rule Induction with Test-Time Task Embeddings in ARC-like Tasks](/202609/21/2609.21181v1-implicit-rule-induction-with-test-time-task-embeddings-in-arc-like-tasks)  
-   标签：评分：6.0/10、query:bopl
-   evidence：代表转换规则的可训练嵌入
+1. [AutoData: Agentic Search for Pre-training Data Selection](/202609/22/2609.19754v1-autodata-agentic-search-for-pre-training-data-selection)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于自动选择算法和启发式工程的智能体搜索
+2. [Preserving Geometric Integrity in Graph Prompting via Measure-Constrained Optimal Transport](/202609/22/2609.23547v1-preserving-geometric-integrity-in-graph-prompting-via-measure-constrained-optimal-transport)  
+   标签：评分：7.0/10、query:bopl
+   evidence：参数高效的图提示词学习
+3. [Bilinear Optimization Divergence: Diagnosing Factor-Constrained LoRA Continual Learning](/202609/22/2609.23594v1-bilinear-optimization-divergence-diagnosing-factor-constrained-lora-continual-learning)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于LoRA因子分析的双线性优化
 
 
 <div class="dpr-home-promo-card">
