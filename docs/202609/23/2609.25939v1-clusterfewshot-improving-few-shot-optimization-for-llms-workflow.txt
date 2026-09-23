@@ -1,0 +1,858 @@
+Title: ClusterFewshot: Improving Few-shot Optimization for LLMs workflow
+
+URL Source: https://arxiv.org/pdf/2609.25939v1
+
+Published Time: Wed, 23 Sep 2026 00:57:28 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# ClusterFewshot: Improving Few-shot Optimization for LLMs workflow 
+
+Omri Bar Haim Shahar Katz Lior Wolf 
+
+Blavatnik School of Computer Science, Tel Aviv University 
+
+> {omribarhaim@mail,shaharkatz3@mail,wolf@cs}.tau.ac.il
+
+Abstract 
+
+The performance of large language model (LLM) workflows often depends on selecting a small set of in-context demonstrations to guide model behavior on new tasks. Recent methods improve this process by augmenting prompts with successful reasoning paths. However, their demonstration selection relies on random sam-pling or metric-based rankings, overlooking the semantic structure of the task. We pro-pose ClusterFewshot , a strategy that combines semantic structuring with utility-aware scor-ing to construct representative and effective few-shot demonstration sets. Evaluated within DSPy-based pipelines, ClusterFewshot substan-tially reduces optimization cost across multiple benchmarks, while consistently improving ac-curacy relative to prior bootstrap-based meth-ods in both standalone prompt tuning and hy-brid prompt-weight optimization. Our code is available at https://github.com/omrirh/ clusterfewshot .
+
+1 Introduction and Related Work 
+
+Recent work has highlighted the importance of semantic structure in LLM few-shot prompt con-struction, suggesting that semantically diverse and representative demonstrations can substantially im-prove in-context learning performance (Levy et al., 2023; C et al., 2024). These findings suggest that demonstration selection extends beyond surface-level heuristic procedures, and can be naturally viewed as a structured optimization problem over the semantic space of examples. Today, prompt optimization and demonstration selection are often implemented through high-level toolkits that organize complex reasoning pipelines, such as LangChain and LlamaIndex (Chase, 2022; Liu, 2022). These frameworks often rely on manu-ally constructed prompt templates, including few-shot prompting (Brown et al., 2020; Yang et al., 2024; Opsahl-Ong et al., 2024; Yao et al., 2024; Chen et al., 2023; Kim et al., 2022; Do et al., 2024). 
+
+Figure 1: An illustration depicting ClusterFewshot ap-proach for bootstrapped demonstrations. 
+
+Khattab et al. (2024) introduced DSPy, a declar-ative framework that enables modular construction and optimization of LLM pipelines. DSPy sup-ports retrieval-augmented generation (RAG) and enables prompt optimization through bootstrap-ping , which extracts reasoning paths from solvable examples to construct effective in-context demon-strations (Khattab et al., 2024; Opsahl-Ong et al., 2024). Subsequently, Soylu et al. (2024) intro-duced BetterTogether , a hybrid optimization strat-egy that interleaves prompt-level adaptation with parameter-efficient fine-tuning. While Opsahl-Ong et al. (2024); Soylu et al. (2024) were able to achieve strong results on diverse tasks, including GSM8K (Cobbe et al., 2021), HotPotQA (Yang et al., 2018) and Iris classification (Fisher, 1936), their approach to few-shot demonstration selec-tion typically relies on random search or metric-based ranking, lacking the semantic information that other work identifies (Levy et al., 2023; C et al., 2024). Such semantic insights have advanced com-positional parsing (Levy et al., 2023) and clinical 1arXiv:2609.25939v1 [cs.CL] 22 Sep 2026 NER (C et al., 2024), yet remain siloed from au-tomated few-shot optimization workflows. This limitation extends beyond standard LLM settings to agentic environments such as ReAct (Yao et al., 2023), where the target model is augmented with external tools. In this work, we address the lack of semanti-cally driven selection in existing bootstrapping ap-proaches by introducing ClusterFewshot , a new semantically informed prompt optimizer. Our pro-posed method (i) clusters embeddings of training examples to promote diverse, representative sam-pling, and (ii) scores candidate demonstrations us-ing feedback from one-shot evaluation on a held-out validation subset, as illustrated in Figure 1, thereby guiding few-shot construction beyond ran-dom or heuristic ranking. We focus our evaluation on bootstrap-based op-timizers that operate within the BetterTogether 
+
+framework. In particular, we compare with Boot-strapFewShotRS (BFRS) (Khattab et al., 2024), a few-shot selection method relying on random search, and MIPROv2 (Opsahl-Ong et al., 2024), which performs joint optimization of instructions and demonstrations via Bayesian search. This choice enables the study of search-driven optimiza-tion over prompt components under a shared boot-strap demonstration construction paradigm. ClusterFewshot applies to both standalone prompt optimization and hybrid tuning pipelines such as BetterTogether. Across multiple tasks and models, it consistently improves over previ-ous approaches, including combined prompt and parameter-efficient fine-tuning pipelines. Our main contributions are: (i) we identify se-mantically informed example selection as a key limitation in existing procedures, (ii) we propose ClusterFewshot, which combines semantic cluster-ing and evaluation-driven scoring to guide few-shot demonstration selection, and (iii) we empirically show that ClusterFewshot substantially reduces op-timization cost across GSM8K, HotPotQA, and Iris benchmarks while preserving competitive, and often improved, mean accuracy in both prompt-only and hybrid prompt-weight optimization. In addition, (iv) we examine the flexibility of Clus-terFewshot in ReAct-based agentic setups, and (v) we evaluate its robustness across different model sizes, model families, and diverse cluster sampling approaches. 
+
+2 Background 
+
+We consider LLM-based workflows such as multi-hop reasoning in retrieval-augmented generation (RAG) tasks. Each task is defined by a base LLM and a labeled dataset, split into training Dtrain =
+
+{(xi, y i)}Ni=1 , validation Dval = {(xj , y j )}Mj=1 ,and test Dtest sets. Each workflow is represented as a graph of modules Pθ, which is optimized (“com-piled”) to maximize performance on a held-out validation set Dval , through mechanisms such as fine-tuning, bootstrapped demonstration selection, and instruction refinement. We consider several 
+
+bootstrap-based techniques, employed for prompt component generation and fine-tuning workflows. For in-context demonstration selection, Boot-strapFewShotRS (BFRS) (Khattab et al., 2024) is a random search implementation that selects 
+
+k ∈ N0 labeled or solvable examples from 
+
+Dtrain , which are then used to generate reasoning traces via prompting techniques such as Chain-of-Thought (CoT) (Wei et al., 2022). These traces are prepended to validation examples and evaluated empirically on Dval . The best-performing exam-ples and their traces are concatenated to form the final few-shot prompt. More recently, MIPROv2 (Opsahl-Ong et al., 2024) extends this bootstrapping paradigm by jointly optimizing both proposed instruction text and demonstration selection using Bayesian search, thereby expanding the prompt optimization space. For fine-tuning, BootstrapFinetune (Soylu et al., 2024; Khattab et al., 2024) iteratively solves training examples from Dtrain , generating solution traces which are curated and used to further fine-tune the model, e.g., via LoRA adapters (Hu et al., 2022), enabling a self-improving loop. Following the BetterTogether strategy, we study hybrid pipelines that alternate between bootstrap-based prompt optimizers and parameter-efficient fine-tuning, yielding mutual improvements in prompt quality and model parameters. 
+
+3 Method 
+
+We propose ClusterFewshot , our semantically in-formed bootstrap-selection procedure. ClusterFew-shot replaces random sampling or metric-based ranking with a two-stage process: (i) example embedding-based clustering, and (ii) evaluation-driven selection across sampling strategies. Similar to other bootstrap-based approaches sec-tion 2, our goal is to select a small bootstrapped 2Algorithm 1 ClusterFewshot : Semantic-Aware Bootstrap Demonstration Selection 
+
+Require: Training data: Dtrain , Dval 
+
+Program: Pθ
+
+Candidate embedders: M = {Mj }Jj=1 
+
+Cluster range: K ∈ [Kmin , K max ]
+
+Demo budget: k
+
+Validation samples per cluster: m
+
+Ensure: Selected demonstrations F∗
+
+Bootstrapping Training Set 
+
+˜Dtrain ← Bootstrap( Pθ, Dtrain )
+
+Embedding and clustering selection for Mj ∈ M do 
+
+e(j) 
+
+> i
+
+← Mj (xi) for all xi ∈ ˜Dtrain 
+
+for K ∈ [Kmin , K max ] do 
+
+ˆy(j,K ) ← KMeans K ({e(j) 
+
+> i
+
+})
+
+Sj,K ← Silhouette( {e(j) 
+
+> i
+
+}, ˆy(j,K ))
+
+end for end for 
+
+(j∗, K ∗) ← arg max j,K Sj,K 
+
+Cluster training examples 
+
+{C train  
+
+> k
+
+}K∗ 
+
+> k=1
+
+← KMeans K∗
+
+ Mj∗ ( ˜Dtrain )
+
+Construct one-shot evaluation subset 
+
+{C val  
+
+> k
+
+}K∗ 
+
+> k=1
+
+← KMeans K∗
+
+ Mj∗ (Dval )
+
+μc ← centroid  Cval 
+
+> c
+
+ , ∀c ∈ { 1, . . . , K ∗}Cval ← SK∗ 
+
+> c=1
+
+arg min (m)
+
+> x∈C val
+> c
+
+∥Mj∗ (x) − μc∥
+
+▷ Select m nearest validation examples to each cluster centroid in embedding space 
+
+One-shot scoring for xi ∈ ˜Dtrain do 
+
+si ← 1
+
+> |C val |
+
+P 
+
+> (x,y )∈C val
+
+Eval( Pθ({xi}, x ), y )
+
+end for Candidate construction 
+
+FTOP -k ← Top k({xi}, s i)
+
+FCLUSTER ← SK∗ 
+
+> c=1
+
+arg max xi∈C train  
+
+> c
+
+si
+
+Final selection 
+
+Fcand ← {F TOP -k, FCLUSTER }F∗ ← arg max 
+
+> F∈F cand
+
+Score( Pθ[F], Dval )
+
+return F∗
+
+demonstration set from Dtrain of size k that max-imizes the validation performance of our LLM workflow Pθ.While clustering-based sampling has been ex-plored in prior work, our focus is on how it can be integrated with utility-based signals to improve the efficiency and stability of LLM optimization pipelines by organizing demonstrations according to the latent semantic structure of the task. Using this design of complementary signals encourages coverage of the latent task structure, while utility-aware scoring prioritizes demonstrations that are empirically useful for the target model and task. 
+
+3.1 Bootstrapping Training Set 
+
+We construct a bootstrapped training set ˜Dtrain by executing the LM program Pθ on the full training set Dtrain and retaining successful trace-derived demonstrations. Unlike prior approaches that re-peatedly bootstrap from randomly sampled subsets during search (Khattab et al., 2024; Opsahl-Ong et al., 2024), ClusterFewshot performs this step once and subsequently operates only on ˜Dtrain .
+
+3.2 Semantic Embedding and Clustering 
+
+To capture the semantic diversity of ˜Dtrain , we em-bed each input xi using a candidate model Mj , ei-ther a pretrained sentence encoder or the task-tuned LLM, yielding an embedding e(j) 
+
+> i
+
+∈ Rd, where d is the embedding dimension. We then apply K-means clustering (Lloyd, 1982) to 
+
+n
+
+e(j)
+
+> i
+
+o
+
+, to maximize the Silhouette score (Rousseeuw, 1987): 
+
+n
+
+e(j) 
+
+> i
+
+= Mj (xi)
+
+oNi=1 for Mj ∈ M , j = 1 , . . . , J 
+
+The selection procedure uses a grid-search calibra-tion phase, with additional analysis in Appendix B: 
+
+ˆy(j,k ) = KMeans k
+
+n
+
+e(j)
+
+> i
+
+oNi=1 
+
+
+
+(1) 
+
+Sj,k = Silhouette 
+
+n 
+
+e(j)
+
+> i
+
+o
+
+, ˆy(j,k )
+
+(2) 
+
+(j∗, k ∗) = arg max 
+
+> j∈[1 ,J ]
+> k∈[Kmin ,K max ]
+
+Sj,k (3) This grid search also selects one of the following sentence-transformers: • all-mpnet-base-v2 (Reimers and Gurevych, 2019) – Transformer-based sentence embed-ding model, built on MPNet, that produces 768-dimensional vector representations of sen-tences and short paragraphs, and is widely used for similarity and semantic search tasks. • gtr-t5-base (Raffel et al., 2020) – a T5-based sentence embedding model designed for se-mantic search and retrieval, producing high-quality, cross-lingual dense vector representa-tions of sentences and paragraphs. • bge-large-en-v1.5 (of Artificial Intelligence , BAAI) - a bidirectional-encoder model op-timized for English dense retrieval via con-trastive learning on web-scale corpora. 3• Qwen3-Embedding-0.6B (Zhang et al., 2025) - an embedding model from the Qwen3 series, producing fixed-dimensional represen-tations via fine-tuned language model layers for retrieval and reranking tasks. Only for Iris, given the well-structured numerical nature of the task input, we use the original fea-ture vectors, which comprise features such as sepal length and width. 
+
+3.3 One-Shot Candidate Scoring 
+
+To estimate the utility of each candidate example 
+
+xi ∈ ˜Dtrain individually, we define a small evalua-tion subset Cval ⊂ D val . This subset is constructed by first clustering Dval in the semantic embedding space, then selecting the m examples closest to each cluster centroid, yielding a diverse and rep-resentative evaluation set. For consistency, we fix the number of validation samples per cluster to 
+
+m = 3 . We then compute a one-shot score si for each candidate xi by measuring its effectiveness as the sole demonstration when prompting the LM on 
+
+Cval . Specifically, we define: 
+
+si = 1
+
+|C val |
+
+X
+
+> (x,y )∈C val
+
+Eval ( Pθ({xi}, x ), y ) (4) where: Pθ({xi}, x ) denotes the model’s prediction on input x when prompted with xi as the sole in-context demonstration. Eval( ·, y ) is a task-specific evaluation metric comparing the model’s output to the ground-truth label y. This “one-shot evalu-ation” rapidly ranks examples by their individual contribution to the LM performance on a diverse set of questions, replacing budget-limited subset search (Opsahl-Ong et al., 2024; Soylu et al., 2024) with linear per-candidate evaluation under fixed validation cost to enable a tractable and exhaustive scoring of all training candidates from ˜Dtrain .
+
+3.4 Sampling Strategies 
+
+We employ a sampling framework that combines global and cluster-based selection, adapting to the task’s nature. This design balances high-performing examples with semantic diversity in the resulting few-shot subset. For Iris, a classification task, we prioritize class-level cluster coverage by selecting the top-performing demonstration from each class. Accordingly, we adopt the following strategies: (i) Global Top-k: select the k examples with high-est si across all clusters. (ii) Cluster Represen-tatives: select, for each cluster Ck, the example with highest si within that cluster. Each strategy S
+
+yields a candidate set FS of size ≤ k.
+
+3.5 Final Selection and Compilation 
+
+Finally, we evaluate each candidate FS on the full validation set and choose 
+
+F∗ = arg max  
+
+> S
+
+Score  Pθ[FS ], Dval 
+
+ (5) The optimized program Pθ[F∗] is then ready for in-ference. When used within BetterTogether’s inter-leaved optimization approach (Soylu et al., 2024), this phase may be followed by an additional fine-tuning phase. 
+
+4 Experiments 
+
+In this section we evaluate ClusterFewshot as an adaptive and efficient optimization method. 
+
+4.1 BetterTogether Evaluation 
+
+We evaluate our approach on the benchmarks intro-duced in the original BetterTogether study, cover-ing both individual optimization phases and inter-leaved pipelines with fine-tuning: • GSM8K (Cobbe et al., 2021): Grade-school math word problems requiring multi-step arithmetic reasoning. This task is imple-mented via an LM program with a single chain-of-thought prompting module. The pro-gram uses 1,000 training and all available 1,319 test examples, drawn from the original training and test sets. For prompt optimiza-tion, 100 training and 250 validation examples are sub-sampled, without overlap. Accuracy is measured by extracting the last number from the model’s first-line response and comparing it to the ground truth. • HotPotQA (Yang et al., 2018): Using a large corpus of Wikipedia abstracts, identify two passages that together contain the factual ev-idence needed to answer a multi-hop ques-tion. This task is implemented via an LM program with three chain-of-thought modules, arranged in a multi-hop pipeline. The pro-gram uses 1,000 training and 1,500 test ex-amples, sampled from the original training and validation sets. For prompt optimization, 100 training and 250 validation examples are sub-sampled, without overlap. Accuracy is evaluated using exact match. 4Strategy Prompt Optimizer Opt. Qwen2.5-7B-Instruct Llama-3.2-3B-Instruct 
+
+GSM8K HotPotQA Iris GSM8K HotPotQA Iris PBFRS D 85.59 45.98 78.00 78.24 36.95 69.33 MIPROv2 I+D 84.82 44.93 79.33 75.97 35.25 70.66 ClusterFewshot D 87.78 46.29 83.33 79.54 36.84 71.33 
+
+P → PBFRS D 86.11 43.71 82.66 78.27 40.69 68.00 MIPROv2 I+D 82.80 45.18 78.66 77.39 34.82 62.66 ClusterFewshot D 87.86 45.33 86.66 81.05 40.93 75.33 
+
+W → PBFRS D 87.17 42.47 80.00 78.32 35.97 69.33 MIPROv2 I+D 83.06 44.62 84.00 75.32 31.75 60.66 ClusterFewshot D 87.88 42.84 80.66 80.17 37.35 72.66 
+
+P → WBFRS D 85.48 44.13 84.00 76.50 38.29 68.66 MIPROv2 I+D 79.56 43.85 83.33 75.14 29.78 68.00 ClusterFewshot D 86.16 44.22 85.33 77.66 36.82 71.33 
+
+P → W → PBFRS D 82.09 45.13 84.66 78.42 36.26 66.66 MIPROv2 I+D 77.62 43.35 84.00 73.75 31.40 68.00 ClusterFewshot D 86.01 45.48 82.00 79.11 38.51 75.33 
+
+Table 1: Evaluation of BetterTogether strategies using Qwen2.5-7B-Instruct and Llama-3.2-3B-Instruct. Opt. 
+
+denotes optimized prompt components: D = demonstrations only (BFRS, ClusterFewshot), I+D = joint instruction and demonstration optimization (MIPROv2). P denotes prompt optimization and W denotes parameter-efficient weight tuning. Reported values are averages over three independent runs. 
+
+Strategy Prompt Optimizer Qwen2.5-7B-Instruct Llama-3.2-3B-Instruct 
+
+GSM8K HotPotQA Iris GSM8K HotPotQA Iris PBFRS 23.58 42.88 1.51 12.39 28.22 0.71 MIPROv2 19.76 59.11 2.84 13.98 104.63 1.63 ClusterFewshot 18.39 25.48 0.47 9.69 19.61 0.24 
+
+P → PBFRS 39.92 71.63 2.50 20.00 50.83 1.28 MIPROv2 37.52 149.36 8.28 30.71 172.21 4.07 ClusterFewshot 22.62 37.81 0.81 15.24 23.37 0.44 
+
+W → PBFRS 44.08 71.79 5.29 23.89 39.38 2.09 MIPROv2 42.16 80.94 5.04 28.40 71.24 3.05 ClusterFewshot 41.78 57.15 4.01 21.13 32.12 1.65 
+
+P → WBFRS 43.04 80.45 5.21 26.90 46.39 2.28 MIPROv2 39.81 91.37 5.07 27.38 89.13 3.20 ClusterFewshot 36.65 61.61 3.70 22.98 35.80 1.98 
+
+P → W → PBFRS 77.70 111.36 6.46 32.30 64.10 2.96 MIPROv2 65.38 187.88 9.99 40.85 165.19 5.44 ClusterFewshot 46.61 75.97 5.14 28.80 44.22 2.14 
+
+Table 2: Runtime comparison of BetterTogether strategies across GSM8K, HotPotQA, and Iris benchmarks using Qwen2.5-7B-Instruct and Llama-3.2-3B-Instruct. Reported values are average end-to-end runtimes (in minutes) over three independent runs, and they reflect the full optimization pipeline, including prompt compilation, fine-tuning where applicable, and evaluation. 
+
+• Iris (Fisher, 1936): a classification task over iris flowers, based on the given sepal/petal dimension features. This task is implemented via an LM program with a single chain-of-thought module. It uses 50 training and 50 test examples, sampled from the original Iris dataset. For prompt optimization, 15 training and 35 validation examples are sub-sampled, without overlap. Accuracy is evaluated using exact match. For BFRS , we explore six candidate LM pro-gram configurations per run - covering zero-shot (Vanilla), labeled-only, and several bootstrapped few-shot variants. This setup aligns with that of the original BetterTogether paper (Soylu et al., 2024). 5P P P W P P W P W P  
+
+> 78 80 82 84 86 88 Accuracy (GSM8K, %)
+> BFRS MIPROv2 ClusterFewshot
+
+Figure 2: Accuracy across BetterTogether strategies on GSM8K using Qwen2.5-7B-Instruct. P P P W P P W P W P  
+
+> 20 30 40 50 60 70 80 Runtime (minutes)
+> BFRS MIPROv2 ClusterFewshot
+
+Figure 3: End-to-end runtime across BetterTogether strategies on GSM8K using Qwen2.5-7B-Instruct. 
+
+For MIPROv2 , we use the standard medium 
+
+configuration, which proposes 12 instruction candi-dates and 12 bootstrapped few-shot demonstration sets per optimization run (Opsahl-Ong et al., 2024). Leveraging DSPy’s compatibility with SGLang, a high-performance serving backend for structured and compositional LLM generation (Zheng et al., 2024), we conduct our experiments with Qwen-2.5-7B (Team, 2024) and Llama-3.2-3B (AI, 2024). Table 1 shows a clear advantage for ClusterFew-shot. It outperforms both BFRS and MIPROv2 across all three benchmarks in the majority of standalone and hybrid BetterTogether configura-tions. On GSM8K and Iris , ClusterFewshot de-livers consistent improvements across most strate-gies, indicating enhanced suitability for arithmetic reasoning and structured classification tasks. It also achieves competitive or superior performance on HotPotQA , suggesting improved robustness in complex multi-hop reasoning settings. This trend is illustrated in Figure 2, where ClusterFewshot consistently achieves the strongest GSM8K perfor-mance with Qwen2.5-7B-Instruct across strategies. Extended results in Appendix D show that Clus-terFewshot exhibits lower variance than both BFRS 
+
+Figure 4: PCA projection of training example embed-dings on GSM8K using the gtr-t5-base encoder. We cluster 85 training examples into k = 3 semantic groups using k-means. 
+
+Figure 5: PCA projection of 250 validation example embeddings on GSM8K using the gtr-t5-base encoder. 
+
+and MIPROv2 across most strategies, indicating improved stability across independent runs. Runtime comparisons are reported in Table 2, and illustrated in Figure 3. ClusterFewshot achieves substantially lower runtime than both ran-dom and Bayesian search-based prompt optimiza-tion approaches across all prompt-only and hybrid configurations, reducing latency on HotPotQA by over 40 % in the standalone setting, while maintain-ing strong performance in multi-stage workflows. These results highlight ClusterFewshot’s favorable balance between accuracy, stability, and computa-tional efficiency across open-source model families, including smaller and medium-scale models. To further contextualize these results, Figures 4 and 5 visualize the semantic structure induced by the embedding space on GSM8K . The observed consistency across different splits supports the use of embedding-based clustering for both identifying representative regions for constructing diverse few-shot candidate pools from ˜Dtrain , and sampling 6Optimizer GSM8K HotPotQA Iris Tokens Compile Score Tokens Compile Score Tokens Compile Score (min) ∆ (min) ∆ (min) ∆                            
+
+> BFRS 2.11M 15.6 +1.0pp 8.75M 31.3 +13.9pp 259K 1.3 +36pp MIPROv2 1.91M 16.5 +7.7pp 7.19M 25.5 +13.9pp 910K 5.2 +46pp
+> ClusterFewshot 2.21M 14.7 +7.5pp 6.31M 13.3 +19.1pp 226K 0.8 +46pp
+> Table 3: Token usage, compilation time, and score improvements across prompt optimizers and tasks using Qwen2.5-7B-Instruct.
+
+informative subsets from Dval for downstream one-shot utility estimation. 
+
+4.2 Compilation Efficiency 
+
+While Section 4.1 reports end-to-end execution time, which includes both the optimization phase and test evaluation, we further isolate the compila-tion stage efficiency of each optimizer. We measure this cost using compilation wall-clock time and to-ken usage as practical indicators. Table 3 compares overall token usage, compila-tion time, and score improvements across GSM8K, HotPotQA, and Iris using Qwen2.5-7B-Instruct .Across all tasks, ClusterFewshot exhibits a favor-able optimization-efficiency profile, achieving the lowest compile time on Iris and HotPotQA while re-maining competitive on GSM8K. The token-usage results further indicate that ClusterFewshot obtains these runtime gains with a generally lower token cost. Among the compared optimizers, Cluster-Fewshot uses the fewest tokens on HotPotQA and Iris, while maintaining a comparable token usage on GSM8K. Appendix B further analyzes the efficiency of ClusterFewshot’s underlying components, focusing on its embedding and clustering stages, showing how these components balance semantic separation quality with computational efficiency. Overall, these results support that revealing the semantic structure of a task provides an effective control signal for demonstration selection. 
+
+4.3 ReAct Agentic Setting 
+
+To assess whether cluster-guided demonstration selection generalizes beyond standard Chain-of-Thought prompting, we further evaluate tool-augmented agentic setting: we instantiate 
+
+ReAct (Yao et al., 2023) on HotPotQA multi-hop question answering with ColBERTv2 Wikipedia retrieval (Santhanam et al., 2022), retrieving three passages per query. In this setting, the model inter-leaves reasoning and retrieval across multiple steps and must explicitly terminate with a Finish[] ac-tion for its answer to be evaluated. Runs that reach the maximum step limit without emitting Finish[] 
+
+are marked incorrect. Each trajectory is allowed up to 20 ReAct steps, and each optimizer compiles up to four demonstrations. Results are averaged over three seeds on 1,500 test examples, using Qwen2.5 at both 7B and 14B scales. Table 4 reports overall accuracy, early-termination accuracy, and mean compilation time. The main observation is that ClusterFewshot con-sistently reduces compilation time across model scales while preserving, and even improving, mean accuracy. The reduction is most pronounced at 7B, where ClusterFewshot lowers compilation time by 63 .8% relative to BFRS and 60 .4% relative to MIPROv2. ClusterFewshot also obtains the highest mean accuracy and early-termination accuracy at both scales, exhibiting efficient answer completion early in the ReAct trajectory. This efficiency highlights the practical applica-bility of ClusterFewshot in real-world agentic de-ployments, where in-context demonstrations may need to be continuously re-compiled across mod-els, tools, and retrieval corpora as task distributions evolve. In such dynamic settings, ClusterFewshot provides an efficient way to obtain high-quality, representative demonstrations that guide not only final-answer reasoning but also intermediate tool-use and reasoning steps. 
+
+4.4 Individual Sampling Strategies and Retrieval Performance 
+
+To provide a more comprehensive analysis of Clus-terFewshot’s design components, we analyze dif-ferent cluster sampling strategies and evaluate our approach against retrieval-based methods. Table 5 analyzes individual cluster sampling strategies and situates them relative to full prompt optimizers. These variants consist of global Top-k selection, cluster representatives, centroid-based sampling, and cluster-level random selection. 7Optimizer Qwen2.5-7B-Instruct Qwen2.5-14B-Instruct Accuracy acc@ ≤2 Compile Accuracy acc@ ≤2 Compile (min.) (min.)                                     
+
+> Baseline 24 .53 23 .38 –47 .80 44 .35 –ClusterFewshot 45 .87 ±2.89 45 .79 14 .154 .65 ±1.93 52 .63 55 .1
+> BFRS 44 .95 ±1.48 44 .70 38 .953 .76 ±1.22 49 .40 75 .1
+> MIPROv2 44 .80 ±4.04 43 .89 35 .652 .22 ±0.24 52 .57 69 .6
+
+Table 4: Agentic HotPotQA results using dspy.ReAct with ColBERTv2 retrieval. Accuracy is averaged over three seeds. acc@ ≤2 denotes accuracy on trajectories that terminate within two ReAct steps. Compile time is measured as mean runtime in minutes. 
+
+While each strategy captures either semantic di-versity or utility-based signals, none consistently matches the hybrid approach across tasks. The hybrid variant, which selects between Top-k and representative sampling based on one-shot valida-tion performance, achieves the strongest results, supporting the core design of ClusterFewshot. We further compare ClusterFewshot to Re-trievalFewshot (RFS) , a query-adaptive baseline that selects demonstrations at inference time from the same bootstrapped candidate pool using se-mantic retrieval over the embedding space. Ta-ble 6 reports results for kNN retrieval, which se-lects the nearest examples to the given query, and Maximal Marginal Relevance (MMR), which bal-ances relevance and diversity in the resulting few-shot through a trade-off parameter λ (higher λ
+
+favors similarity, lower λ encourages diversity). Unlike these query-adaptive approaches, Cluster-Fewshot compiles a fixed few-shot context during optimization and reuses it for all queries. Despite using semantic similarity directly at query time, these retrieval-based strategies consistently under-perform ClusterFewshot. These findings indicate that compiling a fixed few-shot context that combines semantic and utility-based signals yields the strongest perfor-mance among these variants. Extended results, in-cluding statistical variability across multiple runs of Tables 5 and 6, are provided in Appendix E, demon-strating the consistency of our findings. We fur-ther include a zero-shot evaluation in Appendix E, where ClusterFewshot provide consistent gains across tasks. 
+
+5 Conclusions 
+
+We presented ClusterFewshot , a semantically guided bootstrap-selection method that integrates embedding-based clustering with one-shot evalua-tion and multi-strategy sampling.                         
+
+> Method GSM8K HotPotQA Iris
+> CFS - Global Top-k86 .11 42 .20 77 .47
+> CFS - Representatives 85 .98 44 .97 86 .27
+> CFS - Cluster Random 85 .24 41 .29 76 .00
+> CFS - Centroids 86 .39 43 .22 79 .60
+> BFRS 84 .68 44 .48 80 .40
+> MIPROv2 84 .17 44 .21 84 .40
+> CFS – Hybrid 88 .06 46 .41 86 .27
+
+Table 5: Performance of individual ClusterFewshot (CFS) sampling strategies variants compared with full optimizers.                   
+
+> Method GSM8K HotPotQA Iris
+> RFS-kNN 84 .70 42 .71 76 .67
+> RFS-MMR ( λ=0 .2)84 .19 43 .38 72 .00
+> RFS-MMR ( λ=0 .5)83 .18 44 .20 76 .67
+> RFS-MMR ( λ=0 .8)83 .13 43 .20 77 .33
+> ClusterFewshot 87 .78 46 .29 83 .33
+
+Table 6: Comparison with retrieval-based few-shot base-lines that select demonstrations at inference time using semantic similarity. 
+
+Our extended evaluation shows that Cluster-Fewshot improves the efficiency of reasoning-augmented demonstration selection by substan-tially reducing optimization costs across diverse models and tasks, while consistently preserving strong downstream accuracy. These improvements extend beyond standalone settings to modern multi-stage LLM optimization workflows such as BetterTogether and agentic Re-Act, as shown in Tables 1, 2 and 4, with further analysis in Section D. ClusterFewshot shows robustness across embed-ding choices and tasks, exhibiting stable and effi-cient semantic structuring. Looking forward, its modular design and re-liance on off-the-shelf embedding encoders make it readily adaptable to new tasks, model families, and dynamic data regimes. 8Limitations 
+
+While ClusterFewshot yields consistent improve-ments across multiple tasks and strategies, several limitations warrant consideration. First, the method assumes that off-the-shelf em-beddings capture task-relevant semantics. In do-mains where this alignment is weak, induced clus-ters may fail to meaningfully partition training or validation data, reducing demonstration quality. Second, estimating the number of clusters via Silhouette maximization introduces an additional hyperparameter to tune. On large datasets, repeated K-means runs over multiple embeddings and can-didate K values may partially offset the method’s overall efficiency gains. Third, one-shot evaluation depends on a held-out subset Cval , which may be small or unrepresenta-tive. In such cases, selected demonstrations may not generalize despite local performance gains. Finally, although we use BootstrapFewShotRS (BFRS) and MIPROv2 as our main baselines, fu-ture work may extend this comparison to addi-tional semantically driven selection techniques and hybrid optimization methods. Further directions might also include adaptive clustering that evolves with streaming examples, integration with active-learning loops to minimize human annotation ef-fort, additional tool calling in agentic environments, and theoretical analysis of cluster coherence under fine-tuning, which we did not cover in this work. 
+
+Ethics Statement 
+
+This work proposes ClusterFewshot , a method for selecting high-quality few-shot demonstrations to enhance the performance and generalization of lan-guage models. The method is model-agnostic and leverages semantic clustering and one-shot evalua-tion to improve prompt optimization efficiency. We acknowledge that techniques improving the effectiveness and reliability of language models can be dual-use. While our approach is intended to sup-port responsible and beneficial applications, such as improved reasoning and accuracy in educational, scientific, or assistive settings, it may also inadver-tently enhance harmful uses, such as generating persuasive misinformation or biased content. Nonetheless, we encourage future work to con-sider the broader implications of improved model steering and to pair performance improvements with safeguards and responsible deployment. 
+
+Acknowledgements 
+
+This work was supported by a Tel Aviv Univer-sity Center for AI and Data Science (TAD) grant and by Len Blavatnik and the Blavatnik Family foundation. This research was also supported by the Ministry of Innovation, Science & Technology, Israel (1001576154) and the Michael J. Fox Foun-dation (MJFF-022407). SK is supported by the Google PhD Fellowship. 
+
+References         
+
+> Meta AI. 2024. Llama 3.2: Revolutionizing edge ai and vision with open, customizable models. Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. 2020. Language models are few-shot learners. Advances in neural information processing systems , 33:1877–1901. Meethu Mohan C, Sneha Shaji Punnan, and Jeena Kleenankandy. 2024. Improving few-shot prompting using cluster-based sample retrieval for medical NER in clinical text. In Proceedings of the 21st Interna-tional Conference on Natural Language Processing (ICON) , pages 37–44, AU-KBC Research Centre, Chennai, India. NLP Association of India (NLPAI). Tadeusz Cali´ nski and Harabasz JA. 1974. A dendrite method for cluster analysis. Communications in Statistics - Theory and Methods , 3:1–27. Harrison Chase. 2022. LangChain. Jiuhai Chen, Lichang Chen, Chen Zhu, and Tianyi Zhou. 2023. How many demonstrations do you need for in-context learning? Preprint , arXiv:2303.08119. Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, et al. 2021. Training verifiers to solve math word problems. arXiv preprint arXiv:2110.14168 .David Davies and Don Bouldin. 1979. A cluster separa-tion measure. Pattern Analysis and Machine Intelli-gence, IEEE Transactions on , PAMI-1:224 – 227. Xuan Long Do, Yiran Zhao, Hannah Brown, Yuxi Xie, James Xu Zhao, Nancy F. Chen, Kenji Kawaguchi, Michael Shieh, and Junxian He. 2024. Prompt optimization via adversarial in-context learning.
+> Preprint , arXiv:2312.02614. Ronald Aylmer Fisher. 1936. The use of multiple mea-surements in taxonomic problems. Annals of eugen-ics , 7(2):179–188.
+
+9Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-rank adaptation of large language models. In International Conference on Learning Representations .Omar Khattab, Arnav Singhvi, Paridhi Maheshwari, Zhiyuan Zhang, Keshav Santhanam, Sri Vard-hamanan, Saiful Haq, Ashutosh Sharma, Thomas T. Joshi, Hanna Moazam, Heather Miller, Matei Za-haria, and Christopher Potts. 2024. Dspy: Compiling declarative language model calls into self-improving pipelines. In The Twelfth International Conference on Learning Representations .Hyuhng Joon Kim, Hyunsoo Cho, Junyeob Kim, Taeuk Kim, Kang Min Yoo, and Sang goo Lee. 2022. Self-generated in-context learning: Leveraging auto-regressive language models as a demonstration gen-erator. Preprint , arXiv:2206.08082. Itay Levy, Ben Bogin, and Jonathan Berant. 2023. Di-verse demonstrations improve in-context composi-tional generalization. Preprint , arXiv:2212.06800. Jerry Liu. 2022. LlamaIndex. Stuart Lloyd. 1982. Least squares quantization in pcm. IEEE Transactions on Information Theory, 28(2):129– 137. Doi:10.1109/TIT.1982.1056489. Beijing Academy of Artificial Intelligence (BAAI). 2024. Baai/bge-large-en-v1.5. Krista Opsahl-Ong, Michael J Ryan, Josh Purtell, David Broman, Christopher Potts, Matei Zaharia, and Omar Khattab. 2024. Optimizing instructions and demon-strations for multi-stage language model programs. In Proceedings of the 2024 Conference on Empiri-cal Methods in Natural Language Processing , pages 9340–9366, Miami, Florida, USA. Association for Computational Linguistics. Krista Opsahl-Ong, Michael J. Ryan, Josh Purtell, David Broman, Christopher Potts, Matei Zaharia, and Omar Khattab. 2024. Optimizing instructions and demonstrations for multi-stage language model programs. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP) , pages 9340–9366, Miami, Florida, USA. Association for Computational Linguistics. Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. 2020. Exploring the lim-its of transfer learning with a unified text-to-text transformer. Journal of machine learning research ,21(140):1–67. Nils Reimers and Iryna Gurevych. 2019. Sentence-bert: Sentence embeddings using siamese bert-networks. 
+
+Preprint , arXiv:1908.10084. Peter J. Rousseeuw. 1987. Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. Journal of Computational and Applied Mathematics, 20:53–65. Doi:10.1016/0377-0427(87)90125-7. Keshav Santhanam, Omar Khattab, Jon Saad-Falcon, Christopher Potts, and Matei Zaharia. 2022. Colbertv2: Effective and efficient re-trieval via lightweight late interaction. Preprint ,arXiv:2112.01488. Dilara Soylu, Christopher Potts, and Omar Khattab. 2024. Fine-tuning and prompt optimization: Two great steps that work better together. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , pages 10696–10710, Miami, Florida, USA. Association for Computational Linguistics. Qwen Team. 2024. Qwen2.5: A party of foundation models. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed H Chi, Quoc V Le, Denny Zhou, et al. 2022. Chain-of-thought prompting elicits rea-soning in large language models. In Advances in Neural Information Processing Systems .Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V. Le, Denny Zhou, and Xinyun Chen. 2024. Large language models as optimizers. In 
+
+Proceedings of the 12th International Conference on Learning Representations (ICLR) .Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William Cohen, Ruslan Salakhutdinov, and Christo-pher D. Manning. 2018. HotpotQA: A dataset for diverse, explainable multi-hop question answering. In Proceedings of the 2018 Conference on Empiri-cal Methods in Natural Language Processing , pages 2369–2380, Brussels, Belgium. Association for Com-putational Linguistics. Bingsheng Yao, Guiming Chen, Ruishi Zou, Yuxuan Lu, Jiachen Li, Shao Zhang, Yisi Sang, Sijia Liu, James Hendler, and Dakuo Wang. 2024. More sam-ples or more prompts? exploring effective few-shot in-context learning for LLMs with in-context sam-pling. In Findings of the Association for Computa-tional Linguistics: NAACL 2024 , pages 1772–1790, Mexico City, Mexico. Association for Computational Linguistics. Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao. 2023. React: Synergizing reasoning and acting in language models. Preprint , arXiv:2210.03629. Yanzhao Zhang, Mingxin Li, Dingkun Long, Xin Zhang, Huan Lin, Baosong Yang, Pengjun Xie, An Yang, Dayiheng Liu, Junyang Lin, Fei Huang, and Jingren Zhou. 2025. Qwen3 embedding: Advancing text embedding and reranking through foundation models. 
+
+arXiv preprint arXiv:2506.05176 .Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody Hao Yu, Shiyi Cao, Christos Kozyrakis, Ion Stoica, Joseph E. Gonzalez, Clark Barrett, and Ying Sheng. 2024. Sglang: Efficient execution of structured language model programs. 
+
+Preprint , arXiv:2312.07104. 
+
+10 A Prompt Templates 
+
+This section presents the prompt templates em-ployed during various stages of the ClusterFew-shot compilation process. Tables 7, 8, and 9 showcase representative tem-plates used in the GSM8K task, covering both one-shot and few-shot prompting formats. These tem-plates are adapted from the structured prompting scheme introduced in the original BetterTogether 
+
+framework (Soylu et al., 2024), preserving com-patibility for meaningful comparison and repro-ducibility. Each template reflects a specific demon-stration configuration used by our optimizer, and collectively they serve to illustrate the consistency and structure applied throughout the prompting pipeline. 
+
+B Semantic Clustering and Embedding Efficiency 
+
+ClusterFewshot uses external sentence encoders to structure the candidate demonstration pool be-fore evaluation and sampling. We therefore ana-lyze how different embedding models affect cluster-ing quality and computational efficiency. Detailed clustering-quality and embedding-efficiency results are provided in Table 10 and Table 11 Across four sentence encoders and three com-mon clustering metrics , Silhouette (Rousseeuw, 1987), Calinski–Harabasz (Cali´ nski and JA, 1974), and Davies–Bouldin (Davies and Bouldin, 1979), Silhouette and Calinski–Harabasz consistently se-lect K = 3 and identify gtr-t5-base as the en-coder yielding the strongest cluster separation on 
+
+GSM8K . In contrast, Davies–Bouldin tends to fa-vor larger K values (8–10) and exhibits greater vari-ability across splits without corresponding down-stream improvements. Since embeddings are computed once per dataset split and reused throughout optimization, their computational cost directly affects overall pipeline efficiency. Larger retrieval and LLM-derived encoders incur substantially higher runtime and memory overhead, whereas sentence-level en-coders are significantly faster. In particular, 
+
+all-mpnet-base-v2 and gtr-t5-base provide the best efficiency trade-off. Overall, gtr-t5-base 
+
+provides the best balance between clustering qual-ity and computational efficiency. Based on these results, we adopt the Silhouette score with K = 3 
+
+and the gtr-t5-base encoder for GSM8K in Clus-terFewshot. 
+
+C Larger Models 
+
+To examine whether the main efficiency trend ex-tends to larger model settings, Table 12 reports stan-dalone prompt-optimization results across GSM8K, HotPotQA, and Iris using Qwen2.5-32B-Instruct 
+
+with AWQ quantization. Across all three bench-marks, ClusterFewshot achieves the highest accu-racy among the compared methods while requiring the lowest compilation time among prompt optimiz-ers. This result strengthens the evidence that Clus-terFewshot’s efficiency advantage holds at larger model scale, where repeated prompt compilation may become increasingly costly, while preserving the accuracy benefits of optimized few-shot prompt-ing. 
+
+D Extended BetterTogether Results 
+
+This section provides the extended experimental results referenced in the main paper. Tables 13, 14, 15, 16, 17 and 18 report per-run performance scores for all BetterTogether strate-gies on the GSM8K , HotPotQA , and Iris bench-marks with Qwen2.5-7B-Instruct and Llama-3.2-3B-Instruct models, respectively. These results complement the aggregated scores presented in Ta-ble 1 by including standard deviation estimates over three random seeds, providing a more compre-hensive view of the stability and robustness of all prompt optimizers. Notably, ClusterFewshot consistently exhibits lower variance across most strategies, benchmarks and models, underscoring its superior robustness relative to traditional bootstrap-based methods, 
+
+BFRS and MIPROv2 .
+
+E Extended Ablation Study 
+
+This section provides extended ablation results sup-porting the analysis presented in the main paper. In addition to the performance summaries reported in Section 4.4, we include full statistical results and additional experiments examining the design choices underlying ClusterFewshot. All experi-ments follow the same datasets and evaluation pro-tocol described in Section 4. Table 19 reports the full statistical results for the individual cluster sampling strategies discussed in the main paper, situating them relative to full prompt optimizers. Similarly, Table 20 presents the corresponding statistical results for the comparison with RetrievalFewshot (RFS) .11 Table 21 contextualizes the improvements of prompt optimizers relative to the zero-shot base-line, showing the absolute accuracy gains obtained by each method. Finally, Table 22 reports results for alternative evaluation-set construction strategies used during one-shot scoring, comparing random validation subsets with cluster-central selections. 
+
+F Compute Resources 
+
+All experiments used to produce the results in Ta-ble 1 were conducted on a single NVIDIA A100 GPU (80GB memory), across all tasks and three random seeds, with a total compute time of ≈ 160 
+
+GPU hours. 12 Prompt (One-shot) Given a math word problem, generate the reasoning and final answer using Chain-of-Thought prompting. 
+
+—
+
+Role: system 
+
+Your input fields are: 1. question (str) Your output fields are: 1. reasoning (str) 2. answer (str) All interactions will be structured in the following format: 
+
+[[ ## question ## ]] {question} [[ ## reasoning ## ]] {reasoning} [[ ## answer ## ]] {answer} [[ ## completed ## ]] 
+
+Objective: Given a question, produce a step-by-step reasoning and final answer. —
+
+Role: user (one-shot example) 
+
+[[ ## question ## ]] 
+
+Annie goes to school. Today is her birthday, so Annie decided to buy some sweets for her colleagues. Every classmate got 2 candies. In the end, Annie got left with 12 candies. If there are 35 people in Annie’s class in total, how much did Annie spend on candies, if one candy costs $0.1? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+Annie gave 2 candies to each of her 35 classmates: 35 × 2 = 70 .She was left with 12 candies, meaning she originally had 70 + 12 = 82 candies. Each candy costs $0.1, so total cost is 82 × 0.1 = 8 .2 dollars. 
+
+[[ ## answer ## ]] 
+
+8.2 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (actual question) 
+
+[[ ## question ## ]] 
+
+Michelle is bringing sandwiches to work to give to her co-workers. She gives 4 sandwiches to one of her co-workers and keeps twice this amount for herself. If she had originally made 20 sandwiches, how many sandwiches does she have left to give to her other co-workers? 
+
+(Model is expected to respond with reasoning and answer in same structure) 
+
+Table 7: ClusterFewshot One-shot Prompting for GSM8K with Chain-of-Thought Reasoning, structured by Role 
+
+13 Prompt (Few-shot, Top-3 Sampling) Given a math word problem, generate the reasoning and final answer using Chain-of-Thought prompting. 
+
+—
+
+Role: system 
+
+Your input fields are: 1. question (str) Your output fields are: 1. reasoning (str) 2. answer (str) All interactions will be structured in the following format: 
+
+[[ ## question ## ]] {question} [[ ## reasoning ## ]] {reasoning} [[ ## answer ## ]] {answer} [[ ## completed ## ]] 
+
+Objective: Given a question, produce step-by-step reasoning and a final answer. —
+
+Role: user (few-shot example 1) 
+
+[[ ## question ## ]] 
+
+John’s neighbor tells him to walk his dog for 1 hour each day for a total of $10. He does this for April, save for the 4 Sundays in April. He later spent $50 on books and gave his sister Kaylee the same amount. How much money did John have left? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+April has 30 days, and there are 4 Sundays, so John walks the dog for 30 − 4 = 26 days. He earns 26 × $10 = $260 .He spends $50 on books and gives $50 to his sister, totaling $100 in expenses. The remaining money is 260 − 100 = 160 .
+
+[[ ## answer ## ]] 
+
+$160 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (few-shot example 2) 
+
+[[ ## question ## ]] 
+
+The ratio of boys to girls in a classroom is 3:5. If there are 4 more girls than boys, how many students are in the classroom? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+Let the number of boys be 3x, girls be 5x.Since there are 4 more girls than boys: 
+
+5x = 3 x + 4 ⇒ 2x = 4 ⇒ x = 2 .So, boys = 3 × 2 = 6 , girls = 5 × 2 = 10 .Total students = 6 + 10 = 16 .
+
+[[ ## answer ## ]] 
+
+16 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (few-shot example 3) 
+
+[[ ## question ## ]] 
+
+Lewis found 4 more items on the scavenger hunt than Samantha. Samantha found four times as many items as Tanya, who found 4 items. How many items did Lewis find? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+Tanya found 4 items. Samantha found 4 × 4 = 16 items. Lewis found 16 + 4 = 20 items. 
+
+[[ ## answer ## ]] 
+
+20 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (actual query) 
+
+[[ ## question ## ]] 
+
+Michelle is bringing sandwiches to work to give to her co-workers. She gives 4 sandwiches to one of her co-workers and keeps twice this amount for herself. If she had originally made 20 sandwiches, how many sandwiches does she have left to give to her other co-workers? 
+
+(Model is expected to respond with reasoning and answer) 
+
+Table 8: ClusterFewshot Few-shot Prompting for GSM8K with Chain-of-Thought Reasoning using Top-3 sampled examples. 14 Prompt (Few-shot, Cluster Representative Sampling) Given a math word problem, generate the reasoning and final answer using Chain-of-Thought prompting. 
+
+—
+
+Role: system 
+
+Your input fields are: 1. question (str) Your output fields are: 1. reasoning (str) 2. answer (str) All interactions will be structured in the following format: 
+
+[[ ## question ## ]] {question} [[ ## reasoning ## ]] {reasoning} [[ ## answer ## ]] {answer} [[ ## completed ## ]] 
+
+Objective: Given a question, produce step-by-step reasoning and a final answer. —
+
+Role: user (Cluster 1 Representative) 
+
+[[ ## question ## ]] 
+
+There are three trees in the town square. The tallest tree is 150 feet tall. The middle height tree is 2/3 the height of the tallest tree. The shortest tree is half the size of the middle tree. How tall is the shortest tree? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+The middle tree is 23 × 150 = 100 feet tall. The shortest tree is half of that: 12 × 100 = 50 feet. 
+
+[[ ## answer ## ]] 
+
+50 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (Cluster 2 Representative) 
+
+[[ ## question ## ]] 
+
+Carl buys index cards for his class. He gives each student 10 index cards. He teaches 6 periods a day and each class has 30 students. If a 50-pack of index cards costs $3, how much did he spend in total? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+Carl teaches 6 × 30 = 180 students. Each student gets 10 index cards, so total needed = 180 × 10 = 1800 .He needs 1800 /50 = 36 packs. Each pack costs $3, so total cost = 36 × 3 = $108 .
+
+[[ ## answer ## ]] 
+
+$108 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (Cluster 3 Representative) 
+
+[[ ## question ## ]] 
+
+Kaylee needs to sell 33 boxes of biscuits. She has sold 12 boxes of lemon, 5 of chocolate, and 4 of oatmeal biscuits. How many more boxes does she need to sell? 
+
+Role: assistant (completion) 
+
+[[ ## reasoning ## ]] 
+
+Kaylee sold 12 + 5 + 4 = 21 boxes so far. She needs to sell 33 − 21 = 12 more boxes. 
+
+[[ ## answer ## ]] 
+
+12 
+
+[[ ## completed ## ]] 
+
+—
+
+Role: user (actual query) 
+
+[[ ## question ## ]] 
+
+Michelle is bringing sandwiches to work to give to her co-workers. She gives 4 sandwiches to one of her co-workers and keeps twice this amount for herself. If she had originally made 20 sandwiches, how many sandwiches does she have left to give to her other co-workers? 
+
+(Model is expected to respond with reasoning and answer) 
+
+Table 9: ClusterFewshot Few-shot Prompting for GSM8K using Chain-of-Thought Reasoning. Examples sampled from top-1 representatives of 3 semantic clusters, where the semantic structure was determined using the 
+
+gtr-t5-base embedding model. 
+
+15 Scoring Metric Encoder Best K (train) Score (train) Best K (dev) Score (dev) Silhouette ↑                                                  
+
+> Qwen3-Embedding-0.6B 30.040 ——all-mpnet-base-v2 30.040 ——gtr-t5-base 30.057 30.051 bge-large-en-v1.5 30.043 ——
+> Calinski–Harabasz ↑
+> Qwen3-Embedding-0.6B 34.511 ——all-mpnet-base-v2 34.027 ——gtr-t5-base 35.559 312.49 bge-large-en-v1.5 34.231 ——
+> Davies–Bouldin ↓
+> Qwen3-Embedding-0.6B 10 2.744 84.106 all-mpnet-base-v2 92.760 ——gtr-t5-base 10 2.993 ——bge-large-en-v1.5 92.810 ——
+
+Table 10: Selecting K and encoder via clustering-quality metrics (K=2 –10) . We evaluate cluster quality on GSM8K across four sentence encoders using three metrics ( Silhouette ↑, Calinski–Harabasz ↑, Davies– Bouldin ↓), searching K ∈ { 2, . . . , 10 }. Silhouette and Calinski–Harabasz consistently select K=3 and agree that gtr-t5-base yields the strongest separation. Davies–Bouldin tends to prefer larger K (8–10) and shows less stability across splits without corresponding downstream gains. Based on this study, we adopt Silhouette with K=3 
+
+and the gtr-t5-base encoder for GSM8K in ClusterFewshot.                        
+
+> Encoder Dim Time (s) ↓Ex/s ↑Peak RSS Increase (GB) ↓
+> Qwen3-Embedding-0.6B 1024 23.48 3.8 4.04 all-mpnet-base-v2 768 4.07 21.9 0.43
+> gtr-t5-base 768 4.28 20.8 0.13
+> bge-large-en-v1.5 1024 13.42 6.6 1.37
+
+Table 11: Embedding runtime and memory profiling on GSM8K (train split = 100 examples, CPU). We report embedding dimensionality, end-to-end embedding time, throughput, and peak resident set size (RSS) increase during embedding. Results show substantial variation in computational cost across encoders, despite comparable embedding dimensionalities.                                    
+
+> Optimizer GSM8K Acc. Compile HotPotQA Acc. Compile Iris Acc. Compile (%) (min) (%) (min) (%) (min)
+> Baseline 86 .72 –20 .40 –70 .00 –
+> ClusterFewshot 94 .80 112 .250 .87 72 .3100 .00 7.7
+> BFRS 94 .46 194 .749 .07 190 .394 .00 9.0
+> MIPROv2 93 .40 143 .850 .13 148 .496 .00 37 .7
+
+Table 12: Standalone prompt-optimization results using Qwen2.5-32B-Instruct with AWQ quantization. 
+
+16 Strategy Prompt Optimizer Run 1 Run 2 Run 3 Average (test) 
+
+Prompts BFRS 86.57 85.36 84.84 85.59 ± 0.89 MIPROv2 85.28 84.29 84.90 84.82 ± 0.50 ClusterFewshot 88.85 86.87 87.63 87.78 ± 1.00 
+
+Prompts → Prompts BFRS 85.43 83.92 89.00 86.12 ± 2.61 MIPROv2 82.93 82.02 83.46 82.80 ± 0.73 ClusterFewshot 87.71 87.03 88.85 87.86 ± 0.92 
+
+Weights → Prompts BFRS 86.49 86.19 88.85 87.18 ± 1.46 MIPROv2 81.87 83.99 83.31 83.06 ± 1.08 ClusterFewshot 87.33 88.39 87.94 87.89 ± 0.53 
+
+Prompts → Weights BFRS 84.52 85.58 86.34 85.48 ± 0.91 MIPROv2 74.43 86.72 77.54 79.56 ± 6.39 ClusterFewshot 84.83 87.10 86.57 86.17 ± 1.19 
+
+Prompts → Weights → Prompts BFRS 85.05 79.51 81.71 82.09 ± 2.79 MIPROv2 85.28 65.55 82.02 77.62 ± 10.58 ClusterFewshot 82.85 89.15 86.04 86.01 ± 3.15 
+
+Table 13: Comparison of BFRS , MIPROv2 , and ClusterFewshot as prompt optimizers across five BetterTogether 
+
+strategies on the GSM8K benchmark using Qwen2.5-7B-Instruct . Each strategy was evaluated over three independent runs with different random seeds; we report the average accuracy on the held-out test set with its standard deviation. MIPROv2 jointly optimizes instruction text and demonstrations, whereas BFRS and ClusterFewshot 
+
+optimize demonstrations only. All optimizers compile few-shot contexts using up to 4 demonstrations per run. 
+
+Strategy Prompt Optimizer Run 1 Run 2 Run 3 Average (test) 
+
+Prompts BFRS 45.60 44.47 47.87 45.98 ± 1.73 MIPROv2 46.60 43.40 44.80 44.93 ± 1.60 ClusterFewshot 46.40 43.87 48.60 46.29 ± 2.37 
+
+Prompts → Prompts BFRS 42.13 46.27 42.73 43.71 ± 2.24 MIPROv2 45.73 45.67 44.13 45.18 ± 0.91 ClusterFewshot 44.33 47.33 44.33 45.33 ± 1.73 
+
+Weights → Prompts BFRS 43.67 40.07 43.67 42.47 ± 2.08 MIPROv2 44.73 43.13 46.00 44.62 ± 1.44 
+
+ClusterFewshot 41.33 44.33 42.87 42.84 ± 1.50 Prompts → Weights BFRS 42.47 44.53 45.40 44.13 ± 1.50 MIPROv2 39.60 47.87 44.07 43.85 ± 4.14 ClusterFewshot 42.93 46.00 43.73 44.22 ± 1.59 
+
+Prompts → Weights → Prompts BFRS 46.40 42.07 46.93 45.13 ± 2.67 MIPROv2 42.73 44.33 43.00 43.35 ± 0.86 ClusterFewshot 45.93 44.73 45.80 45.49 ± 0.66 
+
+Table 14: Comparison of BFRS , MIPROv2 , and ClusterFewshot as prompt optimizers across five BetterTogether 
+
+strategies on the HotPotQA benchmark using Qwen2.5-7B-Instruct . Each strategy was evaluated over three independent runs with different random seeds; we report the average accuracy on the held-out test set with its standard deviation. MIPROv2 jointly optimizes instruction text and demonstrations, whereas BFRS and ClusterFewshot 
+
+optimize demonstrations only. All optimizers compile few-shot contexts using up to 4 demonstrations per run. 
+
+17 Strategy Prompt Optimizer Run 1 Run 2 Run 3 Average (test) 
+
+Prompts BFRS 84 74 76 78.00 ± 5.29 MIPROv2 84 78 76 79.33 ± 4.16 ClusterFewshot 86 82 82 83.33 ± 2.31 
+
+Prompts → Prompts BFRS 94 74 80 82.67 ± 10.26 MIPROv2 68 88 80 78.67 ± 10.07 ClusterFewshot 82 92 86 86.67 ± 5.03 
+
+Weights → Prompts BFRS 76 74 90 80.00 ± 8.72 MIPROv2 82 86 84 84.00 ± 2.00 
+
+ClusterFewshot 84 84 74 80.67 ± 5.77 Prompts → Weights BFRS 82 82 88 84.00 ± 3.46 MIPROv2 88 80 82 83.33 ± 4.16 ClusterFewshot 82 90 84 85.33 ± 4.16 
+
+Prompts → Weights → Prompts BFRS 88 86 80 84.67 ± 4.16 
+
+MIPROv2 84 76 92 84.00 ± 8.00 ClusterFewshot 86 76 84 82.00 ± 5.29 
+
+Table 15: Comparison of BFRS , MIPROv2 , and ClusterFewshot as prompt optimizers across five BetterTogether 
+
+strategies on the Iris benchmark using Qwen2.5-7B-Instruct . Each strategy was evaluated over three independent runs with different random seeds; we report the average accuracy on the held-out test set with its standard deviation. 
+
+MIPROv2 jointly optimizes instruction text and demonstrations, whereas BFRS and ClusterFewshot optimize demonstrations only. All optimizers compile few-shot contexts using up to 4 demonstrations per run. 
+
+Strategy Prompt Optimizer Run 1 Run 2 Run 3 Average (test) 
+
+Prompts BFRS 75.49 79.74 79.51 78.24 ± 2.39 MIPROv2 75.72 76.10 76.10 75.97 ± 0.22 ClusterFewshot 79.51 79.97 79.14 79.54 ± 0.42 
+
+Prompts → Prompts BFRS 78.00 79.14 77.69 78.27 ± 0.76 MIPROv2 77.54 77.62 77.01 77.39 ± 0.33 ClusterFewshot 80.88 80.80 81.49 81.05 ± 0.38 
+
+Weights → Prompts BFRS 78.00 79.06 77.92 78.32 ± 0.64 MIPROv2 75.27 76.18 74.51 75.32 ± 0.84 ClusterFewshot 79.82 80.12 80.58 80.17 ± 0.38 
+
+Prompts → Weights BFRS 74.28 77.31 77.92 76.50 ± 1.95 MIPROv2 75.42 73.29 76.71 75.14 ± 1.73 ClusterFewshot 76.93 77.92 78.15 77.66 ± 0.65 
+
+Prompts → Weights → Prompts BFRS 79.89 76.40 78.98 78.42 ± 1.81 MIPROv2 70.79 76.48 73.98 73.75 ± 2.85 ClusterFewshot 79.74 77.54 80.05 79.11 ± 1.37 
+
+Table 16: Comparison of BFRS , MIPROv2 , and ClusterFewshot as prompt optimizers across five BetterTogether 
+
+strategies on the GSM8K benchmark using Llama-3.2-3B-Instruct . Each strategy was evaluated over three independent runs with different random seeds, and we report the average accuracy on the held-out test set with its standard deviation. MIPROv2 jointly optimizes instruction text and demonstrations, whereas BFRS and Cluster-Fewshot optimize demonstrations only. All optimizers compile few-shot contexts using up to 4 demonstrations per run. 
+
+18 Strategy Prompt Optimizer Run 1 Run 2 Run 3 Average (test) 
+
+Prompts BFRS 37.20 35.60 38.07 36.96 ± 1.25 
+
+MIPROv2 34.07 34.80 36.87 35.25 ± 1.45 ClusterFewshot 38.20 36.27 36.07 36.85 ± 1.18 Prompts → Prompts BFRS 41.40 40.20 40.47 40.69 ± 0.63 MIPROv2 32.87 36.13 35.47 34.82 ± 1.72 ClusterFewshot 40.20 40.93 41.67 40.93 ± 0.74 
+
+Weights → Prompts BFRS 33.33 37.00 37.60 35.98 ± 2.31 MIPROv2 32.73 32.33 30.20 31.75 ± 1.36 ClusterFewshot 36.13 37.60 38.33 37.35 ± 1.12 
+
+Prompts → Weights BFRS 35.73 38.67 40.47 38.29 ± 2.39 
+
+MIPROv2 28.00 33.40 27.93 29.78 ± 3.14 ClusterFewshot 36.40 39.20 34.87 36.82 ± 2.20 Prompts → Weights → Prompts BFRS 39.00 32.53 37.27 36.27 ± 3.35 MIPROv2 30.33 33.40 30.47 31.40 ± 1.73 ClusterFewshot 40.27 38.47 36.80 38.51 ± 1.74 
+
+Table 17: Comparison of BFRS , MIPROv2 , and ClusterFewshot as prompt optimizers across five BetterTogether 
+
+strategies on the HotPotQA benchmark using Llama-3.2-3B-Instruct . Each strategy was evaluated over three independent runs with different random seeds, and we report the average accuracy on the held-out test set with its standard deviation. MIPROv2 jointly optimizes instruction text and demonstrations, whereas BFRS and Cluster-Fewshot optimize demonstrations only. All optimizers compile few-shot contexts using up to 4 demonstrations per run. 
+
+Strategy Prompt Optimizer Run 1 Run 2 Run 3 Average (test) 
+
+Prompts BFRS 66 74 68 69.33 ± 4.16 MIPROv2 70 70 72 70.67 ± 1.15 ClusterFewshot 70 66 78 71.33 ± 6.11 
+
+Prompts → Prompts BFRS 62 72 70 68.00 ± 5.29 MIPROv2 60 70 58 62.67 ± 6.43 ClusterFewshot 78 66 82 75.33 ± 8.33 
+
+Weights → Prompts BFRS 66 76 66 69.33 ± 5.77 MIPROv2 64 68 50 60.67 ± 9.45 ClusterFewshot 78 68 72 72.67 ± 5.03 
+
+Prompts → Weights BFRS 70 60 76 68.67 ± 8.08 MIPROv2 68 70 66 68.00 ± 2.00 ClusterFewshot 72 70 72 71.33 ± 1.15 
+
+Prompts → Weights → Prompts BFRS 64 72 64 66.67 ± 4.62 MIPROv2 74 66 64 68.00 ± 5.29 ClusterFewshot 70 78 78 75.33 ± 4.62 
+
+Table 18: Comparison of BFRS , MIPROv2 , and ClusterFewshot as prompt optimizers across five BetterTogether 
+
+strategies on the Iris benchmark using Llama-3.2-3B-Instruct . Each strategy was evaluated over three independent runs with different random seeds, and we report the average accuracy on the held-out test set with its standard deviation. MIPROv2 jointly optimizes instruction text and demonstrations, whereas BFRS and ClusterFewshot 
+
+optimize demonstrations only. All optimizers compile few-shot contexts using up to 4 demonstrations per run. 
+
+19 Method GSM8K HotPotQA Iris 
+
+ClusterFewshot - Global Top-k 86 .11 ± 2.03 42 .20 ± 1.83 77 .47 ± 9.07 
+
+ClusterFewshot - Representatives 85 .98 ± 1.45 44 .97 ± 1.95 86 .27 ± 6.04 
+
+ClusterFewshot - Cluster Random 85 .24 ± 3.19 41 .29 ± 3.05 76 .00 ± 7.65 
+
+ClusterFewshot - Centroids 86 .39 ± 2.37 43 .22 ± 3.43 79 .60 ± 8.31 
+
+BFRS 84 .68 ± 2.70 44 .48 ± 3.30 80 .40 ± 6.43 
+
+MIPROv2 84 .17 ± 4.56 44 .21 ± 2.64 84 .40 ± 10 .00 
+
+ClusterFewshot – Hybrid 88 .06 ± 1.32 46 .41 ± 2.14 86 .27 ± 6.04 
+
+Table 19: Performance of individual ClusterFewshot sampling strategies compared with full optimizers. Reported values are Mean ±95% CI over 5 runs using Qwen2.5-7B-Instruct. 
+
+Method GSM8K HotPotQA Iris 
+
+RFS-kNN 84 .70 ± 0.54 42 .71 ± 1.60 76 .67 ± 7.57 
+
+RFS-MMR ( λ=0 .2) 84 .19 ± 1.29 43 .38 ± 0.53 72 .00 ± 10 .58 
+
+RFS-MMR ( λ=0 .5) 83 .18 ± 0.61 44 .20 ± 0.31 76 .67 ± 10 .07 
+
+RFS-MMR ( λ=0 .8) 83 .13 ± 0.88 43 .20 ± 0.41 77 .33 ± 4.62 
+
+ClusterFewshot 87 .78 ± 1.00 46 .29 ± 2.37 83 .33 ± 2.31 
+
+Table 20: Comparison with retrieval-based few-shot baselines that select demonstrations at inference time using semantic similarity. Reported values are Mean ± std over 3 runs using Qwen2.5-7B-Instruct. 
+
+Method GSM8K HotPotQA Iris 
+
+Zero-shot 82 .78 30 .56 42 .67 
+
+BFRS 85 .59 (+2 .81) 45 .98 (+15 .43) 78 .00 (+35 .33) 
+
+MIPROv2 84 .82 (+2 .04) 44 .93 (+14 .38) 79 .33 (+36 .66) 
+
+ClusterFewshot 87 .78 (+ 5.00 ) 46 .29 (+ 15 .74 ) 83 .33 (+ 40 .66 )
+
+Table 21: Performance gains relative to the zero-shot baseline. All optimizers improve over the base model Qwen2.5-7B-Instruct, with ClusterFewshot yielding the largest gains across tasks. 
+
+Sampling #Samples GSM8K HotPotQA Iris 
+
+Random 9 86 .92 ± 0.89 45 .18 ± 1.39 80 .00 ± 5.29 
+
+Random 15 83 .54 ± 1.04 43 .58 ± 4.12 83 .33 ± 8.33 
+
+Centrals 9 87 .78 ± 1.00 46 .29 ± 2.37 83 .33 ± 2.31 
+
+Centrals 15 87 .33 ± 0.30 43 .31 ± 2.10 82 .67 ± 3.06 
+
+Table 22: Effect of evaluation-set construction for one-shot scoring. Cluster-central validation subsets provide stable performance with moderate sample sizes, supporting the design choice used in ClusterFewshot. Reported values are Mean ± std over 3 runs using Qwen2.5-7B-Instruct. 
+
+20

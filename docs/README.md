@@ -6,48 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-22
-- 运行时间：2026-09-22 21:54:16 UTC
+- 最新运行日期：2026-09-23
+- 运行时间：2026-09-23 22:33:54 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：6
-- 速读区：3
+- 本次总论文数：6
+- 精读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-10 papers on prompt optimization and instruction tuning.
-        *   *Draft:* 建议优先研读两篇 9
-- 详情：[/202609/22/README](/202609/22/README)
+今日精选 6 篇前沿论文，重点解析多智能体激励机制设计与大模型少样本优化策略。
+多智能体协同优化与 LLM 少样本微调是当前提升系统效能与任务表现的核心突破口。
+建议优先研读双层优化框架论文，深入理解如何通过激励设计实现智能体间的精准协作。
+- 详情：[/202609/23/README](/202609/23/README)
 
 ### 精读区论文标签
-1. [Token Utility Is Selection-Conditioned: Coupled Selection of Prompt Context and Response Supervision for Efficient Instruction Tuning](/202609/22/2609.22943v1-token-utility-is-selection-conditioned-coupled-selection-of-prompt-context-and-response-supervision-for-efficient-instruction-tuning)  
+1. [Incentive Design for Multi-Agent Systems: A Bilevel Optimization Framework for Coordinating Independent Agents and Convergence Analysis](/202609/23/2609.26726v1-incentive-design-for-multi-agent-systems-a-bilevel-optimization-framework-for-coordinating-independent-agents-and-convergence-analysis)  
    标签：评分：9.0/10、query:bopl
-   evidence：通过梯度引导交互耦合选择提示上下文和响应
-2. [STEVE: Stabilizing Textual Gradient-Based Prompt Optimization via Error-Driven Refinement and Regularized Verification](/202609/22/2609.23716v1-steve-stabilizing-textual-gradient-based-prompt-optimization-via-error-driven-refinement-and-regularized-verification)  
-   标签：评分：9.0/10、query:bopl
-   evidence：通过文本梯度进行自动提示词优化
-3. [Beyond Similarity: Coverage-Aware Prompt Selection for Time Series Forecasting with LLMs](/202609/22/2609.22977v1-beyond-similarity-coverage-aware-prompt-selection-for-time-series-forecasting-with-llms)  
+   evidence：多智能体系统的双层优化框架
+2. [ClusterFewshot: Improving Few-shot Optimization for LLMs workflow](/202609/23/2609.25939v1-clusterfewshot-improving-few-shot-optimization-for-llms-workflow)  
    标签：评分：8.0/10、query:bopl
-   evidence：从学习到的提示池中进行覆盖感知提示选择
-4. [PETR: Prompt Ensembling with Training-free Routing for Vision-Language Models](/202609/22/2609.23600v1-petr-prompt-ensembling-with-training-free-routing-for-vision-language-models)  
-   标签：评分：8.0/10、query:bopl
-   evidence：视觉语言模型的提示词集成与学习
-5. [Hierarchical Prompt Learning for Hyperbolic Vision-Language Models](/202609/22/2609.24276v1-hierarchical-prompt-learning-for-hyperbolic-vision-language-models)  
-   标签：评分：8.0/10、query:bopl
-   evidence：视觉语言模型的分层提示学习
-6. [RRSI: Regularized Recursive Self-Improvement of Agent Harnesses](/202609/22/2609.24972v1-rrsi-regularized-recursive-self-improvement-of-agent-harnesses)  
-   标签：评分：8.0/10、query:bopl
-   evidence：迭代地提议和选择代理框架的组件级编辑
+   evidence：改进LLM工作流的少样本优化
 
 ### 速读区论文标签
-1. [AutoData: Agentic Search for Pre-training Data Selection](/202609/22/2609.19754v1-autodata-agentic-search-for-pre-training-data-selection)  
+1. [Optimizing the Score, Losing Sight of the Task: Reward Hacking Across Weights, Selection, and Prompts](/202609/23/2609.25848v1-optimizing-the-score-losing-sight-of-the-task-reward-hacking-across-weights-selection-and-prompts)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于自动选择算法和启发式工程的智能体搜索
-2. [Preserving Geometric Integrity in Graph Prompting via Measure-Constrained Optimal Transport](/202609/22/2609.23547v1-preserving-geometric-integrity-in-graph-prompting-via-measure-constrained-optimal-transport)  
-   标签：评分：7.0/10、query:bopl
-   evidence：参数高效的图提示词学习
-3. [Bilinear Optimization Divergence: Diagnosing Factor-Constrained LoRA Continual Learning](/202609/22/2609.23594v1-bilinear-optimization-divergence-diagnosing-factor-constrained-lora-continual-learning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于LoRA因子分析的双线性优化
+   evidence：权重、选择和提示词的跨维度优化
+2. [SpecLens: LLM-Based Verilog Generation with Specification-Derived Constraints via Behavioral Divergence](/202609/23/2609.16729v1-speclens-llm-based-verilog-generation-with-specification-derived-constraints-via-behavioral-divergence)  
+   标签：评分：6.0/10、query:bopl
+   evidence：通过规范约束实现大模型生成的自动化框架
+3. [Assessing Readability with LLMs: The Role of Reasoning and Few-Shot Prompting](/202609/23/2609.24650v1-assessing-readability-with-llms-the-role-of-reasoning-and-few-shot-prompting)  
+   标签：评分：6.0/10、query:bopl
+   evidence：高级提示策略对LLM的影响
+4. [Signed Graph Pre-Training and Prompt Learning](/202609/23/2609.25722v1-signed-graph-pre-training-and-prompt-learning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：符号图的提示学习框架
 
 
 <div class="dpr-home-promo-card">
