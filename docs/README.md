@@ -6,40 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-23
-- 运行时间：2026-09-23 22:33:54 UTC
+- 最新运行日期：2026-09-24
+- 运行时间：2026-09-24 21:49:39 UTC
 - 运行状态：成功
 - 本次总论文数：6
-- 精读区：2
-- 速读区：4
+- 精读区：0
+- 速读区：6
 
 ### 今日简报（AI）
-今日精选 6 篇前沿论文，重点解析多智能体激励机制设计与大模型少样本优化策略。
-多智能体协同优化与 LLM 少样本微调是当前提升系统效能与任务表现的核心突破口。
-建议优先研读双层优化框架论文，深入理解如何通过激励设计实现智能体间的精准协作。
-- 详情：[/202609/23/README](/202609/23/README)
+今日精选 6 篇前沿论文，涵盖大模型个性化、进化算法优化及组合优化算法等领域。
+重点关注 COPE 框架如何通过用户嵌入实现稀疏反馈下的持续个性化，以及 GA-Agent 在进化控制器合成中的超参数优化潜力。
+建议优先阅读 COPE 论文，探索如何提升模型在真实交互场景下的自适应能力。
+- 详情：[/202609/24/README](/202609/24/README)
 
 ### 精读区论文标签
-1. [Incentive Design for Multi-Agent Systems: A Bilevel Optimization Framework for Coordinating Independent Agents and Convergence Analysis](/202609/23/2609.26726v1-incentive-design-for-multi-agent-systems-a-bilevel-optimization-framework-for-coordinating-independent-agents-and-convergence-analysis)  
-   标签：评分：9.0/10、query:bopl
-   evidence：多智能体系统的双层优化框架
-2. [ClusterFewshot: Improving Few-shot Optimization for LLMs workflow](/202609/23/2609.25939v1-clusterfewshot-improving-few-shot-optimization-for-llms-workflow)  
-   标签：评分：8.0/10、query:bopl
-   evidence：改进LLM工作流的少样本优化
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Optimizing the Score, Losing Sight of the Task: Reward Hacking Across Weights, Selection, and Prompts](/202609/23/2609.25848v1-optimizing-the-score-losing-sight-of-the-task-reward-hacking-across-weights-selection-and-prompts)  
+1. [COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation](/202609/24/2609.26853v1-cope-continual-personalization-of-llms-under-sparse-user-feedback-via-user-embeddings-and-self-evaluation)  
    标签：评分：7.0/10、query:bopl
-   evidence：权重、选择和提示词的跨维度优化
-2. [SpecLens: LLM-Based Verilog Generation with Specification-Derived Constraints via Behavioral Divergence](/202609/23/2609.16729v1-speclens-llm-based-verilog-generation-with-specification-derived-constraints-via-behavioral-divergence)  
+   evidence：通过个性化嵌入和自我评估对大模型进行持续优化
+2. [GA-Agent: Large Language Models as Hyperparameter Optimizers for Evolutionary Controller Synthesis](/202609/24/2609.27725v1-ga-agent-large-language-models-as-hyperparameter-optimizers-for-evolutionary-controller-synthesis)  
+   标签：评分：7.0/10、query:bopl
+   evidence：大语言模型作为超参数优化器替代双层优化
+3. [An Exact Algorithm for the Max-Min Covering Location Blocker Problem](/202609/24/2609.28084v1-an-exact-algorithm-for-the-max-min-covering-location-blocker-problem)  
+   标签：评分：7.0/10、query:bopl
+   evidence：包含领导者和跟随者的双层优化问题
+4. [FRAUDSkill: Structured Frozen-Weight Skill Optimization for Audio Anti-Fraud Detection](/202609/24/2609.18766v3-fraudskill-structured-frozen-weight-skill-optimization-for-audio-anti-fraud-detection)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过规范约束实现大模型生成的自动化框架
-3. [Assessing Readability with LLMs: The Role of Reasoning and Few-Shot Prompting](/202609/23/2609.24650v1-assessing-readability-with-llms-the-role-of-reasoning-and-few-shot-prompting)  
+   evidence：结构化冻结权重技能优化与基于提示的方法
+5. [Scaling Vision-Language Reward Learning for Robot Manipulation in Parallel Simulation](/202609/24/2609.21767v1-scaling-vision-language-reward-learning-for-robot-manipulation-in-parallel-simulation)  
    标签：评分：6.0/10、query:bopl
-   evidence：高级提示策略对LLM的影响
-4. [Signed Graph Pre-Training and Prompt Learning](/202609/23/2609.25722v1-signed-graph-pre-training-and-prompt-learning)  
+   evidence：视觉语言模型中基于两阶段提示的奖励学习
+6. [Efficient Cost-Aware LLM Evaluation via Bayesian Bandit Gittins Indices](/202609/24/2609.25645v1-efficient-cost-aware-llm-evaluation-via-bayesian-bandit-gittins-indices)  
    标签：评分：6.0/10、query:bopl
-   evidence：符号图的提示学习框架
+   evidence：自动LLM配置选择
 
 
 <div class="dpr-home-promo-card">
