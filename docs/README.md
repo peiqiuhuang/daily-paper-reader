@@ -6,41 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-24
-- 运行时间：2026-09-24 21:49:39 UTC
+- 最新运行日期：2026-09-25
+- 运行时间：2026-09-25 21:54:14 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：0
-- 速读区：6
+- 本次总论文数：11
+- 精读区：1
+- 速读区：10
 
 ### 今日简报（AI）
-今日精选 6 篇前沿论文，涵盖大模型个性化、进化算法优化及组合优化算法等领域。
-重点关注 COPE 框架如何通过用户嵌入实现稀疏反馈下的持续个性化，以及 GA-Agent 在进化控制器合成中的超参数优化潜力。
-建议优先阅读 COPE 论文，探索如何提升模型在真实交互场景下的自适应能力。
-- 详情：[/202609/24/README](/202609/24/README)
+今日精选 11 篇前沿论文，重点解析智能体递归自我提升技术。
+核心推荐关注 RRSI 框架，它通过正则化递归机制显著增强了智能体系统的自我进化能力。
+建议优先研读精读论文，深入理解智能体如何通过自我迭代突破性能瓶颈。
+- 详情：[/202609/25/README](/202609/25/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [RRSI: Regularized Recursive Self-Improvement of Agent Harnesses](/202609/25/2609.24972v2-rrsi-regularized-recursive-self-improvement-of-agent-harnesses)  
+   标签：评分：8.0/10、query:bopl
+   evidence：通过递归自我改进自动执行提示和框架编辑
 
 ### 速读区论文标签
-1. [COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation](/202609/24/2609.26853v1-cope-continual-personalization-of-llms-under-sparse-user-feedback-via-user-embeddings-and-self-evaluation)  
+1. [Optimal Measurement Selection for Certifiable Voltage Monitoring in Power Distribution Systems](/202609/25/2609.28785v1-optimal-measurement-selection-for-certifiable-voltage-monitoring-in-power-distribution-systems)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过个性化嵌入和自我评估对大模型进行持续优化
-2. [GA-Agent: Large Language Models as Hyperparameter Optimizers for Evolutionary Controller Synthesis](/202609/24/2609.27725v1-ga-agent-large-language-models-as-hyperparameter-optimizers-for-evolutionary-controller-synthesis)  
+   evidence：为测量选择制定双层优化方案
+2. [TTLab at StanceEval-2026: A Cloze-Style Prompting Approach for Arabic-Language Stance Detection (CLASP-Ar)](/202609/25/2609.29733v1-ttlab-at-stanceeval-2026-a-cloze-style-prompting-approach-for-arabic-language-stance-detection-clasp-ar)  
    标签：评分：7.0/10、query:bopl
-   evidence：大语言模型作为超参数优化器替代双层优化
-3. [An Exact Algorithm for the Max-Min Covering Location Blocker Problem](/202609/24/2609.28084v1-an-exact-algorithm-for-the-max-min-covering-location-blocker-problem)  
+   evidence：用于语言建模的完形填空式提示方法
+3. [ENDOPROMPT: Victim-Side Pseudo-References for Utility Degradation](/202609/25/2609.29948v1-endoprompt-victim-side-pseudo-references-for-utility-degradation)  
    标签：评分：7.0/10、query:bopl
-   evidence：包含领导者和跟随者的双层优化问题
-4. [FRAUDSkill: Structured Frozen-Weight Skill Optimization for Audio Anti-Fraud Detection](/202609/24/2609.18766v3-fraudskill-structured-frozen-weight-skill-optimization-for-audio-anti-fraud-detection)  
+   evidence：从无标签指令中学习降低效用的前缀
+4. [LLMs as Feature Engineers for Text-and-Tabular Prediction](/202609/25/2609.21894v1-llms-as-feature-engineers-for-text-and-tabular-prediction)  
    标签：评分：6.0/10、query:bopl
-   evidence：结构化冻结权重技能优化与基于提示的方法
-5. [Scaling Vision-Language Reward Learning for Robot Manipulation in Parallel Simulation](/202609/24/2609.21767v1-scaling-vision-language-reward-learning-for-robot-manipulation-in-parallel-simulation)  
+   evidence：使用大语言模型自动提取特征的迭代框架
+5. [When and How Should an Agent Clarify? CIGAsk: Teaching LLMs to Clarify via Counterfactual Information Gain](/202609/25/2609.24290v1-when-and-how-should-an-agent-clarify-cigask-teaching-llms-to-clarify-via-counterfactual-information-gain)  
    标签：评分：6.0/10、query:bopl
-   evidence：视觉语言模型中基于两阶段提示的奖励学习
-6. [Efficient Cost-Aware LLM Evaluation via Bayesian Bandit Gittins Indices](/202609/24/2609.25645v1-efficient-cost-aware-llm-evaluation-via-bayesian-bandit-gittins-indices)  
+   evidence：通过提示和强化学习教大模型进行澄清
+6. [Automatic Rank Allocation for Low-Rank Adaptation in Large Language Models via lp Regularization](/202609/25/2609.28998v1-automatic-rank-allocation-for-low-rank-adaptation-in-large-language-models-via-lp-regularization)  
    标签：评分：6.0/10、query:bopl
-   evidence：自动LLM配置选择
+   evidence：通过优化目标进行秩分配
+7. [Scope Before You Persist: Preventing Cross-Family Interference in Agent Memory](/202609/25/2609.29144v1-scope-before-you-persist-preventing-cross-family-interference-in-agent-memory)  
+   标签：评分：6.0/10、query:bopl
+   evidence：智能体在不更新模型权重的情况下改进提示和技能
+8. [Online Task Adaptation via Self-Organisation](/202609/25/2609.29281v1-online-task-adaptation-via-self-organisation)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于任务特定自适应的元学习自组织过程
+9. [Let Training Guide Selection: Online Synthetic Data Filtering via Real-Anchored Utility](/202609/25/2609.29988v1-let-training-guide-selection-online-synthetic-data-filtering-via-real-anchored-utility)  
+   标签：评分：6.0/10、query:bopl
+   evidence：通过锚定在真实数据上的梯度反馈进行效用估计
+10. [Minimally Invasive Steering of Language Models](/202609/25/2609.30218v1-minimally-invasive-steering-of-language-models)  
+   标签：评分：6.0/10、query:bopl
+   evidence：用于调整冻结语言模型的引导向量优化
 
 
 <div class="dpr-home-promo-card">
