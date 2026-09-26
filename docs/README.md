@@ -6,55 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-25
-- 运行时间：2026-09-25 21:54:14 UTC
+- 最新运行日期：2026-09-26
+- 运行时间：2026-09-26 22:07:54 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：1
-- 速读区：10
+- 本次总论文数：6
+- 精读区：0
+- 速读区：6
 
 ### 今日简报（AI）
-今日精选 11 篇前沿论文，重点解析智能体递归自我提升技术。
-核心推荐关注 RRSI 框架，它通过正则化递归机制显著增强了智能体系统的自我进化能力。
-建议优先研读精读论文，深入理解智能体如何通过自我迭代突破性能瓶颈。
-- 详情：[/202609/25/README](/202609/25/README)
+今日聚焦大模型长上下文压缩与 MoE 架构优化，探索高效推理与参数微调新路径。
+重点关注答案对齐的内存嵌入压缩技术，以及通过细粒度参数微调提升 MoE 模型性能的创新方案。
+建议关注长文本处理与稀疏控制的前沿进展，为提升模型推理效率储备技术视野。
+- 详情：[/202609/26/README](/202609/26/README)
 
 ### 精读区论文标签
-1. [RRSI: Regularized Recursive Self-Improvement of Agent Harnesses](/202609/25/2609.24972v2-rrsi-regularized-recursive-self-improvement-of-agent-harnesses)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过递归自我改进自动执行提示和框架编辑
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Optimal Measurement Selection for Certifiable Voltage Monitoring in Power Distribution Systems](/202609/25/2609.28785v1-optimal-measurement-selection-for-certifiable-voltage-monitoring-in-power-distribution-systems)  
+1. [Compressing Long Context into Answer-Aligned Memory Embeddings for LLM Inference](/202609/26/2609.25537v1-compressing-long-context-into-answer-aligned-memory-embeddings-for-llm-inference)  
    标签：评分：7.0/10、query:bopl
-   evidence：为测量选择制定双层优化方案
-2. [TTLab at StanceEval-2026: A Cloze-Style Prompting Approach for Arabic-Language Stance Detection (CLASP-Ar)](/202609/25/2609.29733v1-ttlab-at-stanceeval-2026-a-cloze-style-prompting-approach-for-arabic-language-stance-detection-clasp-ar)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于语言建模的完形填空式提示方法
-3. [ENDOPROMPT: Victim-Side Pseudo-References for Utility Degradation](/202609/25/2609.29948v1-endoprompt-victim-side-pseudo-references-for-utility-degradation)  
-   标签：评分：7.0/10、query:bopl
-   evidence：从无标签指令中学习降低效用的前缀
-4. [LLMs as Feature Engineers for Text-and-Tabular Prediction](/202609/25/2609.21894v1-llms-as-feature-engineers-for-text-and-tabular-prediction)  
+   evidence：将上下文压缩为内存嵌入以实现高效推理
+2. [ARM: Attention with Routed-Memory for Learnable Sparse Control](/202609/26/2609.24417v1-arm-attention-with-routed-memory-for-learnable-sparse-control)  
    标签：评分：6.0/10、query:bopl
-   evidence：使用大语言模型自动提取特征的迭代框架
-5. [When and How Should an Agent Clarify? CIGAsk: Teaching LLMs to Clarify via Counterfactual Information Gain](/202609/25/2609.24290v1-when-and-how-should-an-agent-clarify-cigask-teaching-llms-to-clarify-via-counterfactual-information-gain)  
+   evidence：大语言模型的全微分记忆系统
+3. [From Experts to Sub-experts: Fine-grained Parameter-Efficient Fine-Tuning for MoE LLMs](/202609/26/2609.25655v1-from-experts-to-sub-experts-fine-grained-parameter-efficient-fine-tuning-for-moe-llms)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过提示和强化学习教大模型进行澄清
-6. [Automatic Rank Allocation for Low-Rank Adaptation in Large Language Models via lp Regularization](/202609/25/2609.28998v1-automatic-rank-allocation-for-low-rank-adaptation-in-large-language-models-via-lp-regularization)  
+   evidence：MoE模型的细粒度参数高效微调
+4. [Alignment Inertia: Auditing the Durability of Training Data Influence Through Policy Override Resistance](/202609/26/2609.27333v1-alignment-inertia-auditing-the-durability-of-training-data-influence-through-policy-override-resistance)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过优化目标进行秩分配
-7. [Scope Before You Persist: Preventing Cross-Family Interference in Agent Memory](/202609/25/2609.29144v1-scope-before-you-persist-preventing-cross-family-interference-in-agent-memory)  
+   evidence：评估零样本提示和微调的持久性
+5. [Adaptive Fisher-Whitened Cross-Covariance for Low-Resource Speech Recognition](/202609/26/2609.29800v1-adaptive-fisher-whitened-cross-covariance-for-low-resource-speech-recognition)  
    标签：评分：6.0/10、query:bopl
-   evidence：智能体在不更新模型权重的情况下改进提示和技能
-8. [Online Task Adaptation via Self-Organisation](/202609/25/2609.29281v1-online-task-adaptation-via-self-organisation)  
+   evidence：用于适配大模型的参数高效微调 (PEFT)
+6. [Canopy: Exploiting Piecewise Smooth Tree Priors for Multi-Fidelity Bandits](/202609/26/2609.30017v1-canopy-exploiting-piecewise-smooth-tree-priors-for-multi-fidelity-bandits)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于任务特定自适应的元学习自组织过程
-9. [Let Training Guide Selection: Online Synthetic Data Filtering via Real-Anchored Utility](/202609/25/2609.29988v1-let-training-guide-selection-online-synthetic-data-filtering-via-real-anchored-utility)  
-   标签：评分：6.0/10、query:bopl
-   evidence：通过锚定在真实数据上的梯度反馈进行效用估计
-10. [Minimally Invasive Steering of Language Models](/202609/25/2609.30218v1-minimally-invasive-steering-of-language-models)  
-   标签：评分：6.0/10、query:bopl
-   evidence：用于调整冻结语言模型的引导向量优化
+   evidence：提示词裁剪与测试时搜索的优化
 
 
 <div class="dpr-home-promo-card">
