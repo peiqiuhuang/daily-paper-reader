@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-09-27 <!--dpr-date:20260927-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/27/2609.24979v1-lora-generating-hypernetworks-for-efficient-on-device-llm-generative-personalization" data-sidebar-item="{&quot;title&quot;: &quot;LoRA-generating hypernetworks for efficient on-device LLM generative personalization&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.24979v1-lora-generating-hypernetworks-for-efficient-on-device-llm-generative-personalization&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;将上下文映射到低秩自适应（LoRA）的超网络&quot;}">LoRA-generating hypernetworks for efficient on-device LLM generative personalization</a>
   * 2026-09-26 <!--dpr-date:20260926-->
     * 速读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202609/26/2609.25537v1-compressing-long-context-into-answer-aligned-memory-embeddings-for-llm-inference" data-sidebar-item="{&quot;title&quot;: &quot;Compressing Long Context into Answer-Aligned Memory Embeddings for LLM Inference&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.25537v1-compressing-long-context-into-answer-aligned-memory-embeddings-for-llm-inference&quot;, &quot;score&quot;: &quot;7.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;将上下文压缩为内存嵌入以实现高效推理&quot;}">Compressing Long Context into Answer-Aligned Memory Embeddings for LLM Inference</a>
