@@ -1,0 +1,2086 @@
+Title: To Solve Bilevel Optimization with Nonconvex Lower Levels, We Need Second-Order Stationarity
+
+URL Source: https://arxiv.org/pdf/2609.30501v1
+
+Published Time: Mon, 28 Sep 2026 00:12:09 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# To Solve Bilevel Optimization with Nonconvex Lower Levels, We Need Second-Order Stationarity 
+
+Zhiyao Zhang 1, Menglu Yu 2, Alvaro Velasquez 3, Nathaniel D. Bastian 4, Jia Liu 1
+
+> 1
+
+The Ohio State University 2Meta 3University of Colorado Boulder 4Johns Hopkins University 
+
+zhang.15178@osu.edu, liu@ece.osu.edu 
+
+Abstract 
+
+Although bilevel optimization (BLO) has emerged as a powerful framework for addressing many complex and nested machine learning problems in recent years, most existing studies are confined to the lower-level strongly convex (LLSC) or lower-level generally convex (LLGC) settings (i.e., the lower-level objective function is assumed to be, at least, convex). While the LLSC/LLGC assumptions render more tractable algorithmic design and theoretical analysis, they are too rigid to encompass many machine learning problems in practice. The limitations of LLSC/LLGC assumptions in BLO motivate us to investigate solving the BLO problem in the general lower-level nonconvex (LLNC) settings, which remains in its infancy. In the literature on LLNC-BLO, most of the existing works either require additional structures in the lower-level objective function for tractable theoretical analysis, or adopt the first-order stationarity reformulation as a lower-level surrogate problem, which is inherited from the LLSC/LLGC settings but could lose their effectiveness in the LLNC setting. To bridge this gap, in this work, we propose to reformulate the nonconvex lower-level problem using a second-order stationarity-based surrogate, the solution of which guarantees a local optimal solution at the lower level. Based on this reformulation, we propose the PROBE (Perturbed gradient algorithm for bilevel problem) and show that it overcomes the limitations of prior works by probing and escaping lower-level saddle points. We theoretically prove that PROBE achieves a finite-time convergence rate of O(T − 25 ), where 
+
+T denotes iterations. To our knowledge, this work is the first to establish the finite-time convergence rate guarantee for achieving lower-level second-order stationary solutions in general LLNC-BLO. Our experiments on both a large language model-based data curation task and a meta-learning task also show that 
+
+PROBE outperforms state-of-the-art methods. 
+
+1 Introduction 
+
+In recent years, bilevel optimization (BLO) (Bracken and McGill, 1973; Liu et al., 2021; Zhang et al., 2024) has received significant attention in the machine learning community due to the rise of a wide range of complex and nested machine learning problems, such as reinforcement learning (Hong et al., 2023; Kudo et al., 2026), meta-learning (Franceschi et al., 2018; Ji et al., 2021), adversarial training (Zhang et al., 2022b), large language model (LLM) fine-tuning (Shen et al., 2024a), to name just a few. In general, a BLO problem can be formulated as follows: 
+
+BLO : min  
+
+> x∈Rp,y ∈Rq
+
+f (x, y ) subject to y ∈ S (x) := arg min 
+
+> y
+
+g(x, y ), (1) where f (x, y ) and g(x, y ) are the upper- and lower-level objective functions, respectively. Clearly, the challenge of solving a BLO problem stems from the nested structure, i.e., part of the decision variables y in the upper-level objective f (x, y ) is obtained from the set of optimizers S(x) given          
+
+> Preprint. arXiv:2609.30501v1 [cs.LG] 24 Sep 2026 0.5 0.0 0.5 1.0 1.5 2.0 2.5 3.0 3.5
+> x
+> 2.0
+> 1.5
+> 1.0
+> 0.5
+> 0.0 0.5 1.0 1.5 2.0
+> y FOSP-based Solution Initial Point 1 Initial Point 2 True Solution True Solution
+> yg(x,y) = 0
+> PBGD GALET MEHA SUN-DSBO-SE PROBE (Ours)
+
+(a) Converging trajectories. 0 25 50 75 100 125 150 175 200  
+
+> Iteration
+> 012345
+> Upper-level Gap
+> PBGD GALET MEHA SUN-DSBO-SE PROBE (Ours)
+
+(b) Convergence gaps in (a). 
+
+Figure 1: Example: x, y ∈ R, f (x, y ) = ( x − 2) 2 + y2, g(x, y ) = 14 y4 − 12 xy 2. Fig. 1a shows the contour plot of f (x, y ) along with converging trajectories with initial points (0 , 2) and (3 , 0) , and Fig. 1b plots |f (xt, y t) − f ∗| vs. iteration t, illustrating how far the convergent sequences are from solving the LLNC-BLO problem. Our PROBE (Alg. 1) is the only method that escapes the saddle point and finds true solutions , compared to existing baselines methods: PBGD (Shen and Chen, 2023), GALET (Xiao et al., 2023), MEHA (Liu et al., 2024), and SUN-DSBO-SE (Ma et al., 2026). 
+
+an upper-level variable x ∈ Rp. To address this challenge and for tractable algorithmic design and analysis, most existing works in the BLO literature have relied on the restrictive lower-level strong convexity (LLSC) assumption, i.e., g(x, ·) is strongly convex with respect to (w.r.t.) y for any given x ∈ Rp (Ghadimi and Wang, 2018; Ji et al., 2021; Yang et al., 2021; Dagréou et al., 2022), thereby ensuring a singleton solution set for the lower-level problem and well-defined upper-level hypergradient through the implicit function theorem. To address the limitation of the stringent LLSC assumption, a recent line of works in the BLO literature relaxes LLSC to lower-level general convexity (LLGC), i.e., g(x, ·) is convex w.r.t. y (Cao et al., 2023; Jiang et al., 2023; Liu et al., 2023). Unfortunately, LLGC remains highly restrictive, since most modern learning models are based on deep neural networks, which are highly nonconvex and violate the LLGC assumption. To date, research on bilevel optimization (BLO) problems with nonconvex lower levels (LLNC) remains in its infancy, and existing results are limited. To the best of our knowledge, early attempts to address LLNC-BLO (Kwon et al., 2023; Shen and Chen, 2023; Xiao et al., 2023; Chen et al., 2024; Liu et al., 2024; Jiang et al., 2025a,b; Ma et al., 2026) have achieved only partial success and exhibit various limitations. One key reason for this stagnation is that, under LLNC, finding an optimal solution y∗(x) to the lower-level problem is already intractable in general (typically NP-hard). This difficulty is further compounded by the potential non-uniqueness of y∗(x) and the challenge of establishing well-defined upper-level hypergradients given a y∗(x). Consequently, the aforementioned works either impose specific structural assumptions or consider relaxations of the LLNC-BLO problem. For example, some existing works (Kwon et al., 2023; Jiang et al., 2025a,b) assume bounded domains for the variables (either x, y, or both), which limits their practical applicability. Other works relax the LLNC-BLO formulation by replacing the lower-level optimality condition y ∈ arg min y g(x, y ) with the first-order stationarity condition, i.e., seeking y-solutions that satisfy ∇y g(x, y ) = 0 . Although some studies further assume that the lower-level objective 
+
+g(x, y ) satisfies the Polyak–Łojasiewicz (PL) condition (Shen and Chen, 2023; Xiao et al., 2023; Liu et al., 2024; Ma et al., 2026), thereby ensuring that any first-order stationary point (FOSP) is globally optimal. However, the PL condition is restrictive, since nonconvex problems may generally exhibit flat regions, saddle points, or suboptimal local minima, under which the PL condition fails to hold. In this work, we argue that algorithmic designs using the FOSP relaxation as a surrogate for the lower-level problem could be easily trapped in undesirable saddle points of the lower-level objective (i.e., points that are FOSP but not local minima), thereby yielding poor solutions to the overall LLNC-BLO problem. For example, consider the simple LLNC-BLO problem in Fig. 1 where x, y ∈ R,
+
+f (x, y ) = ( x − 2) 2 + y2, g(x, y ) = 14 y4 − 12 xy 2. It can be readily verified that the PL condition fails to hold even for this simple example. Consequently, sequences generated by existing algorithms based on the FOSP surrogate converge only to saddle points of g(x, ·) (cf. Fig. 1a), leading to solutions that are significantly suboptimal compared to the true optimum (cf. Fig. 1b). 2Table 1: Comparison of PROBE (Alg. 1) with state-of-the-art LLNC-BLO methods. †: BLO Setting 
+
+states the assumptions on the lower level of the LLNC-BLO. ‡: Surrogate Problem refers to the relaxed surrogate of the lower level of the LLNC-BLO problem. Moreau envelope-based surrogates reduce to first-order stationarity under smoothness conditions (Ma et al., 2026).                    
+
+> Algorithm BLO Setting †Surrogate Problem ‡Escape Saddle Points
+> PBGD LLNC First-order stationarity ✗
+> GALET LLNC First-order stationarity ✗
+> MEHA LLNC Moreau envelope ✗
+> SUN-DSBO-SE LLNC Moreau envelope ✗
+> PROBE (Ours) LLNC Second-order stationarity ✓
+
+To address the limitations of FOSP-based lower-level surrogates, in this paper, we propose using 
+
+second-order stationarity as a surrogate for LLNC-BLO problems. Mathematically, second-order stationarity requires not only ∇y g(x, y ) = 0 , but also that the Hessian with respect to y is positive semidefinite (PSD), i.e., λmin (∇2 
+
+> yy
+
+g(x, y )) ≥ 0. Our rationale for adopting this second-order-stationarity-based lower-level surrogate (SOS-LLS) is that a PSD Hessian enforces local convexity in the lower-level problem, thereby ruling out undesirable saddle points and guaranteeing at least local optimality with respect to y. As a concrete example, Fig. 1 shows that our PROBE method, based on SOS-LLS, successfully recovers true optimal solutions to the LLNC-BLO problem. Despite the significant advantage of avoiding undesirable saddle points, solving LLNC-BLO problems through the SOS-LLS reformulation remains largely underexplored, and both algorithm design and analysis are highly nontrivial. This is primarily due to two fundamental challenges: (i) the SOS-LLS reformulation leads to a constrained problem that is inherently non-smooth, posing difficulties for algorithmic design; and (ii) under the LLNC setting, the upper-level hypergradient is ill-defined, leaving no natural metric to quantify the upper-level stationarity gap. In this paper, we address these challenges through the following key contributions: • Theoretical Foundations: For the first time in the literature, we propose to incorporate second-order stationarity as the lower-level surrogate for LLNC-BLO problems, which allows to avoid undesirable saddle point solutions at the lower level without assuming the overly restrictive PL condition (cf. Table 1). Building on the SOS-LLS reformulation, we introduce a new augmented convergence metric that leverages second-order stationarity to induce local curvature. By progressively shrinking the augmentation parameter, the proposed metric recovers solutions to the original LLNC-BLO problem, thereby providing a principled foundation for both algorithm design and analysis. • Algorithmic Design and Analysis: Based on the proposed SOS-LLS reformulation, we propose 
+
+PROBE (Perturbed gradient algorithm for bilevel problem), a new algorithm that efficiently probes and guarantees escaping saddle points in the lower level of LLNC-BLO problems. Theo-retically, we show that PROBE achieves a finite-time convergence rate of O(T − 25 ) at the upper level while guaranteeing local optimality at the lower level for solving LLNC-BLO problems, where T denotes iteration counts. • Empirical Validation: We validate the effectiveness of our PROBE method through a dataset curation task for LLM fine-tuning and a meta-learning task, both of which can be formulated as a BLO problem. Our experimental results demonstrate that PROBE outperforms existing baselines. We further conduct ablation studies to further reveal the significance of the key components in our proposed PROBE method. 
+
+2 Related Work 
+
+In this section, we provide an overview on two related lines of research: (i) bilevel optimization (BLO), with a focus on methods that address BLO problems in the LLNC settings; and (ii) mechanisms for escaping saddle points in single-level nonconvex optimization theory for machine learning. 
+
+1) Bilevel Optimization (BLO): The study of BLO traces its roots back to as early as Bracken and McGill (1973); Ye and Zhu (1995). In recent years, BLO has received significant attention within the machine learning community, primarily driven by the growing necessity of solving nested-structured optimization problems in modern machine learning applications. As mentioned earlier, 3most existing works in the BLO literature are based on the restrictive LLSC condition (Franceschi et al., 2018; Ghadimi and Wang, 2018; Shaban et al., 2019; Arbel and Mairal, 2021; Ji et al., 2021; Yang et al., 2021; Dagréou et al., 2022), which significantly limits the practical applicability of the BLO framework. Due to the limitations of LLSC, researchers have recently started to relax the LLSC assumption to the LLGC assumption (Cao et al., 2023; Chen et al., 2023; Jiang et al., 2023; Liu et al., 2023; Shen et al., 2024b). However, the convexity requirement in LLGC still excludes a wide range of practical scenarios. The widening gap between the demand for solving general BLO problems in the LLNC setting and the limited theoretical understanding of this BLO setting motivates the studies of LLNC-BLO. However, this area remains in its infancy, and existing works either impose strong structural assumptions or consider FOSP-based relaxations of the LLNC-BLO problem (Kwon et al., 2023; Shen and Chen, 2023; Xiao et al., 2023; Chen et al., 2024; Liu et al., 2024; Jiang et al., 2025a,b; Ma et al., 2026). As shown in the illustrative example in Figure 1 and Table 1, these methods fail to distinguish local minima from saddle points at the lower level, leading to solutions that are significantly suboptimal compared to the true optimum of the original LLNC-BLO problems. 
+
+2) Escaping Saddle Points in Single-Level Nonconvex Optimization: It is well-known that in the absence of convexity, traditional single-level optimization becomes significantly more challenging: finding a global optimum is NP-hard in general (Murty et al., 1987). In fact, even finding a local minimum solution in nonconvex optimization is highly nontrivial. One of the primary challenges stems from the ubiquity of saddle points, particularly in the landscape of high-dimensional objective functions (Dauphin et al., 2014), which is the typical regime where modern machine learning tasks reside. Although second-order methods naturally tackle this issue by actively probing and escaping saddle points, their dimension-dependent convergence rates preclude them from practical large-scale applications. In the machine learning literature, the question of how to escape saddle points in nonconvex optimization was first systematically studied in Ge et al. (2015). However, the convergence rate established in Ge et al. (2015) scales polynomially with the dimension. Inspired by this breakthrough, a significant amount of research effort has been dedicated to designing algorithms that reduce the dimension dependence to scale at a polylog fashion (Agarwal et al., 2017; Jin et al., 2017; Allen-Zhu and Li, 2018; Fang et al., 2018; Jin et al., 2018; Liu et al., 2018; Jin et al., 2021; Zhang and Li, 2021). Another closely related line of research focuses on zeroth-order methods for escaping saddle points (Vlatakis-Gkaragkounis et al., 2019; Zhang et al., 2022a; Zhang and Gu, 2022; Ren et al., 2023). To our knowledge, the only works that incorporated saddle point escaping techniques in the BLO framework are Huang et al. (2025); Chen et al. (2025). However, these studies are limited to the LLSC-based setting and only considered escaping saddle points at the upper level, which are fundamentally different from and much simpler than our setting, where we investigate saddle point escaping at the lower level for the LLNC setting. 
+
+3 The Second-Order Stationarity-Based Lower-Level Surrogate 
+
+In this section, we present the second-order stationarity-based lower-level surrogate reformulation for the LLNC-BLO problem. We begin by introducing several standard smoothness conditions that are needed to formally define second-order stationary points: 
+
+Assumption 1 (Smoothness of the Upper- and Lower-Level Objective Functions) . The upper- and lower-level objective functions f and g are twice differentiable, and there exist positive constants 
+
+ν, ℓ, ρ , such that for any z = ( x, y ) and z′ = ( x′, y ′), it holds that: 
+
+|f (z) − f (z′)| ≤ ν∥z − z′∥, ∥∇ f (z) − ∇ f (z′)∥ ≤ ℓ∥z − z′∥,
+
+∥∇ g(z) − ∇ g(z′)∥ ≤ ℓ∥z − z′∥, ∥∇ 2g(z) − ∇ 2g(z′)∥ ≤ ρ∥z − z′∥,
+
+where ∥ · ∥ denotes Euclidean and spectral norm for vectors and matrices hereafter, respectively. We note that the smoothness assumptions above are not only widely adopted in the BLO literature (Ghadimi and Wang, 2018; Ji et al., 2021; Yang et al., 2021; Xiao et al., 2023), but they have also been numerically observed and verified in large-scale modern machine learning models, such as LLMs (Castin et al., 2023; Malladi et al., 2023; Li et al., 2024). Equipped with these smoothness properties, we now formally define stationary points, local minima, and saddle points for the lower-level of the LLNC-BLO problem. 
+
+Definition 1 (First- and Second-Order Stationary Point) . Suppose Assumption 1 holds, and let 
+
+λmin (·) denote the minimal eigenvalue of a matrix. For any given x ∈ Rp and any positive ϵ,41. y is a first-order stationary point (FOSP) if ∇y g(x, y ) = 0 . It is an ϵ-FOSP if ∥∇ y g(x, y )∥ ≤ ϵ.2. y is a second-order stationary point (SOSP) if ∇y g(x, y ) = 0 and λmin (∇2 
+
+> yy
+
+g(x, y )) ≥ 0. It is an ϵ-SOSP if ∥∇ y g(x, y )∥ ≤ ϵ and λmin (∇2 
+
+> yy
+
+g(x, y )) ≥ − √ρϵ .We note that the definition of ϵ-second-order stationary point here has also been adopted in the literature (Nesterov and Polyak, 2006; Jin et al., 2017, 2018; Zhang and Li, 2021). 
+
+Definition 2 (Local Minimum and Saddle Point) . Suppose that g is differentiable. For any given 
+
+x ∈ Rp, y is a local minimum if ∇y g(x, y ) = 0 and there exists δ > 0 such that g(x, y ) ≤ g(x, y ′)
+
+for all y′ ∈ By (δ), where By (δ) denotes an open ball of radius δ centered at y. In contrast, y is a saddle point if ∇y g(x, y ) = 0 and it is not a local minimum. When all saddle points are strict, i.e., λmin (∇2 
+
+> yy
+
+g(x, y )) < 0 holds for all saddle points, attaining a second-order stationary point is equivalent to reaching a local minimum. In fact, this “strict” property has been extensively verified and documented for saddle points across various nonconvex landscapes (e.g., tensor decomposition or low-rank matrix recovery, see, e.g., (Ge et al., 2015; Bhojanapalli et al., 2016; Ge et al., 2016; Jin et al., 2017; Sun et al., 2018), and see Appendix D for more discussions.) 1.Given the NP-hardness of finding global optima for general nonconvex objective functions, it is standard practice to target local optimal solutions instead (i.e., points that satisfy the necessary conditions for global optimality). However, as previously noted, simply relaxing the lower-level optimality constraint to merely finding an FOSP (Shen and Chen, 2023; Xiao et al., 2023; Liu et al., 2024; Ma et al., 2026) is problematic, as it introduces the risk of converging to undesirable saddle points. Fortunately, under the strict saddle assumption, identifying an SOSP yields local minima. Thus, we propose to reformulate the LLNC-BLO problem with the following SOSP-based surrogate: 
+
+min  
+
+> x∈Rp,y ∈Rq
+
+f (x, y ), subject to ∇y g(x, y ) = 0 , λmin (∇2 
+
+> yy
+
+g(x, y )) ≥ 0. (2) 
+
+4 The Proposed PROBE Algorithm 
+
+Based on the SOSP-based lower-level surrogate for LLNC-BLO problems, in this section, we will investigate how to design an efficient algorithm for solving in Eq. 2. We start with defining an appropriate metric to measure the convergence error in designing algorithms for solving Eq. 2. Suppose that (˜ x, ˜y) is an ϵ′-SOSP for g(˜ x, ·) for some positive ϵ′. According to Definition 1, we have that ∇2 
+
+> yy
+
+g(˜ x, ˜y) + ( √ρϵ ′ + σ)Iq is positive definite for any arbitrarily small positive value σ > 0
+
+(which can be adaptively selected according to ϵ′). It then follows that the augmented objective function g(˜ x, y ) + μ 
+
+> 2
+
+∥y − ˜y∥2 is locally σ 
+
+> 2
+
+-strongly convex within a sufficiently small neighborhood of ˜y, where the parameter μ ≜ μ(ϵ′, σ ) := √ρϵ ′ + σ. By leveraging this local quadratic curvature, we can define the following μ-augmented implicit function with a small positive radius r′ = σρ :
+
+Φμ(˜ x) := f (˜ x, y ∗
+
+> μ
+
+(˜ x)) , where y∗
+
+> μ
+
+(˜ x) := arg min  
+
+> y∈B˜y(r′)
+
+{g(˜ x, y ) + μ
+
+2 ∥y − ˜y∥2},
+
+where the existence and uniqueness of y∗
+
+> μ
+
+(˜ x) can be guaranteed by the local strong convexity. Indeed, the introduction of μ-regularization restores a locally strongly convex curvature, thereby enabling the use of existing techniques from the LLSC-BLO setting, such as hypergradient-based methods (Ghadimi and Wang, 2018; Grazzi et al., 2020; Ji et al., 2021; Huang et al., 2025). Consequently, following from the Implicit Function Theorem (IFT), the gradient of Φμ(˜ x), referred to as the 
+
+μ-augmented hypergradient in this paper, can be computed as: 
+
+∇Φμ(˜ x) = ∇xf (˜ x, y ∗
+
+> μ
+
+(˜ x)) + dy ∗
+
+> μ
+
+(˜ x)
+
+dx ∇y f (˜ x, y ∗
+
+> μ
+
+(˜ x)) = ∇xf (˜ x, y ∗
+
+> μ
+
+(˜ x)) − ∇ 2 
+
+> xy
+
+g(˜ x, y ∗
+
+> μ
+
+(˜ x)) ∇2 
+
+> yy
+
+g(˜ x, y ∗
+
+> μ
+
+(˜ x)) + μI q
+
+−1 ∇y f (˜ x, y ∗
+
+> μ
+
+(˜ x)) .
+
+The μ-augmented hypergradient naturally gives rise to the following convergence metric: 
+
+> 1While finding an SOSP does not theoretically preclude convergence to non-strict saddle points that could occur in highly overparameterized deep learning landscapes, it remains strictly far more advantageous than relying on FOSP. SOSP guarantees the evasion of all strict saddle points, including local maxima, by explicitly exploiting directions of negative curvature. Furthermore, because escaping non-strict saddle points generally requires computationally intractable higher-order derivatives, targeting an SOSP represents the strongest practically verifiable optimality condition. Empirically, the non-strict saddles satisfying SOSP conditions in deep networks often lie on flat manifolds that yield highly desirable generalization properties.
+
+5Algorithm 1: The overall PROBE algorithmic framework.  
+
+> 1
+
+Input: Iteration T, K t, N t, initial points x0, y 0, v 0, step-sizes αt, β t, aggregation parameters μt,and PGD parameters rt, ϱ t, ∆G,t , ∆K,t , where t ∈ { 0, . . . , T − 1} 
+
+> 2
+
+for t = 0 , . . . , T − 1 do  
+
+> 3
+
+Update yt+1 ← PGD  Kt, x t, y t, β t, r t, ϱ t, ∆G,t , ∆K,t 
+
+ 
+
+> 4
+
+Solve  ∇2 
+
+> yy
+
+g(xt, y t+1 ) + μtIq
+
+v = ∇y f (xt, y t+1 ) from vt by Nt-step Conjugate Gradient with a warm start to get vt+1  
+
+> 5
+
+Update xt+1 ← xt−αt b∇Φμt (xt), where b∇Φμt (xt) = ∇xf (xt, y t+1 )−∇ 2 
+
+> xy
+
+g(xt, y t+1 )vt+1  
+
+> 6
+
+return (xT , y T )
+
+Definition 3 (μ-Augmented Hypergradient-Based Convergence Metric) . Suppose y is an ϵ′-SOSP for a given x (as defined in Def. 1) and all saddle points are strict. For any positive ϵ, μ = √ρϵ ′ +σ, (x, y )
+
+is said to be an (ϵ, μ )-stationary solution to Eq. 2 if it satisfies: Π( x, y ) := ∥∇ Φμ(x)∥2 + ϵ′ ≤ ϵ.With the formal definition of this convergence metric and the SOSP-based lower-level surrogate for the LLNC-BLO problem, the following key question naturally arises: 
+
+Question : Is the μ-augmented hypergradient a good estimation of the “steepest descent update direction” of the original LLNC-BLO problem in terms of x? More importantly, how to control the μ-parameter in the SOSP-based surrogate in order to ensure that we still converge to a good solution to the original LLNC-BLO problem with a lower-level local optimality guarantee? Although this question is challenging to answer in the highly complex LLNC setting, one may obtain some high-level qualitative understanding by measuring the “bias” of the μ-augmented hypergradient when a hypergradient is well-defined (note that in LLNC-BLO, a hypergradient could be ill-posed if the Hessian of the lower-level problem is rank-deficient). More specifically, note that if the sequence generated by an algorithm is able to escape strict saddle points, it typically reaches a local minimum, where the lower-level objective function usually exhibits sufficient local curvature in a bounded local neighborhood, so that its landscape can be bounded from below by a quadratic function. Consider a scenario in which ∇2 
+
+> yy
+
+g(˜ x, y ∗
+
+> μ
+
+(˜ x)) ⪰ μ0Iq holds for some μ0 > 0, so that a hypergradient is well-defined. Due to the fact that A−1 − B−1 = A−1(B − A)B−1, we can bound the discrepancy between the μ-augmented hypergradient and the true hypergradient as follows: 
+
+∥∇ Φμ(˜ x) − ∇ Φ0(˜ x)∥ = ∇2 
+
+> xy
+
+g
+
+∇2 
+
+> yy
+
+g−1 (μI q ) ∇2 
+
+> yy
+
+g + μI q
+
+−1
+
+∇y f
+
+≤ ∥∇ 2 
+
+> xy
+
+g∥ · ∇2 
+
+> yy
+
+g−1 · μ · ∇2 
+
+> yy
+
+g + μI q
+
+−1 · ∥∇ y f ∥
+
+> (a)
+
+≤ ℓ · 1
+
+μ0
+
+· μ · 1
+
+μ0 + μ · ν ≤ ℓν μ20
+
+(pρϵ ′ + σ) = O(√ϵ′ + σ),
+
+where (a) follows from Assumption 1. This shows that the μ-augmented hypergradient incurs an approximation bias that scales at most linearly with both the square root of the SOSP violation √ϵ′ and the augmentation parameter σ. To mitigate the impact of such “bias”, we can adaptively shrink both ϵt and σt in the design of our algorithm to progressively refine the lower-level solutions. Specifically, by using a dynamic sequence {μt = √ρϵ t + σt}t that approaches 0+ as t → ∞ , the “bias” can be gradually eliminated to induce convergence to a solution with vanishing bias to the original LLNC-BLO problem. Based on this intuition, we propose PROBE (Perturbed gradient algorithm for bilevel problem), which is summarized in Algorithms 1 and 2. In what follows, we will first describe the basic idea and the key steps of PROBE . The theoretical convergence analysis of 
+
+PROBE will be provided in Section 5. 
+
+1) Basic Idea: PROBE employs a double-loop framework, where the inner loop is dedicated to finding an ϵt-SOSP of the lower-level objective g(xt, ·) for a given upper-level variable xt in step t,while the outer loop utilizes this approximation to construct a μt-augmented hypergradient, which guides the update of the upper-level variable xt towards the minimum of Φμt (·) with a shrinking μt.
+
+2) SOSP Approximation via PGD (Inner-Loop): The inner-loop (Algorithm 2) employs Perturbed Gradient Descent (PGD, Jin et al. (2017)) to identify SOSP approximations. In order to escape saddle 6Algorithm 2: The perturbed gradient descent subroutine PGD( K, x, y 0, β, r, ϱ, ∆G, ∆K ).  
+
+> 1
+
+τ ← − ∆K − 1 
+
+> 2
+
+for k = 0 , . . . , K − 1 do  
+
+> 3
+
+if ∥∇ y g(x, y k)∥ ≤ ϱ and k − τ > ∆K then  
+
+> 4
+
+˜y ← yk, τ ← k // Store anchor point & Update timestamp  
+
+> 5
+
+ξ ∼ Unif (B0(r)) , yk ← yk + ξ // Inject uniform noise  
+
+> 6
+
+if k − τ = ∆ K and g(x, y k) − g(x, ˜y) > −∆G then  
+
+> 7
+
+return ˜y // Return confirmed SOSP  
+
+> 8
+
+yk+1 ← yk − β∇y g(x, y k)
+
+points, PGD monitors the gradient: if ∥∇ y g(x, y k)∥ ≤ ϱ, it injects a uniform noise ξ ∼ Unif (B0(r)) 
+
+for a more aggressive exploration, where r denotes the radius of a ball and will be selected later. After several steps, the algorithm confirms that the iterate has reached an approximate SOSP if the function value has an insufficient reduction (i.e., g(x, y k) − g(x, ˜y) > −∆G). Finally, the inner-loop returns the identified ϵt-SOSP to the outer-loop at each outer iteration t by adaptively and properly selecting parameters ( Kt, ϱ t, ∆G,t , ∆K,t ). 
+
+3) μt-Hypergradient Estimation and Update (Outer-Loop): Building upon the lower-level solution 
+
+yt+1 identified by the inner-loop, the outer-loop ( PROBE , Algorithm 1) proceeds to update the upper-level variable. In the μt-augmented hypergradient, the primary computational bottleneck lies in estimating the Hessian inverse [∇2 
+
+> yy
+
+g(xt, y t+1 ) + μtIq ]−1. We address this by employing the Conjugate Gradient (CG) method (Grazzi et al., 2020; Ji et al., 2021), an inversion-free approach that only queries Hessian-vector products. This allows PROBE to efficiently compute the adjoint variable vt+1 within Nt iterations at every time slot t. Furthermore, we equip the Nt-step CG with a warm start mechanism (conducting CG in the t-round beginning from the last output vt), which significantly accelerates convergence to reach a faster rate. Finally, using the estimated μt-augmented hypergradient b∇Φμt (xt), we perform a gradient descent step to update upper-level variable to xt+1 .As will be mentioned in the next section, to ensure the convergence to a good solution of the original LLNC-BLO problem, we dynamically increase and decrease the parameters Kt and σt, respectively, to shrink μt = √ρϵ t + σt toward 0 at an appropriate rate. 
+
+5 Finite-Time Convergence Analysis of PROBE 
+
+In this section, we will conduct theoretical convergence analysis of our proposed PROBE algorithm. Toward this end, we first restate the iteration complexity performance guarantee of the PGD method (Jin et al., 2017), which is adapted in the context of LLNC-BLO in Algorithm 2. 
+
+Lemma 1 (Iteration Complexity of PGD) . Under Assumption 1, with hyperparameter choices in Appendix B, for any δ′ ∈ (0 , 1) , ϵ t ≤ ℓ2/ρ, ∆g,t ≥ g(xt, y t) − inf y g(xt, y ), with probability at least 
+
+1 − δ′, Algorithm 2 outputs an ϵt-SOSP with iterations no more than Kt = O  ℓ∆g,t 
+
+> ϵ2
+> t
+
+log 4   qℓ ∆g,t  
+
+> ϵ2
+> tδ′
+
+ .
+
+We note that, besides PGD, several algorithms have been proposed to escape saddle points while maintaining nearly dimension-free convergence rates (Jin et al., 2018, 2021; Zhang and Li, 2021). While these approaches offer improvements in iteration complexity to some degree (from ϵ−2 
+
+> t
+
+to 
+
+ϵ−1.75  
+
+> t
+
+at most), they typically introduce additional algorithmic modules, such as Negative Curvature Finding (NCF) and Nesterov-style acceleration, which significantly complicate the implementation of the inner-loop algorithm. Moreover, rather than offering a “last-iteration” convergence guarantee, these accelerated methods only guarantee an approximate SOSP being visited at some point within the trajectory. This renders them ill-suited for algorithm designs for LLNC-BLO, which requires a terminal SOSP estimate. We are now ready to state the main convergence result for PROBE .
+
+Theorem 1. By selecting Kt = eΘ (t + 1) 85
+
+, σt = Θ  (t + 1) −p and αt = Θ  (t + 1) −q  with 
+
+p ∈ (0 , 13 ), 3p ≤ q < 1, for any δ ∈ (0 , 1) , with probability at least 1 − δ, the sequence {xt, y t}t
+
+generated by Algorithm 1 satisfies the following convergence guarantee: min T  
+
+> 2≤t≤T
+
+Π( xt, y t) = 
+
+O( 1  
+
+> T1−q
+
++ 1  
+
+> T2p
+
++ 1 
+
+> T45
+
+). By selecting (p, q ) = ( 15 , 35 ), we have min T  
+
+> 2≤t≤T
+
+Π( xt, y t) = O T − 25
+
+.
+
+7Proof Sketch. Our convergence analysis is organized in three key steps (proof details of Theorem 1 are relegated to Appendix B due to limited space): • Step 1) Bounding the Variable Drifts: We first control the tracking errors of the lower-level variable y and the adjoint multiplier v. A major challenge here is decomposing and bounding several intertwined gaps: the inner-iteration solver error (i.e., taking y for example hereafter, 
+
+∥yt+1 −y∗ 
+
+> μt
+
+(xt)∥), and the parameter-induced shift across varying μ (i.e., ∥y∗ 
+
+> μt+1
+
+(xt)−y∗ 
+
+> μt
+
+(xt)∥). • Step 2) Controlling the Augmented Implicit Function Shift: Next, we analyze the dynamics of 
+
+Φμt+1 (xt+1 ) − Φμt (xt), which is challenging due to simultaneous updates in both the variable x
+
+and the parameter μ. We decompose this shift into two components: (i) the contribution from the dynamics of x, which can be controlled using the smoothness of the augmented implicit function and, consequently, the descent lemma; and (ii) the contribution induced by the drift in μ, which can be converted to the drift in y that has already been controlled in the previous step. • Step 3) Lyapunov Analysis and Telescoping: Finally, building upon the aforementioned results, we construct a dynamic Lyapunov function to decouple the descent of Φμt from the tracking errors. By using a telescoping sum, we show that all error terms are bounded by the sum of a constant and a convergent series, thereby establishing the finite-time convergence rate. Three remarks on Theorem 1 are in order: First , to our knowledge, this work is the first that incorporates second-order stationarity as a surrogate for LLNC-BLO and propose an algorithm with a finite-time convergence rate of O T − 25
+
+ with lower-level SOSP guarantee. While existing LLNC-BLO methods (Shen and Chen, 2023; Xiao et al., 2023; Liu et al., 2024; Ma et al., 2026) also provided finite-time convergence analysis, a direct comparison with them is difficult due to the fact that most of these works assume the PL condition, which is not needed in this work. Second , there is a trade-off in choosing σt = σ0(t + 1) −p: a larger p-value yields faster convergence rate O(T −2p) in Theorem 1. However, the condition q ≥ 3p implies a small learning rate αt = α0(t + 1) −q . Also, the smoothness coefficient of Φμt scales as Lt = Θ( σ−3 
+
+> t
+
+), implying that αt = Θ( L−1 
+
+> t
+
+) = Θ(( t + 1) −3p)
+
+when q = 3 p is required for a fast convergence, which in turn necessitates a relatively small p. To balance these two directions, we choose (p, q ) = ( 15 , 35 ) to achieve the most efficient convergence rate O T − 25
+
+. Third , instead of using a fixed number of inner-loop iterations K, PROBE gradually increases Kt over time, leading to a two-timescale algorithmic design. Specifically, we introduce a 
+
+μ-augmentation to allow a well-defined hypergradient in LLNC-BLO. This term introduces an error that can be controlled by gradually letting {μt} → 0. Hence, Kt needs to be increasing rather than fixed to decrease the inner-loop error ϵt and thus μt, leading to this two-timescale design. 
+
+6 Experimental Results 0 20 40 60 80 100 
+
+> Iteration
+> 0246810 12 14 16
+> Upper-level Loss
+> PBGD GALET MEHA SUN-DSBO-SE PROBE (Ours)
+
+(a) Loss vs Iteration. 0 5000 10000 15000 20000 25000 30000 35000  
+
+> Running Time (Seconds)
+> 0246810 12 14 16
+> Upper-level Loss
+> PBGD GALET MEHA SUN-DSBO-SE PROBE (Ours)
+
+(b) Loss vs Running time. 
+
+Figure 2: Baseline comparison. 
+
+In this section, we will validate the efficacy of our PROBE method by us-ing a data curation task for LLM fine-tuning. Specifically, we first curate a high quality dataset from multiple datasets of unknown qualities, which is then used to fine-tune an LLM to mitigate toxicity, reduce verbosity, and improve coherence. This data curation task can be formulated as an LLNC-BLO problem (Shen et al., 2024a; Pan et al., 2025), where the lower level aims to determine the mixing proportion of each dataset, and the upper level further fine-tunes the model as a validation process: 
+
+min 
+
+> x,y
+
+Xn0 
+
+> i=1
+
+L ry(x)(pi), r i
+
+, s.t. y(x) ∈ arg min 
+
+> y
+
+XD 
+
+> j=1
+
+SoftMax x(j) Xnj 
+
+> i=1
+
+L ry (pi), r i
+
+,
+
+where x is the weight vector for training datasets, y represents the LLM parameters, (p, r ) denotes a prompt-response pair, L is the loss, SoftMax x(j) = exp( xj )/ P 
+
+> j′
+
+exp( xj′ ), index 0 stands for validation set, and 1, . . . , D are training indices. Clearly, the lower-level problem is nonconvex. We conduct experiments on the HelpSteer (Wang et al., 2024) dataset, which incorporates data of varying quality. We employ Llama-3.2-3B-Instruct (Meta, 2024) as the base model. More implementation details are relegated to Appendix A due to space limitation. 81) Baseline Comparison: We compare our PROBE method against state-of-the-art LLNC-BLO baselines: PBGD (Shen and Chen, 2023), GALET (Xiao et al., 2023), MEHA (Liu et al., 2024), and SUN-DSBO-SE (Ma et al., 2026). Figure 2 illustrates the upper-level loss along with the standard error bars over 5 trials, which shows that PBGD and GALET fail to converge on this data curation task. As detailed in Appendix A, PBGD performs well at the lower level. However, its oversimplified FOSP-based surrogate could not avoid being trapped at undesirable saddle points at the lower level, leading to weak performance at the upper level. In contrast, MEHA, SUN-DSBO-SE, and PROBE converge to much better solutions at upper level. Although the theoretical convergence rates of these methods are not directly comparable due to different metrics, PROBE outperforms all baselines in terms of wall-clock running time, demonstrating its efficiency. 0 20 40 60 80 100 
+
+> Iteration
+> 2
+> 0246810
+> Lower-level Loss
+> K=1 K=25 K=50 K=100 K=200
+
+(a) Lower-level loss with K.0 20 40 60 80 100  
+
+> Iteration
+> 0246810 12 14 16
+> Upper-level Loss
+> K=1 K=25 K=50 K=100 K=200
+
+(b) Upper-level loss with K.0 20 40 60 80 100 
+
+> Iteration
+> 012345678
+> Lower-level Loss
+> = 0.01
+> = 0.05
+> = 0.1
+> = 0.5
+> = 1.0
+
+(c) Lower-level loss with μ.0 20 40 60 80 100  
+
+> Iteration
+> 0.0 2.5 5.0 7.5 10.0 12.5 15.0
+> Upper-level Loss
+> = 0.01
+> = 0.05
+> = 0.1
+> = 0.5
+> = 1.0
+
+(d) Upper-level loss with μ.
+
+Figure 3: Hyperparameter investigation. 
+
+2) Hyper-parameter Experimenta-tion and Ablation Study: In this experiment, we study how the selec-tions of hyperparameters K and μ im-pact the performance of PROBE , as shown in Fig. 3. For simplicity, we fix K and μ for each experiment. As shown in Figures 3a and 3b, increas-ing the inner-loop PGD iterations, K,yields a significant improvement in the upper-level loss. This aligns with our theoretical insights: a small K
+
+restricts PGD’s ability to probe and escape saddle points. Consequently, the lower-level problem stagnates at a suboptimal position, which in turn leads to unsatisfactory upper-level per-formance. In contrast, when K is suf-ficiently large, PROBE reliably finds a lower-level SOSP, yielding substan-tial overall performance improvements. Figures 3c and 3d show the influence of the augmentation parameter μ, both of which show that the larger μ facilitates a slightly lower loss value. Also, Fig-ure 3d shows that the trajectory fluctuates dramatically when μ is insufficient to restore the Hessian positive definiteness. This highlights the important tradeoff and provides a guidance in selecting μ.0 20 40 60 80 100 
+
+> Iteration
+> 0246810
+> Lower-level Loss
+> PROBE - Vanilla GD PROBE - PGD (Alg.2)
+
+(a) Lower-level loss. 0 20 40 60 80 100  
+
+> Iteration
+> 0246810 12 14 16
+> Upper-level Loss
+> PROBE - Vanilla GD PROBE - PGD (Alg.2)
+
+(b) Upper-level loss. 
+
+Figure 4: Ablation Study. 
+
+We also conduct the following ab-lation study by replacing the PGD method in Algorithm 2 with the vanilla gradient descent method, keeping all other components of 
+
+PROBE unchanged. As shown in Fig-ure 4, without saddle points escaping, 
+
+PROBE is easily trapped in solutions seemingly better at the lower level but are suboptimal at the upper level, high-lighting the importance of our SOSP-based lower-level surrogate and the efficacy of our proposed PROBE . Due to space limitation, we provide further numerical details and a meta-learning experiment in Appendix A. 
+
+7 Conclusion 
+
+In this paper, we investigated bilevel optimization with non-convex lower levels. We showed that existing first-order stationarity-based surrogates often fail to escape lower-level saddle points. To address this challenge, we proposed a second-order stationarity-based surrogate, based on which we developed a new algorithm called PROBE and established its finite-time convergence rate. We conducted experiments on dataset curation tasks for LLM finetuning to validate our PROBE algorithm. We note that the focus of this work is on deterministic LLNC-BLO problems. Future directions include extending our framework into stochastic LLNC-BLO problems. 9References 
+
+Agarwal, N., Allen-Zhu, Z., Bullins, B., Hazan, E., and Ma, T. (2017). Finding approximate local minima faster than gradient descent. In Proceedings of the 49th annual ACM SIGACT symposium on theory of computing , pages 1195–1199. Allen-Zhu, Z. and Li, Y. (2018). Neon2: Finding local minima via first-order oracles. Advances in Neural Information Processing Systems , 31. Arbel, M. and Mairal, J. (2021). Amortized implicit differentiation for stochastic bilevel optimization. 
+
+arXiv preprint arXiv:2111.14580 .Bhojanapalli, S., Neyshabur, B., and Srebro, N. (2016). Global optimality of local search for low rank matrix recovery. Advances in Neural Information Processing Systems , 29. Bracken, J. and McGill, J. T. (1973). Mathematical programs with optimization problems in the constraints. Operations research , 21(1):37–44. Cao, J., Jiang, R., Abolfazli, N., Yazdandoost Hamedani, E., and Mokhtari, A. (2023). Projection-free methods for stochastic simple bilevel optimization with convex lower-level problem. Advances in Neural Information Processing Systems , 36:6105–6131. Castin, V., Ablin, P., and Peyré, G. (2023). How smooth is attention? arXiv preprint arXiv:2312.14820 .Chen, L., Ma, Y., and Zhang, J. (2025). Near-optimal nonconvex-strongly-convex bilevel optimization with fully first-order oracles. Journal of Machine Learning Research , 26(109):1–56. Chen, L., Xu, J., and Zhang, J. (2023). Bilevel optimization without lower-level strong convexity from the hyper-objective perspective. Chen, L., Xu, J., and Zhang, J. (2024). On finding small hyper-gradients in bilevel optimization: Hardness results and improved analysis. In The Thirty Seventh Annual Conference on Learning Theory , pages 947–980. PMLR. Dagréou, M., Ablin, P., Vaiter, S., and Moreau, T. (2022). A framework for bilevel optimization that enables stochastic and global variance reduction algorithms. Advances in Neural Information Processing Systems , 35:26698–26710. Dauphin, Y. N., Pascanu, R., Gulcehre, C., Cho, K., Ganguli, S., and Bengio, Y. (2014). Identifying and attacking the saddle point problem in high-dimensional non-convex optimization. Advances in neural information processing systems , 27. Fang, C., Li, C. J., Lin, Z., and Zhang, T. (2018). Spider: Near-optimal non-convex optimization via stochastic path-integrated differential estimator. Advances in neural information processing systems , 31. Franceschi, L., Frasconi, P., Salzo, S., Grazzi, R., and Pontil, M. (2018). Bilevel programming for hyperparameter optimization and meta-learning. In International conference on machine learning ,pages 1568–1577. PMLR. Ge, R., Huang, F., Jin, C., and Yuan, Y. (2015). Escaping from saddle points—online stochastic gradient for tensor decomposition. In Conference on learning theory , pages 797–842. PMLR. Ge, R., Lee, J. D., and Ma, T. (2016). Matrix completion has no spurious local minimum. Advances in neural information processing systems , 29. Ghadimi, S. and Wang, M. (2018). Approximation methods for bilevel programming. arXiv preprint arXiv:1802.02246 .Grazzi, R., Franceschi, L., Pontil, M., and Salzo, S. (2020). On the iteration complexity of hy-pergradient computation. In International Conference on Machine Learning , pages 3748–3758. PMLR. 10 Hong, M., Wai, H.-T., Wang, Z., and Yang, Z. (2023). A two-timescale stochastic algorithm framework for bilevel optimization: Complexity analysis and application to actor-critic. SIAM Journal on Optimization , 33(1):147–180. Hu, Y., Wang, J., Xie, Y., Krause, A., and Kuhn, D. (2023). Contextual stochastic bilevel optimization. 
+
+Advances in Neural Information Processing Systems , 36:78412–78434. Huang, M., Chen, X., Ji, K., Ma, S., and Lai, L. (2025). Efficiently escaping saddle points in bilevel optimization. Journal of machine learning research , 26(1):1–61. Ji, K., Yang, J., and Liang, Y. (2021). Bilevel optimization: Convergence analysis and enhanced design. In International conference on machine learning , pages 4882–4892. PMLR. Jiang, R., Abolfazli, N., Mokhtari, A., and Hamedani, E. Y. (2023). A conditional gradient-based method for simple bilevel optimization with convex lower-level problem. In International Confer-ence on Artificial Intelligence and Statistics , pages 10305–10323. PMLR. Jiang, X., Li, J., Bi, J., Hong, M., and Zhang, S. (2025a). A correspondence-driven approach for bilevel decision-making with nonconvex lower-level problems. arXiv preprint arXiv:2509.01148 .Jiang, X., Tsaknakis, I., Khanduri, P., and Hong, M. (2025b). A discretization approach for bilevel optimization with low-dimensional and non-convex lower-level. arXiv preprint arXiv:2505.10830 .Jin, C., Ge, R., Netrapalli, P., Kakade, S. M., and Jordan, M. I. (2017). How to escape saddle points efficiently. In International conference on machine learning , pages 1724–1732. PMLR. Jin, C., Netrapalli, P., Ge, R., Kakade, S. M., and Jordan, M. I. (2021). On nonconvex optimization for machine learning: Gradients, stochasticity, and saddle points. Journal of the ACM (JACM) ,68(2):1–29. Jin, C., Netrapalli, P., and Jordan, M. I. (2018). Accelerated gradient descent escapes saddle points faster than gradient descent. In Conference on learning theory , pages 1042–1085. PMLR. Kudo, M., Tanabe, T., Wachi, A., and Akimoto, Y. (2026). Sample-efficient hypergradient estimation for decentralized bi-level reinforcement learning. arXiv preprint arXiv:2603.14867 .Kwon, J., Kwon, D., Wright, S., and Nowak, R. (2023). On penalty methods for nonconvex bilevel optimization and first-order stochastic approximation. arXiv preprint arXiv:2309.01753 .Li, J., Zeng, S., Wai, H.-T., Li, C., Garcia, A., and Hong, M. (2024). Getting more juice out of the sft data: Reward learning from human demonstration improves sft for llm alignment. Advances in Neural Information Processing Systems , 37:124292–124318. Liu, M., Li, Z., Wang, X., Yi, J., and Yang, T. (2018). Adaptive negative curvature descent with applications in non-convex optimization. Advances in Neural Information Processing Systems , 31. Liu, R., Gao, J., Zhang, J., Meng, D., and Lin, Z. (2021). Investigating bi-level optimization for learning and vision from a unified perspective: A survey and beyond. IEEE Transactions on Pattern Analysis and Machine Intelligence , 44(12):10045–10067. Liu, R., Liu, Y., Yao, W., Zeng, S., and Zhang, J. (2023). Averaged method of multipliers for bi-level optimization without lower-level strong convexity. In International Conference on Machine Learning , pages 21839–21866. PMLR. Liu, R., Liu, Z., Yao, W., Zeng, S., and Zhang, J. (2024). Moreau envelope for nonconvex bi-level optimization: A single-loop and hessian-free solution strategy. arXiv preprint arXiv:2405.09927 .Ma, Y., Wang, X., Yao, W., and Zhang, J. (2026). Sun-dsbo: A structured unified framework for nonconvex decentralized stochastic bilevel optimization. arXiv preprint arXiv:2601.22682 .Malladi, S., Gao, T., Nichani, E., Damian, A., Lee, J. D., Chen, D., and Arora, S. (2023). Fine-tuning language models with just forward passes. Advances in Neural Information Processing Systems ,36:53038–53075. Meta (2024). meta-llama/llama-3.2-3b-instruct. 11 Murty, K. G., Kabadi, S. N., et al. (1987). Some np-complete problems in quadratic and nonlinear programming. Mathematical programming , 39(2):117–129. Nesterov, Y. and Polyak, B. T. (2006). Cubic regularization of newton method and its global performance. Mathematical programming , 108(1):177–205. Pan, R., Zhang, D., Zhang, H., Pan, X., Xu, M., Zhang, J., Pi, R., Wang, X., and Zhang, T. (2025). Scalebio: Scalable bilevel optimization for llm data reweighting. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 31959–31982. Qin, Z., Liu, Z., Lu, S., Liang, Y., and Liu, J. (2025). Duet: Decentralized bilevel optimization without lower-level strong convexity. In The Thirteenth International Conference on Learning Representations .Ren, Z., Tang, Y., and Li, N. (2023). Escaping saddle points in zeroth-order optimization: the power of two-point estimators. In International Conference on Machine Learning , pages 28914–28975. PMLR. Shaban, A., Cheng, C.-A., Hatch, N., and Boots, B. (2019). Truncated back-propagation for bilevel optimization. In The 22nd international conference on artificial intelligence and statistics , pages 1723–1732. PMLR. Shen, H., Chen, P.-Y., Das, P., and Chen, T. (2024a). Seal: Safety-enhanced aligned llm fine-tuning via bilevel data selection. arXiv preprint arXiv:2410.07471 .Shen, H. and Chen, T. (2023). On penalty-based bilevel gradient descent method. In International conference on machine learning , pages 30992–31015. PMLR. Shen, H., Paternain, S., Liu, G., Kompella, R., and Chen, T. (2024b). A method for bilevel optimiza-tion with convex lower-level problem. In ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pages 9426–9430. IEEE. Sun, J., Qu, Q., and Wright, J. (2018). A geometric analysis of phase retrieval. Foundations of Computational Mathematics , 18(5):1131–1198. Vlatakis-Gkaragkounis, E.-V., Flokas, L., and Piliouras, G. (2019). Efficiently avoiding saddle points with zero order methods: No gradients required. Advances in neural information processing systems , 32. Wang, Z., Dong, Y., Zeng, J., Adams, V., Sreedhar, M. N., Egert, D., Delalleau, O., Scowcroft, J., Kant, N., Swope, A., et al. (2024). Helpsteer: Multi-attribute helpfulness dataset for steerlm. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , pages 3371–3384. Xiao, Q., Lu, S., and Chen, T. (2023). A generalized alternating method for bilevel learning under the polyak-{\ L} ojasiewicz condition. arXiv preprint arXiv:2306.02422 .Yang, J., Ji, K., and Liang, Y. (2021). Provably faster algorithms for bilevel optimization. Advances in Neural Information Processing Systems , 34:13670–13682. Ye, J. J. and Zhu, D. (1995). Optimality conditions for bilevel programming problems. Optimization ,33(1):9–27. Zhang, C. and Li, T. (2021). Escape saddle points by a simple gradient-descent based algorithm. 
+
+Advances in Neural Information Processing Systems , 34:8545–8556. Zhang, H. and Gu, B. (2022). Faster gradient-free methods for escaping saddle points. In The Eleventh International Conference on Learning Representations .Zhang, H., Xiong, H., and Gu, B. (2022a). Zeroth-order negative curvature finding: Escaping saddle points without gradients. Advances in Neural Information Processing Systems , 35:38332–38344. 12 Zhang, Y., Khanduri, P., Tsaknakis, I., Yao, Y., Hong, M., and Liu, S. (2024). An introduction to bilevel optimization: Foundations and applications in signal processing and machine learning. 
+
+IEEE Signal Processing Magazine , 41(1):38–59. Zhang, Y., Zhang, G., Khanduri, P., Hong, M., Chang, S., and Liu, S. (2022b). Revisiting and advancing fast adversarial training through the lens of bi-level optimization. In International Conference on Machine Learning , pages 26693–26712. PMLR. 13 Appendix A Additional Numerical Results 
+
+A.1 Meta-Learning Experiments 
+
+Meta-learning seeks to improve model generalization and is naturally formulated as a BLO problem (Franceschi et al., 2018; Ji et al., 2021; Hu et al., 2023; Qin et al., 2025). Specifically, the lower level implements task-specific adaptation on the training data, while the upper level enhances the representation utility to ensure generalization ability of the model. We train a multi-layer perceptron (MLP, corresponding to x) with depth 2, width 512 and ReLU activation, along with an additional 256 -dimensional linear layer (corresponding to y) on MNIST dataset. In particular, we construct 5 MNIST heterogeneous training datasets, each containing 80% of a selected pair of digits (e.g., (0 , 1) ) and 20% of other digit pairs. The validation set are constructed from the MNIST test split, using the same ratio of five digit-pair tasks. The formal formulation is given as follows: 
+
+min 
+
+> x,y
+
+X
+
+> s∈D 0
+
+L (x ◦ y)( s), l (s)
+
+subject to y ∈ S (x) := arg min 
+
+> y
+> 5
+
+X
+
+> j=1
+
+X
+
+> s∈D j
+
+L (x ◦ y)( s), l (s),
+
+where s denotes the digit sample, l(s) denotes its label, x ◦ y(s) denotes the model output, L denotes the cross-entropy loss function, and Dj , j ∈ { 0, . . . , 5} are the datasets. Since the loss function is convex, and y corresponds to a linear layer, the lower-level problem is convex (but not strongly convex) w.r.t. y. We consider this meta-learning task to demonstrate the capability of PROBE in the LLGC setting. As shown in Figure 5, all baselines and our PROBE converge at both upper and lower levels. All baseline methods succeed in this meta-learning task because the FOSP-based relaxed surrogate aligns exactly with the original BLO problem in this LLGC environment, preventing them from getting trapped at saddle points (In fact, no saddle points exist due to the convexity). PROBE , on the other hand, still achieves the fastest convergence, demonstrating both its validity in the LLGC setting and its consistent efficiency. 0 25 50 75 100 125 150 175 200 
+
+> Iteration
+> 0.0 0.5 1.0 1.5 2.0 2.5 3.0
+> Lower-level Loss
+> PBGD GALET MEHA SUN-DSBO-SE PROBE
+
+(a) Lower-level loss. 0 25 50 75 100 125 150 175 200  
+
+> Iteration
+> 0.5
+> 0.0 0.5 1.0 1.5 2.0 2.5 3.0
+> Upper-level Loss
+> PBGD GALET MEHA SUN-DSBO-SE PROBE
+
+(b) Upper-level loss. 
+
+Figure 5: Baseline comparison in meta-learning task. 
+
+A.2 Implementation Details and Additional Results on Data Curation Task 
+
+In the data curation task, we fine-tune an LLM, Llama-3.2-3B-Instruct (Meta, 2024) model, on the HelpSteer (Wang et al., 2024) dataset, which naturally contains prompts with responses of varying quality. During training, corresponding to the lower-level problem in our formulation, the LLM learns to distinguish between two datasets and is expected to assign higher weights to the one with higher response quality. During validation, corresponding to the upper-level problem, the performance of 14 0 20 40 60 80 100 
+
+> Iteration
+> 012345678
+> Lower-level Loss
+> PBGD GALET MEHA SUN-DSBO-SE PROBE (Ours)
+
+(a) Loss vs Iteration. 0 5000 10000 15000 20000 25000 30000 35000  
+
+> Running Time (Seconds)
+> 012345678
+> Lower-level Loss
+> PBGD GALET MEHA SUN-DSBO-SE PROBE (Ours)
+
+(b) Loss vs Running time. 
+
+Figure 6: Baseline (lower-level) comparison. 
+
+the fine-tuned LLM is evaluated on high-quality prompt-response data. Specifically, the datasets are constructed as follows: for each response data in HelpSteer, we compute its average score, and include the corresponding prompt-response pair in the high-quality set if s ≥ 2.5, or in the low-quality set if s ≤ 2 (the only validation set merely include high-quality validation data). Llama-3.2-3B-Instruct is trained using LoRA technique with rank = 8 , and all data curation experiments are conducted on a cluster of 2 NVIDIA H200 GPUs (approximately 140GB each) using PyTorch’s DistributedDataParallel. The hyperparameter selection is detailed as follows. The batch size is set to 32 . For a fair comparison, we fix the total number of iterations to T = 20 , 000 , which implies: (i) for single-loop methods, the algorithm runs for 20 , 000 rounds; and (ii) for double-loop methods, the product of inner-loop steps and outer-loop steps equals 20 , 000 . Additionally, we simplify our method by using fixed values for 
+
+K, N , and μ to ensure fairness in the comparison. Accordingly, we uniformly select 100 iterations to report. The learning rates for all algorithms are set to 10 −5. For PROBE , we set T = 100 , K = 200 ,
+
+μ = 0 .1. We set ∆K = 10 , and other PGD parameters are set to 10 −2 as our default setup. For these baselines, the detailed setups are specified as follows. For MEHA, we examined additional learning rate η ∈ { 0.1, 2.0} and penalty coefficient c ∈ { 0.1, 1, 2, 5, 10 }. For SUN-DSBO-SE, we examined proximal parameter γ ∈ { 0.01 , 0.05 , 0.1} and penalty parameter μ0 ∈ { 0.01 , 0.1, 1, 10 }. For PBGD, we examined the penalty coefficient in {0.1, 1, 10 }. For GALET, we also tested larger inner-loop step counts (10 , 20) , but these configurations resulted in numerical errors; we therefore used the best stable configuration with both inner-loop counts set to 5. The reported baseline performances correspond to the best-performing configurations among those tested rather than unfavorable or arbitrarily selected settings. Each experiment is repeated 5 times, and the corresponding standard error bars are shown in all figures. We also apply an exponential moving average (EMA) to enhance visibility. The lower-level performances of all methods are shown in Figure 6. As noted earlier, GALET finds some seemingly favorable solutions for the lower-level problem (Its loss values also decrease from around 8, and the seemingly immediate convergence observed in the figure is due to the use of EMA). Nevertheless, when considered alongside Figure 2, it is clear that these solutions are actually suboptimal in general. In stark contrast, MEHA, SUN-DSBO-SE, and our PROBE not only converge during training, but also performs consistently well in the validation process. Among them, our 
+
+PROBE is the most efficient method, achieving convergence in the shortest running time. 
+
+B Proof of Main Result 
+
+Theorem 2 (Formally restated Theorem 1) . By selecting parameters as follows: 
+
+σt = Θ  (t + 1) −p , ϵt = σ4
+
+> t
+
+ρ , μt = √ρϵ t + σt, αt = Θ  (t + 1) −q  , βt = Θ 
+
+ 1
+
+ℓ
+
+
+
+,Nt = eΘ(( t + 1) p 
+
+> 2
+
+), Kt = eΘ(( t + 1) 8p),δ′ ∈ (0 , 1
+
+T ), ∆g,t ≥ g(xt, y t) − inf  
+
+> y
+
+g(xt, y ), χt = 3 max 
+
+
+
+log 
+
+ qℓ ∆g,t 
+
+ϵ2 
+
+> t
+
+δ′
+
+
+
+, 4
+
+
+
+,
+
+15 rt = Θ 
+
+ ϵt
+
+ℓχ 2
+
+> t
+
+
+
+, ϱt = Θ 
+
+ ϵt
+
+χ2
+
+> t
+
+
+
+, ∆G,t = Θ 
+
+ ϵ1.5
+
+> t
+
+χ3 
+
+> t
+
+ρ0.5
+
+
+
+, ∆K,t = Θ 
+
+ ℓχ t
+
+ρ0.5ϵ0.5
+
+> t
+
+
+
+,
+
+for any δ = T δ ′ ∈ (0 , 1) , p ∈ (0 , 13 ), 3p ≤ q < 1, the sequence {xt, y t}t generated by Algorithm 1 satisfies the following convergence guarantee w.p. 1 − δ:
+
+min  
+
+> T
+> 2≤t≤T
+
+Π( xt, y t) = O
+
+ 1
+
+T 1−q + 1
+
+T 2p + 1
+
+T 45
+
+
+
+.
+
+When selecting p = 15 and q = 35 , we have min T  
+
+> 2≤t≤T
+
+Π( xt, y t) = O
+
+
+
+T − 25
+
+
+
+.Proof. We prove this result with several sub-steps. 
+
+Part A. We first control ∥v∗ 
+
+> μt+1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥. To begin with, we define: 
+
+v∗
+
+> μ
+
+(xt) := − ∇2 
+
+> yy
+
+g(xt, y ∗
+
+> μ
+
+(xt)) + μI q
+
+−1 ∇y f (xt, y ∗
+
+> μ
+
+(xt)) ,
+
+For any fixed t ≥ 0, let Hμ = ∇2 
+
+> yy
+
+g(xt, y ∗
+
+> μ
+
+(xt)) + μI q and wμ = ∇y f (xt, y ∗
+
+> μ
+
+(xt)) . Then, we have: 
+
+∥v∗ 
+
+> μt+1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥ = ∥H−1 
+
+> μt+1
+
+wμt+1 − H−1 
+
+> μt
+
+wμt ∥≤ ∥ H−1 
+
+> μt+1
+
+(wμt+1 − wμt )∥ + ∥(H−1 
+
+> μt+1
+
+− H−1 
+
+> μt
+
+)wμt ∥
+
+> ♭
+
+≤ ℓσt+1 
+
+∥y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥ + ∥H−1 
+
+> μt+1
+
+∥ · ∥ Hμt − Hμt+1 ∥ · ∥ H−1 
+
+> μt
+
+∥ · ν, 
+
+(3) where ♭ is due to Assumption 1 and A−1 − B−1 = A−1(B − A)B−1. For the second term, we have: 
+
+∥Hμt − Hμt+1 ∥ ≤ ρ∥y∗ 
+
+> μt
+
+(xt) − y∗ 
+
+> μt+1
+
+(xt)∥ + |μt − μt+1 |.
+
+Thus, to tackle Equation (3), we need to control the gap ∥y∗ 
+
+> μt
+
+(xt) − y∗ 
+
+> μt+1
+
+(xt)∥. To this end, we first define the following supporting function for any fixed t:
+
+hμ(y) = g(xt, y ) + μ
+
+2 ∥y − yt+1 ∥2.
+
+Since our Alg. 2 ensures that w.p. 1 − δ′, yt+1 is an ϵt-SOSP, we know that ∥∇ y g(xt, y t+1 )∥ ≤ ϵt
+
+and λmin (∇2 
+
+> yy
+
+g(xt, y t+1 )) ≥ − √ρϵ t. According to our parameter selection, we can get μt = Θ( σt)
+
+and √ρϵ t = σ2 
+
+> t
+
+. Accordingly, we have: 
+
+λmin (∇2hμt (yt+1 )) ≥ μt − √ρϵ t =:= ιt,λmin (∇2hμt+1 (yt+1 )) ≥ μt+1 − √ρϵ t := ˜ ιt+1 .
+
+Note that σt = Θ(( t + 1) −p) with p ∈ (0 , 13 ), we can easily get ιt = Θ( σt) and ˜ιt+1 = Θ( σt).Therefore, within a sufficiently small ball Byt+1 ( ιt 
+
+> 2ρ
+
+), we have λmin (∇2hμt (y)) ≥ ιt 
+
+> 2
+
+. Thus, noting that ∇hμt (y∗ 
+
+> μt
+
+(xt)) = 0 , we can obtain: 
+
+∥y∗ 
+
+> μt
+
+(xt) − yt+1 ∥ ≤ 2
+
+ιt
+
+∥∇ hμt (yt+1 )∥ = 2
+
+ιt
+
+∥∇ y g(xt, y t+1 )∥ ≤ 2ϵt
+
+ιt
+
+= 2σ4 
+
+> t
+
+/ρ ιt
+
+,
+
+=⇒ ∥ y∗ 
+
+> μt
+
+(xt) − yt+1 ∥ = O(σ3 
+
+> t
+
+).
+
+Similarly, within a small ball centered at yt+1 , hμt+1 remains ˜ιt+1  
+
+> 2
+
+-strong convex, which implies: 
+
+˜ιt+1 
+
+2 ∥y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥2 ≤ ⟨∇ hμt+1 (y∗ 
+
+> μt
+
+(xt)) − ∇ hμt+1 (y∗ 
+
+> μt+1
+
+(xt)) , y ∗ 
+
+> μt
+
+(xt) − y∗ 
+
+> μt+1
+
+(xt)⟩
+
+> †
+
+= ⟨∇ y g(xt, y ∗ 
+
+> μt
+
+(xt)) + μt+1 (y∗ 
+
+> μt
+
+(xt) − yt+1 ), y ∗ 
+
+> μt
+
+(xt) − y∗ 
+
+> μt+1
+
+(xt)⟩
+
+> ‡
+
+= ⟨(μt+1 − μt)( y∗ 
+
+> μt
+
+(xt) − yt+1 ), y ∗ 
+
+> μt
+
+(xt) − y∗ 
+
+> μt+1
+
+(xt)⟩
+
+> ♭
+
+≤ | μt+1 − μt| · ∥ y∗ 
+
+> μt
+
+(xt) − yt+1 ∥ · ∥ y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥,
+
+16 where † is because y∗ 
+
+> μt+1
+
+(xt) minimizes hμt+1 , ‡ is due to ∇y g(xt, y ∗ 
+
+> μt
+
+(xt))+ μt(y∗ 
+
+> μt
+
+(xt)−yt+1 ) = 0 ,and ♭ is induced by the Cauchy-Schwarz inequality. Thus, we have: 
+
+∥y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥ ≤ 2|μt+1 − μt|
+
+˜ιt+1 
+
+∥y∗ 
+
+> μt
+
+(xt) − yt+1 ∥.
+
+Substituting the bound ∥y∗ 
+
+> μt
+
+(xt) − yt+1 ∥ = O(σ3 
+
+> t
+
+) and applying the rigorous lower bound ˜ιt+1 =Θ( σt), we can get: 
+
+∥y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥ = O(σ2 
+
+> t
+
+)|μt − μt+1 |.
+
+We then substitute the above results into Equation (3) to get: 
+
+∥v∗ 
+
+> μt+1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥ ≤ ℓσt+1 
+
+∥y∗ 
+
+> μt+1
+
+(xt)−y∗ 
+
+> μt
+
+(xt)∥ + ∥H−1 
+
+> μt+1
+
+∥ · ∥ Ht − Ht+1 ∥ · ∥ H−1 
+
+> μt
+
+∥ · ν
+
+=⇒ ∥ v∗ 
+
+> μt+1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥ =
+
+ ℓσt+1 
+
++ νρ σtσt+1 
+
+
+
+O(σ2 
+
+> t
+
+)|μt − μt+1 | + νσtσt+1 
+
+|μt − μt+1 |.
+
+This indicates: 
+
+∥v∗ 
+
+> μt+1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥ = O
+
+ 1
+
+σtσt+1 
+
+|μt − μt+1 |
+
+
+
+= O
+
+ (t + 1) −p−1
+
+(t + 1) −p(t + 2) −p
+
+
+
+= O
+
+ (t + 1) −p−1
+
+(t + 1) −2p2−p
+
+
+
+= O (t + 1) p−1.
+
+Part B. We then consider the error introduced by the Conjugate Gradient step. Recall that v∗ 
+
+> μt
+
+(xt) = [∇2 
+
+> yy
+
+g(xt, y ∗ 
+
+> μt
+
+(xt)) + μtIq ]−1∇y f (xt, y ∗ 
+
+> μt
+
+(xt)) , and we now define Et := ∥vt − v∗ 
+
+> μt−1
+
+(xt−1)∥2.Note that Conjugate Gradient actually solves a linear system Htv = bt, where Ht = ∇2 
+
+> yy
+
+g(xt, y t+1 )+ 
+
+μtIq and bt = ∇y f (xt, y t+1 ) at each step t. We correspondingly denote the exact solution to this linear system as v◦ 
+
+> t
+
+= H−1 
+
+> t
+
+bt. According to Grazzi et al. (2020), by selecting Nt = eΘ( p(t + 1) p),we can obtain: 
+
+∥vt+1 − v◦ 
+
+> t
+
+∥ ≤ 2( t + 1) p
+
+> 2
+
+ (t + 1) p 
+
+> 2
+
+− 1(t + 1) p 
+
+> 2
+
++ 1 
+
+Nt
+
+∥vt − v◦ 
+
+> t
+
+∥, =⇒ ∥vt+1 − v◦ 
+
+> t
+
+∥ ≤ 1
+
+√2 ∥vt − v◦ 
+
+> t
+
+∥.
+
+Therefore, we have: 
+
+pEt+1 = ∥vt+1 − v∗ 
+
+> μt
+
+(xt)∥ ≤ ∥ vt+1 − v◦ 
+
+> t
+
+∥ + ∥v◦ 
+
+> t
+
+− v∗ 
+
+> μt
+
+(xt)∥.
+
+Thus, we need to bound ∥vt − v◦ 
+
+> t
+
+∥, which can be controlled by: 
+
+∥vt − v◦ 
+
+> t
+
+∥ ≤ pEt + ∥v∗ 
+
+> μt−1
+
+(xt−1) − v∗ 
+
+> μt−1
+
+(xt)∥
+
+| {z }
+
+> 1
+
++ ∥v∗ 
+
+> μt−1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥
+
+| {z }
+
+> 2
+
++ ∥v∗ 
+
+> μt
+
+(xt) − v◦ 
+
+> t
+
+∥
+
+| {z }
+
+> 3
+
+.
+
+We now control each of these terms. For 1 , we first note that: 
+
+∥v∗
+
+> μ
+
+(x) − v∗
+
+> μ
+
+(x′)∥≤ ∇2 
+
+> yy
+
+g(x, y ∗
+
+> μ
+
+(x)) + μI q
+
+−1  ∇y f (x, y ∗
+
+> μ
+
+(x)) − ∇ y f (x′, y ∗
+
+> μ
+
+(x′)) 
+
++
+
+∇2 
+
+> yy
+
+g(x, y ∗
+
+> μ
+
+(x)) + μI q
+
+−1 − ∇2 
+
+> yy
+
+g(x′, y ∗
+
+> μ
+
+(x′)) + μI q
+
+−1
+
+∇y f (x′, y ∗
+
+> μ
+
+(x′)) 
+
+≤
+
+ ℓσ + νρ σ2
+
+  
+
+1 + ℓσ
+
+
+
+∥x − x′∥ = Θ( σ−3)∥x − x′∥,
+
+meaning that its Lipschitz continuity coefficient is in the order of Θ( σ−3). Therefore, we have: 
+
+1 ≤ Θ( σ−3 
+
+> t
+
+)αt−1∥ b∇Φμt−1 (xt−1)∥ =⇒ 1 = O (t + 1) 3p−q ∥ b∇Φμt−1 (xt−1)∥.
+
+For 2 , we can follow Part A to get 2 = O(( t + 1) p−1).17 For 3 , we have: 
+
+3 ≤ ∇2 
+
+> yy
+
+g(xt, y ∗ 
+
+> μt
+
+(xt)) + μtIq
+
+−1  ∇y f (xt, y ∗ 
+
+> μt
+
+(xt)) − ∇ y f (xt, y t+1 )
+
++
+
+∇2 
+
+> yy
+
+g(xt, y ∗ 
+
+> μt
+
+(xt)) + μtIq
+
+−1 − H−1
+
+> t
+
+
+
+∇y f (xt, y t+1 ) ,
+
+=⇒ 3 = ℓσt
+
+O(σ3 
+
+> t
+
+) + νρ σ2
+
+> t
+
+O(σ3 
+
+> t
+
+) = O (t + 1) −p.
+
+Substituting them back, we can get: 
+
+∥vt − v◦ 
+
+> t
+
+∥ = pEt + O (t + 1) 3p−q ∥ b∇Φμt−1 (xt−1)∥ + O (t + 1) −p,
+
+=⇒ pEt+1 = 1
+
+√2
+
+pEt + O (t + 1) 3p−q ∥ b∇Φμt−1 (xt−1)∥ + O (t + 1) −p.
+
+According to the Young’s inequality with constant 1/2, we have: 
+
+Et+1 =
+
+
+
+1 + 12
+
+  1
+
+√2
+
+pEt
+
+2
+
++ (1 + 2) 
+
+
+
+O (t + 1) 3p−q ∥ b∇Φμt−1 (xt−1)∥ + O (t + 1) −p2
+
+= 34 Et + O (t + 1) 6p−2q ∥ b∇Φμt−1 (xt−1)∥2 + O (t + 1) −2p.
+
+Part C. In this part, we control the shift Φμt+1 (xt+1 ) − Φμt (xt). We first compute the smoothness coefficient of Φμ as follows. According to Assumption 1, for any x, x ′ we have: 
+
+∥∇ Φμ(x) − ∇ Φμ(x′)∥≤∥∇ xf (x, y ∗
+
+> μ
+
+(x)) − ∇ xf (x′, y ∗
+
+> μ
+
+(x′)) ∥
+
++  ∇2 
+
+> xy
+
+g(x, y ∗
+
+> μ
+
+(x)) − ∇ 2 
+
+> xy
+
+g(x′, y ∗
+
+> μ
+
+(x′)) v∗
+
+> μ
+
+(x) + ∇2 
+
+> xy
+
+g(x′, y ∗
+
+> μ
+
+(x′))  v∗
+
+> μ
+
+(x) − v∗
+
+> μ
+
+(x′)
+
+≤ ℓ + ∥v∗
+
+> μ
+
+(x)∥ · ρ  ∥x − x′∥ + ∥y∗
+
+> μ
+
+(x) − y∗
+
+> μ
+
+(x′)∥ + ℓ∥v∗
+
+> μ
+
+(x) − v∗
+
+> μ
+
+(x′)∥≤
+
+
+
+ℓ + νσ · ρ
+
+  ∥x − x′∥ + ∥y∗
+
+> μ
+
+(x) − y∗
+
+> μ
+
+(x′)∥
+
++ ℓ ∇2 
+
+> yy
+
+g(x, y ∗
+
+> μ
+
+(x)) + μI q
+
+−1  ∇y f (x, y ∗
+
+> μ
+
+(x)) − ∇ y f (x′, y ∗
+
+> μ
+
+(x′)) 
+
++ ℓ
+
+∇2 
+
+> yy
+
+g(x, y ∗
+
+> μ
+
+(x)) + μI q
+
+−1 − ∇2 
+
+> yy
+
+g(x′, y ∗
+
+> μ
+
+(x′)) + μI q
+
+−1
+
+∇y f (x′, y ∗
+
+> μ
+
+(x′)) 
+
+≤
+
+
+
+ℓ + νρ σ + ℓ2
+
+σ + νℓρ σ2
+
+  
+
+∥x − x′∥ + ℓσ ∥x − x′∥
+
+
+
+≤
+
+
+
+ℓ + νρ σ + ℓ2
+
+σ + νℓρ σ2
+
+  
+
+1 + ℓσ
+
+
+
+∥x − x′∥ ≜ Lμ∥x − x′∥.
+
+We denote Lt := Lμt . Given the Lt+1 -smoothness of Φμt+1 with Lt+1 = Θ(( t+1) 3p), and applying the update rule xt+1 = xt − αt b∇Φμt (xt) with q ≥ 3p, the descent lemma yields: 
+
+Φμt+1 (xt+1 ) − Φμt+1 (xt)
+
+≤⟨∇ Φμt+1 (xt), x t+1 − xt⟩ + Lt+1 
+
+2 ∥xt+1 − xt∥2
+
+= − αt⟨∇ Φμt+1 (xt), b∇Φμt (xt)⟩ + Lt+1 α2
+
+> t
+
+2 ∥ b∇Φμt (xt)∥2
+
+≤ − αt
+
+2 ∥∇ Φμt (xt)∥2 − αt
+
+4 ∥ b∇Φμt (xt)∥2 + αt
+
+2 ∥∇ Φμt+1 (xt) − b∇Φμt (xt)∥2,
+
+where in the last inequality, we use the fact that ∥a − b∥2 = ∥a∥2 + ∥b∥2 − 2⟨a, b ⟩. For the last term, we can control it by: 
+
+∥∇ Φμt+1 (xt) − b∇Φμt (xt)∥ ≤ ∥∇ xf (xt, y ∗ 
+
+> μt+1
+
+(xt)) − ∇ xf (xt, y t+1 )∥
+
+| {z }
+
+> Term A
+
++ ∥∇ 2 
+
+> xy
+
+g(xt, y ∗ 
+
+> μt+1
+
+(xt)) v∗ 
+
+> μt+1
+
+(xt) − ∇ 2 
+
+> xy
+
+g(xt, y t+1 )vt+1 ∥
+
+| {z }
+
+> Term B
+
+.
+
+18 Then, we have: Term A ≤ ℓ∥y∗ 
+
+> μt+1
+
+(xt) − yt+1 ∥ = O ∥y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥ + ∥y∗ 
+
+> μt
+
+(xt) − yt+1 ∥,
+
+=⇒ Term A = O(t−3p−1) + O(t−3p) = O(t−3p).
+
+Besides, we have: Term B ≤ ρ∥y∗ 
+
+> μt+1
+
+(xt) − yt+1 ∥ · ∥ v∗ 
+
+> μt+1
+
+(xt)∥ + ℓ(∥v∗ 
+
+> μt+1
+
+(xt) − v∗ 
+
+> μt
+
+(xt)∥ + pEt+1 ),
+
+=⇒ Term B = O(t−3p · tp) + O(tp−1) + O(pEt+1 ) = O(t−2p + tp−1 + pEt+1 ).
+
+Thus, we combine them to get: 
+
+∥∇ Φμt+1 (xt) − b∇Φμt (xt)∥2 = O(t−4p + t2p−2 + Et+1 ).
+
+Also, we consider the the gap |Φμt+1 (xt) − Φμt (xt)|. According to Assumption 1, we have: 
+
+|Φμt+1 (xt) − Φμt (xt)| = |f (xt, y ∗ 
+
+> μt+1
+
+(xt)) − f (xt, y ∗ 
+
+> μt
+
+(xt)) | ≤ ν∥y∗ 
+
+> μt+1
+
+(xt) − y∗ 
+
+> μt
+
+(xt)∥,
+
+=⇒ | Φμt+1 (xt) − Φμt (xt)| ♭
+
+= O(σ2 
+
+> t
+
+)|μt − μt+1 | = O (t + 1) −3p−1,
+
+where ♭ can be implied by Part A.We can introduce positive constants C1, C ′ 
+
+> 1
+
+to construct the following result: 
+
+Φμt+1 (xt+1 ) − Φμt (xt)=[Φ μt+1 (xt+1 ) − Φμt+1 (xt)] + [Φ μt+1 (xt) − Φμt (xt)] 
+
+≤ − αt
+
+2 ∥∇ Φμt (xt)∥2 − αt
+
+4 ∥ b∇Φμt (xt)∥2 + C1αtEt+1 + C′
+
+> 1
+
+ αtt−4p + αtt2p−2 + t−3p−1.
+
+Part D. Recall Part B, with positive constants C2, C ′
+
+> 2
+
+, we have: 
+
+Et+1 ≤ 34 Et + C2t6p−2q ∥ b∇Φμt−1 (xt−1)∥2 + C′
+
+> 2
+
+t−2p.
+
+We construct the following Lyapunov function: 
+
+Vt = Φ μt (xt) + M α tEt,
+
+where M = 3 C1. Then, we have: 
+
+Vt+1 − Vt = Φ μt+1 (xt+1 ) − Φμt (xt) + M (αt+1 Et+1 − αtEt)
+
+≤ − αt
+
+2 ∥∇ Φμt (xt)∥2 − αt
+
+4 ∥ b∇Φμt (xt)∥2 + C′
+
+> 1
+
+ αtt−4p + αtt2p−2 + t−3p−1
+
++ ( C1αt + M α t+1 )Et+1 − M α tEt
+
+≤ − αt
+
+2 ∥∇ Φμt (xt)∥2 − αt
+
+4 ∥ b∇Φμt (xt)∥2 + C′
+
+> 1
+
+ αtt−4p + αtt2p−2 + t−3p−1
+
++ ( C1αt + M α t+1 )
+
+ 34 Et + C2t6p−2q ∥ b∇Φμt−1 (xt−1)∥2 + C′
+
+> 2
+
+t−2p
+
+
+
+− M α tEt♭
+
+≤ − αt
+
+2 ∥∇ Φμt (xt)∥2 − αt
+
+4 ∥ b∇Φμt (xt)∥2 + 4 C1C2αtt6p−2q
+
+| {z }
+
+> ηt
+
+∥ b∇Φμt−1 (xt−1)∥2
+
++ C′′ 
+
+> 1
+
+ t−4p−q + t2p−2−q + t−2p−q + t−3p−1| {z }
+
+> Rt
+
+,
+
+where ♭ is due to M = 3 C1 and αt ≥ αt+1 , and C′′  
+
+> 1
+
+is another constant. When q ≥ 3p, we can select proper αt to ensure ηt+1 ≤ 18 αt, and denote T0 = ⌈ T 
+
+> 2
+
+⌉. Then, we can get: 
+
+> T
+
+X
+
+> t=T0
+
+αt
+
+2 ∥∇ Φμt (xt)∥2 ≤
+
+> T
+
+X
+
+> t=T0
+
+αt
+
+2 ∥∇ Φμt (xt)∥2 −
+
+> T
+
+X
+
+> t=T0
+
+αt
+
+8 ∥ b∇Φμt (xt)∥2 + η1∥ b∇ΦμT0 (x0)∥2
+
+≤ VT0 − VT +1 + η1∥ b∇ΦμT0 (x0)∥2 +
+
+> T
+
+X
+
+> t=T0
+
+Rt.
+
+19 Noting that VT +1 is bounded below by inf Φ , the constant terms can be bounded by O(1) . For the residual sum PTt=T0 Rt, the dominant term is O(t−q−2p). Integrating this term yields PTt=T0 Rt =
+
+O(T 1−q−2p). Dividing both sides by PTt=T0 αt = Θ( T 1−q ), we finally get: 
+
+min  
+
+> 1≤t≤T
+
+∥∇ Φμt (xt)∥2 = O(1) + O(T 1−q−2p)Θ( T 1−q ) = O
+
+ 1
+
+T 1−q + 1
+
+T 2p
+
+
+
+.
+
+When selecting p = 1 /5 and q = 3 /5, and noting min T0≤t≤T ϵt = O(T − 45 ) the convergence rate is 
+
+min T0≤t≤T Π( xt, y t) = O(T − 25 ).Given Theorem 1, we can immediately obtain the following result: 
+
+Corollary 1. Whenever the lower-level local minimum satisfies the local curvature condition 
+
+∇2 
+
+> yy
+
+g(x, y ) ⪰ μ0Iq for some μ0 > 0, the bias bound yields ∥∇ Φμ(x) − ∇ Φ0(x)∥ = O(μ).Combining this bound with the parameter selection in Theorem 1 gives: 
+
+min  
+
+> ⌈T / 2⌉≤ t≤T
+
+∥∇ Φ0(xt)∥2 = O(T −2/5).
+
+C Details of Illustrative Example 
+
+To intuitively show the rationale of our SOSP-based relaxed surrogate, we consider the following concrete example with x, y ∈ R:
+
+min  
+
+> x∈Rp,y ∈Rq
+
+f (x, y ) = ( x − 2) 2 + y2
+
+subject to y ∈ S (x) := arg min 
+
+> y
+
+g(x, y ) = 14 y4 − 12 xy 2.
+
+As mentioned earlier, to tackle this nonconvex lower-level BLO problem, existing works instead solve a surrogate lower-level problem by finding a first-order stationary point, i.e., a point where 
+
+∇y g(x, y ) = 0 , or by solving its equivalent formulations under certain other assumptions (Xiao et al., 2023; Shen and Chen, 2023; Liu et al., 2024; Ma et al., 2026). Specifically, the required derivatives are: 
+
+∇y g(x, y ) = y3 − xy = y(y2 − x), ∇2 
+
+> yy
+
+g(x, y ) = 3 y2 − x. 
+
+Setting the gradient to 0, we obtain the following FOSP set: 
+
+{(x, 0) , (x′, √x′), (x′, −√x′) : ∀x ∈ R, x ′ ≥ 0}.
+
+When substituting ∇y g(x, y ) = 0 into the upper-level problem, we obtain the following solutions: 
+
+(x∗, y ∗) ∈ { (2 , 0) , (1 .5, √1.5) , (1 .5, −√1.5) }, where (2 , 0) is a saddle point of g(x, ·), and the other two serve as the true solutions. As shown in Figure 1, these aforementioned methods can be entirely drawn toward the saddle point, failing to solve the original BLO problem. In contrast, our 
+
+PROBE escapes the saddle point and finds the optimal solution. 
+
+D Scope and Implications of SOSP Guarantees 
+
+While we established a finite-time convergence rate of O(T − 25 ) for PROBE in Section 5, it remains important to clarify the class of solutions to which the method converges. In this section, we discuss our SOSP-based solutions in detail. 
+
+The theoretical guarantee is to achieve some SOSP solution. Our theoretical results guarantee that 
+
+PROBE reaches a lower-level SOSP and thereby avoids strict saddle points. However, they do not 
+
+guarantee the selection of the “best” solution among multiple lower-level local minima. Although the objective values of any given collection of local minima can be compared directly, guaranteeing the selection of the best solution among all local minima is equivalent to finding a global minimum of the lower-level problem, which is computationally intractable for general nonconvex problems (NP-hard). Therefore, without additional structural assumptions, the effects of different lower-level local solutions on the upper-level problem cannot be characterized in general. 20 Trajectory Candidates Strict Non-strict Undetermined                         
+
+> 18800220 19 0137700411 10 01518 17 01
+> Total 64 61 03
+
+Table 2: Numerical classification of the perturbation-triggered lower-level stationary-point candi-dates encountered along five PROBE trajectories. Undetermined refers to candidates that could not be classified conclusively because of numerical instability. 
+
+An SOSP provides a strictly stronger stationarity guarantee than an FOSP. The lower-level guarantee that PROBE reaches an SOSP does not rely on the strict-saddle property. Rather, this property is used only to conclude that an SOSP corresponds to a lower-level local minimum. Even when strictness does not hold, an SOSP still excludes any stationary point that admits a direction of negative curvature and therefore provides a strictly stronger stationarity guarantee than an FOSP. This advantage is also well documented in the literature (Dauphin et al., 2014; Allen-Zhu and Li, 2018). This distinction is particularly important in BLO: as shown in Figure 1, FOSP-based methods can become trapped at lower-level saddle points and consequently converge to incorrect upper-level solutions, whereas PROBE escapes these saddle points and finds the correct solution. 
+
+Empirical evidence shows the prevalence of strict saddles in practice. We conducted an experiment using the same LLM-based setting as in Section A. Specifically, we identified all the saddle points encountered along each trajectory and computed the minimum eigenvalue of the lower-level Hessian at each of them. As shown in Table 2, across five repeated trials, all 61 encountered saddle points exhibited a negative minimum eigenvalue, providing empirical evidence that the saddles encountered in these runs are strict. This implies that most saddle points are strict in practice, demonstrating the applicability of our theories. 21
