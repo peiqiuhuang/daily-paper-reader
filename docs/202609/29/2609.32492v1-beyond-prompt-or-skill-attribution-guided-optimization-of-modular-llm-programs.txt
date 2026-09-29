@@ -1,0 +1,479 @@
+Title: Beyond Prompt or Skill? Attribution-Guided Optimization of Modular LLM Programs
+
+URL Source: https://arxiv.org/pdf/2609.32492v1
+
+Published Time: Tue, 29 Sep 2026 01:16:26 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Beyond Prompt or Skill? Attribution-Guided Optimization of Modular LLM Programs 
+
+## Haoran Shou 1,* Haoyue Liu 1,2,* Yu Huo 1 Kun Zeng 3 Xiaoying Tang 1,2, † 
+
+> 1
+
+School of Science and Engineering, The Chinese University of Hong Kong, Shenzhen 518172, China  
+
+> 2
+
+Shenzhen Future Network of Intelligence Institute (FNii-Shenzhen)  
+
+> 3
+
+Sun Yat-sen University 
+
+> *
+
+Equal contribution. †Corresponding author. 
+
+Abstract 
+
+Large language models can solve increasingly diverse rea-soning tasks, yet their performance remains highly sensi-tive to task prompts, intermediate instructions, and the way reusable problem-solving knowledge is incorporated. Exist-ing optimization methods usually focus on only one part of this design space: they either optimize a monolithic prompt, or separately induce and refine skills from model traces. As a result, they lack a principled mechanism for deciding which component should be updated when failures occur, and they rarely optimize prompts, skills, and skill-use policies in a unified framework. We propose Sparo ( Skill, Prompt, And 
+
+Routing Optimization), a framework that jointly optimizes task instructions, reusable skill blocks, and routing rules. It performs controlled counterfactual evaluations, converts ex-amples’ effects into a probabilistic responsibility distribution over prompt, skill, and routing components, samples one com-ponent from that distribution, and applies the corresponding targeted mutation. This design moves language-program op-timization beyond global prompt rewriting toward structured, reusable, and selectively activated task knowledge. Across five benchmarks and five worker models, Sparo consistently out-performs both prompt-centered and skill-centered optimiza-tion baselines. These results suggest that effective language-program optimization depends not only on discovering useful task knowledge, but also on deciding where that knowledge should be stored and when it should be activated. 
+
+## Introduction 
+
+Adapting large language models (LLMs) to downstream tasks increasingly involves optimizing the language program around a fixed model rather than updating the model param-eters themselves (Brown et al. 2020; Ouyang et al. 2022). A practical language program may combine a global task in-struction, formatting constraints, examples, decomposition rules, and reusable natural-language procedures (Khattab et al. 2023; Yang et al. 2024; Yuksekgonul et al. 2024; Agrawal et al. 2025). However, its modularity also creates a credit-assignment problem: end-to-end task feedback does not directly identify which program component should be revised (Opsahl-Ong et al. 2024). A failed prediction may result from an underspecified prompt, missing or harmful procedural knowledge, or an incorrect decision about when that knowledge should be activated. 
+
+Figure 1: Overview of language-program optimization paradigms. Prompt-only optimization rewrites the global prompt for any failure; skill-only optimization distills reusable procedures but never diagnoses which component is at fault; Sparo treats the program as a modular object 
+
+P = ( p, B, r, t ) and edits only the component that its attri-bution step samples. Existing language-program optimizers typically search only one part of this design space. Prompt-centered methods improve instructions or prompt programs through iterative generation, textual feedback, or reflective mutation (Yang et al. 2024; Pryzant et al. 2023; Yuksekgonul et al. 2024; Agrawal et al. 2025). They are effective when a failure can be repaired through global instruction rewriting, but may encode recurring local exceptions directly into the prompt. Skill-oriented methods instead extract or refine reusable pro-cedures from trajectories and agent experience (Ni et al. arXiv:2609.32492v1 [cs.AI] 26 Sep 2026 2026; Yang et al. 2026; Ma et al. 2026). These approaches make reusable knowledge explicit, but generally do not de-cide whether the next update should revise a skill, change the global prompt, or modify the mechanism that routes skills to inputs. Figure 1 contrasts these two families with the ap-proach we propose. This paper asks: can an optimizer determine which com-ponent of a modular LLM program should change before generating the change? Answering this question requires at-tribution rather than reflection alone. It also requires evidence beyond the current minibatch: an isolated error may not re-veal whether a failure mode is recurring, while historical ex-amples may change from failures to successes as the program evolves (Shinn et al. 2023; Zhao et al. 2024). We therefore maintain a cluster-balanced cross-round experience pool and relabel its examples under the current program before each optimization step. We introduce Sparo, an attribution-guided optimizer for modular LLM programs. Sparo represents a program as a global prompt, a reusable skill library, a semantic router, and an integration template. At each optimization step, Sparo re-trieves diverse historical evidence, evaluates controlled coun-terfactual program variants, and converts their effects into a probabilistic responsibility distribution over the prompt, skill library, and router. It then samples a component from this distribution and applies the corresponding mutation. The resulting candidate is evaluated on the validation set and maintained using Pareto-aware program-pool selection. We evaluate Sparo on five heterogeneous reasoning and question-answering benchmarks using five instruction-tuned and multimodal worker models. Sparo obtains the highest score in every evaluated model–task setting, improving over both prompt-centered and skill-centered optimization meth-ods. The results indicate that the benefit does not arise merely from adding more textual instructions or more skills, but from deciding where newly discovered task knowledge should be represented and when it should be activated. We summarize our contributions as follows: 
+
+• We formulate modular language-program optimization as a component credit-assignment problem over global prompts, reusable skills, and routing mechanisms. 
+
+• We introduce a cluster-balanced cross-round experience pool that preserves diverse historical evidence and dy-namically relabels examples under the current program. 
+
+• We propose probabilistic counterfactual attribution and targeted component mutation, enabling the optimizer to sample the program component to update from a respon-sibility distribution induced by current evidence. 
+
+## Related Work 
+
+Black-box prompt optimization. Black-box prompt opti-mization searches over natural-language instructions while keeping model parameters fixed. APE generates and selects candidate instructions using task-level scores (Zhou et al. 2023), OPRO proposes new prompts from previously eval-uated prompt–score pairs (Yang et al. 2024), and ProTeGi and TextGrad use natural-language feedback as gradient-like optimization signals (Pryzant et al. 2023; Yuksekgonul et al. 2024). Self-Refine studies iterative revision through self-generated feedback (Madaan et al. 2023), while Prompt-Breeder and GEPA maintain and evolve populations of prompt candidates (Fernando et al. 2024; Agrawal et al. 2025). These methods mainly optimize prompts or prompt programs, without deciding whether a failure should instead be addressed through reusable skills or routing. 
+
+Skill learning and reusable procedures. Language agents can improve by retaining feedback, trajectories, or reusable procedures. Reflexion stores verbal feedback in episodic memory (Shinn et al. 2023), ExpeL extracts transferable knowledge from past experience (Zhao et al. 2024), and Voy-ager maintains a growing library of reusable skills (Wang et al. 2023). Recent methods such as Trace2Skill, SkillOpt, and SkillGen further distill, evolve, or verify agent skills (Ni et al. 2026; Yang et al. 2026; Ma et al. 2026). However, skill learning alone does not determine whether an error origi-nates from missing knowledge, incorrect skill content, the global prompt, or skill activation. 
+
+Structured language programs and routing. Structured language-program frameworks represent applications as compositions of multiple modules. DSPy optimizes instruc-tions and demonstrations in declarative LM pipelines (Khat-tab et al. 2023), while MIPRO addresses optimization and credit assignment in multi-stage language programs (Opsahl-Ong et al. 2024). aPSF factorizes a prompt into separately optimized factors and scores them by single-factor interven-tion (Liu et al. 2026), though its factors are all parts of a single prompt rendered for every input. Input-dependent component selection is also related to sparse expert routing (Fedus, Zoph, and Shazeer 2022) and learned tool invocation (Schick et al. 2023). In contrast, Sparo assigns credit across heterogeneous components of a single modular program. 
+
+Component attribution in Sparo. Sparo differs from structured prompt-program optimization in what it attributes over: the components are heterogeneous rather than slots of one prompt, the skill library persists across inputs, and the router decides at inference time which skills an input sees, making missed and harmful activations their own counter-factuals. Candidates are retained by GEPA’s validation-based Pareto mechanism (Agrawal et al. 2025); our contribution is attribution-guided candidate generation, not a new selection rule. 
+
+## Sparo: Attribution-Guided Modular Optimization 
+
+Problem Setup 
+
+Sparo optimizes a modular language program while keep-ing the worker model fixed. Each task example is a pair 
+
+(x, y ) with a metric M (ˆ y, y ), and the optimizer can query the worker LLM but cannot update its parameters. This black-box setting follows recent language-program optimization work, where improvement comes from rewriting textual pro-grams rather than training model weights (Yang et al. 2024; Yuksekgonul et al. 2024; Agrawal et al. 2025). Following modular language-program frameworks (Khat-tab et al. 2023; Opsahl-Ong et al. 2024), we represent a program as P = ( p, B, r, t ), where p is the main prompt, B
+
+is a library of skill blocks, r is a routing rule, and t is an integration template (Figure 2, left). Given input x, the pro-gram renders a final instruction for the worker model using the selected skill set Bx and predicts 
+
+ˆyP (x) = fθ
+
+ t(x, p, Bx).
+
+With the template t held fixed, the objective is to find the best program within a fixed optimization budget: 
+
+P ⋆ = arg max P ∈P Jval (P ),Jval (P ) = 1
+
+> |D val |
+
+P 
+
+> (x,y )∈D val
+
+M (ˆ yP (x), y ).
+
+Modular Program Composition 
+
+Sparo treats an LLM program as a collaboration between global instructions and selectively activated reusable knowl-edge. The main prompt p is always present and defines the task contract: what the input means, what the answer should contain, and which global constraints such as output for-mat or answer style must be obeyed. Since these instructions apply to all examples, modifying the main prompt has the broadest effect on program behavior. The skill library B = {bi}Ni=1 stores reusable local pro-cedures. Inspired by persistent and structured skill libraries for retrieval and composition (Wang et al. 2023; Zeng et al. 2026a,b), Sparo represents each skill as 
+
+bi = ( ni, d i, T + 
+
+> i
+
+, T − 
+
+> i
+
+, Q i, q i, a i),
+
+where ni is the skill name, di describes its applicability, T +
+
+> i
+
+and T − 
+
+> i
+
+are positive and negative trigger sets, Qi contains representative queries, qi is the natural-language procedure, and ai ∈ { 0, 1} indicates whether the skill is active. The routing metadata specifies when a skill should or should not be used, while the procedure specifies how the worker model should handle the corresponding recurring subproblem. The router r selects skills by comparing the semantic rep-resentation of the current input with their routing metadata. Let h(·) be a fixed sentence embedding model (Reimers and Gurevych 2019) and let x = h(x) denote the embedding of the routing view of input x. For each active skill, Sparo first computes the positive relevance score 
+
+s+ 
+
+> i
+
+(x) = max   
+
+> u∈T+
+> i∪Qi
+
+cos( x, h (u)) ,
+
+which measures how closely the input matches at least one intended use case or representative query of the skill. It also computes the negative relevance score 
+
+s− 
+
+> i
+
+(x) = max  
+
+> v∈T−
+> i
+
+cos( x, h (v)) ,
+
+which measures how closely the input matches a known con-dition under which the skill should not be activated. We define s− 
+
+> i
+
+(x) = 0 when T − 
+
+> i
+
+= ∅.In addition to these trigger-level signals, Sparo measures the overall semantic relevance of the skill through 
+
+sdi (x) = cos( x, h (di)) ,
+
+where the description di provides a broader summary of the skill’s applicability beyond the finite set of triggers. The final routing score combines the three signals: 
+
+si(x) = w+s+ 
+
+> i
+
+(x) + wdsdi (x) − w−s− 
+
+> i
+
+(x).
+
+The weights w+, wd, and w− control the relative influence of these complementary signals. Conceptually related to sparse expert routing (Fedus, Zoph, and Shazeer 2022), the router selects at most Kr active skills. The integration template t then combines the input, the main prompt, and the selected skill procedures. This decomposition defines the action space of Sparo: a prompt edit changes the global task contract, a skill edit changes reusable procedural knowledge, and a routing edit modifies the metadata that determines when a skill is se-lected. The remaining subsections describe how Sparo col-lects evidence, attributes failures to these components, and verifies candidate edits. 
+
+Cluster-Balanced Evidence Retrieval 
+
+Sparo maintains a cross-round experience pool Mk to pro-vide the optimizer with diverse historical evidence. A single optimization minibatch often contains only a few examples of a recurring failure pattern, making it difficult to decide whether the problem should be addressed by a prompt edit, a skill change, or a routing modification. Unlike a static failure memory, Sparo stores execution traces, model outputs, feedback, and examples without as-signing permanent labels. At each optimization step, the pool is re-evaluated using the current program Pk and split into failure and success sets by a fixed success threshold γ on the task metric: 
+
+Fk = {e ∈ M k : M (ˆ yPk (xe), y e) < γ },
+
+Sk = {e ∈ M k : M (ˆ yPk (xe), y e) ≥ γ}.
+
+The pool maintains diversity through clustering over in-put and error features. During mutation generation, Sparo retrieves related failures and successful examples from cor-responding clusters, providing the optimizer with consistent evidence rather than isolated mistakes. 
+
+Counterfactual Attribution and Component Choice 
+
+Sparo forms a distribution over which program component to revise before generating a mutation. At optimization step k, it retrieves a set of examples Ek. For counterfactuals that require generating temporary prompt or skill proposals, examples from each failure cluster are divided into support and query subsets: the support examples generate the proposal, and the held-out query examples measure its effect. For each query example e = ( x, y ) ∈ E k, let 
+
+s0(e) = M (ˆ yPk (x), y )
+
+denote the score of the current program. Sparo constructs component-specific counterfactuals that modify one compo-nent while keeping the others fixed. Figure 2: Overview of Sparo. Sparo maintains a cross-round evidence pool and optimizes a modular LLM program by performing counterfactual component attribution over the prompt, skill library, and router, then sampling a component from that responsibility distribution and applying the corresponding targeted mutation. 
+
+Prompt attribution. The optimizer uses the correspond-ing support examples to generate a temporary repaired prompt ˜pe. Let P pr  
+
+> k
+
+= (˜ pe, Bk, r k, t k) be the program ob-tained by replacing only the global prompt. The prompt con-tribution is 
+
+ϕp(e) = 
+
+h
+
+M (ˆ yP pr  
+
+> k
+
+(x), y ) − s0(e)
+
+i
+
+> +
+
+,
+
+where [z]+ = max( z, 0) . A positive value indicates that revising the global task specification improves the prediction. 
+
+Routing attribution. Let Bx ⊆ B k be the skills selected for input x, and let 
+
+Ue = TopKRelevant ( x, Bk \ B x; Kd)
+
+be the Kd highest-scoring unselected skills under the router relevance function. Sparo tests a missed activation by adding one skill from Ue, and an incorrect activation by removing one skill from Bx:
+
+sadd (e) = max 
+
+> bi∈Ue
+
+M
+
+
+
+ˆyP +ik
+
+(x), y 
+
+
+
+,sdrop (e) = max 
+
+> bi∈B x
+
+M
+
+
+
+ˆyP −ik
+
+(x), y 
+
+
+
+.
+
+Empty candidate sets are assigned the baseline score s0(e).The routing contribution is 
+
+ϕr (e) = max {[sadd (e) − s0(e)] +, [sdrop (e) − s0(e)] +} .
+
+The two terms respectively identify a useful existing skill that was missed and an irrelevant or harmful skill that was incorrectly activated. 
+
+Skill attribution. Sparo distinguishes incorrect existing skill content from missing procedural knowledge. It consid-ers 
+
+Re = TopKRelevant ( x, Bx ∪ Ue; Kd)
+
+as the candidate set for skill repair. For each bi ∈ Re, the optimizer generates a temporary revised skill ˜bi, and P sr( i)
+
+> k
+
+replaces only that skill while preserving its activation status. The best repair score is 
+
+ssr (e) = max 
+
+> bi∈Re
+
+M (ˆ yP sr( i)
+
+> k
+
+(x), y ).
+
+The optimizer also proposes a temporary new skill ˜bnew 
+
+from the support examples and directly injects it into the selected skill set, producing P new  
+
+> k
+
+. The skill contribution is  
+
+> ϕB(e) = max
+
+n    
+
+> [ssr (e)−s0(e)] +,
+
+M (ˆ yP new    
+
+> k(x), y )−s0(e)
+
+
+
+> +
+
+o
+
+> .
+
+The first term supports revising an existing skill, whereas the second supports creating a new skill. 
+
+Cross-example aggregation. Let C = {p, B, r } be the editable components; the integration template t is held fixed. Sparo converts the component contributions into an example-level responsibility distribution: 
+
+P (c | e; τ ) = exp  ϕc(e)/τ P 
+
+> c′∈C
+
+exp  ϕc′ (e)/τ  ,
+
+¯Pk(c; τ ) = 1
+
+|E k|
+
+X
+
+> e∈E k
+
+P (c | e; τ ),c∗ 
+
+> k
+
+∼ Categorical 
+
+ ¯Pk(c; τ ) c∈C
+
+
+
+.
+
+As τ → 0 each example casts a hard component vote, so 
+
+¯Pk approaches the vote shares and selection stays stochastic; larger τ preserves attribution uncertainty. 
+
+Mutation selection. If c∗ 
+
+> k
+
+= p, Sparo applies PromptE-dit. If c∗ 
+
+> k
+
+= r, it uses the larger aggregate gain between skill addition and skill removal to choose whether to promote or suppress activation. If c∗ 
+
+> k
+
+= B, it uses the larger aggregate gain between existing-skill repair and new-skill proposal to choose between revising and creating a skill. The result-ing candidates are finally evaluated through validation-based candidate-pool selection. 
+
+Targeted Mutations from Relabeled Evidence 
+
+After sampling c∗ 
+
+> k
+
+from ¯Pk, Sparo generates the correspond-ing component-specific mutation. PromptEdit rewrites the global instruction when failures point to broad task inter-pretation or formatting errors. SkillEdit creates or revises reusable blocks when a cluster of failures shares a local reasoning pattern. RoutingEdit changes triggers or routing rules when useful skills exist but are selected incorrectly. The cluster-balanced pool determines the evidence shown to the optimizer LLM, which is broader than the attribution set Ek. Sparo first retrieves pool examples from clusters that are similar to the current failures. Within each relevant clus-ter, examples are ranked by similarity and recency; across clusters, Sparo samples in a balanced order. This gives the optimizer multiple same-type errors rather than a single fail-ing example, making the proposed edit more likely to capture a reusable pattern, while success anchors discourage edits that break already-solved cases. 
+
+Candidate Evaluation and Program Pool Selection 
+
+After applying a component-specific mutation m to the se-lected parent program Pk, Sparo obtains a candidate pro-gram ePk = m(Pk). We evaluate and maintain candidate pro-grams using the validation-based program-pool and instance-level Pareto selection mechanism of GEPA (Agrawal et al. 2025). Specifically, each candidate is evaluated on the vali-dation set and retained if it contributes to the Pareto frontier or satisfies the pool’s quality–diversity criterion. Finally, the program with the highest validation score is chosen as the returned program. 
+
+## Experiments 
+
+Experimental Setup 
+
+Tasks and datasets. We select five benchmarks that vary along modality, reasoning structure, and the type of language-program adaptation they reward. FinQA requires numerical reasoning over financial reports and tables (Chen et al. 2021); CLUTRR tests the induction and reuse of re-lational rules (Sinha et al. 2019); ChartQA combines visual chart understanding with answer-format control (Masry et al. 2022); ProofWriter evaluates multi-step deductive reasoning (Tafjord, Dalvi, and Clark 2021); and SearchQA requires concise answer extraction from noisy search snippets (Dunn et al. 2017). 
+
+Baselines. We compare Sparo with six recent language-program optimizers covering two complementary families. Prompt-centered methods include OPRO (Yang et al. 2024), TextGrad (Yuksekgonul et al. 2024), GEPA (Agrawal et al. 2025), and the factorized prompt optimizer aPSF (Liu et al. 2026). Skill-centered methods include Trace2Skill (Ni et al. 2026) and SkillOpt (Yang et al. 2026). The comparison there-fore tests whether jointly selecting and optimizing prompts, skills, and routing improves over either global prompt search or reusable-skill learning alone. 
+
+Models and protocol. Worker models span Qwen3.5-4B, GLM-4.6V-Flash, InternVL3.5-8B, MiniCPM-V-4.5, and a relatively larger model Gemma4-31B (Yang et al. 2025; Z.ai 2025; Wang et al. 2025; Yu et al. 2025; Team et al. 2026). The optimizer is fixed to Qwen3.5-9B, including the experiments in which it optimizes the larger Gemma4-31B worker. All methods compared within a model–task row use the same 400 /200 /1000 train/validation/test split (SearchQA uses 1400 test examples), a fixed split seed of 455 ,and 12 optimization steps. FinQA, CLUTRR, ChartQA, and ProofWriter are scored by accuracy; SearchQA by relaxed ex-act match. Local models are served with vLLM (Kwon et al. 2023), and the remote worker uses an OpenAI-compatible endpoint. 
+
+Experimental Results 
+
+Table 1 reports the main comparison. Sparo obtains the high-est point estimate in all 25 model–task settings, exceeding the strongest competing method by 4.4 points on average and by as much as 15.1 points. These are single-split-seed results; Appendix G repeats the Qwen3.5-4B comparison against GEPA over three seeds, where Sparo leads on all five tasks and in all fifteen task–seed pairs. On the Qwen3.5-4B worker that margin averages 5.7 points across the five tasks. 
+
+Joint optimization improves prompt-sensitive tasks over skill-only learning. ChartQA and SearchQA place par-ticular pressure on global task interpretation, evidence selec-tion, and exact answer control. Across the ten worker-task pairs on these two benchmarks, Sparo improves over the stronger of Trace2Skill and SkillOpt by 3.7 points on aver-age. The improvement is consistent in every pair, reaching 9.6 points for GLM-4.6V-Flash on ChartQA. These results indicate that reusable skills alone do not replace the need to optimize the global instruction and its interaction with routing. 
+
+Joint optimization improves skill-intensive tasks over prompt-only search. FinQA, CLUTRR, and ProofWriter contain recurring arithmetic, relational, and deductive oper-ations that can be represented as reusable procedures. Across all 15 worker-task pairs on these benchmarks, Sparo exceeds the strongest prompt-centered baseline among GEPA, aPSF, OPRO, and TextGrad by 9.1 points on average. The contrast is largest for Qwen3.5-4B on CLUTRR, where Sparo reaches 69.0 while the strongest prompt-centered method reaches 32.3. The result supports the complementary claim: global prompt optimization is insufficient when recurring failures can be localized into reusable skills. 
+
+A small optimizer can guide a substantially larger worker. With Qwen3.5-9B fixed as the optimizer, Sparo obtains the best result for the Gemma4-31B worker on all five benchmarks. It improves over the strongest competing method by 2.7 points on average. Thus, Sparo’s benefit does not require the optimizer to be larger than the worker; struc-tured attribution can allow a smaller optimizer to provide useful program-level supervision to a stronger model. Model Method Prompt Skill Route FinQA CLUTRR ChartQA ProofWriter SearchQA 
+
+Qwen3.5-4B 
+
+OPRO ✓ ✗ ✗ 16.50 30.10 81.20 52.30 73.00 TextGrad ✓ ✗ ✗ 19.90 ↑3.40 31.10 ↑1.00 80.20 ↓1.00 73.20 ↑20 .90 73.43 ↑0.43 
+
+GEPA ✓ ✗ ✗ 35.60 ↑19 .10 28.00 ↓2.10 77.90 ↓3.30 54.00 ↑1.70 72.90 ↓0.10 
+
+aPSF ✓ ✗ ✗ 31.70 ↑15 .20 32.30 ↑2.20 81.90 ↑0.70 60.90 ↑8.60 72.00 ↓1.00 
+
+Trace2Skill ✗ ✓ ✗ 28.00 ↑11 .50 65.20 ↑35 .10 81.80 ↑0.60 71.40 ↑19 .10 69.93 ↓3.07 
+
+SkillOpt ✗ ✓ ✗ 37.00 ↑20 .50 62.40 ↑32 .30 82.30 ↑1.10 75.40 ↑23 .10 74.00 ↑1.00 
+
+Sparo ✓ ✓ ✓ 47.90 ↑31 .40 69.00 ↑38 .90 84.60 ↑3.40 84.70 ↑32 .40 76.30 ↑3.30 
+
+GLM-4.6V-Flash 
+
+OPRO ✓ ✗ ✗ 18.70 29.60 65.20 49.00 64.50 TextGrad ✓ ✗ ✗ 22.10 ↑3.40 29.30 ↓0.30 64.00 ↓1.20 50.50 ↑1.50 65.64 ↑1.14 
+
+GEPA ✓ ✗ ✗ 21.20 ↑2.50 32.00 ↑2.40 64.90 ↓0.30 31.20 ↓17 .80 68.00 ↑3.50 
+
+aPSF ✓ ✗ ✗ 16.10 ↓2.60 29.00 ↓0.60 65.40 ↑0.20 47.80 ↓1.20 54.71 ↓9.79 
+
+Trace2Skill ✗ ✓ ✗ 21.50 ↑2.80 28.60 ↓1.00 62.10 ↓3.10 43.50 ↓5.50 69.60 ↑5.10 
+
+SkillOpt ✗ ✓ ✗ 23.10 ↑4.40 28.00 ↓1.60 64.70 ↓0.50 59.20 ↑10 .20 69.00 ↑4.50 
+
+Sparo ✓ ✓ ✓ 25.40 ↑6.70 34.10 ↑4.50 74.30 ↑9.10 64.40 ↑15 .40 73.30 ↑8.80 
+
+InternVL3.5-8B 
+
+OPRO ✓ ✗ ✗ 20.60 24.00 72.20 49.60 69.21 TextGrad ✓ ✗ ✗ 25.90 ↑5.30 25.70 ↑1.70 71.30 ↓0.90 44.50 ↓5.10 71.20 ↑1.99 
+
+GEPA ✓ ✗ ✗ 24.70 ↑4.10 25.70 ↑1.70 71.00 ↓1.20 30.90 ↓18 .70 72.00 ↑2.79 
+
+aPSF ✓ ✗ ✗ 18.60 ↓2.00 25.90 ↑1.90 74.00 ↑1.80 41.30 ↓8.30 70.30 ↑1.09 
+
+Trace2Skill ✗ ✓ ✗ 20.70 ↑0.10 25.80 ↑1.80 70.30 ↓1.90 37.90 ↓11 .70 68.00 ↓1.21 
+
+SkillOpt ✗ ✓ ✗ 22.80 ↑2.20 26.20 ↑2.20 70.90 ↓1.30 47.40 ↓2.20 71.71 ↑2.50 
+
+Sparo ✓ ✓ ✓ 28.20 ↑7.60 32.10 ↑8.10 77.00 ↑4.80 64.70 ↑15 .10 74.20 ↑4.99 
+
+MiniCPM-V-4.5 
+
+OPRO ✓ ✗ ✗ 19.40 20.50 67.10 45.10 69.57 TextGrad ✓ ✗ ✗ 19.50 ↑0.10 20.10 ↓0.40 66.50 ↓0.60 52.70 ↑7.60 70.50 ↑0.93 
+
+GEPA ✓ ✗ ✗ 22.90 ↑3.50 22.70 ↑2.20 66.40 ↓0.70 38.10 ↓7.00 69.90 ↑0.33 
+
+aPSF ✓ ✗ ✗ 18.00 ↓1.40 19.80 ↓0.70 69.90 ↑2.80 48.80 ↑3.70 70.07 ↑0.50 
+
+Trace2Skill ✗ ✓ ✗ 19.50 ↑0.10 18.30 ↓2.20 66.90 ↓0.20 59.00 ↑13 .90 68.07 ↓1.50 
+
+SkillOpt ✗ ✓ ✗ 19.20 ↓0.20 24.30 ↑3.80 67.10 ±0.00 44.50 ↓0.60 73.70 ↑4.13 
+
+Sparo ✓ ✓ ✓ 26.00 ↑6.60 28.50 ↑8.00 71.80 ↑4.70 66.80 ↑21 .70 74.90 ↑5.33 
+
+Gemma4-31B 
+
+OPRO ✓ ✗ ✗ 30.80 80.00 84.80 89.60 73.71 TextGrad ✓ ✗ ✗ 54.20 ↑23 .40 90.40 ↑10 .40 88.60 ↑3.80 92.80 ↑3.20 78.00 ↑4.29 
+
+GEPA ✓ ✗ ✗ 53.60 ↑22 .80 92.00 ↑12 .00 87.60 ↑2.80 88.80 ↓0.80 78.40 ↑4.69 
+
+aPSF ✓ ✗ ✗ 27.60 ↓3.20 85.80 ↑5.80 86.00 ↑1.20 91.80 ↑2.20 71.20 ↓2.51 
+
+Trace2Skill ✗ ✓ ✗ 49.80 ↑19 .00 90.40 ↑10 .40 85.20 ↑0.40 92.20 ↑2.60 77.14 ↑3.43 
+
+SkillOpt ✗ ✓ ✗ 41.00 ↑10 .20 86.00 ↑6.00 87.60 ↑2.80 93.60 ↑4.00 79.43 ↑5.72 
+
+Sparo ✓ ✓ ✓ 58.00 ↑27 .20 95.40 ↑15 .40 89.80 ↑5.00 96.00 ↑6.40 81.90 ↑8.19 
+
+Table 1: Main comparison across five worker models and five benchmarks. The Prompt , Skill , and Route columns indicate which components of the language program each optimizer can edit ( ✓ supported, ✗ not supported). Within each model block, prompt-centered optimizers are listed first in chronological order (OPRO, TextGrad, GEPA, aPSF), followed by skill-centered optimizers (Trace2Skill, SkillOpt), then Sparo. OPRO is the reference method in each block; subscripts give the absolute difference from it. Best result per model–task setting in bold. 
+
+Component Selection Patterns Across Tasks 
+
+We record the component selected at each optimization step and compute how often each of prompt, skill, and routing is chosen. Figure 3 shows that Sparo adapts its component choices to both the task and the worker. Skill mutations are selected most often on CLUTRR and FinQA for both workers, con-sistent with recurring relational and numerical reasoning patterns. Prompt mutations dominate on ChartQA and lead on ProofWriter and SearchQA for the Qwen worker, where global task interpretation and answer construction matter more. Routing mutations are never the most frequent choice, but they keep a non-trivial share in every setting, from 11 .1% 
+
+to 33 .3% , so the selector spreads its edits over all three com-ponents rather than collapsing onto one. 
+
+## Ablation Study 
+
+System-Level Component Ablation 
+
+Table 2 reports the performance degradation relative to the complete Sparo configuration after removing each ma-jor component, using the Qwen3.5-4B worker. Full Sparo obtains accuracies of 69 .0 on CLUTRR and 84 .7 on ProofWriter. Across the two benchmarks, removing skills and remov-ing counterfactual attribution are the two most damaging changes, costing 22 .7 and 21 .2 points on average: the opti-Figure 3: Component-selection patterns across tasks for the Qwen3.5-4B (left) and GLM-4.6V-Flash (right) workers. Each column gives the percentage of optimization steps that selected a prompt, skill, or routing mutation, so the three cells of a column sum to 100% up to rounding.            
+
+> CLUTRR ProofWriter w/o Attribution 28.2 83.1 w/o Skill 31.2 77.1 w/o Cross-Round Memory 62.9 80.7 w/o Routing 49.7 75.5
+> Sparo (Ours) 69.0 84.7
+
+Table 2: System-level ablation results on CLUTRR and ProofWriter. Values are accuracies in percentages. mizer needs both a place to store reusable procedural knowl-edge and a way to decide which component to edit. Removing routing costs 14 .3 points, indicating that stored skills must also be activated on the right inputs, while the cross-round memory adds a smaller but consistent 5.1 points. Every com-ponent contributes positively. 
+
+Attribution Strategy Analysis 
+
+Figure 4: Comparison of component-selection strategies on CLUTRR. Sparo outperforms random selection, round-robin selection, and prompt-only optimization. We compare Sparo’s counterfactual attribution mecha-nism with three simpler component-selection strategies on CLUTRR with the Qwen3.5-4B worker: random selection, round-robin selection, and prompt-only optimization. All variants share the modular representation, the three muta-tion operators, the optimizer model, the data split, the step 
+
+Figure 5: Parameter sensitivity of Sparo on CLUTRR. We vary (a) memory capacity relative to the training-set size and (b) router weight allocation: balanced, and positive-, description- and negative-heavy. budget and the candidate-pool selection procedure, and dif-fer only in how the component to edit is chosen. As shown in Figure 4, Sparo reaches 69 .0 against 41 .0, 38 .0, and 28 .0,so effective modular optimization depends on using counter-factual evidence to identify the component to update rather than on random, fixed-order, or prompt-exclusive selection. 
+
+## Parameter Sensitivity 
+
+We analyze the sensitivity of Sparo to two hyperparame-ters associated with its main components: the capacity of the cross-round memory and the router weight allocation. All runs use the Qwen3.5-4B worker on CLUTRR, with every other hyperparameter held fixed. The number of experience clusters and the attribution temperature are analyzed in Ap-pendix E. Figure 5 shows that both parameters have an interior op-timum. Small memory capacities provide insufficient his-torical evidence, while an excessively large memory may introduce redundant or outdated experiences; a capacity of 
+
+24% of the training set performs best. The balanced configuration (w+, w d, w −) =(0 .55 , 0.25 , 0.40) scores highest at 69 .0, ahead of description-heavy (0 .40 , 0.45 , 0.30) at 57 .1, positive-heavy (0 .70 , 0.20 , 0.30) at 44 .5, and negative-heavy 
+
+(0 .50 , 0.20 , 0.60) at 40 .8. Tilting toward any one signal costs accuracy, though the sweep rebalances rather than removes a signal and so does not isolate each term. 
+
+## Conclusion 
+
+We presented Sparo, which treats the prompt, the skill li-brary, and the routing rules of an LLM program as jointly optimized components. Using a cross-round experience pool and counterfactual attribution, Sparo decides where a fail-ure originates before deciding how to revise the program, and improves over recent prompt- and skill-oriented optimizers across five benchmarks and five worker models. References 
+
+Agrawal, L. A.; Tan, S.; Soylu, D.; Ziems, N.; Khare, R.; Opsahl-Ong, K.; Singhvi, A.; Shandilya, H.; Ryan, M. J.; Jiang, M.; et al. 2025. GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning. In First Workshop on Foundations of Reasoning in Language Models .Brown, T.; Mann, B.; Ryder, N.; Subbiah, M.; Kaplan, J. D.; Dhariwal, P.; Neelakantan, A.; Shyam, P.; Sastry, G.; Askell, A.; et al. 2020. Language Models are Few-Shot Learners. Ad-vances in Neural Information Processing Systems , 33: 1877– 1901. Chen, Z.; Chen, W.; Smiley, C.; Shah, S.; Borova, I.; Lang-don, D.; Moussa, R.; Beane, M.; Huang, T.-H.; Routledge, B. R.; et al. 2021. FinQA: A Dataset of Numerical Reason-ing over Financial Data. In Proceedings of the 2021 Confer-ence on Empirical Methods in Natural Language Processing ,3697–3711. Dunn, M.; Sagun, L.; Higgins, M.; Guney, V. U.; Cirik, V.; and Cho, K. 2017. SearchQA: A New Q&A Dataset Aug-mented with Context from a Search Engine. arXiv preprint arXiv:1704.05179 .Fedus, W.; Zoph, B.; and Shazeer, N. 2022. Switch Trans-formers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity. Journal of Machine Learning Re-search , 23(120): 1–39. Fernando, C.; Banarse, D. S.; Michalewski, H.; Osindero, S.; and Rocktäschel, T. 2024. Promptbreeder: Self-referential self-improvement via prompt evolution. In Forty-first Inter-national Conference on Machine Learning .Khattab, O.; Singhvi, A.; Maheshwari, P.; Zhang, Z.; San-thanam, K.; Vardhamanan, S.; Haq, S.; Sharma, A.; Joshi, T. T.; Moazam, H.; et al. 2023. DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines. arXiv preprint arXiv:2310.03714 .Kwon, W.; Li, Z.; Zhuang, S.; Sheng, Y.; Zheng, L.; Yu, C. H.; Gonzalez, J.; Zhang, H.; and Stoica, I. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the 29th symposium on operating systems principles , 611–626. Liu, H.; Wang, Z.; Guo, Y.; Shou, H.; and Tang, X. 2026. Adaptive Prompt Structure Factorization: A Framework for Self-Discovering and Optimizing Compositional Prompt Programs. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 11690–11714. Ma, Y.; Huang, Y.; Bao, H.; Zhuang, H.; Shukla, S.; Galley, M.; Zhang, X.; and Feuerriegel, S. 2026. SkillGen: Veri-fied Inference-Time Agent Skill Synthesis. arXiv preprint arXiv:2605.10999 .Madaan, A.; Tandon, N.; Gupta, P.; Hallinan, S.; Gao, L.; Wiegreffe, S.; Alon, U.; Dziri, N.; Prabhumoye, S.; Yang, Y.; et al. 2023. Self-Refine: Iterative Refinement with Self-Feedback. Advances in neural information processing sys-tems , 36: 46534–46594. Masry, A.; Tan, J. Q.; Joty, S.; Hoque, E.; et al. 2022. ChartQA: A Benchmark for Question Answering about Charts with Visual and Logical Reasoning. In Findings of the association for computational linguistics: ACL 2022 , 2263– 2279. Ni, J.; Liu, Y.; Liu, X.; Sun, Y.; Zhou, M.; Cheng, P.; Wang, D.; Zhao, E.; Jiang, X.; and Jiang, G. 2026. Trace2Skill: Dis-till Trajectory-Local Lessons into Transferable Agent Skills. 
+
+arXiv preprint arXiv:2603.25158 .Opsahl-Ong, K.; Ryan, M. J.; Purtell, J.; Broman, D.; Potts, C.; Zaharia, M.; and Khattab, O. 2024. Optimizing instruc-tions and demonstrations for multi-stage language model pro-grams. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , 9340–9366. Ouyang, L.; Wu, J.; Jiang, X.; Almeida, D.; Wainwright, C. L.; Mishkin, P.; Zhang, C.; Agarwal, S.; Slama, K.; Ray, A.; et al. 2022. Training language models to fol-low instructions with human feedback. arXiv preprint arXiv:2203.02155 .Pryzant, R.; Iter, D.; Li, J.; Lee, Y.; Zhu, C.; and Zeng, M. 2023. Automatic prompt optimization with “gradient de-scent” and beam search. In Proceedings of the 2023 confer-ence on empirical methods in natural language processing ,7957–7968. Reimers, N.; and Gurevych, I. 2019. Sentence-BERT: Sen-tence Embeddings using Siamese BERT-Networks. In Pro-ceedings of the 2019 conference on empirical methods in nat-ural language processing and the 9th international joint con-ference on natural language processing (EMNLP-IJCNLP) ,3982–3992. Schick, T.; Dwivedi-Yu, J.; Dessì, R.; Raileanu, R.; Lomeli, M.; Hambro, E.; Zettlemoyer, L.; Cancedda, N.; and Scialom, T. 2023. Toolformer: Language models can teach themselves to use tools. Advances in neural information processing systems , 36: 68539–68551. Shinn, N.; Cassano, F.; Gopinath, A.; Narasimhan, K.; and Yao, S. 2023. Reflexion: Language agents with verbal re-inforcement learning. Advances in neural information pro-cessing systems , 36: 8634–8652. Sinha, K.; Sodhani, S.; Dong, J.; Pineau, J.; and Hamilton, W. L. 2019. CLUTRR: A Diagnostic Benchmark for Induc-tive Reasoning from Text. In Proceedings of the 2019 Confer-ence on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Lan-guage Processing (EMNLP-IJCNLP) , 4506–4515. Tafjord, O.; Dalvi, B.; and Clark, P. 2021. ProofWriter: Generating Implications, Proofs, and Abductive Statements over Natural Language. In Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021 , 3621–3634. Team, G.; Abd, S. E.; Aggarwal, V.; Algayres, R.; Andreev, A.; Bachem, O.; Ballantyne, I.; Brick, C.; Cărbune, V.; Cas-bon, M.; et al. 2026. Gemma 4 technical report. arXiv preprint arXiv:2607.02770 .Wang, G.; Xie, Y.; Jiang, Y.; Mandlekar, A.; Xiao, C.; Zhu, Y.; Fan, L.; and Anandkumar, A. 2023. Voyager: An open-ended embodied agent with large language models. arXiv preprint arXiv:2305.16291 .Wang, W.; Gao, Z.; Gu, L.; Pu, H.; Cui, L.; Wei, X.; Liu, Z.; Jing, L.; Ye, S.; Shao, J.; et al. 2025. InternVL3.5: Advancing Open-Source Multimodal Models in Versatility, Reasoning, and Efficiency. arXiv preprint arXiv:2508.18265 .Yang, A.; Li, A.; Yang, B.; Zhang, B.; Hui, B.; Zheng, B.; Yu, B.; Gao, C.; Huang, C.; Lv, C.; et al. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .Yang, C.; Wang, X.; Lu, Y.; Liu, H.; Le, Q. V.; Zhou, D.; and Chen, X. 2024. Large Language Models as Optimizers. In International Conference on Learning Representations ,volume 2024, 12028–12068. Yang, Y.; Gong, Z.; Huang, W.; Yang, Q.; Zhou, Z.; Huang, Z.; Li, Y.; Gao, X.; Dai, Q.; Liu, B.; et al. 2026. SkillOpt: Executive Strategy for Self-Evolving Agent Skills. arXiv preprint arXiv:2605.23904 .Yu, T.; Wang, Z.; Wang, C.; Huang, F.; Ma, W.; He, Z.; Cai, T.; Chen, W.; Huang, Y.; Zhao, Y.; et al. 2025. MiniCPM-V 4.5: Cooking Efficient MLLMs via Architecture, Data, and Training Recipe. arXiv preprint arXiv:2509.18154 .Yuksekgonul, M.; Bianchi, F.; Boen, J.; Liu, S.; Huang, Z.; Guestrin, C.; and Zou, J. 2024. TextGrad: Automatic “Dif-ferentiation” via Text. arXiv preprint arXiv:2406.07496 .Z.ai. 2025. GLM-4.6V: Open-Source Multimodal Models with Native Tool Use. https://z.ai/blog/glm-4.6v. Accessed: 2026-07-21. Zeng, K.; Huo, Y.; Zhang, S.; Ye, Z.; Zhuo, Y.; Liu, H.; Lu, Y.; Wen, J.; and Tang, X. 2026a. Group of Skills: Group-Structured Skill Retrieval for Agent Skill Libraries. arXiv:2605.06978. Zeng, K.; Huo, Y.; Zhang, S.; Zhuo, Y.; Lu, Y.; Liu, H.; Chen, S.; and Tang, X. 2026b. SIGMA: Skill-Incidence Graphs for Compositional Multi-Agent Design. arXiv:2606.19758. Zhao, A.; Huang, D.; Xu, Q.; Lin, M.; Liu, Y.-J.; and Huang, G. 2024. ExpeL: LLM Agents Are Experiential Learners. In Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 38, 19632–19642. Zhou, Y.; Muresanu, A. I.; Han, Z.; Paster, K.; Pitis, S.; Chan, H.; and Ba, J. 2023. Large Language Models Are Human-Level Prompt Engineers. In International Conference on Learning Representations .

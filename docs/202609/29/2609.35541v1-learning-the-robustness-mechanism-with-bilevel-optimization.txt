@@ -1,0 +1,4384 @@
+Title: Learning the Robustness Mechanism with Bilevel Optimization
+
+URL Source: https://arxiv.org/pdf/2609.35541v1
+
+Published Time: Tue, 29 Sep 2026 04:41:33 GMT
+
+Number of Pages: 42
+
+Markdown Content:
+Preprint 
+
+# LEARNING THE ROBUSTNESS MECHANISM WITH 
+
+# BILEVEL OPTIMIZATION 
+
+Yiyang Shen 
+
+Department of Informatics University of Iowa 
+
+yiyang-shen@uiowa.edu 
+
+Qihang Lin 
+
+Tippie College of Business University of Iowa 
+
+qihang-lin@uiowa.edu 
+
+Weiran Wang 
+
+Department of Computer Science University of Iowa 
+
+weiran-wang@uiowa.edu 
+
+## ABSTRACT 
+
+We propose a distributionally robust learning framework where parameters defin-ing the robustness mechanism are learned from held-out data instead of exten-sively tuned. Using bilevel optimization with both upper and lower level minimax problems, we create two instances of our framework to tackle setups with and without group labels in the training set. Theoretically, we provide sample com-plexity analysis for our robustness mechanism learning paradigm, showing that it achieves generalization guarantees comparable to exhaustive grid search while being more computationally efficient. Empirically, we evaluate our framework under a challenging setup when both intra-group and inter-group test distribution shifts occur at the same time, thereby demonstrating the efficacy and scalability of our method. 
+
+## 1 INTRODUCTION 
+
+Many machine learning methods require optimizing model parameters to minimize the empirical risk or average sample loss. The empirical risk minimization (ERM) paradigm assumes that unseen data are sampled from the same distribution as seen training data are. Since ERM weighs all sam-ples equally, it is particularly vulnerable to subpopulation shift , where the training samples consist of several groups divided by spurious attributes whose proportions are different from those of the test data (Sagawa et al., 2020; Shen et al., 2021; Cai et al., 2021; Yang et al., 2023; Yu et al., 2024). In real-world applications such as healthcare (Zech et al., 2018; Badgeley et al., 2019), fairness (Buolamwini & Gebru, 2018; Mehta et al., 2024; Lei et al., 2024), robotics (Ryu & Mehr, 2024), and autonomous driving (Zhang et al., 2017; Azizi et al., 2025), the classifier parameters may inad-vertently depend on spurious attributes, causing failures when the testing environment is different. Distributionally robust optimization (DRO, Duchi et al. (2021)) along with many out-of-distribution generalization algorithms (Arjovsky et al., 2019; Sohoni et al., 2020; Krueger et al., 2021) are devel-oped to address this issue. A simplified setup for DRO is Group DRO (GDRO, Sagawa et al. (2020)), which assumes grouping among samples and robustifies the model by minimizing the training loss of the group with the highest loss or worst training accuracy. Take the widely used CelebrityAt-tributes (CelebA) benchmark as an example, an ERM-trained model tend to correlate golden hair color (class labels) with female (attribute) celebrities, leading to severe performance degradation on minority groups, male celebrities with blond hair. Thus, GDRO explicitly minimizes the loss of the group incurring high loss. This has inspired a growing line of research which aims at developing out-of-distribution (OOD) generalization algorithms for the GDRO setup(Ahmed et al., 2021; Creager et al., 2021; Piratla et al., 2022; Izmailov et al., 2022; Nam et al., 2022; Seo et al., 2022; Asgari et al., 2022; Zhang et al., 2022a; Ghosal & Li, 2023; Paranjape et al., 2023; Wu et al., 2023; Deng et al., 2023; Han & Zou, 2024; Jain et al., 2024; LaBonte et al., 2023; Pezeshki et al., 2024; Jeong et al., 2025; Jo et al., 2026). Most methods fall under two general categories of setup. One stream focuses 1arXiv:2609.35541v1 [cs.LG] 28 Sep 2026 Preprint on the more ideal setup where all attribute labels are known, so the algorithms know the ground truth group membership of samples during training. The other focuses on a weakly group-supervised or group-unsupervised setup which is more realistic since attribute labels that define groups are often unavailable. Typically, a worst-group identification model is trained (e.g., worst loss samples in ERM, attribute prediction) during the first stage with or without a small amount of group-labeled data; in the second stage, robust training is done using those pseudo-labeled groups, e.g., GDRO. GDRO is suited to address shifts in group distributions, i.e., inter-group subpopulation shift, which leads to failures concentrated in minority groups. However, treating groups as fixed distributions overlooks another type of uncertainty: the conditional distribution within a group, i.e., intra-group subpopulation shift (Ben-Tal & Nemirovski, 2002; Devroye et al., 2013; Duchi & Namkoong, 2021). For example, a minority group at training time may contain a small variation of environment, while the test distribution gives underrepresented variants of the same group. DRO with hierarchical ambiguity set (HDRO, Jo et al. (2026)) addresses this issue by introducing an adversarial perturba-tion within each group, which controls how much intra-group variation the model protects against. However, the appropriate amount of robustness signals per group is generally unknown, may not be uniform across groups, and requires extensive tuning. Similarly, when group membership is unknown at training time , worst group membership predictor typically is crucial to robustness and requires tuning as well. As such, while effective at tackling various adversarial conditions, advanced robustness mecha-nisms require users to manually specify the type of uncertainty, and the level of uncertainty the trained model should be robust against under different evaluation distributions. This introduced many more potentially sensitive models and hyper-parameters, making exhaustive tuning expensive and naturally raises the following question: 
+
+Can we treat the robustness mechanism itself as an active, integral component to be learned during active training? 
+
+Our affirmative answer contributes to DRO research in three aspects: 1. We propose a bilevel adaptive tuning framework that directly learns a given robustness mechanism based on the validation set, with a minimax problem for tuning robustness parameters on the upper level and a minimax problem for robust training on the lower level. With two instantiations, we show such bilevel problem can be tractably solved by a first-order method proposed by Shen et al. (2026). 2. While most existing theory is concerned with the optimization complexity of solving such empirical problem to certain optimality conditions, such as saddle point and ϵ-KKT point (Lu & Mei, 2024), we derive generalization guarantees for our bilevel framework, provid-ing the sample complexity for learning robust model which is new to the best of our knowl-edge. The guarantee shows advantage of continuous optimization of the hyperparameters avoids discretization error compared to grid search. 3. We validate and enhance the evaluation setting proposed by Jo et al. (2026) where both inter-group and intra-group minority group test distribution shifts are manifest, showing significant improvement on worst-group prediction using our methods both with and with-out group labels at training time. 
+
+## 2 A B ILEVEL ADAPTIVE FRAMEWORK FOR GDRO 
+
+2.1 GROUP DISTRIBUTIONALLY ROBUST OPTIMIZATION 
+
+Suppose there are G groups in the data distribution. Let (x, y, a ) be a data point, where x is the feature vector, y is the target variable, and a ∈ A is an attribute label that defines the group the data point belongs to together with known y. We consider a predictive task where the goal is to predict 
+
+y based on x through a model fW,θ (x) := W h θ (x), where hθ (x) is a mapping parameterized by θ
+
+that produces a representation of x while W is a matrix that defines a linear model that produces the prediction W h θ (x) for y.2Preprint Let D(g)tr = {(xtr 
+
+> g,i
+
+, y tr 
+
+> g,i
+
+)}ntr  
+
+> g
+> i=1
+
+be a set of ntr  
+
+> g
+
+training samples from group g for g ∈ { 1, . . . , G }, and 
+
+ℓ(fW,θ (x), y ) be a loss function that measures the discrepancy between the prediction fW,θ (x) and the target y. The average training loss on group g is Ltr  
+
+> g
+
+(W ; θ) := 1
+
+> ntr
+> g
+
+Pntr  
+
+> g
+> i=1
+
+ℓ  fW,θ (xtr 
+
+> g,i
+
+), y tr 
+
+> g,i
+
+ .
+
+The GDRO model for learning W and θ can be formulated as 
+
+(W ⋆, θ ⋆) ∈ arg min  
+
+> W,θ
+
+max 
+
+> q∈∆G
+
+( GX
+
+> g=1
+
+qg Ltr  
+
+> g
+
+(W ; θ) − η
+
+2 q − 1
+
+G 1
+
+> 22
+
++ λ
+
+2 ∥W ∥2 
+
+> F
+
++ λ
+
+2 ∥θ∥22
+
+)
+
+, (1) where ∥ · ∥ F denotes the Frobenius norm, ∆G := {q = ( q1, . . . , q G)|qg ≥ 0, 1 ≤ g ≤ G, 1⊤q = 1 },
+
+η ≥ 0 is the robustness parameter (Huang et al., 2021; Zhang et al., 2022b), and λ ≥ 0 is the regularization parameter. Here, the goal is to achieve a robust performance of fW,θ by minimizing a weighted loss over groups with more weight put on the groups of larger average losses. Note that η
+
+controls how far the group weight q may deviate from uniform weighting, i.e, 1/G . Naturally, it is critical to select η in (1) to achieve the best out-of-sample performance. Typically, a validation set is used, denoted by D(g)val = {(xval  
+
+> g,i
+
+, y val  
+
+> g,i
+
+)}nval  
+
+> g
+> i=1
+
+for group g ∈ { 1, . . . , G }, to evaluate the robustness of the performance of fW,θ , for example, in its largest validation loss among the groups, i.e., 1
+
+max 
+
+> p∈∆G
+> G
+
+X
+
+> g=1
+
+pg Lval  
+
+> g
+
+(W ⋆; θ⋆), where Lval  
+
+> g
+
+(W ; θ) := 1
+
+nval 
+
+> gnval
+> g
+
+X
+
+> i=1
+
+ℓ  fW,θ (xval  
+
+> g,i
+
+), y val 
+
+> g,i
+
+ . (2) Then a value of η is selected from a grid to minimize (2). While widely used, this approach requires training a model for each candidate of η and does not directly extend to the setting where the attribute label a is missing from most of the training data. 2.2 WARM -UP : B ILEVEL GROUP DRO (B I-GDRO) An adaptive bilevel group DRO method can be used to address the challenges caused by tuning. Instead of training the full model as in (1) and selecting η based on (2), we integrate the training and the parameter tuning into a bilevel optimization model as follows 
+
+min  
+
+> W,θ,η ≥0
+
+max 
+
+> p∈∆G
+> G
+
+X
+
+> g=1
+
+pg Lval  
+
+> g
+
+(W ; θ) + λ
+
+2 ∥θ∥22 (3) s.t. W ∈ arg min   
+
+> W′
+
+max 
+
+> q∈∆G
+
+( GX
+
+> g=1
+
+qg Ltr  
+
+> g
+
+(W ′; θ) − η
+
+2 q − 1
+
+G 1
+
+> 22
+
++ λ
+
+2 ∥W ′∥2
+
+> F
+
+)
+
+. (4) Different from (1) and (2), η becomes a continuous upper-level decision variable in (3) without being limited in a finite grid. Parameter θ is another upper-level decision variable while the linear model 
+
+W is optimized in the lower-level problem (4). This way, W is learned from the training data for any given θ and η, while θ and η are learned by optimizing the performance of fW,θ on the validation set. Note that, with this design, the lower-level problem (4) becomes convex in W ′ and concave in 
+
+q, which is required by most algorithms for bilevel optimization 2, although the upper-level objective function in (3) can be nonconvex jointly in W and θ.This bilevel minimax hyperparameter optimization model has been studied by Shen et al. (2026). However, as we show below, the framework like (3) can be extended to learn additional elements of a robustness mechanism that is more general than (1), such as the radius of an ambiguity set and the latent group structure itself when group attribute labels are unavailable during training. 2.3 BILEVEL -H IERARCHICAL DRO (B I-HDRO) GDRO can be extended into hierarchical DRO (HDRO) whose ambiguity set has a hierarchical structure (Jo et al., 2026). Let Pg be the empirical distribution on D(g)tr . The HDRO in our notation 
+
+> 1
+
+Other robustness metrics can be used here as well, such as a truncated simplex that replaces ∆G in (2). 
+
+> 2
+
+As noted by Kang et al. (2020); Kirichenko et al. (2023), tuning of W alone is sufficient for robustness. Furthermore, while closed form of q is available, it is costly to compute as we show in Appendix B. 
+
+3Preprint can be formulated as 
+
+min  
+
+> W,θ
+
+max  
+
+> Q∈Q
+
+E(X,Y )∼Q[ℓ (fW,θ (X), Y )] , (5) where (X, Y ) denotes a random data point, E(X,Y )∼Q denotes the expectation taken over (X, Y )
+
+when (X, Y ) follows distribution Q, and 
+
+Q =
+
+( GX
+
+> g=1
+
+qg Qg : q ∈ ∆G, W ∞(Qg , P g ) ≤ ϵg , for g = 1 , . . . , G 
+
+)
+
+is the hierachical ambiguity set, where Qg is a distribution of (X, Y ), W∞(Qg , P g ) is the ∞-Wasserstein distance between Qg and Pg , and ϵg is a radius. As in (1), weights q model the changes in group proportions, i.e., inter-group shift, while Qg is used to further to accommodate shifts within each group, i.e., intra-group shift. Note that (5) is reduced to (1) when ϵg = 0 since Qg = Pg .Direct optimization over the distributions of Qg is generally intractable. Therefore, Jo et al. (2026) (Theorem 4.1) proposed solving the following upper approximation of (5) 
+
+(W ⋆, θ ⋆) ∈ arg min  
+
+> W,θ
+
+max 
+
+> q∈∆G
+> G
+
+X
+
+> g=1
+
+qg Ltr ,ϵ g 
+
+> g
+
+(W ; θ) (6) 
+
+where Ltr ,ϵ g 
+
+> g
+
+(W ; θ) := 1
+
+ntr 
+
+> gntr
+> g
+
+X
+
+> i=1
+
+"
+
+max  
+
+> z:∥z−hθ(xtr
+> g,i )∥≤ ϵg
+
+ℓ W z, y tr 
+
+> g,i
+
+#
+
+. (7) Note that Ltr  
+
+> g
+
+(W ; θ) ≤ Ltr ,ϵ g 
+
+> g
+
+(W ; θ). In (6), we minimize the largest loss over groups when the latent representation of each sample can be adversarially perturbed within a ball of radius ϵg . The perturbation makes the model more robust to test-distribution intra-group shift. 
+
+Problems with HDRO (1) Solving the inner maximization over z for each data point to evaluate 
+
+Ltr ,ϵ g 
+
+> g
+
+(W ; θ) is computationally challenging when ntr  
+
+> g
+
+is large. Jo et al. (2026) proposed a heuristic method that performs one step of gradient ascent over z from hθ (xtr 
+
+> g,i
+
+), which only solves the in-ner maximization suboptimally and thus approximates Ltr ,ϵ g 
+
+> g
+
+(W ; θ) and its gradient poorly. (2) ϵg
+
+requires additional tuning for each g. Although Jo et al. (2026) (Appendix D.3) proposed tuning a scalar ϵ with ϵg = ϵ/ pntr  
+
+> g
+
+, this remains heuristic and still requires grid search over ϵ based on a performance metric on the validation set such as (6). 
+
+Our Solution (1) For each g, we propose a modification of Ltr ,ϵ g 
+
+> g
+
+(W ; θ), denoted by 
+
+˜Ltr ,ϵ g 
+
+> g
+
+(W ; θ; u) with an additional variable u. The specific form of ˜Ltr ,ϵ g 
+
+> g
+
+depends on the predic-tion task and the loss function ℓ(·, ·). We show that, for a binary classification problem where ℓ is either the hinge loss or the logistic loss, ˜Ltr ,ϵ g 
+
+> g
+
+(W ; θ; u) is jointly convex in W and u, and (6) equals 
+
+min  
+
+> W,θ,u
+
+max 
+
+> q∈∆G
+> G
+
+X
+
+> g=1
+
+qg ˜Ltr ,ϵ g 
+
+> g
+
+(W ; θ; u) s.t. r(W, u ) ≤ 0, (8) where r(W, u ) is a jointly convex function of W and u. For a multiclass classification problem where 
+
+ℓ is the cross-entropy loss, we show that the corresponding ˜Ltr ,ϵ g 
+
+> g
+
+(W ; θ; ug ) and r(W, u ) are still jointly convex in W and u but (8) is only an upper bound of (6). Therefore, we propose solving (8) as the gradient of ˜Ltr ,ϵ g 
+
+> g
+
+can be evaluated exactly without solving the inner maximization problems. Furthermore, in all the aforementioned cases, we can show that projection to the constraint set defined by the inequality r(W, u ) ≤ 0 has a closed form, meaning that (8) is not computationally more difficult than (6). We present the details in Appendix C. (2) Similar to (3), we can tune ϵg in a bilevel optimization model based on the performance on the validation set after adding {ϵg }Gg=1 as 4Preprint upper-level decision variables just like η:
+
+min  
+
+> W,θ,u,η ≥0,{ϵg}Gg=1
+
+max 
+
+> p∈∆G
+> G
+
+X
+
+> g=1
+
+pg Lval  
+
+> g
+
+(W ; θ) + λ
+
+2 ∥θ∥22 (9) s.t. W ∈ arg min   
+
+> W′,u ′
+
+max 
+
+> q∈∆G
+
+( GX
+
+> g=1
+
+qg ˜Ltr ,ϵ g 
+
+> g
+
+(W ′; θ; u′) − η
+
+2 q − 1
+
+G 1
+
+> 22
+
++ λ
+
+2 ∥W ′∥2
+
+> F
+
+)
+
+,
+
+s.t. r(W ′, u ′) ≤ 0,
+
+where we’ve replaced the loss Ltr ,ϵ g in (4) to be ˜Ltr ,ϵ g .2.4 BILEVEL -P ROBABILISTIC GROUP DRO (B I-PG-DRO) In real-world scenarios, it is possible that only a very small portion of data has attribute label a so we are not able to formulate Ltr  
+
+> g
+
+(W ; θ) using all data points due to the lack of group information. To address this issue, Ghosal & Li (2023) proposed PG-DRO, a robustness mechanism that uses a small amount of attribute-labeled training data to train a soft group predictor to generate pseudo-membership labels before using a robust model such as GDRO for training (Sagawa et al., 2020). Formally, let Dul = {(xul  
+
+> i
+
+, y ul  
+
+> i
+
+)}nul  
+
+> i=1
+
+be a separate subset without group labels. We assume ntr  
+
+> g
+
+≪
+
+nul for any g = ( a, y ), where attribute label a and class label y jointly determines the group. PG-DRO introduces another classification model ˜fϕ(x) parameterized by ϕ and train ˜fϕ(x) on D(g)tr to predict the attribute label a ∈ A based on x. For each data sample (xul  
+
+> i
+
+, y ul  
+
+> i
+
+) from Dul , we assume 
+
+˜fϕ(xul  
+
+> i
+
+) = ( γi1(ϕ), γ i2(ϕ), . . . , γ iG (ϕ)) ⊤ where γig (ϕ) is the predicted probability of (xul  
+
+> i
+
+, y ul  
+
+> i
+
+)
+
+being in group g for each g, since class label is known. Using this conditional probability as soft group labels, we can assign a fraction of (xul  
+
+> i
+
+, y ul  
+
+> i
+
+) to each group, yielding the probabilistic loss 
+
+LPG  
+
+> g
+
+(W ; θ, ϕ ) = 
+
+Pnul  
+
+> i=1
+
+γig (ϕ)ℓ  fW,θ (xul  
+
+> i
+
+), y ul 
+
+> i
+
+Pnul  
+
+> i=1
+
+γig (ϕ) + ϵ ,
+
+where ϵ is a smoothing parameter to avoid a zero denominator. Then PG-DRO solves 
+
+(W ⋆, θ ⋆) ∈ arg min  
+
+> W,θ
+
+max 
+
+> q∈∆G
+> G
+
+X
+
+> g=1
+
+qg LPG  
+
+> g
+
+(W ; θ, ϕ ). (10) However, PG-DRO requires additional training for ˜fϕ(x). For a more efficient training approach, we propose to integrate the training of fW,θ (x) and ˜fϕ(x) as well as the tuning of the robustness parameter into a bilevel optimization model below 
+
+min  
+
+> W,θ,ϕ,η ≥0
+
+max 
+
+> p∈∆G
+> G
+
+X
+
+> g=1
+
+pg Lval  
+
+> g
+
+(W ; θ) + λ
+
+2 ∥θ∥22 + β KL( πtr || πϕ) (11) s.t. W ∈ arg min   
+
+> W′
+
+max 
+
+> q∈∆G
+
+( GX
+
+> g=1
+
+qg LPG  
+
+> g
+
+(W ′; θ, ϕ ) − η
+
+2 q − 1
+
+G 1
+
+> 22
+
++ λ
+
+2 ∥W ′∥2
+
+> F
+
+)
+
+. (12) Here, πϕ = ( Pnul  
+
+> i=1
+
+γig (ϕ)/n ul )Gg=1 is the proportion of data points predicted to be in group g by model ˜fϕ, πtr = ( ntr  
+
+> g
+
+/(PGg′=1 ntr  
+
+> g′
+
+)) Gg=1 is an estimation of the prior distribution of the group labels, and KL( πtr || πϕ) is the Kullback-Leibler (KL) divergence between πϕ and πtr . Different from PG-DRO, ˜fϕ in (11) is not trained separately on a binary cross-entropy (BCE) loss to predict a. Instead, 
+
+ϕ optimized in the upper-level in (11) such that the produced γig helps ensure a good performance of the resulting fW,θ (x) on the validation set, and a high prediction accuracy of ˜fϕ is not necessary. One may replace KL( πtr || πϕ) in (11) to the training loss of ˜fϕ in predicting the group label g.Empirical findings (Appendix E.3) show that this has little impact on the numerical performance but using KL( πtr || πϕ) as the regularizer makes the optimization more lightweight. 5Preprint 2.5 BILEVEL MINIMAX ALGORITHM 
+
+Despite their different formulations, Problems (3), (9), and (11) can be solved using the first-order method proposed by Shen et al. (2026). We provide the algorithm’s pseudocode in Appendix A and summarize it here. Firstly, these problems are instances of the following bilevel minimax problem 
+
+min 
+
+> α,W,q
+
+
+
+max  
+
+> p
+
+F (α, p, W, q ) (W, q ) ∈ arg min 
+
+> fW
+
+max 
+
+> eq
+
+eF (α, ew, eq)
+
+
+
+, (13) where α denotes the collection of all primal upper-level decision variables, including θ, η, ϵg and 
+
+ϕ in the three bilevel models above, p is the upper-level group weight, q is the lower-level group weight, and W is the parameter of the linear classifier within model fW,θ . Here, F and eF are different objectives. The primal and dual value functions of the lower-level minimax problem of (13) are denoted by 
+
+VP(α, W ) := max 
+
+> eq
+
+eF (α, W, eq) and VD(α, q ) := min 
+
+> fW
+
+eF (α, fW , q ),
+
+respectively. Therefore, Problem (13) can be equivalently written as the single-level constrained problem with a primal-dual gap constraint 
+
+min 
+
+> α,W,q
+
+
+
+max  
+
+> p
+
+F (α, p, W, q ) VP(α, W ) − VD(α, q ) ≤ 0
+
+
+
+.
+
+Lastly, introducing a penalty parameter ρ > 0 yields the penalized minimax problem 
+
+min  
+
+> α,W,q
+
+max  
+
+> p
+
+{F (α, p, W, q ) + ρ [VP(α, W ) − VD(α, q )] } = min  
+
+> α,W,q
+
+max 
+
+> p, fW , eq
+
+Pρ
+
+
+
+α, p, W, q, fW , eq
+
+
+
+,
+
+(14) where Pρ denotes the corresponding penalized objective. To compute a ϵ-primal-dual stationary point of Pρ which is nonconvex-concave, we apply the inexact proximal-point method as in Shen et al. (2026). The original nonconvex-concave problem is thereby reduced to a sequence of approxi-mately solved strongly-convex-strongly-concave minimax subproblems, each of which solved using the stochastic accelerated primal-dual (SAPD) algorithm by treating minimizing and maximizing variables as separate blocks (Zhang et al., 2022b). 2.6 GENERALIZATION THEORY 
+
+We establish a generalization theory for our continuous bilevel hyperparameter tuning framework. For clarity of exposition, we present the results in this section without the encoder θ; the full ex-tensions and analysis details are provided in Appendix F. Formally, we analyze the problem of finding the optimal multidimensional hyperparameters ˆψ ∈ Ψ (e.g., ψ = ( λ, η ) for Group DRO, or 
+
+ψ = ( λ, η, ϵ) for Bi-HDRO) that minimize the worst-group validation loss: 
+
+ˆψ = arg min  
+
+> ψ∈Ψ
+
+max 
+
+> p∈∆G
+> G
+
+X
+
+> g=1
+
+pg Lval  
+
+> g
+
+(cWψ ), (15) where the robust model parameters cWψ are trained via the lower-level robust objective: 
+
+cWψ = arg min  
+
+> W
+
+max 
+
+> q∈∆G
+
+" GX
+
+> g=1
+
+qg Ltr  
+
+> g
+
+(W ) − η
+
+2 q − 1
+
+G 1
+
+> 2
+
++ λ
+
+2 ∥W ∥2
+
+#
+
+. (16) Under standard assumptions on the learning problem (e.g., Lipschitz and bounded convex loss, bounded continuous hyperparameter space, and strongly convex lower-level regularization), we es-tablish that the lower-level optimization algorithm induces a bounded, Lipschitz-continuous hypoth-esis space with respect to the continuous hyperparameters. Informally, we prove a Continuous Oracle Inequality for our robust tuning frameworks, demonstrat-ing that tuning continuous multidimensional hyperparameters (such as the robustness penalty η, the 
+
+L2 regularization coefficient λ, and group-specific perturbation radii ϵ) on a validation set allows our algorithm to achieve an optimal bias-variance trade-off without suffering from discretization error or grid-search penalties. Our main technical tools rely on the uniform stability of the lower-level predictor (due to strong convexity) and the Rademacher complexity of the algorithmic hypothesis class (due to algorithmic Lipschitzness) (Shalev-Shwartz & Ben-David, 2014). 6Preprint 
+
+Theorem 2.1 (Informal Continuous Oracle Inequality for Bilevel DRO) . Let ˆψ be the multidimen-sional continuous hyperparameters tuned via the upper-level continuous validation process. Let cW ˆψ
+
+be the corresponding robust model trained in the lower level. With high probability over the training and validation sets, the true worst-group risk Lworst  
+
+> D
+
+(cW ˆψ ) := max g∈[G] LD,g (cW ˆψ ) is bounded by: 
+
+Lworst  
+
+> D
+
+(cW ˆψ ) ≤ Lworst  
+
+> D
+
+(W ∗)
+
+| {z }
+
+> Reference Risk
+
++ O
+
+s
+
+log G
+
+min g ntr 
+
+> g
+
++
+
+s
+
+log G
+
+min g nval 
+
+> g
+
+!| {z }
+
+> Statistical Gaps
+
++ min  
+
+> ψ
+
+O(λ + η)
+
+| {z } 
+
+> Approximation Bias (W∗;ψ)
+
++ O
+
+ 1
+
+λη min g ntr 
+
+> g
+
+| {z }
+
+> Stability Gap (ψ)
+
+!
+
++ O
+
+s
+
+k
+
+min g nval 
+
+> g
+
+log( ρA,ψ )
+
+!| {z }
+
+> Continuous Tuning Penalty
+
+where min g ntr  
+
+> g
+
+and min g nval  
+
+> g
+
+are the sizes of the smallest groups in the training and validation sets respectively, G is the number of groups, k is the dimensionality of the hyperparameter space (e.g., 
+
+k = 2 for standard GDRO, k = G + 2 for HDRO), and ρA,ψ is the algorithmic Lipschitz constant of the lower-level optimization. The Approximation Bias scales with the algorithmic regularization penalties λ and η, while the Stability Gap (derived via uniform stability) shrinks as regularization increases, fundamentally capturing the bias-variance trade-off parameterized by ψ.Remark 2.2 (Algorithmic Lipschitz Constant) . For standard Group DRO where ψ = ( λ, η ), the Lip-schitz constant is bounded by ρA = O  1
+
+> λ2min
+
++ 1
+
+> λmin η2min
+
+ (see Corollary F.6), where λmin > 0 and 
+
+ηmin > 0 are lower bounds of search spaces. When extending to Bi-HDRO with tunable perturba-tion radii ψ = ( λ, η, ϵ), the mapping remains Lipschitz continuous with the constant expanding by 
+
+O  1 
+
+> λmin
+
++ 1
+
+> λmin ηmin
+
+ due to the norm-bounded inner perturbations (see Lemma F.9). Furthermore, as detailed in the appendix, this framework extends to the scenario where the weights of a deep neural network encoder (upper level decision variables) are also treated as tuning parameters. Sim-ilar bounds on uniform stability and algorithmic Lipschitz continuity hold in this high-dimensional regime (see Corollaries F.7 and F.12). This result confirms that continuous bilevel tuning discovers the theoretically optimal configuration for any unknown reference predictor W ∗. Crucially, the statistical penalty for tuning over a contin-uous space scales logarithmically with the algorithmic Lipschitz constant. This constant dictates an “effective grid size”—the finite number of distinguishable models within the search space—allowing us to bypass discretization error while paying a statistical penalty no worse than a discrete grid search. Furthermore, unlike exhaustive grid search which suffers from exponential computational complexity in high dimensions, our scheme enables efficient continuous optimization over multidi-mensional hyperparameter spaces (full assumptions and proofs are provided in Appendix F.5). 
+
+## 3 RELATED WORKS 
+
+GDRO GDRO (Sagawa et al., 2020) aims at minimizing the training loss on the group with least training signals due to the spurious attribute. Empirically, minimizing the worst group training loss per se does not translate to robustness over test data, necessitating a tuned weight decay term (Sagawa et al., 2020). DFR (Kirichenko et al., 2023) and AFR (Qiu et al., 2023) improve on GDRO by retraining the convex classifier (last layer of a deep neural network) using a group-balanced set (Ren et al., 2018), which they show to improve the worst-group robustness even with a ERM-trained model. When both inter-group and intra-group uncertainty exist, HDRO (Jo et al., 2026) perturbs the latent representation with group-dependent radii before performing classification in the last layer. The perturbation radii is fixed and sensitive, so extensive tuning is necessary. Other methods focus on using a small amount of group-labeled data to achieve similar worst-case oracle performance. SSA (Nam et al., 2022) first trains a hard group predictor before running GDRO on pseudolabeled data, and PG-DRO (Ghosal & Li, 2023) instead use soft group prediction and robust training on soft labels. Notably, AGRO (Paranjape et al., 2023) jointly trains an adversarial soft group prediction model by changing group assignments to increase robust classifier’s group-wise prediction loss. CnC (Zhang et al., 2022a) aligns samples with the same class but different 7Preprint attributes in a two-stage contrastive learning framework. DISC (Wu et al., 2023) partitions data with a “concept bank” which consists of candidate spurious attributes. GIC (Han & Zou, 2024) has three stages and identifies spurious features by comparing the training set with a carefully selected reference dataset. D3M (Jain et al., 2024) removes examples that disproportionately degrade worst-group accuracy. Remarkably, XRM (Pezeshki et al., 2024) requires no auxiliary datasets whatsoever and instead identifies spurious attributes by training twin classifiers with mutually exclusive training splits and discover attributes using worst-performing samples before running GDRO. 
+
+Bilevel Optimization Bilevel optimization methods has been widely applied to hyperparame-ter tuning (Bennett et al., 2008; Franceschi et al., 2018), meta-learning (Franceschi et al., 2018; Bertinetto et al., 2019; Rajeswaran et al., 2019), reinforcement learning (Hong et al., 2023; Yang et al., 2024; Li et al., 2024a;b), and neural architecture search (Liu et al., 2019). Among hyperparameter tuning applications, validation set performance is optimized in the upper level to improve model generalizability over the training set (Domke, 2012; Maclaurin et al., 2015; Franceschi et al., 2017; 2018; Shaban et al., 2019; Feurer & Hutter, 2019; Lorraine et al., 2020). In our work, we treat the robustness mechanism, which may contain non-convex neural networks, as hyperparameters to be optimized. Inspired by Lu & Mei (2024) and Lu & Mei (2026) which solved bilevel optimization problem via deterministic minimax optimization, Shen et al. (2026) addressed a more general bilevel optimization problem when both upper and lower level are minimax problems and extended it to a stochastic case. The fact that GDRO itself is a minimax problem naturally makes such bilevel-minimax algorithm good solver candidates. 
+
+## 4 EXPERIMENTS 
+
+In this section, we describe the modified datasets under both inter-group and intra-group subpopu-lation shift before showing the performance on two instantiations of our bilevel robust mechanism learning framework for DRO, namely Bi-HDRO and Bi-PG-DRO .4.1 DATASETS WITH TEST DISTRIBUTION SHIFT 
+
+We use datasets where both intra-group distribution and inter-group distribution shifts exist. Since baseline methods have reached similar performance under inter-group subpopulation shift, and fur-ther tuning offers no improvements, we do not investigate it here. Dataset details in Appendix D.1. 
+
+Shifted CMNIST Class label is digit (0-4 or 5-9), and the spurious attribute is color. We rotate minority group samples (red, lebel 1 (digit 5-9)) by 90 ◦ in the validation and test sets. 
+
+Shifted CelebA Class label is hair color, and spurious attribute is gender. We include only no-glasses images in training and validation, and only with-glasses images at test time for minority group (male with blond hair). 
+
+Shifted CivilComments Class label is toxicity and spurious attribute is black/white. Since “black” and “white” attributes may be co-mentioned, for the minority toxic/black group, we include no “white” attribute in the training set, whereas in the test set all entries have the “white” attribute. 4.2 RESULTS ON BI-HDRO In this setup, group membership is known at all times, so we use GDRO (Sagawa et al., 2020), 
+
+DFR Tr (Kirichenko et al., 2023) and PDE (Deng et al., 2023) as baselines since they need access to group information at training time. See details in Appendix D.3. 
+
+Validity of our enhanced setup As seen in the top half of Table 1, intra-group shift on top of existing inter-group shift indeed decimates the performance of strong baselines, making the doubly-shifted datasets valuable benchmarks. We further validated the improvement of HDRO compared to existing baselines and show that employing ambiguity sets in such setup provides tangible benefits across all datasets. For example, HDRO improves from 59.2 of GDRO to 72.4 on CelebA. However, 8Preprint Table 1: Accuracy over 3 runs under shifted distributions for Bi-HDRO and its baselines 
+
+CMNIST CelebA CivilComments 
+
+Method Worst Avg Worst Avg Worst Avg 
+
+GDRO 71.3 ±1.3 72.7 ±1.6 59.2 ±0.1 92.7 ±0.1 34.8 ±6.0 87.8 ±1.4 
+
+DFR Tr 62.9 ±8.3 68.9 ±4.3 65.5 ±4.8 89.4 ±0.3 40.8 ±2.7 87.9 ±0.9 
+
+PDE 62.8 ±7.8 69.1 ±3.8 35.9 ±3.4 92.0 ±0.6 39.0 ±3.9 81.8 ±0.8 
+
+HDRO 72.7 ±0.2 76.3 ±3.1 72.4 ±3.0 91.4 ±0.2 40.8 ±3.1 88.0 ±1.8 
+
+Fixed ϵ
+
+– Bi-GDRO ( ϵ = 0 ) 73.9 ±0.9 74.8 ±0.8 77.0 ±4.3 90.1 ±0.5 57.9 ±5.1 79.1 ±1.3 
+
+– Grid search ϵ 72.3 ±2.1 73.9 ±1.8 82.5 ±2.0 90.7 ±1.3 54.7 ±2.3 80.0 ±1.2 
+
+– Grid search η and ϵ 73.7 ±0.7 75.0 ±1.2 82.1 ±2.5 90.4 ±0.8 57.9 ±6.5 78.0 ±3.4 
+
+Bi-HDRO (learnable ϵ) 74.0 ±0.3 76.4 ±0.4 81.8 ±3.5 89.2 ±1.0 59.5 ±3.5 78.5 ±2.6 
+
+Bi-HDRO (learnable ϵg ) 74.2 ±0.3 76.9 ±1.6 82.8 ±3.1 90.1 ±1.2 57.4 ±2.0 78.5 ±0.6 
+
+we used 4 ϵ and 5 C values (part of the scaling term C/n tr  
+
+> g
+
+in Sagawa et al., 2020, Eq (5)) for HDRO tuning, yielding 16 combinations in grid search. 
+
+Benefit of parameter tuning In the bottom half of Table 1, we show that (1) Bi-HDRO performs better than HDRO (lower level) alone; and (2) ablating individual ϵg and η as manually tuned and fixed components shows the superior performance of Bi-HDRO. 4.3 RESULTS ON BI-PG-DRO In this setting, group labels are not available at training time, so we uniformly sample a small fraction of group-labeled validation data (5% from CMNIST, 15% from CelebA, and 3% from CivilCom-ments) and create two splits, where one is used to tune the attribute prediction model and the other is used to tune the validation set. For comparison fairness among baseline methods, we made sure at-tribute prediction training sees the same split, and the other split is for manual model tuning. We use 
+
+ERM , GIC Cy (Han & Zou, 2024), XRM (Pezeshki et al., 2024), AGRO (Paranjape et al., 2023), and SSA (Nam et al., 2022) as our baselines since they need minimal or no group-labeled data at training time. See details in Appendix D.4. 
+
+Group-labeled validation data boost our performance With validation tuning, fixed η, and no attribute prediction regularization, our method already performs better than all baseline methods. 
+
+Implicitly tuning auxiliary model yields superior performance Compared to explicitly using a cross-entropy loss to train the attribute predictor, implicitly tuning the attribute predictor by mini-mizing KL divergence works just as well. Finally, we show that the complete bilevel method (Bi-PG-DRO) tuning η works the best when combined with KL, outperforming all baseline methods. 
+
+## 5 CONCLUSION 
+
+We proposed a DRO framework to learn the robustness mechanism that requires minimal tuning and provided two instantiantions. There are two future directions from this work. First, our bilevel framework is still somewhat restrictive in that the algorithm proposed by Shen et al. (2026) requires lower level training to be convex-concave. By assuming Kurdyka-Łojasiewicz (KL) condition so that lower level becomes a non-convex-concave problem, a more general class of applications ensues, but no such algorithm exists yet. Second, this class of algorithms may be further extended to machine unlearning and language model alignment tasks (Fan et al., 2025; Wu et al., 2025; Asif & Amiri, 2026). 9Preprint Table 2: Accuracy over 3 runs under shifted subpopulations for Bi-PG-DRO and its baselines 
+
+CMNIST CelebA CivilComments Method Worst Avg Worst Avg Worst Avg 
+
+ERM 1.6 ±1.7 15.7 ±6.1 25.0 ±2.6 95.4 ±0.1 36.8 ±4.6 91.3 ±0.8 
+
+GIC Cy 25.7 ±8.8 48.0 ±13.4 47.1 ±9.2 90.8 ±0.8 54.2 ±4.9 86.8 ±1.4 
+
+XRM 68.8 ±3.8 72.2 ±3.2 51.4 ±2.8 89.7 ±0.2 25.9 ±6.4 89.6 ±1.5 
+
+AGRO 22.8 ±4.9 32.4 ±2.2 22.1 ±1.8 95.4 ±0.2 24.5 ±3.5 91.4 ±0.4 
+
+SSA 70.0 ±2.9 72.3 ±1.7 58.6 ±2.3 89.7 ±0.1 27.4 ±8.6 87.1 ±1.9 
+
+PG-DRO 64.3 ±2.0 70.7 ±0.7 66.7 ±1.0 91.6 ±0.4 16.1 ±3.1 82.3 ±3.0 
+
+Fixed η = 1 .0 67.8 ±1.5 74.1 ±1.6 69.8 ±6.9 92.6 ±0.2 66.2 ±1.1 84.3 ±1.1 
+
++ BCE 69.5 ±1.4 75.3 ±4.0 73.3 ±5.4 91.8 ±2.2 65.0 ±1.3 79.3 ±1.4 
+
++ KL 71.0 ±0.8 80.1 ±0.9 73.3 ±4.8 92.5 ±0.3 68.0 ±0.3 84.7 ±1.1 
+
+Bi-PG-DRO 71.7 ±0.8 79.5 ±1.5 76.7 ±3.4 92.2 ±0.3 68.2 ±0.2 83.6 ±1.9 
+
+AI USE STATEMENT 
+
+In this work, we used generative AI tools to implement methods, clean and reformat dataset, and assist in the writing of proofs. We have not used generative AI tools to help develop theoretical models or conceptual frameworks, formulate mathematical claims, provide critical ingredients for proving mathematical claims, pro-pose or refine hypotheses, design or provide feedback on research methodology or experiments, assist with translation, support qualitative and thematic data analysis, or interpret results. Generating synthetic datasets is not applicable to this work. We have reviewed all AI-assisted work. LLM-generated code was verified and tested for correctness. LLM-generated proof steps are judiciously reviewed and revised by all authors. We take responsi-bility for the final content of this work, including text, claims or artifacts produced with the aid of generative AI. 10 Preprint 
+
+## REFERENCES 
+
+Faruk Ahmed, Yoshua Bengio, Harm Van Seijen, and Aaron Courville. Systematic generalisation with group invariant predictions. In International Conference on Learning Representations , 2021. M. Arjovsky, L. Bottou, I. Gulrajani, and D. Lopez-Paz. Invariant risk minimization. arXiv preprint arXiv:1907.02893 , 2019. Saeid Asgari, Aliasghar Khani, Fereshte Khani, Ali Gholami, Linh Tran, Ali Mahdavi Amiri, and Ghassan Hamarneh. Masktune: Mitigating spurious correlations by forcing to explore. In Ad-vances in Neural Information Processing Systems , 2022. Sadia Asif and Mohammad Mohammadi Amiri. OFMU: OPTIMIZATION-DRIVEN FRAME-WORK FOR MACHINE UNLEARNING. In International Conference on Learning Representa-tions , 2026. URL https://openreview.net/forum?id=ZDuyNJI56H .Kasra Azizi, Kumar Anurag, and Wenbin Wan. Towards resilient tracking in autonomous vehicles: A distributionally robust input and state estimation approach. IFAC-PapersOnLine , 59(3):31–36, 2025. ISSN 2405-8963. doi: https://doi.org/10.1016/j.ifacol.2025.07.006. 12th IFAC Symposium on Intelligent Autonomous Vehicles IAV 2025. Marcus A Badgeley, John R Zech, Luke Oakden-Rayner, Benjamin S Glicksberg, Manway Liu, William Gale, Michael V McConnell, Bethany Percha, Thomas M Snyder, and Joel T Dudley. Deep learning predicts hip fracture using confounding patient and healthcare variables. NPJ Digital Medicine , 2(1):31, 2019. Aharon Ben-Tal and Arkadi Nemirovski. Robust optimization-methodology and applications. Math-ematical Programming , 92:453–480, 2002. Kristin P. Bennett, Gautam Kunapuli, Jing Hu, and Jong-Shi Pang. Bilevel optimization and machine learning. In IEEE World Congress on Computational Intelligence , pp. 25–47. Springer, 2008. Luca Bertinetto, Joao F. Henriques, Philip Torr, and Andrea Vedaldi. Meta-learning with differen-tiable closed-form solvers. In International Conference on Learning Representations , 2019. Olivier Bousquet and Andr´ e Elisseeff. Stability and generalization. The Journal of Machine Learn-ing Research , 2:499–526, 2002. Joy Buolamwini and Timnit Gebru. Gender shades: Intersectional accuracy disparities in com-mercial gender classification. In Proceedings of the Conference on Fairness, Accountability and Transparency , pp. 77–91, 2018. Tianle Cai, Ruiqi Gao, Jason Lee, and Qi Lei. A theory of label propagation for subpopulation shift. In Proceedings of the International Conference on Machine Learning , pp. 1170–1182, 2021. Koby Crammer and Yoram Singer. On the algorithmic implementation of multiclass kernel-based vector machines. In Journal of machine learning research , 2001. Elliot Creager, J¨ orn-Henrik Jacobsen, and Richard Zemel. Environment inference for invariant learning. In Proceedings of the International Conference on Machine Learning , pp. 2189–2200, 2021. John M Danskin. The theory of max-min and its application to weapons allocation problems. Econo-metrics and Operations Research , 5, 1967. Yihe Deng, Yu Yang, Baharan Mirzasoleiman, and Quanquan Gu. Robust learning with progres-sive data expansion against spurious correlation. In Advances in Neural Information Processing Systems , 2023. URL https://openreview.net/forum?id=9QEVJ9qm46 .Luc Devroye, L´ aszl´ o Gy¨ orfi, and G´ abor Lugosi. A Probabilistic Theory of Pattern Recognition .Springer Science & Business Media, 2013. Justin Domke. Generic methods for optimization-based modeling. In Proceedings of the Interna-tional Conference on Artificial Intelligence and Statistics , 2012. 11 Preprint J. C. Duchi, P. W. Glynn, and H. Namkoong. Statistics of robust optimization: A generalized empirical likelihood approach. Mathematics of Operations Research , 2021. John C Duchi and Hongseok Namkoong. Learning models with uniform performance via distribu-tionally robust optimization. The Annals of Statistics , 49(3):1378–1406, 2021. Chongyu Fan, Jinghan Jia, Yihua Zhang, Anil Ramakrishna, Mingyi Hong, and Sijia Liu. Towards LLM unlearning resilient to relearning attacks: A sharpness-aware minimization perspective and beyond. In Proceedings of the International Conference on Machine Learning , 2025. URL 
+
+https://openreview.net/forum?id=zZjLv6F0Ks .Matthias Feurer and Frank Hutter. Hyperparameter optimization. In Automated Machine Learning ,pp. 3–33. Springer, 2019. Luca Franceschi, Michele Donini, Paolo Frasconi, and Massimiliano Pontil. Forward and reverse gradient-based hyperparameter optimization. In Proceedings of the International Conference on Machine Learning , pp. 1165–1173, 2017. Luca Franceschi, Paolo Frasconi, Saverio Salzo, Riccardo Grazzi, and Massimiliano Pontil. Bilevel programming for hyperparameter optimization and meta-learning. In Proceedings of the Interna-tional Conference on Machine Learning , pp. 1568–1577, 2018. Soumya Suvra Ghosal and Yixuan Li. Distributionally robust optimization with probabilistic group. In Proceedings of the AAAI Conference on Artificial Intelligence , pp. 11809–11817, 2023. Yujin Han and Difan Zou. Improving group robustness on spurious correlation requires preciser group inference. In Proceedings of the International Conference on Machine Learning , pp. 17480–17504, 2024. URL https://openreview.net/forum?id=KycvgOCBBR .Mingyi Hong, Hoi-To Wai, Zhaoran Wang, and Zhuoran Yang. A two-timescale stochastic algorithm framework for bilevel optimization. SIAM Journal on Optimization , 33(1):147–180, 2023. Feihu Huang, Xidong Wu, and Heng Huang. Efficient mirror descent ascent methods for nonsmooth minimax problems. In M. Ranzato, A. Beygelzimer, Y. Dauphin, P.S. Liang, and J. Wortman Vaughan (eds.), Advances in Neural Information Processing Systems , volume 34, pp. 10431– 10443. Curran Associates, Inc., 2021. Pavel Izmailov, Polina Kirichenko, Nate Gruver, and Andrew G Wilson. On feature learning in the presence of spurious correlations. In Advances in Neural Information Processing Systems , 2022. Arthur Jacot, Franck Gabriel, and Cl´ ement Hongler. Neural tangent kernel: Convergence and gener-alization in neural networks. In Advances in neural information processing systems , volume 31, 2018. Saachi Jain, Kimia Hamidieh, Kristian Georgiev, Andrew Ilyas, Marzyeh Ghassemi, and Aleksander Madry. Improving subgroup robustness via data selection. In Advances in Neural Information Processing Systems , 2024. Jinyong Jeong, Hyungu Kahng, and Seoung Bum Kim. Multi-expert distributionally robust opti-mization for out-of-distribution generalization. In Advances in Neural Information Processing Systems , volume 38, Main Conference, pp. 101081–101116, 2025. doi: 10.52202/085713-3384. Sung Ho Jo, Seonghwi Kim, and Minwoo Chae. Mitigating spurious correlation via distribution-ally robust learning with hierarchical ambiguity sets. In International Conference on Learning Representations , 2026. URL https://openreview.net/forum?id=mruL1LDjzV .Bingyi Kang, Saining Xie, Marcus Rohrbach, Zhicheng Yan, Albert Gordo, Jiashi Feng, and Yannis Kalantidis. Decoupling representation and classifier for long-tailed recognition. In International Conference on Learning Representations , 2020. Polina Kirichenko, Pavel Izmailov, and Andrew Gordon Wilson. Last layer re-training is sufficient for robustness to spurious correlations. In International Conference on Learning Representations ,2023. URL https://openreview.net/forum?id=Zb6c8A-Fghk .12 Preprint Pang Wei Koh, Shiori Sagawa, Henrik Marklund, Sang Michael Xie, Marvin Zhang, Akshay Balsub-ramani, Weihua Hu, Michihiro Yasunaga, Richard Lanas Phillips, Irena Gao, Tony Lee, Etienne David, Ian Stavness, Wei Guo, Berton Earnshaw, Imran Haque, Sara M Beery, Jure Leskovec, Anshul Kundaje, Emma Pierson, Sergey Levine, Chelsea Finn, and Percy Liang. Wilds: A bench-mark of in-the-wild distribution shifts. In Marina Meila and Tong Zhang (eds.), Proceedings of the International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research , pp. 5637–5664. PMLR, 18–24 Jul 2021. David Krueger, Ethan Caballero, Joern-Henrik Jacobsen, Amy Zhang, Jonathan Binas, Dinghuai Zhang, Remi Le Priol, and Aaron Courville. Out-of-distribution generalization via risk extrapola-tion (rex). In Proceedings of the International Conference on Machine Learning , pp. 5815–5826, 2021. Tyler LaBonte, Vidya Muthukumar, and Abhishek Kumar. Towards last-layer retraining for group robustness with fewer annotations. In Advances in Neural Information Processing Systems , 2023. Haoyu Lei, Amin Gohari, and Farzan Farnia. On the inductive biases of demographic parity-based fair learning algorithms. In Negar Kiyavash and Joris M. Mooij (eds.), Uncertainty in Artificial Intelligence , volume 244 of Proceedings of Machine Learning Research , pp. 2205–2225. PMLR, 15–19 Jul 2024. Chenliang Li, Siliang Zeng, Zeyi Liao, Jiaxiang Li, Dongyeop Kang, Alfredo Garcia, and Mingyi Hong. Learning reward and policy jointly from demonstration and preference improves align-ment. arXiv preprint arXiv:2406.06874 , 2024a. Jiaxiang Li, Siliang Zeng, Hoi To Wai, Chenliang Li, Alfredo Garcia, and Mingyi Hong. Getting more juice out of the SFT data: Reward learning from human demonstration improves SFT for LLM alignment. In Advances in Neural Information Processing Systems , 2024b. Hanxiao Liu, Karen Simonyan, and Yiming Yang. Darts: Differentiable architecture search. In 
+
+International Conference on Learning Representations , 2019. Jonathan Lorraine, Paul Vicol, and David Duvenaud. Optimizing millions of hyperparameters by implicit differentiation. In Proceedings of the International Conference on Artificial Intelligence and Statistics , 2020. Zhaosong Lu and Sanyou Mei. First-order penalty methods for bilevel optimization. SIAM Journal on Optimization , 34(2):1937–1969, 2024. doi: 10.1137/23M1566753. URL https://doi. org/10.1137/23M1566753 .Zhaosong Lu and Sanyou Mei. Solving bilevel optimization via sequential minimax optimization. 
+
+Mathematics of Operations Research , 2026. doi: 10.1287/moor.2024.0521. URL https:// doi.org/10.1287/moor.2024.0521 . Published online January 6, 2026. Dougal Maclaurin, David Duvenaud, and Ryan Adams. Gradient-based hyperparameter optimiza-tion through reversible learning. In Proceedings of the International Conference on Machine Learning , 2015. Raghav Mehta, Changjian Shui, and Tal Arbel. Evaluating the fairness of deep learning uncertainty estimates in medical image analysis. In Medical Imaging with Deep Learning , volume 227 of 
+
+Proceedings of Machine Learning Research , pp. 1453–1492. PMLR, 10–12 Jul 2024. Junhyun Nam, Jaehyung Kim, Jaeho Lee, and Jinwoo Shin. Spread spurious attribute: Improving worst-group accuracy with spurious attribute estimation. In International Conference on Learning Representations , 2022. URL https://openreview.net/forum?id=_F9xpOrqyX9 .Bhargavi Paranjape, Pradeep Dasigi, Vivek Srikumar, Luke Zettlemoyer, and Hannaneh Hajishirzi. AGRO: Adversarial discovery of error-prone groups for robust optimization. In International Conference on Learning Representations , 2023. Mohammad Pezeshki, Diane Bouchacourt, Mark Ibrahim, Nicolas Ballas, Pascal Vincent, and David Lopez-Paz. Discovering environments with XRM. In Proceedings of the International Conference on Machine Learning , 2024. URL https://openreview.net/forum?id= gPStP3FSY9 .13 Preprint Vihari Piratla, Praneeth Netrapalli, and Sunita Sarawagi. Focus on the common good: Group distri-butional robustness follows. In International Conference on Learning Representations , 2022. Shikai Qiu, Andres Potapczynski, Pavel Izmailov, and Andrew Gordon Wilson. Simple and fast group robustness by automatic feature reweighting. In Proceedings of the International Con-ference on Machine Learning , pp. 28448–28467, 2023. URL https://openreview.net/ forum?id=s5F1a6s1HS .Aravind Rajeswaran, Chelsea Finn, Sham M Kakade, and Sergey Levine. Meta-learning with im-plicit gradients. In Advances in Neural Information Processing Systems , volume 32, 2019. Mengye Ren, Wenyuan Zeng, Bin Yang, and Raquel Urtasun. Learning to reweight examples for robust deep learning. In Proceedings of the International Conference on Machine Learning , pp. 4334–4343. PMLR, 2018. Kanghyun Ryu and Negar Mehr. Integrating predictive motion uncertainties with distributionally robust risk-aware control for safe robot navigation in crowds. In IEEE International Conference on Robotics and Automation (ICRA) , pp. 2410–2417, 2024. Shiori Sagawa, Pang Wei Koh, Tatsunori B. Hashimoto, and Percy Liang. Distributionally robust neural networks for group shifts: On the importance of regularization for worst-case generaliza-tion. In International Conference on Learning Representations , 2020. Seonguk Seo, Joon-Young Lee, and Bohyung Han. Unsupervised learning of debiased represen-tations with pseudo-attributes. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 16742–16751, 2022. Amir Shaban, Ching-An Cheng, Nathan Hatch, and Byron Boots. Truncated back-propagation for bilevel optimization. In Proceedings of the International Conference on Artificial Intelligence and Statistics , 2019. Shai Shalev-Shwartz and Shai Ben-David. Understanding Machine Learning: From Theory to Algorithms . Cambridge university press, 2014. Yiyang Shen, Yutian He, Weiran Wang, and Qihang Lin. Penalty-based first-order methods for bilevel optimization with minimax and constrained lower-level problems. arXiv preprint arXiv:2605.08006 , 2026. Zheyan Shen, Jiashuo Liu, Yue He, Xingxuan Zhang, Renzhe Xu, Han Yu, and Peng Cui. Towards out-of-distribution generalization: A survey. arXiv preprint arXiv:2108.13624 , 2021. Nimit Sohoni, Jared Dunnmon, Geoffrey Angus, Albert Gu, and Christopher R´ e. No subclass left behind: Fine-grained robustness in coarse-grained classification problems. In Advances in Neural Information Processing Systems , 2020. Junkang Wu, Yuexiang Xie, Zhengyi Yang, Jiancan Wu, Jiawei Chen, Jinyang Gao, Bolin Ding, Xiang Wang, and Xiangnan He. Towards robust alignment of language models: Distributionally robustifying direct preference optimization. In International Conference on Learning Represen-tations , 2025. URL https://openreview.net/forum?id=CbfsKHiWEn .Shirley Wu, Mert Yuksekgonul, Linjun Zhang, and James Zou. Discover and cure: Concept-aware mitigation of spurious correlation. In Proceedings of the International Conference on Machine Learning , pp. 37765–37786, 2023. Yan Yang, Bin Gao, and Ya-xiang Yuan. Bilevel reinforcement learning via the development of hyper-gradient without lower-level convexity. arXiv preprint arXiv:2405.19697 , 2024. Yuzhe Yang, Haoran Zhang, Dina Katabi, and Marzyeh Ghassemi. Change is hard: A closer look at subpopulation shift. In Proceedings of the International Conference on Machine Learning , pp. 39584–39622, 2023. Han Yu, Jiashuo Liu, Xingxuan Zhang, Jiayun Wu, and Peng Cui. A survey on evaluation of out-of-distribution generalization. ArXiv , 2024. 14 Preprint John R Zech, Marcus A Badgeley, Manway Liu, Anthony B Costa, Joseph J Titano, and Eric Karl Oermann. Variable generalization performance of a deep learning model to detect pneumonia in chest radiographs: A cross-sectional study. PLoS Medicine , 15(11):e1002683, 2018. Michael Zhang, Nimit S Sohoni, Hongyang R Zhang, Chelsea Finn, and Christopher Re. Correct-N-Contrast: A contrastive approach for improving robustness to spurious correlations. In Pro-ceedings of the International Conference on Machine Learning , pp. 26484–26516, 2022a. Xuan Zhang, Necdet Serhat Aybat, and Mert Gurbuzbalaban. Sapd+: An accelerated stochastic method for nonconvex-concave minimax problems. In Advances in Neural Information Process-ing Systems , volume 35, pp. 21668–21681, 2022b. Yang Zhang, Philip David, and Boqing Gong. Curriculum domain adaptation for semantic segmen-tation of urban scenes. In Proceedings of the IEEE International Conference on Computer Vision ,pp. 2020–2030, 2017. 15 Preprint 
+
+## A A F IRST -O RDER METHOD FOR BILEVEL MINIMAX PROBLEMS 
+
+Algorithm 1 A First-Order Method for (13) 
+
+Require: Initial iterates (α0, W 0, q 0) and (p0, fW 0, eq0) and number of proximal iterations K.
+
+1: Set ρ, ρ 1, ρ 2 and relevant parameters according to Shen et al., 2026, Algorithm 1. 
+
+2: for k = 0 , . . . , K − 1 do 
+
+3: Construct the proximal penalized objective 
+
+¯Pk = Pρ(α, p, W, q, fW , eq) + ρ1
+
+2 ∥(α, W, q ) − (αk , W k , q k )∥2 − ρ2
+
+2 ∥(p, fW , eq) − (pk , fW k , eqk )∥2
+
+4: Solve the resulting strongly-convex-strongly-concave problem with SAPD (Zhang et al., 2022b): 
+
+(( αk+1 , W k+1 , q k+1 ), (pk+1 , fW k+1 , eqk+1 )) ← SAPD( ¯Pk )
+
+5: end for 
+
+6: return (αk′
+
+, W k′
+
+, q k′
+
+) with k′ sampled uniformly from {1, . . . , K }.While the original work has many hyperparameters on the algorithmic level, we stress that those are tuned once and can then be applied to all datasets used in this paper and both of our proposed methods (See Appendix D.2 for details). We further note that validation accuracy is used for model selection rather than objective convergence, which is prohibitively expensive in deep learning ex-periments. 
+
+## B CLOSED FORM OF LOWER LEVEL ADVERSARY 
+
+We can use the definition of training loss in Section 2.1, 
+
+Ltr (W ; θ) =  Ltr 1 (W ; θ), . . . , L tr 
+
+> G
+
+(W ; θ)⊤ ,
+
+to obtain the adversarial subproblem, 
+
+q⋆ ∈ arg max 
+
+> q∈∆G
+
+(
+
+q⊤Ltr (W ; θ) − η
+
+2 q − 1
+
+G 1
+
+> 22
+
+)
+
+.
+
+For η > 0, we can complete the square: 
+
+q⊤Ltr − η
+
+2 q − 1
+
+G 1
+
+> 22
+
+= − η
+
+2 q −
+
+ 1
+
+G 1 + Ltr 
+
+η
+
+ 22
+
++ C, 
+
+where C does not depend on q. Therefore, 
+
+q⋆(W, θ, η ) = Π ∆G
+
+ 1
+
+G 1 + Ltr (W ; θ)
+
+η
+
+
+
+,
+
+where component-wise q⋆g =
+
+h 1 
+
+> G
+
++ Ltr    
+
+> g(W;θ)
+> η
+
+− ν
+
+i
+
+> +
+
+, and ν is chosen such that PGg=1 q⋆g = 1 .
+
+While there is a closed form solution, computing it requires the losses of all groups and hence a full pass of the entire dataset, which is prohibitively expensive during stochastic training. 
+
+## C PERTURBATION FORMULATIONS 
+
+C.1 CLOSED -FORM PERTURBATION FOR BINARY CLASSIFICATION 
+
+We show below that closed form can be derived for latent representation perturbation when the task is binary classification. We use the binary cross entropy (BCE) loss for all experiments but show the formulation for hinge loss as well. 16 Preprint 
+
+Case 1: the last layer is linear and L is hinge loss. Let the final layer be binary linear classifica-tion: f Lθ (z) = w⊤z + b. The hinge loss is 
+
+L(f Lθ (z), y ) = max(0 , 1 − y(w⊤z + b)) .
+
+The inner maximization in equation becomes 
+
+sup 
+
+> ∥z′−z∥≤ ϵ
+
+max  0, 1 − y(w⊤z′ + b) .
+
+Write z′ = z + δ, ∥δ∥ ≤ ϵ, then 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+max  0, 1 − y(w⊤z + b) − yw ⊤δ .
+
+Since x 7 → max(0 , x ) is monotonically increasing, 
+
+= max 0, 1 − y(w⊤z + b) + sup 
+
+> ∥δ∥≤ ϵ
+
+(−yw ⊤δ)
+
+!
+
+.
+
+Because of y ∈ {± 1} and the support function of the norm ball, 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+(−yw ⊤δ) = sup 
+
+> ∥δ∥≤ ϵ
+
+w⊤δ = w⊤δ∗ = w⊤(ϵ w
+
+∥w∥2 ) = ϵ∥w∥∗,
+
+where ∥ · ∥ ∗ is the dual norm. Therefore, the inner robust hinge loss has closed form: 
+
+sup 
+
+> ∥z′−z∥≤ ϵ
+
+L(f Lθ (z′), y ) = max  0, 1 − y(w⊤z + b) + ϵ∥w∥∗
+
+
+
+Case 2: the last layer is linear and L is logistic/binary cross entropy (BCE) loss. Using the same notations as above, the logistic loss is 
+
+L(f Lθ (z), y ) = log  1 + exp( −y(w⊤z + b))  .
+
+Due to the monotonicity of the exponent of the maximized perturbation, we have 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+log  1 + exp  −y(w⊤(z + δ) + b) ⇔ inf  
+
+> ∥δ∥≤ ϵ
+
+y(w⊤(z + δ) + b) = y(w⊤z + b) + inf  
+
+> ∥δ∥≤ ϵ
+
+yw ⊤δ. 
+
+As derived in Case 1, inf ∥δ∥≤ ϵ yw ⊤δ = −ϵ∥w∥∗, so we can substitute this back to the maximized perturbation, forming 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+log  1 + exp( −y(w⊤(z + δ) + b))  = log  1 + exp   − (y(w⊤z + b) − ϵ∥w∥∗) .
+
+∥w∥ makes the both losses non-smooth, so we smoothen it using a substitution scaler u. In the logistic example, it becomes 
+
+J(w, u ) = 
+
+> n
+
+X
+
+> i=1
+
+log  1 + exp( −yi(w⊤xi + b) + ϵu ) s.t. ∥w∥∗ ≤ u, (17) which is jointly convex in (w, u ).As a result, we perform projected descent when optimizing Eq (17). Define the second-order cone 
+
+K = {(w, u ) : ∥w∥2 ≤ u}, the Euclidean projection is then 
+
+min 
+
+> (w,u )∈K
+
+12 ∥w − v∥22 + 12 (u − t)2, (18) the closed form of which falls into three categories, where (v, t ) falls inside, outside and “behind”, and outside but near the boundary of the cone, i.e., 
+
+ΠK(v, t ) = 
+
+
+
+(v, t ), ∥v∥2 ≤ t
+
+(0 , 0) , ∥v∥2 ≤ − t
+
+ ∥v∥2+t 
+
+> 2∥v∥2
+
+v, ∥v∥2+t
+
+> 2
+
+
+
+, otherwise .
+
+17 Preprint C.2 PERTURBATION FOR MULTI -CLASS CLASSIFICATION 
+
+Next, we show that latent representation perturbation can still be done, although in a relaxed form, when the task is multi-class. Let the final layer be linear with K classes: 
+
+wk(z) = w⊤ 
+
+> k
+
+z + bk, k = 1 , . . . , K, 
+
+and let the true label be y ∈ { 1, . . . , K }.
+
+Case 1: multi-class hinge loss. We use the multi-class hinge loss (Crammer & Singer, 2001): 
+
+L(w(z), y ) = max 
+
+
+
+0, max   
+
+> j̸=y
+
+[1 + ( wj (z) + bj ) − (wy (z) + by )] 
+
+
+
+,
+
+where wy (z) is the score of the correct class, and the inner max aims to find the largest violation over all incorrect classes. For a perturbation z′ = z + δ, ∥δ∥ ≤ ϵ, we have 
+
+wj (z + δ) − wy (z + δ) = ( wj − wy )⊤z + ( bj − by ) + ( wj − wy )⊤δ. 
+
+Therefore, 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+L(w(z + δ), y ) = sup 
+
+> ∥δ∥≤ ϵ
+
+max 
+
+
+
+0, max  
+
+> j̸=y
+
+1 + ( wj − wy )⊤z + bj − by + ( wj − wy )⊤δ
+
+.
+
+Since the maximum is over finitely many ( K) affine functions, the supremum can be exchanged with the finite maximum: 
+
+= max 
+
+(
+
+0, max  
+
+> j̸=y
+
+"
+
+1 + ( wj − wy )⊤z + bj − by + sup 
+
+> ∥δ∥≤ ϵ
+
+(wj − wy )⊤δ
+
+#) 
+
+.
+
+Using the support function of the norm ball, 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+(wj − wy )⊤δ = ϵ∥wj − wy ∥∗.
+
+Thus the robust multi-class hinge loss has the closed form 
+
+sup 
+
+> ∥z′−z∥≤ ϵ
+
+L(w(z′), y ) = max 
+
+
+
+0, max   
+
+> j̸=y
+
+[1 + wj (z) − wy (z) + ϵ∥wj − wy ∥∗]
+
+
+
+.
+
+Equivalently, one may introduce auxiliary variables uj satisfying 
+
+∥wj − wy ∥∗ ≤ uj , j̸ = y, 
+
+and write the robust loss as 
+
+max 
+
+
+
+0, max   
+
+> j̸=y
+
+[1 + wj (z) − wy (z) + ϵu j ]
+
+
+
+.
+
+This form is convex in the final-layer parameters for fixed features z.
+
+Case 2: multi-class logistic / softmax cross-entropy loss. For true class y, the softmax cross-entropy loss is 
+
+L(w(z), y ) = − log exp( wy (z)) 
+
+PKk=1 exp( wk(z)) = log 
+
+> K
+
+X
+
+> k=1
+
+exp( wk(z) − wy (z)) 
+
+!
+
+.
+
+Define 
+
+ak = wk(z) − wy (z), vk = wk − wy .
+
+Then 
+
+wk(z + δ) − wy (z + δ) = ak + v⊤ 
+
+> k
+
+δ, 
+
+18 Preprint with ay = 0 and vy = 0 . The robust loss is 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+log 
+
+> K
+
+X
+
+> k=1
+
+exp( ak + v⊤ 
+
+> k
+
+δ)
+
+!
+
+.
+
+A useful variational representation is obtained from the Fenchel form of log-sum-exp: 
+
+log 
+
+> K
+
+X
+
+> k=1
+
+exp( rk) = sup 
+
+> p∈∆K
+
+p⊤r + H(p) ,
+
+where 
+
+H(p) = −
+
+> K
+
+X
+
+> k=1
+
+pk log pk.
+
+Applying this with rk = ak + v⊤ 
+
+> k
+
+δ gives 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+log 
+
+> K
+
+X
+
+> k=1
+
+exp( ak + v⊤ 
+
+> k
+
+δ) = sup 
+
+> p∈∆K
+
+( KX
+
+> k=1
+
+pkak + H(p) + ϵ
+
+> K
+
+X
+
+> k=1
+
+pkvk
+
+> ∗
+
+)
+
+. (19) However, this is not a closed-form perturbation of the same type as the binary case. Continuing from (19), we derive an efficient upper bound relaxation as follows 
+
+sup 
+
+> ∥δ∥≤ ϵ
+
+log 
+
+> K
+
+X
+
+> k=1
+
+exp( ak + v⊤ 
+
+> k
+
+δ)
+
+≤ sup 
+
+> p∈∆K
+
+( KX
+
+> k=1
+
+pkak + H(p) + ϵ
+
+> K
+
+X
+
+> k=1
+
+pk∥vk∥∗
+
+)
+
+(Jensen’s inequality on ∥ · ∥ ∗)= sup 
+
+> p∈∆K
+
+( KX
+
+> k=1
+
+pk (ak + ϵ∥vk∥∗) + H(p)
+
+)
+
+(Grouping linear terms) 
+
+= log 
+
+> K
+
+X
+
+> k=1
+
+exp ( ak + ϵ∥vk∥∗) (Reverse Fenchel conjugate) 
+
+## D EXPERIMENTAL DETAILS 
+
+D.1 SHIFTED DATASETS 
+
+Shifted CMNIST Dataset statistics are presented in Table 3. In the original HDRO experiment (Jo et al., 2026), rotation is only applied to test set and its distribution significantly differs from the validation distribution, causing large variance across different random seeds (8%-10%) and tuning on such validation set would make little sense. In our setup, rotation is applied to both validation and test split of the minority group (red, label 1). This is done to reduce the extreme large variance observed during model tuning and stabilize prediction performance. Note that only rotations are applied, and samples are not moved. Table 3: CMNIST Statistics. 
+
+Group Train Val Test 
+
+y = 0 , green 2,998 2,591 8,966 
+
+y = 1 , green 11,781 2,513 1,013 
+
+y = 0 , red 12,130 2,465 1,068 
+
+y = 1 , red 3,091 2,431 8,953 
+
+Total 30,000 10,000 20,000 19 Preprint 
+
+Shifted CelebA Dataset statistics are presented in Table 4. Our shifting procedure is the same as that of Jo et al. (2026). For minority group (blond male), 164 without glasses are moved from test to train, 90 with glasses are moved from train to test, and 10 with glasses are moved from validation to test. Table 4: CelebA Statistics 
+
+Group Train Val Test 
+
+non-blond female 71,629 8,535 9,767 non-blond male 66,874 8,276 7,535 blond female 22,880 2,874 2,480 blond male (before shift) 1,387 182 180 blond male (after shift) 1,461 172 116 
+
+Total (before shift) 162,770 19,867 19,962 
+
+Total (after shift) 162,844 19,857 19,898 
+
+Shifted CivilComments Dataset statistic presented in Table 5. Similar to the test distribution shift of CMNIST and CelebA, we created a shifted version of the CivilComments dataset (Koh et al., 2021), which is originally used for toxic language classification. Intra-group shift on this dataset has not been studied previously to our knowledge. For the shifted version, 1,278 minority group (toxic, black) samples with white=1 are moved from train to test, and 905 minority group samples with white=0 are moved from test to train. After shifting, train minority group contains only non-white-annotated samples, and test minority contains only white annotated samples. The fact that attributes black=1 and white=1 are not mutually exclusive allows such shift to happen. Table 5: CivilComments Statistics 
+
+Group Train Val Test 
+
+non-toxic, non-black 231,738 39,006 115,223 non-toxic, black 6,785 1,119 3,335 toxic, non-black 27,404 4,522 13,687 toxic, black (before shift) 3,111 533 1,537 toxic, black (after shift) 2,738 533 1,910 
+
+Total (before shift) 269,038 45,180 133,782 
+
+Total (after shift) 268,665 45,180 134,155 
+
+Shifted Waterbirds Waterbirds (Sagawa et al., 2020) is one of the most commonly used bench-mark in this line of DRO research, but we do not use it here because (1) the dataset itself has known mislabeled attributes (Asgari et al., 2022), making performance metrics less informative; (2) the above issue is compounded with the small size of the training set (4,795 total, with 56 in the minor-ity group of waterbird with land background); and (3) the performance has saturated with or without intra-group shifts on existing methods, rendering comparisons banal. D.2 SETTINGS 
+
+In Table 6, we provide the important settings (hyperparameters and architectures) used in this work. We emphasize that those hyperparameters are relatively insensitive to the dataset, so we only tune them on CMNIST for one method and use the same values for the other two datasets. ϵg is cliped [0,1] to follow the HDRO preset range. 20 Preprint Table 6: Settings and Hyperparameters for our methods.                            
+
+> Setting CMNIST CelebA CivilComments
+> Model ResNet-50 ResNet-50 DistilBERT Weight decay λ10 −310 −110 −3
+> Lower Train/Upper Validation batch size 256 128 64
+> L∇hin Shen et al. (2026) 10000 Iterations of SAPD per outer iteration T1
+> ηinit 1.0 Gradient multiplier of η10 Gradient multiplier of validation simplex u100
+> ϵinit for Bi-HDRO 96 /255
+> KL coefficient βfor Bi-PG-DRO 10
+
+D.3 BI-HDRO D.3.1 ABLATION PROCEDURE 
+
+To show the advantage of automatically tuning both η and ϵ (or ϵg ) in Bi-HDRO, (1) we fixed ϵ to be 0 and leave η learnable, which recovers Bi-GDRO; (2) we performed grid search with fixed ϵ over 
+
+{60,72,84,96,108 }/255 when η = 0 , and (3) we performed grid search ϵ with the above schedule and η over {0.01, 0.1, 1.0, 10.0 }.D.3.2 BASELINES 
+
+DFR Tr (Kirichenko et al., 2023) A two-stage method where the training set is partitioned 80-20 for different purposes. (1) The larger chunk of data is used to train ERM with uniform sampling. (2) The smaller group-balanced subset to retrain last layer. For DFR Val , they include all minority group data in validation and sample the same amount from other groups. For fairness of group information access, we compare our method to DFR Tr only. Default hyperparameters from their implementation are used. 
+
+PDE (Deng et al., 2023) A two-stage method. (1) Warmup the entire model using group-balanced subset where all groups have same size as the minority group. (2) Progressively add more training data (progressive data expansion) for training the entire model as well as using existing warmup subset. We tune the warm-up epochs in {10,20 } and added samples in {50,100,500 }.
+
+HDRO (Jo et al., 2026) A single-level min-max-max method described in Section 2.3. We use the implementation from the authors and tune ϵ in the range {60,72,84,96 }/255 and C ∈ { 0, 1, 2, 3}
+
+across all three of our datasets. D.4 BI-PG-DRO D.4.1 ABLATION PROCEDURE 
+
+We ablated two types of regularization: BCE loss for attribute predictor, KL prior regularization for attribute predictor. We performed a grid search {1,10,30 } for these two terms. D.4.2 BASELINES 
+
+GIC Cy (Han & Zou, 2024) A three-stage method. (1) Feature extraction. (2) Train attribute predictor maximizing spurious attribute label KL between predicted label and true label (Eq (11) in their paper, hence the superscript). (3) Train GDRO. We tune the γ (Eq (9) in their paper) in 
+
+{2,5,10 } for our shifted datasets. 
+
+XRM (Pezeshki et al., 2024) A two-stage method. (1) Train two auxilary models with mutually exclusive held-in and held-out split of the training set . Notably, it does not rely on any attribute 21 Preprint 0 1000 2000 3000 
+
+> Optimizer Step
+> 0.0 0.2 0.4 0.6
+> Worst-group Val Acc
+> HDRO Bi-HDRO
+
+(a) CMNIST 0 500 1000 1500 2000  
+
+> Optimizer Step
+> 0.0 0.2 0.4 0.6 0.8
+> Worst-group Val Acc
+
+(b) CelebA 0 200 400 600 800 1000  
+
+> Optimizer Step
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7
+> Worst-group Val Acc
+
+(c) CivilComments 
+
+Figure 1: Validation Curve of HDRO and Bi-HDRO. labels from, for example, the validation set. Instead, it flips training set labels so that minority samples are identified, since they are confidently misclassified in the held-out set. (2) Train GDRO with pseudo-group-labels. We sample three hyperparameter combination candidates, choose one with the highest flip rates, and train GDRO using 3 different seeds. 
+
+AGRO (Paranjape et al., 2023) A greedy unified method that jointly trains attribute predictor and robust model. It learns soft group memberships that makes robust training (GDRO) difficult. We use the hyperparameters described in their Table 7 (and 4 slices for CMNIST), but tune their α in 
+
+{0.2,0.3,0.4 } due to our different setup (intra-group shift). 
+
+SSA (Nam et al., 2022) A two-stage method. (1) Train a attribute label prediction model and per-forms hard prediction to generate pseudo-group-label and (2) Train GDRO. Default hyperparameters are used. We tune the model with C ∈ { 0, 1, 2, 3} across all three of our datasets. 
+
+PG-DRO (Ghosal & Li, 2023) A two-stage method described in Section 2.4. Essentially SSA but with probabilistic group labels. We tune the model with C ∈ { 0, 1, 2, 3} across all three of our datasets. 
+
+## E ADDITIONAL RESULTS 
+
+E.1 EFFICIENCY 
+
+Validation performance. In Figure 1, we show that Bi-HDRO reaches optimal validation accu-racy quicker than HDRO does. For CelebA, HDRO took about 6,000 optimization steps to reach level similar to Bi-HDRO. Additionally, HDRO requires extensive grid search to obtain such results, while Bi-HDRO requires only one run. 
+
+Runtime. We show below in Table 7 that Bi-HDRO takes shorter time to run. HDRO would require much longer runtime than stated if grid search is taken into account. CMNIST in general takes longer to achieve reasonable performance. Table 7: Wall-clock time for one run in seconds. 
+
+CMNIST CelebA CivilComments HDRO 405 3145 625 
+
+Bi-HDRO ( ϵg ) 6674 129 3912 22 Preprint E.2 DOES PERTURBATION HELP SOFT GROUP ASSIGNMENTS (B I-PG-DRO)? We decide not to perturb the latent space in Bi-PG-DRO because empirically, fixed perturbation alone degrades model performance, and ϵg converges to 0 when automatically tuned. On CMNIST, we found that perturbation ϵg all converged to 0 regardless of initial values (Figure 2). We attempted 3 setups: initial value is 0, initial value is 96/255, initial value is 0 but unbounded from above. Validation performance worsens in Bi-PG-DRO with active perturbation. We observed similar per-formance degradation on CelebA and CivilComments. Based on this result, we decide not to include perturbation with probabilistic group membership. 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 10000 0.0 0.2 0.4 0.6 0.8 1.0 0 50000 0.0 0.2 0.4 0.6 0.8 0 50000 012345670 50000 0123450 50000 0.00 0.05 0.10 0.15 0.20 
+
+> Perturbation Epsilon per Group Optimizer Steps
+
+Figure 2: ϵg converges to 0 for Bi-PG-DRO. First row: ϵinit = 0 . Second row: ϵinit = 96 /255 .Third row: Unclipped ϵinit = 0 . Last column is the shifted minority group. E.3 SHOULD MEMBERSHIP INFERENCE BE PRECISE FOR WORST -G ROUP PERFORMANCE ?As long as worst-group validation loss is focused on during bilevel optimization, predicted group la-bels need not be precise. In Figure 3, we show that post-hoc attribute accuracy over group-unlabeled training set without upper level regularization is poor, but the validation performance does not de-grade as much. Moreover, we show that KL regularization instead of explicit BCE training provides closer attribute prediction accuracy results and gives a small boost in validation worst-group accu-racy. 23 Preprint 0 5000 10000 15000 20000     
+
+> Outer Iterations
+> 0.5 0.6 0.7 0.8 0.9 1.0
+> Training Attribute Acc
+> BCE KL No Reg 05000 10000 15000 20000
+> Outer Iterations
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7
+> Worst-group Val Acc
+
+(a) CMNIST 0 500 1000 1500 2000      
+
+> Outer Iterations
+> 0.4 0.5 0.6 0.7 0.8 0.9
+> Training Attribute Acc 0500 1000 1500 2000
+> Outer Iterations
+> 0.0 0.2 0.4 0.6 0.8
+> Worst-group Val Acc
+
+(b) CelebA 0 200 400 600 800 1000       
+
+> Outer Iterations
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Training Attribute Acc 0200 400 600 800 1000
+> Outer Iterations
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7
+> Worst-group Val Acc
+
+(c) CivilComments 
+
+Figure 3: Attribute prediction accuracy on group-unlabeled training data (top) and worst-group validation accuracy (bottom) across three datasets organized by column. 
+
+## F GENERALIZATION THEORY FOR CONTINUOUS BILEVEL 
+
+## HYPERPARAMETER TUNING 
+
+In this section, we analyze the generalization guarantees of continuous bilevel hyperparameter tun-ing. Our primary theoretical goal is to establish a Continuous Oracle Inequality for Group Distribu-tionally Robust Optimization (DRO). This inequality characterizes how optimizing hyperparameters on a validation set allows the algorithm to seamlessly navigate the fundamental trade-off between structural complexity and worst-case group robustness. 
+
+Roadmap. Because establishing continuous generalization bounds requires multiple statistical learning tools, our analysis proceeds in four stages. 1. We formalize the bilevel setup and explicitly prove that the lower-level optimization algo-rithm induces a bounded, Lipschitz-continuous hypothesis space with respect to the hyper-parameters (Appendix F.1). 2. We establish the mathematical machinery required to bound the upper-level validation er-ror across the entire continuous hyperparameter path using Rademacher complexity (Ap-pendix F.3). 3. As a theoretical warm-up, we apply this machinery to standard Regularized Empirical Risk Minimization, which isolates how the upper-level continuous tuning error cleanly decou-ples from the lower-level uniform stability (Appendix F.4). 4. We derive our main result: the Group DRO Oracle Inequality (Appendix F.5). 5. Finally, we extend this continuous generalization theory to Hierarchical DRO (Bi-HDRO), demonstrating that tuning multi-dimensional perturbation radii preserves the algorithmic Lipschitz continuity and resulting Oracle Inequalities (Appendix F.6). 24 Preprint F.1 SETUP AND ASSUMPTIONS 
+
+Throughout this section, we make the following formal assumptions about the learning problem and the bilevel setup: 1. Loss Function: The instantaneous loss function ℓ(W, z ) is convex and L-Lipschitz with respect to W . Furthermore, its absolute value is bounded by M (i.e., |ℓ(W, z )| ≤ M ) over a bounded optimization domain of radius B (i.e., ∥W ∥ ≤ B). 2. Continuous Hyperparameter Space: The generic hyperparameter ϕ is tuned over a con-tinuous k-dimensional bounded domain Φ ⊂ Rk. We assume the maximum ℓ2 distance between any two hyperparameters in Φ is bounded by a diameter R.3. Strong Convexity of Regularization: The lower-level objective includes a regularization term Ωλ(W ) that is λ-strongly convex with respect to W .4. Algorithmic Mapping and Lipschitz Continuity: The lower-level optimization acts as a mapping algorithm A : Φ → Rd on a training set Strain of size ntr , outputting a parameter 
+
+cWϕ = A(ϕ). We require this mapping A to be ρA-Lipschitz continuous with respect to ϕ
+
+in the ℓ2 norm: ∥A (ϕ1) − A (ϕ2)∥ ≤ ρA∥ϕ1 − ϕ2∥. While formalized here as a high-level requirement for our general theorems, we explicitly demonstrate later that this continuity is a consequence of strong convexity (Assumption 3) for our specific learning objectives. Based on this mapping, the upper-level problem evaluates the induced predictors on an independent validation set Sval of size nval . We define the effective algorithmic hypothesis class explored by the validation process as the k-dimensional continuous manifold induced by A:
+
+HΦ = {cWϕ : ϕ ∈ Φ} (20) To establish our generalization guarantees, we rely on the classical framework of uniform stability .For completeness, we defer the standard formal definitions and stability derivations to Appendix F.7. F.2 ALGORITHMIC LIPSCHITZ CONTINUITY EXAMPLES 
+
+To provide concrete intuition for Assumption 4 (Algorithmic Lipschitz Continuity), we walk through two representative cases: a warm-up for standard Regularized Loss Minimization, and a formal proof for our primary application of Group DRO. 
+
+Example 1: (Warm-up) Standard Regularized Loss Minimization. Consider a standard bilevel formulation for Regularized Empirical Risk Minimization (ERM), where the goal is to tune the continuous regularization penalty. Here, the one-dimensional continuous hyperparameter is the reg-ularization weight λ ∈ Λ = [ λmin , λ max ] where λmin > 0. The lower-level objective minimizes the regularized empirical risk over the training set: 
+
+Fλ(W ) = Ltr (W ) + Ω λ(W ) (21) yielding the optimal predictor cWλ = arg min W Fλ(W ). The upper-level problem evaluates these predictors to minimize the unregularized risk on a validation set: min λ∈Λ Lval (cWλ).Because the lower-level objective Fλ(W ) is λ-strongly convex (Assumption 3), the Lipschitz con-tinuity of the mapping λ 7 → cWλ is naturally guaranteed without requiring differentiability of the loss. By the property of strong convexity at the optimum cWλ, for any W we have Fλ(W ) ≥
+
+Fλ(cWλ) + λ 
+
+> 2
+
+∥W − cWλ∥2. Evaluating this for λ1 at W = cWλ2 and for λ2 at W = cWλ1 gives two inequalities: 
+
+Fλ1 (cWλ2 ) ≥ Fλ1 (cWλ1 ) + λ1
+
+2 ∥cWλ2 − cWλ1 ∥2
+
+Fλ2 (cWλ1 ) ≥ Fλ2 (cWλ2 ) + λ2
+
+2 ∥cWλ1 − cWλ2 ∥2
+
+Expanding Fλ(W ) = Ltr (W )+Ω λ(W ) and summing them, the empirical loss terms Ltr (cWλ1 ) and 
+
+Ltr (cWλ2 ) exactly cancel out on both sides. Rearranging the remaining regularization terms leaves: 
+
+λ1 + λ2
+
+2 ∥cWλ1 − cWλ2 ∥2 ≤
+
+
+
+Ωλ1 (cWλ2 ) − Ωλ1 (cWλ1 )
+
+
+
++
+
+
+
+Ωλ2 (cWλ1 ) − Ωλ2 (cWλ2 )
+
+
+
+(22) 25 Preprint Consider the general proximal regularization case where Ωλ(W ) = λ 
+
+> 2
+
+∥W − a∥2 for some reference vector a (standard Ridge is recovered when a = 0). The right side simplifies to λ1−λ2 
+
+> 2
+
+(∥cWλ2 −
+
+a∥2 − ∥ cWλ1 − a∥2). Using the algebraic identity ∥x∥2 − ∥ y∥2 = ⟨x − y, x + y⟩, we can rewrite this difference as: λ1 − λ2
+
+2 ⟨cWλ2 − cWλ1 , cWλ2 + cWλ1 − 2a⟩
+
+Applying the Cauchy-Schwarz inequality, and noting that the average λ1+λ2 
+
+> 2
+
+is strictly lower-bounded by λmin , yields: 
+
+λmin ∥cWλ1 − cWλ2 ∥2 ≤ |λ1 − λ2|
+
+2 ∥cWλ1 − cWλ2 ∥∥ cWλ1 + cWλ2 − 2a∥ (23) By the triangle inequality, and assuming the optimization domain is bounded by a constant radius B
+
+(Assumption 1), the second term is bounded by ∥cWλ1 ∥+∥cWλ2 ∥+2 ∥a∥ ≤ 2( B +∥a∥). Dividing by 
+
+∥cWλ1 − cWλ2 ∥ proves that the mapping A is strictly bounded by a constant ρA = ( B + ∥a∥)/λ min 
+
+and is therefore ρA-Lipschitz: 
+
+∥cWλ1 − cWλ2 ∥ ≤ ρA|λ1 − λ2| (24) Alternatively, if the loss and regularizer are strictly twice continuously differentiable, one can re-cover this same Lipschitz constant ρA ≤ B/λ min by directly bounding the spectral norm of the Implicit Function Theorem Jacobian: dcWλ 
+
+> dλ
+
+= −[∇2 
+
+> W
+
+Fλ(cWλ)] −1∇2 
+
+> λW
+
+Fλ(cWλ).
+
+Example 2: Group Distributionally Robust Optimization (DRO). As a concrete application, consider a linearized Group DRO setting where we optimize a linear classifier W directly on fixed inputs. Given training data partitioned into G groups with empirical group losses Ltr (W ) ∈ RG,the lower level optimizes the classifier against a worst-case group distribution q ∈ ∆G (the proba-bility simplex weighting the groups). The deviation of this worst-case distribution from the uniform distribution is penalized by a robustness hyperparameter η ∈ H = [ ηmin , η max ] where ηmin > 0.The lower-level problem is: 
+
+cWη = arg min  
+
+> W
+
+max 
+
+> q∈∆G
+
+"
+
+qT Ltr (W ) − η
+
+2 q − 1
+
+G 1
+
+> 2
+
++ λ
+
+2 ∥W ∥2
+
+#
+
+(25) where λ is a fixed L2 regularization coefficient. In the upper level, we tune the robustness hyperpa-rameter η ∈ H using an independent validation set Dval (partitioned into G groups) to minimize the worst-group validation loss. Here, η naturally assumes the role of the generic continuous tuning hy-perparameter ϕ (with k = 1 ) from Section F.1, while λ serves strictly as the fixed strong convexity constant required for stability: 
+
+min  
+
+> η∈H
+
+max  
+
+> g∈[G]
+
+Lval  
+
+> g
+
+(cWη ) (26) By continuously tuning η, the bilevel formulation dynamically discovers the optimal trade-off be-tween average-case empirical risk and worst-group robustness on unseen data. Remarkably, this formulation strictly satisfies the algorithmic Lipschitz condition (Assumption 4). We formally state this property below. 
+
+Lemma F.1 (Algorithmic Lipschitz Continuity of Group DRO) . Suppose the instantaneous group losses Ltr  
+
+> g
+
+(W ) are L-Lipschitz and bounded by M over a bounded optimization domain of radius 
+
+B (Assumption 1). For any fixed strong convexity regularizer λ > 0 (Assumption 3), the max-marginalized lower-level objective Jη (W ) induces an algorithmic mapping cWη that is ρA-Lipschitz continuous with respect to the robustness hyperparameter η ≥ ηmin > 0, with explicit constant: 
+
+ρA ≤ GLM λη 2min 
+
+(27) 
+
+Proof. Let Jη (W ) = max q∈∆G F (W, q, η ) be the max-marginalized lower-level objective, where 
+
+F (W, q, η ) = qT Ltr (W ) − η 
+
+> 2
+
+∥q − 1 
+
+> G
+
+1∥2 + λ 
+
+> 2
+
+∥W ∥2. By Danskin’s theorem (Danskin, 1967), the gradient of the max-marginalized function is simply the gradient of the objective evalu-ated at the optimal inner variable. Thus, its gradient is ∇Jη (W ) = ∇W F (W, q ∗ 
+
+> η
+
+(W ), η ) =
+
+26 Preprint 
+
+J(W )q∗ 
+
+> η
+
+(W ) + λW , where J(W ) is the d × G Jacobian matrix of group losses. By Assump-tion 1, each group loss is L-Lipschitz, so the operator norm of J(W ) is bounded by its Frobenius norm 
+
+qPGg=1 ∥∇ Ltr  
+
+> g
+
+(W )∥2 ≤ √GL .Next, we bound how much this gradient shifts with respect to η. The optimal inner distribution is exactly the simplex projection q∗ 
+
+> η
+
+(W ) = Π ∆G (uη (W )) , where uη (W ) = 1 
+
+> η
+
+Ltr (W )+ 1 
+
+> G
+
+1. Because the projection Π∆G is non-expansive (1-Lipschitz), the shift in the optimal inner distribution is bounded by the shift in the unprojected vector: ∥q∗ 
+
+> η1
+
+(W ) − q∗ 
+
+> η2
+
+(W )∥ ≤ ∥ uη1 (W ) − uη2 (W )∥ =
+
+( 1 
+
+> η1
+
+− 1 
+
+> η2
+
+)Ltr (W ) . By Assumption 1, each group loss is bounded by M , so ∥Ltr (W )∥ ≤ √GM .Requiring η ≥ ηmin > 0, we have |1/η 1 − 1/η 2| ≤ | η1 − η2|/η 2min . This directly provides the shift bound: ∥q∗ 
+
+> η1
+
+(W ) − q∗ 
+
+> η2
+
+(W )∥ ≤ √GM η2min 
+
+|η1 − η2|, which in turn limits the overall gradient shift to 
+
+∥∇ Jη1 (W ) − ∇ Jη2 (W )∥ ≤ GLM η2min 
+
+|η1 − η2|.Finally, let cWη1 and cWη2 be the optimal lower-level classifiers for hyperparameters η1 and η2. Be-cause Jη is λ-strongly convex, its gradient is λ-strongly monotone: 
+
+⟨∇ Jη1 (cWη1 ) − ∇ Jη1 (cWη2 ), cWη1 − cWη2 ⟩ ≥ λ∥cWη1 − cWη2 ∥2
+
+For any closed convex domain (in particular ∥W ∥ ≤ B), the first-order optimality condition dictates: 
+
+⟨−∇ Jη1 (cWη1 ), cWη1 − cWη2 ⟩ ≥ 0
+
+⟨∇ Jη2 (cWη2 ), cWη1 − cWη2 ⟩ ≥ 0
+
+Summing the above three inequalities and applying the Cauchy-Schwarz inequality yields: 
+
+λ∥cWη1 − cWη2 ∥2 ≤ ⟨∇ Jη2 (cWη2 ) − ∇ Jη1 (cWη2 ), cWη1 − cWη2 ⟩≤ ∥∇ Jη2 (cWη2 ) − ∇ Jη1 (cWη2 )∥∥ cWη1 − cWη2 ∥ (28) Dividing by λ∥cWη1 − cWη2 ∥ and plugging in our bound for the gradient shift establishes the explicit Lipschitz constant ρA.Thus, tuning the DRO robustness parameter over a continuous space is theoretically well-behaved and Lipschitz-stable as long as the search space is bounded away from zero ( η ≥ ηmin > 0). F.3 UNIFORM CONVERGENCE OVER MULTI -DIMENSIONAL CONTINUOUS HYPOTHESIS 
+
+SPACES 
+
+Before specializing to specific learning algorithms like ERM or Group DRO, we first establish a gen-eral uniform convergence bound for the k-dimensional continuous hypothesis class HΦ. By leverag-ing the Lipschitz continuity of the algorithmic mapping, we can bound the Rademacher complexity of this manifold as a function of the hyperparameter space dimensionality k.
+
+Lemma F.2 (Rademacher Complexity of k-dimensional Algorithmic Hypothesis Class) . Suppose the loss function ℓ is L-Lipschitz and bounded by M (Assumption 1). Let Φ ⊂ Rk be a bounded k-dimensional hyperparameter space with ℓ2 diameter R (Assumption 2). If the lower-level mapping 
+
+A(ϕ) = cWϕ is ρA-Lipschitz (Assumption 4), the empirical Rademacher complexity of the validation loss class over HΦ on a set Sval of size nval is bounded by: 
+
+ˆRSval (HΦ) ≤ 6M
+
+√nval 
+
+√k
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
+(29) 
+
+Proof. The proof relies on bounding the continuous covering number and applying discrete chain-ing. For a k-dimensional space Φ with ℓ2 diameter R, its r-covering number in ℓ2 norm is bounded by N (r, Φ) ≤ (3 R/r )k for r ≤ R. This follows from a standard volumetric argument: a maximal 
+
+r-separated set of size N in Φ induces N disjoint balls of radius r/ 2. Since Φ has diameter R, these disjoint balls are entirely contained within a larger ball of radius R + r/ 2. Comparing their volumes yields N (r/ 2) k ≤ (R + r/ 2) k, which implies N ≤ (1 + 2 R/r )k ≤ (3 R/r )k when r ≤ R. Due 27 Preprint to the ρA-Lipschitz property of the mapping, an r-cover of Φ projects to an (ρA · r)-cover of the hypothesis class HΦ. Thus, the covering number of the effective hypothesis class is bounded by 
+
+N (r, HΦ) ≤ (3 ρAR/r )k.Let A ⊂ Rnval 
+
+be the set of loss evaluations on Sval = {z1, . . . , z nval } for all predictors in HΦ.The maximum ℓ2 norm of any vector in A is C = M √nval . Since the loss is L-Lipschitz, the ℓ2
+
+distance between two loss vectors aϕ1 and aϕ2 generated by predictors cWϕ1 and cWϕ2 is bounded by ∥aϕ1 − aϕ2 ∥2 ≤ L√nval ∥cWϕ1 − cWϕ2 ∥2. Therefore, guaranteeing an ϵ-cover of A requires at most an r-cover of HΦ with r = ϵL√nval . Thus, the covering number of A is bounded by N (ϵ, A ) ≤
+
+N (r, HΦ) ≤
+
+ 3ρARL √nval 
+
+> ϵ
+
+k
+
+.By the discrete chaining lemma (Shalev-Shwartz & Ben-David, 2014, Lemma 27.4), we evaluate the complexity over discrete scales ϵi = C2−i. For any i ≥ 1:
+
+plog N (C2−i, A ) ≤
+
+vuutk log 3ρARL √nval 
+
+M √nval 2i
+
+!
+
+≤ √k(α + βi ) (30) where α =
+
+r
+
+log 
+
+ 3ρARL M
+
+
+
+and β = √log 2 . Evaluating the full infinite chaining sum gives the explicit Rademacher complexity (Shalev-Shwartz & Ben-David, 2014, Lemma 27.5): 
+
+ˆRSval (HΦ) ≤ 6Cnval 
+
+√k(α + 2 β) = 6M
+
+√nval 
+
+√k
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
+(31) This lemma provides a deterministic uniform convergence bound. By applying standard Rademacher concentration bounds (Shalev-Shwartz & Ben-David, 2014, Theorem 26.5) combined with McDiarmid’s inequality, the uniform deviation sup ϕ∈Φ |LD (cWϕ) − Lval (cWϕ)| ≤ ϵval holds with probability 1 − δ, where: 
+
+ϵval = 12 M
+
+√nval 
+
+√k
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
++ M
+
+r 2 log(2 /δ )
+
+nval (32) F.4 WARM -UP : C ONTINUOUS ORACLE INEQUALITY FOR REGULARIZED ERM In this subsection, we formalize the generalization guarantees for Regularized Empirical Risk Min-imization (ERM), where the generic continuous tuning parameter is instantiated as the L2 regular-ization coefficient (i.e., we set ϕ = λ with k = 1 ). In this setting, the lower level trains a regularized model cWλ on a training set Strain = {ztrain  
+
+> 1
+
+, . . . , z train  
+
+> ntr
+
+} drawn i.i.d. from a single data distribution D:
+
+cWλ = arg min 
+
+> W
+
+ 1
+
+ntr 
+
+> ntr
+
+X
+
+> i=1
+
+ℓ(W, z train  
+
+> i
+
+) + Ω λ(W )
+
+ (33) The upper level evaluates this continuous hypothesis class HΛ = {cWλ : λ ∈ Λ} on an independent validation set Sval = {zval  
+
+> 1
+
+, . . . , z val  
+
+> nval
+
+} also drawn from D:
+
+ˆλ = arg min 
+
+> λ∈Λ
+
+1
+
+nval 
+
+> nval
+
+X
+
+> j=1
+
+ℓ(cWλ, z val  
+
+> j
+
+) (34) This serves as the foundational continuous oracle inequality, clearly distinct from the worst-case Group DRO formulation analyzed subsequently. The following theorem combines the lower-level high-probability generalization bound for a fixed 
+
+λ with the uniform convergence bound over the 1-dimensional continuous hypothesis class HΛ.28 Preprint 
+
+Theorem F.3 (Continuous Oracle Inequality for ERM) . Suppose Assumptions 1–4 hold: the loss ℓ
+
+is L-Lipschitz and bounded by M , the regularization Ωλ is λ-strongly convex, the continuous tuning interval Λ has length R, and the lower-level mapping A(λ) = cWλ is ρA-Lipschitz. Let W ∗ be an arbitrary reference predictor (e.g., the population risk minimizer). Let ˆλ ∈ Λ be the hyperparameter chosen by minimizing the validation risk over HΛ. With probability at least 1 − δ over the random draw of both Strain and Sval , the true risk LD (cWˆλ) = Ez∼D [ℓ(cWˆλ, z )] satisfies: 
+
+LD (cWˆλ) ≤ LD (W ∗) + min  
+
+> λ∈Λ
+
+Ωλ(W ∗) + 2L2
+
+λn tr +
+
+ 4L2
+
+λn tr + 4Mntr 
+
+ r ntr log(4 /δ )2
+
+!
+
++ 24 M
+
+√nval 
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
++ 2 M
+
+r 2 log(4 /δ )
+
+nval 
+
+Interpretation of the Continuous Oracle Inequality. In standard Regularized Loss Minimization (as noted in Shalev-Shwartz & Ben-David (2014, Corollary 13.8)), finding the optimal hyperparam-eter λ requires prior knowledge of the optimal predictor’s norm ∥W ∗∥. If ∥W ∗∥ is known, one can analytically set λ to perfectly balance the bias (the Ωλ(W ∗) term) and the variance (the stability gap, which scales as O(1 /λm )), thereby achieving an optimal generalization rate of O(1 /√m).However, in practice, the true optimal predictor W ∗ and its norm are unknown. The standard ap-proach to circumvent this is Structural Risk Minimization (SRM), where one trains models on a fi-nite, discrete grid of λ values and selects the best one using a validation set. While SRM guarantees learning, it restricts the solution to the predefined grid, introducing discretization error. Furthermore, as established by Shalev-Shwartz & Ben-David (2014, Theorem 11.2), to theoretically guarantee that the validation set does not overfit to any model in the finite grid, one applies the union bound. Plug-ging the union bound over all |Grid | discrete options into Hoeffding’s inequality incurs a uniform convergence penalty scaling with O
+
+p log( |Grid |)/n val 
+
+
+
+. Consequently, attempting to reduce discretization error by making the grid denser degrades the theoretical generalization guarantee. Our Continuous Oracle Inequality demonstrates that continuous bilevel tuning effectively acts as an “oracle,” automatically discovering the theoretically optimal bias-variance trade-off min λ∈Λ(Ω λ(W ∗) + ϵtrain (λ)) for the unknown reference predictor W ∗. Crucially, it achieves this without discretization error, paying only a logarithmic uniform convergence penalty 
+
+O p log( ρARL/M )/n val . Conceptually, the inner term ρARL/M acts as an “effective grid size”—representing the finite number of distinguishable models within the continuous interval— allowing us to bypass discretization error while paying a statistical penalty no worse than a dense discrete grid. Furthermore, this continuous formulation allows us to directly traverse the hyper-parameter space using efficient continuous optimization techniques, such avoiding the prohibitive computational cost of repeatedly training independent models associated with standard grid search. 
+
+Proof. Given the Lipschitz continuity of the algorithmic mapping established in the assumptions, the proof decomposes the true risk using the uniform convergence of the validation loss (via our general Rademacher bound) and the stability of the lower-level algorithm. 
+
+Step 1: Upper-Level Uniform Convergence. By substituting k = 1 into the general uniform deviation bound derived in Equation (32), the two-sided uniform deviation sup λ∈Λ |LD (cWλ) −
+
+Lval (cWλ)| ≤ ϵval holds with probability 1 − δ/ 2, where: 
+
+ϵval = 12 M
+
+√nval 
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
++ M
+
+r 2 log(4 /δ )
+
+nval (35) 
+
+Step 2: Final Continuous Oracle Inequality. Let W ∗ be any fixed reference predictor (such as the population risk minimizer). We define the optimal regularization parameter for this predictor as 
+
+λ∗ = arg min λ∈Λ (Ω λ(W ∗) + ϵtrain (λ)) , where ϵtrain (λ) will be defined shortly. Since ˆλ minimizes the empirical validation risk, we have Lval (cWˆλ) ≤ Lval (cWλ∗ ). Applying the uniform deviation 29 Preprint bound (which holds over all HΛ with probability 1 − δ/ 2) to both ˆλ and λ∗ yields: 
+
+LD (cWˆλ) ≤ Lval (cWˆλ) + ϵval 
+
+≤ Lval (cWλ∗ ) + ϵval 
+
+≤ LD (cWλ∗ ) + 2 ϵval 
+
+To bound LD (cWλ∗ ), we compare it against the fixed W ∗. By the empirical optimality of cWλ∗ , we have Ltr (cWλ∗ ) + Ω λ∗ (cWλ∗ ) ≤ Ltr (W ∗) + Ω λ∗ (W ∗). Because Ωλ ≥ 0, we can decompose the true risk as: 
+
+LD (cWλ∗ ) = Ltr (cWλ∗ ) + 
+
+
+
+LD (cWλ∗ ) − Ltr (cWλ∗ )
+
+
+
+≤ Ltr (W ∗) + Ω λ∗ (W ∗) + 
+
+
+
+LD (cWλ∗ ) − Ltr (cWλ∗ )
+
+
+
+= LD (W ∗) + Ω λ∗ (W ∗) + 
+
+
+
+LD (cWλ∗ ) − Ltr (cWλ∗ )
+
+| {z }
+
+> Stability gap
+
++  Ltr (W ∗) − LD (W ∗)| {z }
+
+> Hoeffding gap
+
+By Lemma F.15 with probability 1 − δ/ 4, the stability gap is bounded by: 
+
+2L2
+
+λ∗ntr +
+
+ 4L2
+
+λ∗ntr + 2Mntr 
+
+ r ntr log(4 /δ )2
+
+Simultaneously, since W ∗ is fixed independent of Strain , we apply Hoeffding’s inequality (Shalev-Shwartz & Ben-David, 2014, Lemma B.6). Because the absolute loss is bounded by M , the loss variables fall in a range of 2M . For a one-sided bound with local confidence δlocal = δ/ 4, Hoeffd-ing’s inequality exactly bounds the second gap by M
+
+q 2 log(4 /δ ) 
+
+> ntr
+
+= 2Mntr 
+
+q ntr log(4 /δ )2 with probabil-ity 1 − δ/ 4. Summing these bounds gives: 
+
+LD (cWλ∗ ) ≤ LD (W ∗) + Ω λ∗ (W ∗) + 2L2
+
+λ∗ntr +
+
+ 4L2
+
+λ∗ntr + 4Mntr 
+
+ r ntr log(4 /δ )2
+
+| {z }
+
+> := ϵtrain (λ∗)
+
+(36) By the definition of λ∗, this is exactly LD (W ∗) + min λ∈Λ (Ω λ(W ∗) + ϵtrain (λ)) . Substituting this bound directly into LD (cWˆλ) ≤ LD (cWλ∗ )+2 ϵval , and applying the union bound over all three events (total probability 1 − δ), we obtain the Continuous Oracle Inequality. Expanding ϵtrain (λ) and 2ϵval 
+
+precisely matches the theorem statement, completing the proof. F.5 CONTINUOUS ORACLE INEQUALITY FOR GROUP DRO While Theorem F.3 outlines the oracle inequality for standard ERM over a unified dataset, applying this continuous generalization bound to the Group DRO formulation requires substituting the sample complexities. In this setting, the generic continuous tuning parameter is instantiated as the robust-ness penalty (i.e., we set ϕ = η with k = 1 ), while the L2 regularization coefficient λ is held fixed strictly to satisfy the required strong convexity for algorithmic stability. Because DRO is evaluated on a worst-case basis at both levels, uniform stability in the lower level and uniform convergence in the upper level are strictly bottlenecked by the most scarcely represented groups. 
+
+Lemma F.4 (Modified Uniform Stability of Group DRO) . Let Jη (W ; S) =max q∈∆G [PGg=1 qg Ltr  
+
+> g
+
+(W ) − η 
+
+> 2
+
+∥q − 1 
+
+> G
+
+1∥2 + λ 
+
+> 2
+
+∥W ∥2] be the lower-level Group DRO ob-jective. Under the assumptions of bounded and Lipschitz continuous group losses (Assumption 1), the lower-level Group DRO algorithm A(S) = arg min W Jη (W ; S) is uniformly stable with modified constant: 
+
+βDRO = 2L2
+
+λ min g ntr 
+
+> g
+
+1 + M √Gηmin 
+
+!
+
+(37) 
+
+where min g ntr  
+
+> g
+
+is the size of the smallest group in the training set S.
+
+30 Preprint 
+
+Proof. This proof follows the same standard gradient-based strong convexity argument as the stan-dard stability result (Lemma F.14), but must account for the coupled min-max optimization over all groups. When the training set S is perturbed by changing exactly one example z into z′, this perturbation occurs in exactly one group, say group k. Because each instantaneous loss is bounded by M , the empirical loss of group k changes by at most 1
+
+> ntr
+> k
+
+|ℓ(W, z ) − ℓ(W, z ′)| ≤ 2M 
+
+> min gntr
+> g
+
+.To bound the uniform stability, we evaluate how much the gradient of Jη shifts due to this perturba-tion. By Danskin’s theorem, the gradient is exactly ∇Jη (W ; S) = PGg=1 qg ∇Ltr  
+
+> g
+
+(W )+ λW , where 
+
+q = Π ∆G
+
+ 1 
+
+> η
+
+Ltr (W ) + 1 
+
+> G
+
+1
+
+
+
+are the optimal simplex weights. Let S′ be the perturbed dataset with corresponding optimal weights q′. The shift in the gradient of the loss term is bounded by: 
+
+> G
+
+X
+
+> g=1
+
+qg ∇Ltr  
+
+> g
+
+(S) −
+
+> G
+
+X
+
+> g=1
+
+q′ 
+
+> g
+
+∇Ltr  
+
+> g
+
+(S′)
+
+≤
+
+> G
+
+X
+
+> g=1
+
+qg
+
+ ∇Ltr  
+
+> g
+
+(S) − ∇ Ltr  
+
+> g
+
+(S′)| {z }
+
+> Direct gradient shift
+
++
+
+> G
+
+X
+
+> g=1
+
+(qg − q′ 
+
+> g
+
+)∇Ltr  
+
+> g
+
+(S′)
+
+| {z }
+
+> Weight perturbation shift
+
+For the first term, only group k’s empirical gradient changes (by at most 2L 
+
+> min gntr
+> g
+
+). Since qk ≤ 1,this direct shift is bounded by 2L 
+
+> min gntr
+> g
+
+. For the second term, the simplex projection is 1-Lipschitz, so the shift in optimal weights is bounded by the scaled shift in the group losses: ∥q − q′∥ ≤  
+
+> 1
+> η
+
+∥Ltr (S)−Ltr (S′)∥ ≤ 1 
+
+> ηmin
+> 2M
+> min gntr
+> g
+
+. Multiplying by the Jacobian norm of the group losses ( √GL ), the second term is bounded by 2M L √Gηmin min g ntr 
+
+> g
+
+.Summing these, the entire gradient shifts by at most 2L 
+
+> min gntr
+> g
+
+
+
+1 + M √Gηmin 
+
+
+
+:= ∆ . Because Jη
+
+is λ-strongly convex, applying the exact same strong monotonicity displacement argument from Equation (43) in Lemma F.14 guarantees ∥cWη (S) − cWη (S′)∥ ≤ ∆ 
+
+> λ
+
+. Multiplying by the L-Lipschitz constant of the worst-group loss yields the final modified uniform stability constant βDRO .
+
+Theorem F.5 (Group DRO Continuous Oracle Inequality) . Let min g ntr  
+
+> g
+
+and min g nval  
+
+> g
+
+denote the sizes of the smallest groups in the training and validation sets, respectively, where both sets consist of 
+
+G groups. For any reference predictor W ∗, let Ωη (W ∗) = λ 
+
+> 2
+
+∥W ∗∥2 + η 
+
+> 2
+
+be the approximation bias penalty. Let ˆη = arg min η∈H fval (cWη ) be the hyperparameter chosen by minimizing the empirical validation worst-group risk fval over the continuous hypothesis class HH , where H = [ ηmin , η max ].Let βDRO = 2L2  
+
+> λmin gntr
+> g
+
+
+
+1 + M √Gηmin 
+
+
+
+be the modified uniform stability. With probability at least 1 − δ,the true worst-group risk Lworst  
+
+> D
+
+(cWˆη ) = max g LD,g (cWˆη ) satisfies: 
+
+Lworst  
+
+> D
+
+(cWˆη ) ≤Lworst  
+
+> D
+
+(W ∗) + M
+
+s
+
+2 log(4 G/δ )min g ntr 
+
+> g
+
++ 2 M
+
+s
+
+2 log(4 G/δ )min g nval 
+
+> g
+
++ min  
+
+> η∈H
+
+Ωη (W ∗) + βDRO + Σ 
+
+r log(4 G/δ )2
+
+!
+
++ 24 M
+
+q
+
+min g nval 
+
+> g
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
+where ρA ≤ GLM λη 2min 
+
+is the Lipschitz constant of the DRO algorithmic mapping, and Σ2 = 4 ntr β2 
+
+> DRO
+
++8M β DRO + 4M 2 
+
+> min gntr
+> g
+
+bounds the stability variance. Proof. The proof mirrors the three-step structure of Theorem F.3, isolating the exact points where worst-case group bounds modify the complexities. 31 Preprint 
+
+Step 1: Lower-Level Uniform Stability (via Union Bound). By Lemma F.4, the lower-level Group DRO objective is uniformly stable with the modified constant βDRO = 2L2  
+
+> λmin gntr
+> g
+
+
+
+1 + M √Gηmin 
+
+
+
+. Be-cause the empirical worst-group risk is a maximum over empirical averages, its expected general-ization gap is not bounded directly by βDRO due to Jensen’s inequality ( max g E[·] ≤ E[max g ·]). Instead, we decouple the maximum operator. By the subadditivity of the maximum, the worst-group generalization gap is bounded by the maximum of the individual group generalization gaps: 
+
+Lworst  
+
+> D
+
+(cWη ) − Ltr 
+
+> worst
+
+(cWη ) = max  
+
+> g
+
+LD,g (cWη ) − max  
+
+> g
+
+Ltr  
+
+> g
+
+(cWη ) ≤ max 
+
+> g∈[G]
+
+
+
+LD,g (cWη ) − Ltr  
+
+> g
+
+(cWη )
+
+| {z } 
+
+> := Zg(S)
+
+For any specific group g, the standard expected-loss stability result applies perfectly: ES [Zg (S)] ≤
+
+βDRO . To bound the maximum over all groups with high probability, we rigorously evaluate the sensitivity of Zg (S) to a single point perturbation. Suppose we perturb exactly one training example 
+
+zi → z′ to form S(i). Let cW and cW (i) be the optimal predictors for S and S(i), respectively. By the triangle inequality, the sensitivity of the group generalization gap is bounded by: 
+
+|Zg (S) − Zg (S(i))| ≤ LD,g (cW ) − LD,g (cW (i))
+
+| {z }
+
+> True risk sensitivity
+
++ Ltr  
+
+> g
+
+(cW ) − Ltr ,(i) 
+
+> g
+
+(cW (i))
+
+| {z }
+
+> Empirical risk sensitivity
+
+For the true risk sensitivity, the uniform stability property guarantees that the absolute loss dif-ference on any arbitrary point z is deterministically bounded by βDRO . Therefore, its expectation over the target group distribution z ∼ D g is identically bounded: LD,g (cW ) − LD,g (cW (i)) ≤
+
+Ez∼D g [|ℓ(cW , z ) − ℓ(cW (i), z )|] ≤ βDRO . For the empirical risk sensitivity, the bound depends on whether the perturbed index i belongs to group g (i ∈ Gg ): 1. Case 1 ( i / ∈ Gg ): The subset of points belonging to group g is identical between S and S(i).The empirical risk shifts solely due to the change in the algorithmic output cW . Averaging the uniform stability bound over these ntr  
+
+> g
+
+unperturbed points yields an empirical shift of exactly βDRO .2. Case 2 ( i ∈ Gg ): Group g shares ntr  
+
+> g
+
+− 1 identical points between the two sets, but one point differs ( zi → z′). For the identical points, the loss difference is bounded by βDRO . For the single swapped point, the loss difference is naively bounded by 2M (Assumption 1). Averaging these yields: 
+
+Ltr  
+
+> g
+
+(cW ) − Ltr ,(i) 
+
+> g
+
+(cW (i))
+
+≤ 1
+
+ntr 
+
+> g
+
+X  
+
+> j∈Gg,j ̸=i
+
+|ℓ(cW , z j ) − ℓ(cW (i), z j )|
+
+| {z }
+
+> ≤βDRO
+
++ 1
+
+ntr 
+
+> g
+
+|ℓ(cW , z i) − ℓ(cW (i), z ′)|
+
+| {z }
+
+> ≤2M
+
+≤ ntr  
+
+> g
+
+− 1
+
+ntr 
+
+> g
+
+βDRO + 2Mntr 
+
+> g
+
+≤ βDRO + 2Mntr 
+
+> g
+
+Summing the true and empirical sensitivities, the bounded difference constants ci for Zg (S) satisfy 
+
+ci ≤ 2βDRO + 2Mntr 
+
+> g
+
+for i ∈ Gg , and ci ≤ 2βDRO for i / ∈ Gg . The sum of squared differences over all 
+
+ntr independent examples is bounded by: 
+
+> ntr
+
+X
+
+> i=1
+
+c2 
+
+> i
+
+= X
+
+> i / ∈Gg
+
+(2 βDRO )2 + X
+
+> i∈Gg
+
+
+
+2βDRO + 2Mntr 
+
+> g
+
+2
+
+= ntr (2 βDRO )2 + ntr  
+
+> g
+
+· 2(2 βDRO ) 2Mntr 
+
+> g
+
++ ntr 
+
+> g
+
+4M 2
+
+(ntr  
+
+> g
+
+)2 ≤ 4ntr β2 
+
+> DRO
+
++ 8 M β DRO + 4M 2
+
+min g ntr 
+
+> g
+
+:= Σ 2
+
+32 Preprint Applying the one-sided McDiarmid’s inequality (Lemma F.16) to bound the deviation of Zg (S)
+
+above its expectation, and noting that the expected generalization gap is bounded by uniform stability 
+
+ES [Zg (S)] ≤ βDRO , we obtain that with probability at least 1 − δ 
+
+> 4G
+
+:
+
+Zg (S) ≤ βDRO + Σ 
+
+r log(4 G/δ )2
+
+Applying a union bound over all G groups ensures that this bound holds simultaneously for the maximum max g Zg (S) with total failure probability δ/ 4:
+
+Lworst  
+
+> D
+
+(cWη ) ≤ Ltr 
+
+> worst
+
+(cWη ) + βDRO + Σ 
+
+r log(4 G/δ )2 (38) 
+
+Step 2: Upper-Level Uniform Convergence Decomposition. The upper-level empirical objec-tive is the worst-group validation loss fval (W ) = max g∈[G] Lval  
+
+> g
+
+(W ), and the target population risk is Lworst  
+
+> D
+
+(W ) = max g∈[G] LD,g (W ). By the non-expansive property of the maximum operator (Lemma F.19), the uniform deviation over the continuous path HH cleanly decomposes. Further-more, because the supremum and finite maximum operators commute, we can isolate the supremum to each individual group: 
+
+sup 
+
+> η∈H
+
+fval (cWη ) − Lworst  
+
+> D
+
+(cWη ) = sup 
+
+> η∈H
+
+max  
+
+> g∈[G]
+
+Lval  
+
+> g
+
+(cWη ) − max  
+
+> g∈[G]
+
+LD,g (cWη )
+
+≤ sup 
+
+> η∈H
+
+max  
+
+> g∈[G]
+
+Lval  
+
+> g
+
+(cWη ) − LD,g (cWη )
+
+= max  
+
+> g∈[G]
+
+sup 
+
+> η∈H
+
+Lval  
+
+> g
+
+(cWη ) − LD,g (cWη )
+
+This isolates the continuous uniform convergence problem entirely into G independent group-wise continuous uniform convergence bounds. 
+
+Step 3: Rademacher Complexity and Union Bound. For any individual group g, bounding the continuous 1-dimensional path HH relies on the Rademacher complexity of the independent subset 
+
+Sval ,g of size nval  
+
+> g
+
+. Following exactly the uniform deviation derivation in Lemma F.2 (Equation (32) with k = 1 ), we evaluate the continuous uniform deviation bound for group g. To ensure this bound holds simultaneously across all G groups with a total failure probability of δ/ 2, we apply a discrete union bound allocating confidence δ/ (2 G) to each group. As a result, for all g ∈ [G] with probability 1 − δ/ 2:
+
+sup 
+
+> η∈H
+
+Lval  
+
+> g
+
+(cWη ) − LD,g (cWη ) ≤ 12 M
+
+q
+
+nval 
+
+> g
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
++ M
+
+s
+
+2 log(4 G/δ )
+
+nval 
+
+> g
+
+| {z }
+
+> := ϵval ,g
+
+Taking the maximum over all groups conservatively bounds the overall uniform deviation by the worst-case group size min g nval  
+
+> g
+
+:
+
+max  
+
+> g∈[G]
+
+sup 
+
+> η∈H
+
+Lval  
+
+> g
+
+(cWη ) − LD,g (cWη ) ≤ max  
+
+> g∈[G]
+
+ϵval ,g := ϵworst val 
+
+Step 4: Final Decomposition. Let ϵtrain (η) = βDRO + Σ 
+
+q log(4 /δ )2 denote the lower-level sta-bility gap bound from Step 1. We define η∗ = arg min η∈H (Ω η (W ∗) + ϵtrain (η)) as the opti-mal hyperparameter for the reference predictor W ∗. Because ˆη = arg min η∈H fval (cWη ) mini-mizes the empirical worst-group validation loss fval , we have fval (cWˆη ) ≤ fval (cWη∗ ). Recall that 
+
+fval (W ) = max g Lval  
+
+> g
+
+(W ). Applying the uniform deviation bound (which holds over all η ∈ H
+
+with probability 1 − δ/ 2) to both ˆη and η∗ yields: 
+
+Lworst  
+
+> D
+
+(cWˆη ) ≤ fval (cWˆη ) + ϵworst val 
+
+≤ fval (cWη∗ ) + ϵworst val 
+
+≤ Lworst  
+
+> D
+
+(cWη∗ ) + 2 ϵworst val 
+
+33 Preprint To bound the target Lworst  
+
+> D
+
+(cWη∗ ), we decompose the true risk via the empirical training risks. Cru-cially, while the algorithm optimizes the 3-term Group DRO objective Jη (W ), defined as: 
+
+Jη (W ) = max 
+
+> q∈∆G
+
+" GX
+
+> g=1
+
+qg Ltr  
+
+> g
+
+(W ) − η
+
+2 q − 1
+
+G 1
+
+> 2
+
+#
+
++ λ
+
+2 ∥W ∥2
+
+we can rigorously relate its minimizer back to the pure unregularized worst-group loss by bounding the − η 
+
+> 2
+
+∥q − 1 
+
+> G
+
+1∥2 penalty term. Let Ωη∗ (W ∗) = λ 
+
+> 2
+
+∥W ∗∥2 + η∗ 
+
+> 2
+
+encompass the deterministic penalties. By the optimality of cWη∗ on Jη∗ , we have Jη∗ (cWη∗ ) ≤ Jη∗ (W ∗).For the left side, the maximum over q ∈ ∆G is lower bounded by evaluating it at the specific one-hot vector q = ek corresponding to the worst group k = arg max g Ltr  
+
+> g
+
+(cWη∗ ). The η-penalty for this one-hot vector evaluates to exactly η∗ 
+
+> 2
+
+∥ek − 1 
+
+> G
+
+1∥2 = η∗ 
+
+> 2
+
+(1 − 1 
+
+> G
+
+) ≤ η∗ 
+
+> 2
+
+. Thus, retaining the non-negative regularizer λ 
+
+> 2
+
+∥cWη∗ ∥2 ≥ 0, we have: 
+
+Jη∗ (cWη∗ ) ≥ Ltr 
+
+> worst
+
+(cWη∗ ) − η∗
+
+2 + λ
+
+2 ∥cWη∗ ∥2 ≥ Ltr 
+
+> worst
+
+(cWη∗ ) − η∗
+
+2
+
+For the right side, because the η-penalty term − η∗ 
+
+> 2
+
+∥q − 1 
+
+> G
+
+1∥2 is strictly non-positive for any q, we can trivially upper bound the inner maximum by dropping the penalty entirely: 
+
+Jη∗ (W ∗) ≤ max 
+
+> q∈∆G
+
+"X
+
+> g
+
+qg Ltr  
+
+> g
+
+(W ∗)
+
+#
+
++ λ
+
+2 ∥W ∗∥2 = Ltr 
+
+> worst
+
+(W ∗) + λ
+
+2 ∥W ∗∥2
+
+Chaining these two inequalities ( Ltr 
+
+> worst
+
+(cWη∗ ) − η∗ 
+
+> 2
+
+≤ Jη∗ (cWη∗ ) ≤ Jη∗ (W ∗) ≤ Ltr 
+
+> worst
+
+(W ∗) +  
+
+> λ
+> 2
+
+∥W ∗∥2) securely isolates the empirical risks: 
+
+Ltr 
+
+> worst
+
+(cWη∗ ) ≤ Ltr 
+
+> worst
+
+(W ∗) + Ω η∗ (W ∗)
+
+We can now algebraically inject this upper bound into the true risk: 
+
+Lworst  
+
+> D
+
+(cWη∗ ) = Ltr 
+
+> worst
+
+(cWη∗ ) + 
+
+
+
+Lworst  
+
+> D
+
+(cWη∗ ) − Ltr 
+
+> worst
+
+(cWη∗ )
+
+
+
+≤ Ltr 
+
+> worst
+
+(W ∗) + Ω η∗ (W ∗) + 
+
+
+
+Lworst  
+
+> D
+
+(cWη∗ ) − Ltr 
+
+> worst
+
+(cWη∗ )
+
+| {z }
+
+> Stability gap
+
+= Lworst  
+
+> D
+
+(W ∗) + Ω η∗ (W ∗) + Stability gap +  Ltr 
+
+> worst
+
+(W ∗) − Lworst  
+
+> D
+
+(W ∗)| {z }
+
+> Hoeffding gap
+
+Simultaneously, since W ∗ is fixed independent of Strain , we bound the one-sided deviation of its pure unregularized worst-group training loss. For any group g ∈ [G], the one-sided Hoeffding’s inequality bounds the deviation Ltr  
+
+> g
+
+(W ∗) − LD,g (W ∗). Applying a union bound over all G training groups with total confidence δ/ 4 yields the Hoeffding gap: 
+
+Ltr 
+
+> worst
+
+(W ∗) − Lworst  
+
+> D
+
+(W ∗) ≤ max 
+
+> g∈[G]
+
+ Ltr  
+
+> g
+
+(W ∗) − LD,g (W ∗) ≤ M
+
+s
+
+2 log(4 G/δ )min g ntr 
+
+> g
+
+Combining the uniform convergence over HH (probability 1−δ/ 2), the stability gap for η∗ evaluated in Step 1 (probability 1 − δ/ 4), and the Hoeffding bound for the fixed reference W ∗ (probability 1 −
+
+δ/ 4), the total failure probability sums exactly to δ, yielding the final continuous oracle inequality. 
+
+Corollary F.6 (Joint Hyperparameter Tuning of λ and η). Suppose the assumptions of Theorem F.5 hold. Let the joint hyperparameter vector be ψ = ( λ, η ) ∈ Ψ = Λ × H ⊂ R2, where Λ = [λmin , λ max ], H = [ ηmin , η max ], and R = diam (Ψ) . Let ˆψ = arg min ψ∈Ψ fval (cWψ ). The lower-level algorithmic mapping is jointly Lipschitz with respect to ψ with constant ρA ≤ Lλ2min 
+
++ GLM λmin η2min 
+
+.
+
+34 Preprint 
+
+With probability at least 1 − δ, the true worst-group risk of the jointly tuned predictor satisfies: 
+
+Lworst  
+
+> D
+
+(cW ˆψ )
+
+≤ Lworst  
+
+> D
+
+(W ∗) + M
+
+s
+
+2 log(4 G/δ )min g ntr 
+
+> g
+
++ 2 M
+
+s
+
+2 log(4 G/δ )min g nval 
+
+> g
+
++ min  
+
+> λ∈Λ,η ∈H
+
+Ωλ,η (W ∗) + βDRO (λ, η ) + Σ( λ, η )
+
+r log(4 G/δ )2
+
+!
+
++ 24 M
+
+q
+
+min g nval 
+
+> g
+
+√2
+
+s
+
+log 
+
+ 3ρARL M
+
+
+
++ 2 plog 2 
+
+!
+
+where Ωλ,η (W ∗) = λ 
+
+> 2
+
+∥W ∗∥2 + η 
+
+> 2
+
+, and βDRO (λ, η ) = 2L2  
+
+> λmin gntr
+> g
+
+
+
+1 + M √Gη
+
+
+
+.Proof of Corollary F.6. To establish the joint continuous uniform convergence bound, we must prove the mapping ψ 7 → cWψ is Lipschitz over Ψ. We directly apply the exact strong monotonicity argument used in Lemma F.14. Let J(W ; λ, η ) denote the lower-level Group DRO objective. For two hyperparameter configurations ψ = ( λ, η ) and ψ′ = ( λ′, η ′), let cW and cW ′ be their respective minimizers. Because J(W ; λ, η ) is λ-strongly convex with respect to W , its gradient is λ-strongly monotone. Evaluating at the two optima and exploiting the first-order optimality condition ∇J(cW ; λ, η ) = 
+
+∇J(cW ′; λ′, η ′) = 0 , we bound the shift in the predictors by the shift in the gradients evaluated at the fixed point cW ′:
+
+λ∥cW − cW ′∥2 ≤ ⟨∇ J(cW ′; λ, η ) − ∇ J(cW ; λ, η ), cW ′ − cW ⟩≤ ⟨∇ J(cW ′; λ, η ) − ∇ J(cW ′; λ′, η ′), cW ′ − cW ⟩≤ ∥∇ J(cW ′; λ, η ) − ∇ J(cW ′; λ′, η ′)∥∥ cW − cW ′∥
+
+Dividing by λ∥cW − cW ′∥ isolates the deviation. The exact gradient of the objective is 
+
+∇J(W ; λ, η ) = P qg ∇Ltr  
+
+> g
+
+(W ) + λW . Thus, the gradient shift decomposes into a regularization shift and a robust weight shift: 
+
+∥∇ J(cW ′; λ, η ) − ∇ J(cW ′; λ′, η ′)∥ ≤ | λ − λ′|∥ cW ′∥ +
+
+> G
+
+X
+
+> g=1
+
+(qg − q′ 
+
+> g
+
+)∇Ltr  
+
+> g
+
+(cW ′)
+
+For the first term, the optimality condition for cW ′ implies λ′ cW ′ = − P q′ 
+
+> g
+
+∇Ltr  
+
+> g
+
+(cW ′). Since 
+
+∥∇ Ltr  
+
+> g
+
+∥ ≤ L, we have ∥cW ′∥ ≤ Lλ′ ≤ Lλmin . For the second term, following the weight per-turbation derivation in Lemma F.4, the optimal simplex weights shift by at most ∥q − q′∥2 ≤ 1 
+
+> η
+
+− 1
+
+> η′
+
+
+
+Ltr (cW ′) 2. Since |Ltr  
+
+> g
+
+| ≤ M , this is bounded by |η−η′|
+
+> η2min
+
+√GM . Multiplying by the Jacobian norm ( √GL ) bounds the robust weight shift by GM L η2min 
+
+|η − η′|.Combining these and dividing by λ ≥ λmin yields the final perturbation bound: 
+
+∥cW − cW ′∥ ≤ Lλ2min 
+
+|λ − λ′| + GLM λmin η2min 
+
+|η − η′| ≤ 
+
+ Lλ2min 
+
++ GLM λmin η2min 
+
+
+
+∥ψ − ψ′∥2
+
+This establishes the joint Lipschitz constant ρA over Ψ. Injecting this ρA into a 2-dimensional variant of Lemma F.2 yields the √2 dimension scaling on the validation uniform deviation. The minimization trades off this against the local stability gap βDRO (λ, η ), completing the proof. 
+
+Corollary F.7 (Joint Tuning with Deep Encoder Parameters) . Suppose the assumptions of Corol-lary F.6 hold. Further assume that the input features are produced by a deep encoder z = fθ (x)
+
+parameterized by θ ∈ Θ, where Θ ⊂ Rdθ . Assume (1) the encoder output fθ (x) is Lf -Lipschitz 
+
+35 Preprint 
+
+with respect to θ, and (2) the classification loss gradient ∇W ℓ(W, z ) is Lgrad -Lipschitz with respect to z. Let the extended joint hyperparameter vector be ψ = ( λ, η, θ ) ∈ Ψ × Θ.The lower-level algorithmic mapping is jointly Lipschitz with respect to ψ with constant: 
+
+ρA ≤ Lλ2min 
+
++ GLM λmin η2min 
+
++ Lgrad Lf
+
+λmin 
+
+(39) 
+
+Crucially, the lower-level uniform stability constant βDRO (λ, η ) remains unchanged, as θ is fixed during the lower-level optimization. Consequently, the true worst-group risk bound takes the iden-tical structural form as Corollary F.6, with the dimension factor k increasing to 2 + dθ and the covering radius scaling to diam (Ψ × Θ) .Proof. To derive the joint algorithmic Lipschitz constant, we follow the exact strong monotonicity argument used in Corollary F.6. Let J(W ; λ, η, θ ) = P qg (η)Ltr  
+
+> g
+
+(W, θ )+ λ 
+
+> 2
+
+∥W ∥2 denote the lower-level objective. For any two joint configurations ψ = ( λ, η, θ ) and ψ′ = ( λ′, η ′, θ ′), the optimal predictors shift according to the total gradient shift at the fixed point cW ′:
+
+λ∥cW − cW ′∥ ≤ ∥∇ J(cW ′; λ, η, θ ) − ∇ J(cW ′; λ′, η ′, θ ′)∥
+
+By the triangle inequality, this gradient shift decomposes into three distinct perturbations corre-sponding to the regularization, the group weights, and the encoder representations: 
+
+∥∇ J(cW ′; λ, η, θ ) − ∇ J(cW ′; λ′, η ′, θ ′)∥ ≤ | λ − λ′|∥ cW ′∥
+
+| {z }  
+
+> ≤Lλmin |λ−λ′|
+
++
+
+> G
+
+X
+
+> g=1
+
+(qg − q′ 
+
+> g
+
+)∇W Ltr  
+
+> g
+
+(cW ′, θ )
+
+| {z } 
+
+> ≤GLM η2min
+> |η−η′|
+
++
+
+> G
+
+X
+
+> g=1
+
+q′
+
+> g
+
+
+
+∇W Ltr  
+
+> g
+
+(cW ′, θ ) − ∇ W Ltr  
+
+> g
+
+(cW ′, θ ′)
+
+| {z }
+
+> Encoder shift
+
+The first two bounds follow identically from Corollary F.6. For the third term, because the simplex weights satisfy P q′ 
+
+> g
+
+= 1 , the encoder shift is bounded by the maximum gradient deviation across groups. Applying the smoothness of the loss and the Lipschitz property of the encoder, this shift evaluates to: 
+
+max  
+
+> g
+
+∥∇ W Ltr  
+
+> g
+
+(cW ′, θ ) − ∇ W Ltr  
+
+> g
+
+(cW ′, θ ′)∥ ≤ Lgrad Lf ∥θ − θ′∥
+
+Combining these three bounds and dividing by λ ≥ λmin yields the final mapping deviation: 
+
+∥cW − cW ′∥ ≤ 
+
+ Lλ2min 
+
++ GLM λmin η2min 
+
++ Lgrad Lf
+
+λmin 
+
+
+
+∥ψ − ψ′∥2
+
+For the stability term, uniform stability measures the sensitivity of the learning algorithm to a single training point perturbation for a fixed hyperparameter configuration. Because θ is an upper-level variable, it acts as a constant mapping x 7 → z during the lower-level optimization. Provided the loss ℓ(W, z ) is L-Lipschitz over the bounded representation space, the stability constant βDRO relies solely on the loss properties and the fixed regularization λ, remaining identical to the linear case. 
+
+Remark F.8 (Neural Tangent Kernel) . While this generic continuous treatment seamlessly maintains the logical flow of our bilevel framework, the sample complexity bounds could be further tightened by incorporating specialized neural network generalization theories, such as the Neural Tangent Kernel (NTK) (Jacot et al., 2018). F.6 EXTENSION TO HIERARCHICAL DRO (B I-HDRO) The continuous generalization theory seamlessly extends to Hierarchical DRO (HDRO) where the continuous hyperparameters being tuned include the multi-dimensional inner perturbation radii ϵ =(ϵ1, . . . , ϵ G). In this formulation, the joint hyperparameter is ψ = ( λ, η, ϵ). As long as the smoothed robust loss ℓrob ,g (W, ϵ g ) is used, the lower-level mapping remains Lipschitz continuous. 36 Preprint 
+
+Lemma F.9 (Algorithmic Lipschitz Continuity of Bi-HDRO) . Assume the smoothed robust loss 
+
+ℓrob ,g (W, ϵ g ) = E[sup ∥δg ∥≤ ϵg ℓ(W, z + δg , y )] has bounded gradient shifts with respect to ϵg , satis-fying ∥∇ W ℓrob ,g (W, ϵ (1)  
+
+> g
+
+) − ∇ W ℓrob ,g (W, ϵ (2)  
+
+> g
+
+)∥2 ≤ Cϵ|ϵ(1)  
+
+> g
+
+− ϵ(2)  
+
+> g
+
+|, and is Lϵ-Lipschitz with respect to ϵg . Let the lower-level objective maintain λ-strong convexity via L2 regularization. Then, the HDRO algorithmic mapping cWψ is jointly Lipschitz with resp ect to the combined hyperparameter 
+
+ψ = ( λ, η, ϵ) with the joint Lipschitz constant bounded by: 
+
+ρA,ψ ≤ Lλ2min 
+
++ GLM λmin η2min 
+
+| {z } 
+
+> Shift from λ,η
+
++ Cϵ
+
+λmin 
+
++
+
+√GLL ϵ
+
+λmin ηmin 
+
+| {z } 
+
+> Shift from ϵ
+
+(40) 
+
+Remark F.10 (Validity of the Lipschitz Assumption for Classification) . The assumption that the robust loss has bounded gradient shifts with respect to ϵg naturally holds for the exact closed-form perturbations used in binary classification (derived in Appendix C). Analytically solving the inner adversarial maximization min ∥δ∥≤ ϵ y(W ⊤(z+δ)+ b) yields the robust margin y(W ⊤z+b)−ϵ∥W ∥∗,where ∥W ∥∗ is the dual norm of the perturbation constraint. Consider L2 norm perturbations where the dual norm is simply ∥W ∥∗ = ∥W ∥2. For the globally smooth robust logistic/BCE loss ℓrob (W, ϵ ) = log(1+exp( A)) , where A = −y(W ⊤z +b)+ ϵ∥W ∥2,the gradient with respect to W everywhere is ∇W ℓrob (W, ϵ ) = σ(A)
+
+
+
+−yz + ϵ W 
+
+> ∥W∥2
+
+
+
+. Using the 
+
+1/4-Lipschitz continuity of the sigmoid function σ(·), the gradient shift between two perturbation radii ϵ(1) and ϵ(2) is explicitly bounded by the triangle inequality: 
+
+∥(σ(A(1) ) − σ(A(2) ))( −yz ) + ( σ(A(1) )ϵ(1) − σ(A(2) )ϵ(2) ) W
+
+∥W ∥2
+
+∥2
+
+≤ 14 |A(1) − A(2) |∥ z∥2 + 1 · | ϵ(1) − ϵ(2) | + ϵmax 
+
+14 |A(1) − A(2) |
+
+=
+
+
+
+1 + 14 ∥W ∥2∥z∥2 + ϵmax 
+
+4 ∥W ∥2
+
+
+
+|ϵ(1) − ϵ(2) |.
+
+Because the lower-level objective enforces λ-strong convexity via λ 
+
+> 2
+
+∥W ∥22, the optimal weights 
+
+∥W ∥2 are bounded by a constant Mw. Assuming bounded ∥z∥2, this ensures the gradient shift is strictly bounded by Cϵ|ϵ(1) − ϵ(2) | where Cϵ is a finite constant. Furthermore, this justifies the Lϵ-Lipschitzness of the loss value itself: the derivative ∂ℓ rob  
+
+> ∂ϵ
+
+= σ(A)∥W ∥2 is strictly bounded by ∥W ∥2,meaning the robust loss is Lϵ-Lipschitz with Lϵ ≤ Mw. Thus, all Lipschitz continuity assumptions are rigorously satisfied globally in our implementation. 
+
+Proof. Let F (W, q, ϵ) = PGg=1 qg ℓrob ,g (W, ϵ g ) − η 
+
+> 2
+
+∥q − 1 
+
+> G
+
+1∥2 + λ 
+
+> 2
+
+∥W ∥2 be the lower-level HDRO objective. By Danskin’s theorem, the gradient of the max-marginalized objective Jϵ(W ) with re-spect to W is ∇W Jϵ(W ) = PGg=1 q∗ 
+
+> g
+
+∇W ℓrob ,g (W, ϵ g )+ λW , where q∗ = Π ∆G ( 1 
+
+> η
+
+ℓrob (W, ϵ)+ 1 
+
+> G
+
+1),with ℓrob (W, ϵ) ∈ RG denoting the vector of robust losses across all groups. If the perturbation hyperparameter shifts from ϵ(1) to ϵ(2) , the gradient shift is bounded by the triangle inequality: 
+
+∥∇ W Jϵ(1) (W ) − ∇ W Jϵ(2) (W )∥2
+
+≤
+
+> G
+
+X
+
+> g=1
+
+q(1) 
+
+> g
+
+
+
+∇W ℓ(1)  
+
+> rob ,g
+
+− ∇ W ℓ(2) 
+
+> rob ,g
+
+
+
+> 2
+
++
+
+> G
+
+X
+
+> g=1
+
+
+
+q(1)  
+
+> g
+
+− q(2) 
+
+> g
+
+
+
+∇W ℓ(2) 
+
+> rob ,g
+> 2
+
+≤
+
+> G
+
+X
+
+> g=1
+
+q(1)  
+
+> g
+
+Cϵ|ϵ(1)  
+
+> g
+
+− ϵ(2)  
+
+> g
+
+| +
+
+> G
+
+X
+
+> g=1
+
+|q(1)  
+
+> g
+
+− q(2)  
+
+> g
+
+| ∥∇ W ℓ(2)  
+
+> rob ,g
+
+∥2
+
+| {z }
+
+> ≤L
+
+≤ Cϵ∥ϵ(1) − ϵ(2) ∥2 + L∥q(1) − q(2) ∥1
+
+≤ Cϵ∥ϵ(1) − ϵ(2) ∥2 + L√G∥q(1) − q(2) ∥2
+
+37 Preprint Because the simplex projection Π∆G is 1-Lipschitz, the shift in the adversarial weights is strictly bounded by the shift in the robust loss terms scaled by the fixed penalty η ≥ ηmin :
+
+∥q(1) − q(2) ∥2 ≤ 1
+
+ηmin 
+
+∥ℓrob (W, ϵ(1) ) − ℓrob (W, ϵ(2) )∥2 ≤ Lϵ
+
+ηmin 
+
+∥ϵ(1) − ϵ(2) ∥2
+
+Substituting this bound into the gradient shift yields a total shift bounded by 
+
+
+
+Cϵ +
+
+> √GLL ϵ
+> ηmin
+
+
+
+∥ϵ(1) −
+
+ϵ(2) ∥2. Because the objective is λ-strongly convex, applying the exact same strong monotonicity argument from Lemma F.1 divides this gradient shift by λ, proving the mapping is Lipschitz con-tinuous with respect to ϵ. Summing this ϵ-specific constant with the Lipschitz bounds for λ and 
+
+η derived in Corollary 3.8 establishes the combined joint Lipschitz constant ρA,ψ over the entire hyperparameter space. 
+
+Remark F.11 (Uniform Stability of Bi-HDRO) . While tuning ϵ expands the algorithmic Lipschitz constant, the uniform stability of the lower-level algorithm remains unchanged. For a fixed con-figuration, Bi-HDRO optimizes the robust loss ℓrob ,g (W ) = sup ∥δ∥≤ ϵ ℓ(W, z + δ). Because the global constants L and M bound the base loss across all possible inputs, they naturally bound any perturbed input z + δ. Thus, Bi-HDRO inherits the exact same stability constant βDRO (λ, η ) =   
+
+> 2L2
+> λmin gntr
+> g
+
+
+
+1 + M √Gη
+
+
+
+as standard group DRO. 
+
+Corollary F.12 (Joint Tuning of Bi-HDRO with Deep Encoder Parameters) . Suppose the assump-tions of Lemma F.9 hold. Further assume the input features are generated by a deep encoder 
+
+z = fθ (x) parameterized by θ ∈ Θ, such that the encoder output is Lf -Lipschitz with respect to θ, and the gradient of the robust loss ∇W ℓrob ,g (W, θ, ϵ g ) is Lrob grad -Lipschitz with respect to the representation z. Let the fully extended joint hyperparameter vector be ψ = ( λ, η, ϵ, θ ) ∈ Ψ × Θ.The Bi-HDRO algorithmic mapping is jointly Lipschitz with respect to ψ with constant: 
+
+ρA,ψ ≤ Lλ2min 
+
++ GLM λmin η2min 
+
+| {z } 
+
+> Shift from λ,η
+
++ Cϵ
+
+λmin 
+
++
+
+√GLL ϵ
+
+λmin ηmin 
+
+| {z } 
+
+> Shift from ϵ
+
++ Lrob grad Lf
+
+λmin 
+
+| {z } 
+
+> Shift from θ
+
+(41) 
+
+Moreover, as established in the preceding remark, the uniform stability constant βHDRO (λ, η ) re-mains identical. Proof. The proof follows immediately by combining the derivation of Lemma F.9 with the triangle inequality decomposition established in Corollary F.7. The gradient shift now contains a fourth additive term arising from the variation in θ, which evaluates to max g ∥∇ W ℓrob ,g (cW ′, θ, ϵ g ) −∇W ℓrob ,g (cW ′, θ ′, ϵ g )∥ ≤ Lrob grad Lf ∥θ − θ′∥. Dividing by the strong convexity constant λmin yields the additive θ-shift term. F.7 BACKGROUND : U NIFORM STABILITY 
+
+To establish generalization guarantees, we rely on the framework of uniform stability. We first explicitly recall the uniform stability of the lower-level algorithm, adapting the standard analysis for Tikhonov regularization (Shalev-Shwartz & Ben-David, 2014, Section 13.3) to our general λ-strongly convex regularizer Ωλ.
+
+Definition F.13 (Uniform Stability (Bousquet & Elisseeff, 2002)) . A learning algorithm A is β-uniformly stable with respect to a loss function ℓ if, for any two training sets S, S (i) of size m that differ by exactly one example, and for any arbitrary test point z, the following holds: 
+
+sup 
+
+> z
+
+|ℓ(A(S), z ) − ℓ(A(S(i)), z )| ≤ β (42) 
+
+Lemma F.14 (Uniform Stability of λ-Strongly Convex RLM) . Assume the loss function ℓ(W, z )
+
+is convex and L-Lipschitz with respect to W . Let Ωλ(W ) be a λ-strongly convex regularization function. Then the Regularized Loss Minimization rule A(S) = arg min W (LS (W ) + Ω λ(W )) is 
+
+β-uniformly stable with β = 2L2 
+
+> λm
+
+.
+
+38 Preprint 
+
+Proof. Let S = (z1, . . . , z m) be a training set, z′ an additional example, and S(i) =(z1, . . . , z i−1, z ′, z i+1 , . . . , z m). Denote fS (W ) = LS (W ) + Ω λ(W ). Because fS is λ-strongly convex, its gradient is λ-strongly monotone. Evaluating this for the optimal predictors W = A(S)
+
+and W (i) = A(S(i)) yields: 
+
+λ∥W (i) − W ∥2 ≤ ⟨∇ fS (W (i)) − ∇ fS (W ), W (i) − W ⟩
+
+In view of the first-order optimality conditions of W and W (i), we have: 
+
+⟨−∇ fS (W ), W (i) − W ⟩ ≤ 0
+
+⟨∇ fS(i) (W (i)), W (i) − W ⟩ ≤ 0
+
+Summing these three inequalities yields: 
+
+λ∥W (i) − W ∥2 ≤ ⟨∇ fS (W (i)) − ∇ fS(i) (W (i)), W (i) − W ⟩
+
+Applying the Cauchy-Schwarz inequality, we can bound the distance strictly by the shift in the gradients: 
+
+λ∥W (i) − W ∥ ≤ ∥∇ fS (W (i)) − ∇ fS(i) (W (i))∥ (43) Expanding the empirical risk gradients, the shift is exactly: 
+
+∥∇ fS (W (i)) − ∇ fS(i) (W (i))∥ = ∇ℓ(W (i), z i) − ∇ ℓ(W (i), z ′)
+
+m ≤ 2Lm
+
+Dividing by λ gives the optimal parameter displacement ∥W (i) − W ∥ ≤ 2Lλm . Finally, the L-Lipschitzness of ℓ implies that for any test point z, the difference in loss is bounded by: 
+
+|ℓ(A(S(i)), z ) − ℓ(A(S), z )| ≤ L∥A (S(i)) − A (S)∥ ≤ 2L2
+
+λm (44) Thus, the learning rule is 2L2 
+
+> λm
+
+-uniformly stable. 
+
+Lemma F.15 (High Probability Generalization via Stability) . Let the learning algorithm A be β-uniformly stable, and assume the loss function ℓ is bounded by M . Then, for any δ ∈ (0 , 1) , with probability at least 1 − δ over the random draw of a training set Strain of size ntr , the true risk of the output hypothesis is bounded by: 
+
+LD (A(Strain )) ≤ Ltr (A(Strain )) + β +
+
+
+
+2β + 2Mntr 
+
+ r ntr log(1 /δ )2 (45) 
+
+For the λ-strongly convex Regularized Loss Minimization rule defined in Lemma F.14, we substitute 
+
+β = 2L2 
+
+> λn tr
+
+.Proof. Let f (Strain ) = LD (A(Strain )) −Ltr (A(Strain )) denote the generalization gap. A fundamental result in stability theory (Shalev-Shwartz & Ben-David, 2014, Section 13.2) guarantees that the expected generalization gap is bounded by the uniform stability: EStrain [f (Strain )] ≤ β.To obtain a high-probability bound, we analyze the sensitivity of f (Strain ) to the replacement of a single training example. Let Strain and S(i) 
+
+> train
+
+be two training sets differing by exactly one example 
+
+zi → z′. By definition of β-uniform stability, the loss on any arbitrary point z changes by at most 
+
+β:
+
+sup 
+
+> z
+
+|ℓ(A(Strain ), z ) − ℓ(A(S(i)
+
+> train
+
+), z )| ≤ β (46) Taking the expectation over z ∼ D , the difference in true risk is bounded by this uniform difference: 
+
+|LD (A(Strain )) − LD (A(S(i)
+
+> train
+
+)) | ≤ Ez∼D 
+
+
+
+sup 
+
+> z′
+
+|ℓ(A(Strain ), z ′) − ℓ(A(S(i)
+
+> train
+
+), z ′)|
+
+
+
+≤ β (47) 39 Preprint Furthermore, we can bound the change in the empirical risk between the two sets. Noting that Strain 
+
+and S(i) 
+
+> train
+
+share ntr − 1 identical points and only differ at the i-th point ( zi vs z′), we have: 
+
+|Ltr (A(Strain )) − Ltr ,(i)(A(S(i)
+
+> train
+
+)) | = 1
+
+ntr 
+
+> ntr
+
+X
+
+> j=1
+
+
+
+ℓ(A(Strain ), z j ) − ℓ(A(S(i)
+
+> train
+
+), z (i) 
+
+> j
+
+)
+
+
+
+≤ 1
+
+ntr 
+
+X 
+
+> j̸=i
+
+|ℓ(A(Strain ), z j ) − ℓ(A(S(i)
+
+> train
+
+), z j )|
+
+| {z } 
+
+> ≤β(uniform stability)
+
++ 1
+
+ntr |ℓ(A(Strain ), z i) − ℓ(A(S(i)
+
+> train
+
+), z ′)|
+
+| {z } 
+
+> ≤2M(bounded loss)
+
+≤ ntr − 1
+
+ntr β + 2Mntr ≤ β + 2Mntr 
+
+Consequently, the change in the function f when one point is perturbed is bounded by: 
+
+|f (Strain ) − f (S(i)
+
+> train
+
+)| ≤ | LD (A(Strain )) − LD (A(S(i)
+
+> train
+
+)) | + |Ltr (A(Strain )) − Ltr ,(i)(A(S(i)
+
+> train
+
+)) |≤ β +
+
+
+
+β + 2Mntr 
+
+
+
+= 2 β + 2Mntr 
+
+Thus, f (Strain ) satisfies the bounded differences property with constant c = 2 β + 2Mntr . Applying the one-sided McDiarmid’s inequality (Lemma F.16), we have that with probability at least 1 − δ:
+
+f (Strain ) ≤ E[f (Strain )] + c
+
+r ntr log(1 /δ )2 ≤ β +
+
+
+
+2β + 2Mntr 
+
+ r ntr log(1 /δ )2 (48) which yields the final result. F.8 HELPFUL LEMMAS 
+
+For completeness, we include the explicit derivations for properties utilized in the main theorems. 
+
+Lemma F.16 (McDiarmid’s Inequality) . Let X1, . . . , X m be independent random variables, and let f (X1, . . . , X m) be a function that satisfies the bounded differences property with constants 
+
+c1, . . . , c m:
+
+|f (x1, . . . , x i, . . . , x m) − f (x1, . . . , x ′
+
+> i
+
+, . . . , x m)| ≤ ci (49) 
+
+Then for any ϵ > 0, the one-sided deviation is bounded by: 
+
+P (f (X1, . . . , X m) − E[f ] ≥ ϵ) ≤ exp 
+
+
+
+− 2ϵ2
+
+Pmi=1 c2
+
+> i
+
+
+
+(50) 
+
+By symmetry, the two-sided absolute deviation is bounded by: 
+
+P (|f (X1, . . . , X m) − E[f ]| ≥ ϵ) ≤ 2 exp 
+
+
+
+− 2ϵ2
+
+Pmi=1 c2
+
+> i
+
+
+
+(51) 
+
+Lemma F.17 (Sub-Gaussian Variance Proxy) . Let X1, . . . , X m be independent random variables, and let f (X1, . . . , X m) be a function that satisfies the bounded differences property with constants 
+
+c1, . . . , c m:
+
+|f (x1, . . . , x i, . . . , x m) − f (x1, . . . , x ′
+
+> i
+
+, . . . , x m)| ≤ ci (52) 
+
+Then the random variable Z = f (X1, . . . , X m) is a sub-Gaussian random variable with variance proxy σ2 = 14
+
+Pmi=1 c2 
+
+> i
+
+.Proof. By the one-sided McDiarmid’s inequality (Lemma F.16), for any t ≥ 0, the probability of deviation from the expected value is bounded by: 
+
+P (Z − E[Z] ≥ t) ≤ exp 
+
+
+
+− 2t2
+
+Pmi=1 c2
+
+> i
+
+
+
+(53) 40 Preprint A random variable Z is formally defined as sub-Gaussian with variance proxy σ2 if its tail distri-bution satisfies P (Z − E[Z] ≥ t) ≤ exp 
+
+
+
+− t2
+
+> 2σ2
+
+
+
+. By equating the exponents of the bounds, we have: 
+
+t2
+
+2σ2 = 2t2
+
+Pmi=1 c2
+
+> i
+
+=⇒ 2σ2 = 12
+
+> m
+
+X
+
+> i=1
+
+c2 
+
+> i
+
+=⇒ σ2 = 14
+
+> m
+
+X
+
+> i=1
+
+c2
+
+> i
+
+Lemma F.18 (Maximal Inequality for Sub-Gaussian Random Variables) . Let Z1, . . . , Z n be a finite collection of sub-Gaussian random variables, where each Zi has variance proxy σ2 and expectation 
+
+μi = E[Zi]. The expected maximum of these random variables is bounded by: 
+
+E
+
+
+
+max  
+
+> 1≤i≤n
+
+Zi
+
+
+
+≤ max  
+
+> 1≤i≤n
+
+μi + σp2 log n (54) 
+
+Proof. Let Yi = Zi − μi. By definition, each Yi is a zero-mean sub-Gaussian random variable with variance proxy σ2, satisfying the moment generating function bound E[exp( sY i)] ≤ exp 
+
+ s2σ2
+
+> 2
+
+
+
+for any s > 0. We wish to bound E[max i Yi].By Jensen’s inequality, since the exponential function is strictly convex for s > 0:
+
+exp 
+
+
+
+sE
+
+
+
+max  
+
+> 1≤i≤n
+
+Yi
+
+ 
+
+≤ E
+
+
+
+exp 
+
+
+
+s max  
+
+> 1≤i≤n
+
+Yi
+
+ 
+
+= E
+
+
+
+max  
+
+> 1≤i≤n
+
+exp( sY i)
+
+
+
+≤ E
+
+" nX
+
+> i=1
+
+exp( sY i)
+
+#
+
+=
+
+> n
+
+X
+
+> i=1
+
+E[exp( sY i)] ≤ n exp 
+
+ s2σ2
+
+2
+
+
+
+Taking the natural logarithm of both sides and dividing by s yields: 
+
+E
+
+
+
+max  
+
+> 1≤i≤n
+
+Yi
+
+
+
+≤ log ns + sσ 2
+
+2 (55) To minimize this upper bound, we select the optimal parameter s = p2 log n/σ 2. Substituting this into the inequality gives: 
+
+E
+
+
+
+max  
+
+> 1≤i≤n
+
+Yi
+
+
+
+≤ log n
+
+√2 log n/σ + σ2p2 log n/σ 2
+
+2 = σ
+
+r log n
+
+2 + σ
+
+r log n
+
+2 = σp2 log n (56) Finally, because max i Zi ≤ max i μi + max i Yi, applying the expectation yields E[max i Zi] ≤
+
+max i μi + E[max i Yi] ≤ max i μi + σ√2 log n.
+
+Lemma F.19 (Non-Expansive Property of the Maximum Operator) . For any two finite sets of real numbers A = {A1, . . . , A G} and B = {B1, . . . , B G}, the absolute difference between their maxi-mums is bounded by the maximum of their element-wise absolute differences: 
+
+max  
+
+> g∈[G]
+
+Ag − max  
+
+> g∈[G]
+
+Bg ≤ max  
+
+> g∈[G]
+
+|Ag − Bg | (57) 
+
+Proof. Without loss of generality, assume that max g Ag ≥ max g Bg . Let k = arg max g Ag be the index that achieves the maximum for A. We can then write the difference as: 
+
+max  
+
+> g
+
+Ag − max  
+
+> g
+
+Bg = Ak − max  
+
+> g
+
+Bg
+
+Since the maximum of the set B must be at least as large as any specific element in B, we know that 
+
+max g Bg ≥ Bk. Substituting this lower bound can only increase the difference: 
+
+Ak − max  
+
+> g
+
+Bg ≤ Ak − Bk
+
+41 Preprint Since a quantity is always bounded by its absolute value, and the k-th element’s difference is bounded by the maximum absolute difference across all elements, we have: 
+
+Ak − Bk ≤ | Ak − Bk| ≤ max  
+
+> g
+
+|Ag − Bg |
+
+This establishes the bound, completing the proof. 42

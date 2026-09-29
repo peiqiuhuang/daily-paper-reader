@@ -1,0 +1,1195 @@
+Title: Spectral Reversal: Counteracting Singular Value Bias for Graph Prompting
+
+URL Source: https://arxiv.org/pdf/2609.32143v1
+
+Published Time: Tue, 29 Sep 2026 00:40:32 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Spectral Reversal: Counteracting Singular Value Bias for Graph Prompting 
+
+Hanxu Yang ∗
+
+, Yuhuan Zhao ∗
+
+, Xiaodong He, Zhao Kang †
+
+School of Computer Science and Engineering, University of Electronic Science and Technology of China, Chengdu, Sichuan, China 
+
+yang_hanxu@std.uestc.edu.cn zkang@uestc.edu.cn 
+
+## Abstract 
+
+Pre-training Graph Neural Networks (GNNs) via self-supervised learning has be-come a dominant paradigm, yet efficiently adapting frozen encoders remains a challenge. Graph prompting offers a parameter-efficient alternative to fine-tuning, but existing methods largely treat pre-trained models as opaque feature extractors, ignoring their internal spectral structure. In this work, we identify a systematic phe-nomenon in pre-trained GNNs, which we term spectral bias: optimization during pre-training disproportionately aligns representations with directions associated with large singular values, leaving low-energy directions under-explored. We show that these underutilized directions can encode complementary information that is beneficial for downstream adaptation, especially under distribution shift. To leverage this insight, we propose Spectral Reverse Prompt (SRP), a prompting framework that rebalances the spectral contributions of frozen GNN encoders. SRP applies a learnable soft-thresholding mask in the spectral domain to down-weight dominant directions while amplifying weaker ones. In addition, SRP incorporates a null-space augmentation module that captures variation in directions with mini-mal activation under the frozen encoder. Extensive experiments across multiple benchmarks demonstrate that SRP achieves state-of-the-art performance with mini-mal additional parameters, highlighting that reweighting spectral components is a principled and effective strategy for parameter-efficient graph adaptation. The code is available at https://github.com/keris-yang/Spectral-Reversal .
+
+## 1 Introduction 
+
+Graph prompt tuning [1, 2] has emerged as a parameter-efficient alternative to fine-tuning for adapting pre-trained Graph Neural Networks [3, 4, 5, 6, 7] (GNNs). Existing approaches typically introduce learnable tokens [8, 9, 10] or modify readout layers [11, 12, 13], while keeping the backbone encoder frozen. However, these methods implicitly treat the pre-trained model as a black-box feature extractor, overlooking its internal structure. In particular, little attention has been paid to the spectral properties of the learned transformations within pre-trained GNNs. During self-supervised pre-training, optimization tends to align repre-sentations with dominant modes of variation, which are often associated with large singular values of the effective transformation. We refer to this phenomenon as spectral bias, where dominant spectral components are emphasized while lower-energy directions remain underutilized. While these dominant directions capture prevalent patterns in pre-training data, they may not align with the requirements of downstream tasks [14], especially under inter-class inequality. This observation suggests a different perspective on parameter-efficient adaptation: rather than further reinforcing dominant directions, it may be more effective to reweight the spectral contributions of the 
+
+> ∗Equal contribution.
+> †Corresponding author. arXiv:2609.32143v1 [cs.LG] 26 Sep 2026
+
+frozen encoder, allocating capacity to directions that were under-explored during pre-training. To this end, we propose Spectral Reverse Prompt (SRP) , a framework that explicitly rebalances spectral contributions through two complementary mechanisms. First, a spectral channel applies a learnable soft-thresholding mask to modulate singular directions, suppressing dominant components while amplifying weaker ones. Second, a null-space channel extracts informative variation from directions that are minimally expressed by the frozen encoder, further expanding the effective representation space. By focusing adaptation on underutilized spectral components, SRP improves parameter efficiency while enhancing robustness to distribution shift. Empirical results across diverse benchmarks demon-strate that this spectral rebalancing leads to consistent performance gains over existing graph prompt-ing methods across node-level and graph-level benchmarks. Our main contributions can be summa-rized as follows: • We identify and quantify a form of spectral bias in pre-trained graph models using a 
+
+Downstream–Pretraining Misalignment Score (DPMS), showing that dominant singular directions are disproportionately aligned with pre-training objectives, while lower-energy directions remain underutilized for downstream tasks. . • We propose SRP, a parameter-efficient graph prompting framework that rebalances spectral contributions of frozen encoders via two complementary components: (i) a learnable soft-thresholding spectral mask that suppresses dominant directions and amplifies weaker ones, and (ii) a null-space augmentation module that captures variation in directions minimally expressed by the encoder. . • We show that emphasizing underutilized spectral components leads to more effective and robust adaptation, particularly in low-resource settings. 
+
+## 2 Related Work 
+
+GNNs and pre-training. Numerous studies propose training powerful GNNs via self-supervised learning, which is broadly categorized into two paradigms: contrastive and generative methods. Contrastive methods aim to maximize agreement between augmented instances. Representative works include DGI [15] and InfoGraph [16], which focus on mutual information across different structural scales; GraphCL [17], GRACE [18], and SimGRACE [19] generate contrastive views via structural augmentation, feature masking, or parameter perturbation. Other paradigms avoid negative sampling through bootstrapping [20] or exploit domain-specific motifs [21]. Conversely, generative methods reconstruct specific graph properties: GraphMAE and GraphMAE2 [22, 23] focus on masked node features, while earlier strategies [24] leverage edge prediction. This paradigm of pre-training then fine-tuning has become the core of research in graph domain adaptation [25], graph foundation models [26, 27, 28, 29, 30] and graph reasoning mechanisms [31] in recent years. 
+
+Graph tuning methods. Graph prompt tuning and low-rank adaptation, or LoRA, offer parameter-efficient alternatives by optimizing minimal components alongside the backbone. GraphLoRA [32] extends traditional LoRA [33] by incorporating structure-aware contrastive losses. Meanwhile, graph prompting methods typically inject learnable tokens into various stages while preserving fixed message-passing rules. These approaches target different levels: node-feature prompting via GPF [8], edge-level adaptation through EdgePrompt [9], and topology modifications in GraphTOP[34], UniPrompt [35] and CurvPrompt [36]. Further research explores representation-level prompting such as GraphPrompt [37] and GPPT [11], as well as specialized designs: virtual-node prompting [38] and instance-aware schemes [10]. Despite their success, these approaches primarily adapt inputs or structures without explicitly analyzing the consensus between prompting mechanisms and weight metrics. This gap motivates our work: we rebalance spectral contributions and utilize the null space to enable universal parameter efficient, task-driven adaptation. 
+
+## 3 Notations and Preliminaries 
+
+General Graphs. Let G = ( V, E, X, Y) be a graph with N nodes, where V = {v1, . . . , v N } and 
+
+E ⊆ V × V define the node and edge sets, respectively. The node attributes are captured by a feature matrix X ∈ RN ×F , with each row Xi representing the F -dimensional feature of node vi. Structural 2connectivity is denoted by the adjacency matrix A ∈ { 0, 1}N ×N , where Aij = 1 indicates an existing edge between vi and vj . Furthermore, each node vi corresponds to a specific label yi from the label space Y. Note that P (·) represents a probability distribution, which is utilized conceptually in our context rather than for strict mathematical derivations. 
+
+Graph Prompt Tuning. Traditional pretrain-finetuning paradigms jointly update a pretrained graph encoder fθ and a task-specific head gϕ using downstream data. In contrast, graph prompt learning freezes fθ and optimizes only a newly introduced set of prompt parameters Ψ. The generalized objective for such prompt-based adaptation on a downstream dataset D is formulated as: 
+
+max 
+
+> Ψ
+
+1
+
+|D| 
+
+X
+
+> (A,X,y )∈D
+> N
+
+X
+
+> i=1
+
+log P (yi | Predict Ψ (A, X, v i; fθ )) , (1) where D = {(A, X, y )}. Here, Predict Ψ(·) serves as a generic prediction module that leverages the structural topology A, node features X, the target node vi, and the frozen backbone fθ to estimate the corresponding label yi. Depending on the architecture, the prompt Ψ can be injected at various stages: modifying the raw topological and feature inputs (input-level), embedding into intermediate network layers (layer-wise), or adjusting the final output embeddings before the classifier (representation-level). 
+
+Singular Value Decomposition. For any given weight matrix W ∈ Rm×n with rank r, its compact Singular Value Decomposition (SVD) and the induced right null space are given by 
+
+W = UΣV ⊤, ker( W) = span( V)⊥ = x ∈ Rn | V⊤x = 0 . (2) In this factorization, U ∈ Rm×r and V ∈ Rn×r consist of orthonormal columns known as the left and right singular vectors, respectively. The term Σ ∈ Rr×r is a diagonal matrix containing the sorted, positive singular values {σi}ri=1 of W in descending order. Accordingly, the right null space of W is the orthogonal complement of the subspace spanned by its right singular vectors. 
+
+## 4 The Spectral Bias of Pre-trained GNNs 
+
+To establish our theoretical framework, we investigate a frozen GNN encoder with a weight matrix 
+
+W ∈ Rdout ×din at an arbitrary layer. For downstream adaptation, we assume Wdown ∈ Rdin ×C
+
+represents the optimal linear classifier trained directly on raw node features. 
+
+Origins of Spectral Bias. The spectral bias in pre-trained GNNs fundamentally stems from two compounded phenomena: the nature of gradient descent and the graph message-passing mechanism. During pre-training, W is optimized over T steps of gradient descent. Each step applies a rank-1 update ∆W (t) = −ηtg(t)(h(t))⊤ based on the upstream gradient g(t) and layer input h(t). For a GNN, let h(t) = ϕ( bAfW (t)eh(t)) and let the adjacency matrix be eigendecomposed as bA = QΛQ⊤,the cumulative update is 
+
+∆W = W (T ) − W (0) = −
+
+> T
+
+X
+
+> t=1
+
+ηtg(t)(h(t))⊤ = −
+
+> T
+
+X
+
+> t=1
+
+ηtg(t)h
+
+ϕ QΛQ⊤ fW (t)eh(t)i⊤
+
+(3) Since each update deposits energy along h(t), the spectral structure of ∆W is governed by the input covariance Σh = Et[h(t)(h(t))⊤]. Let Σh = P 
+
+> i
+
+λieie⊤ 
+
+> i
+
+(with λ1 ≥ λ2 ≥ · · · ) and Pr = Pri=1 eie⊤
+
+> i
+
+be the projection onto the top-r principal directions. 
+
+Proposition 4.1 (Spectral Alignment and Concentration) . If the training inputs satisfy ∥(I −
+
+Pr )h(t)∥2 ≤ δ∥h(t)∥2 for all t, and the cross-step gradient terms vanish, then the cumulative gradient update inherits this concentration: 
+
+∥Pr ∆W ⊤∥2
+
+> F
+
+∥∆W ∥2
+
+> F
+
+= 1 − ∥(I − Pr )∆ W ⊤∥2
+
+> F
+
+∥∆W ∥2
+
+> F
+
+≥ 1 − δ2. (4) The detailed proof is provided in the Appendix B. Proposition 4.1 reveals that when inputs are confined to a low-dimensional subspace, gradient updates restrict their energy to the same principal 3Q1 Q2 Q3 Q4 Q5        
+
+> 012345678
+> DPMS / DPMS(Q1)  Cora CiteSeer PubMed DD NCI109
+> -25% +0% +25%
+> Net gap (%)
+> -27.1% +0.6% +4.1% +9.6% +11.1% Cora CiteSeer PubMed
+> 0246810
+> Accuracy per feature dim (%/dim)
+> Encoder Wh (128-d) NS-PCA top-8 (8-d)
+
+Figure 1: Left: DPMS and ∆q in the singular values of the quintices of Wdown . Right: Informa-tion density of encoder and null space. 
+
+subspace. Crucially, this gradient-induced bias is compounded by GNN message passing h(ℓ) =
+
+ϕ( ˆA W (ℓ)h(ℓ−1) ), which acts as a graph-spectral filter. Over L layers, scaling frequency components by λLi ( ˆA) causes an anisotropic contraction of the covariance matrix. This asymptotically forces node representations to collapse toward a dominant vector, severely skewing the spectral distribution of the pre-trained weights. 
+
+Downstream Capacity and Misalignment. For a frozen encoder W , the downstream classifier is strictly confined to the spectral reachable set H(W ) := {h 7 → a⊤(W h ) : a ∈ Rdout }. Since col (W ⊤) = col (V ), the encoder restricts any downstream head to a k-dimensional subspace (where 
+
+k = rank (W )). The minimal approximation error against the optimal downstream classifier Wdown 
+
+is: 
+
+ε2(W ) := min  
+
+> A
+
+∥Wdown − W ⊤A∥2 
+
+> F
+
+= ∥PN Wdown ∥2 
+
+> F
+
+, (5) which is achieved at A∗ = U Σ−1V ⊤Wdown , leaving an irreducible residual defined by the null space projection PN = I − V V ⊤. We further find that applying a computationally inexpensive PCA to the null space leads to substantially higher information density than the Encoder. As shown in Figure 1, using only 8 dimensions, the resulting representation achieves classification performance comparable to that of a 128 dimensional Encoder obtained through costly training. To explicitly quantify the tension between downstream demand and pre-training capacity, we introduce the Downstream-Pretraining Misalignment Score for each singular direction vj . By partitioning the singular values into quintile groups {Qq }5
+
+> q=1
+
+, we further define the aggregate net gap (∆q ): 
+
+DPMS j := ∥W ⊤
+
+> down
+
+vj ∥2
+
+σ2
+
+> j
+
+, ∆q := 
+
+P 
+
+> j∈Qq
+
+∥W ⊤
+
+> down
+
+vj ∥2
+
+P 
+
+> j
+
+∥W ⊤
+
+> down
+
+vj ∥2 −
+
+P 
+
+> j∈Qq
+
+σ2
+
+> j
+
+P 
+
+> j
+
+σ2
+
+> j
+
+. (6) 
+
+Theorem 4.2 (Spectral Reversal) . The interaction between pre-trained capacity and downstream demand exhibits the following properties: 
+
+• Reachability Limits: Target signals within col (V ) are fully recoverable via aj = σ−1 
+
+> j
+
+uj ,whereas signals in the null space ker( W ) yield an irreducible approximation error ε2(W ) = 
+
+∥PN Wdown ∥2 
+
+> F
+
+.
+
+• Capacity Misalignment: DPMS j grows inversely with the pre-trained capacity σ2 
+
+> j
+
+. Conse-quently, severe spectral concentration, where σi ≫ σj , forces the ratio DPMS j /DPMS i to diverge, which is regionally quantified by the net gap ∆q .
+
+The theorem above formalizes the fundamental tension between the pre-training and fine-tuning phases. The first property indicates that a frozen backbone inherently introduces blind spots : any downstream feature reliance that falls into the null space of the pre-trained weights simply cannot be recovered, regardless of how the linear head is optimized. The second property further reveals that even within the reachable subspace, there is a severe mismatch in resource allocation. The metric 4Spectral Channel   
+
+> ℎ𝑖
+> (𝑙)
+> Null-Space Channel
+> ℎ𝑖 (𝑙)
+> Top-k basis
+> 𝑋(𝐼 − 𝑉𝑉 𝑇 )
+> 𝑉 𝑇 ℎ𝑖 (𝑙)
+> 𝑉 𝑇
+> Input space basis
+> Projection
+> Projection
+> 𝑋(𝐼 − 𝑉𝑉 𝑇 )ℎ 𝑖 (𝑙)
+> Null-Space
+> 𝑰 − 𝑽𝑽 𝑻
+> Suppress
+> Emphasize
+> … …
+> Layer 𝒍
+> Layer 𝑳
+> Downstream
+
+Spectral Reverse Prompt (SRP) Pre-trained GNN: Spectral Bias              
+
+> Input Graph 𝒢 Feature
+> Matrix X
+> Adjacency
+> Matrix A
+> N×dN×N
+> ℎ𝑖 (𝑙−1) ℎ𝑖 (𝑙)
+> 𝑊 (𝑙)
+> GNN Layer 𝒍
+> Dominant
+> directions
+> Weak
+> directions
+> Null-Space
+> directions
+> 𝑖
+> σ𝑖
+> Singular Value Spectrum (Σ)
+> W=UΣ 𝑉 𝑇 SVD decomposition
+> Prompt Tuning
+> σ𝑖
+> 𝑖
+> 𝜇
+> 𝜇
+> 𝑸 (𝒍)
+> Trainable Frozen
+> 𝑨 𝒔 (𝒍)
+> 𝑨 𝒏
+> (𝒍)
+> 𝒑 (𝒍)
+> 𝒑 (𝑳−𝟏) 𝒉 (𝑳−𝟏)
+> 𝒉 (𝒍)
+> 𝒉 (𝑳)
+> 𝑖
+> σ𝑖
+
+Figure 2: Overall framework of Spectral Reverse Prompt (SRP). SRP decomposes each frozen GNN layer weight to expose spectral bias, then uses a spectral channel to suppress dominant directions and amplify weak ones, and a null-space channel to exploit information that is not captured by the frozen encoder. The two channels are fused into layer-wise prompts injected into the frozen GNN for downstream tuning. 
+
+DPMS j acts as a demand-to-supply ratio. Due to spectral bias, the pre-trained model over-allocates its capacity to dominant directions, leading to a low DPMS and a negative net gap representing redundant supply. Conversely, the tail directions, which are often crucial for specific downstream tasks, are starved of capacity, resulting in a critically high DPMS and a positive net gap. This structural misalignment strongly motivates the need for targeted spectral adaptation. 
+
+Theorem 4.3 (PAC-Bayes Generalization Bound) . Consider a learnable adaptor ˆΘ restricted to a bottleneck rank rs across exactly |V w| weak spectral directions, yielding a parameter count of dΘ = O(|V w|rs). Let ˆR( ˆΘ) and R( ˆΘ) be the empirical and expected risks on n samples. Under McAllester’s bound with a Gaussian prior bounded by the backbone’s condition number 
+
+κ(W ) := σmax /σ min , and an analytically optimized posterior, with probability ≥ 1 − δ:
+
+R( ˆΘ) ≤ ˆR( ˆΘ) + O
+
+r |V w|rs log κ(W ) + log( n/δ )
+
+n
+
+!
+
+. (7) 
+
+Proof Sketch and Motivation. By Theorem 4.2, the effective signal scale per target direction is restricted by 1/σ min , which strictly bounds the parameter norm as ∥ ˆΘ∥2 = O(dΘ/σ 2
+
+> min
+
+). Optimizing the posterior variance collapses the KL divergence to O(dΘ log κ(W )) , yielding Equation (7). Crucially, this bound demonstrates that the generalization gap depends explicitly on the number of activated weak directions |V w|, rather than the massive original feature dimensions din dout . This offers a profound theoretical foundation: by deliberately restricting trainable capacity to only the highly misaligned subspace, one can rectify the spectral bias while inherently securing a significantly tighter generalization guarantee than full fine-tuning. This structural insight directly motivates our algorithmic design in the subsequent section. 
+
+## 5 Method: Spectral Reverse Prompt 
+
+Motivated by the spectral reversal principle, we design our method, Spectral Reverse Prompt (SRP). Our approach introduces a layer-wise graph prompt that counteracts singular values to better align the pretrained models with downstream few-shot tasks. SRP adds prompting vector to node feature: 
+
+˜z(ℓ) = ˆA W (ℓ)h(ℓ−1) + b(ℓ) + p(ℓ)(h(ℓ−1) ). (8) 5Each prompt consists of two complementary channels on orthogonal subspaces of Rdin : a spectral channel that reverses the encoder’s spectral weighting, and a null-space channel that extracts signal from directions invisible to W .
+
+5.1 Spectral Channel: Soft-Threshold Reversal 
+
+Motivated by Theorem 4.2, this channel amplifies weak directions while suppressing dominant ones. Node features are projected onto the right-singular basis: hspec = V ⊤h ∈ Rk (the spectral coordinates of h). A learnable soft-threshold mask is then applied: 
+
+τ = sigmoid( τ0), μj = sigmoid  (τ σ max − σj ) · γ, (9) where τ0 is a scalar threshold parameter, σmax the largest singular value of W , γ is a pre-modulatable temperature coefficient that can be freely adjusted according to specific experiments, and μj ∈ (0 , 1) 
+
+the mask weight for direction j. By construction μj ≈ 0 for strong directions and μj ≈ 1 for weak ones. The masked coordinates are linearly projected: zspec = ( hspec ⊙ μ) As, where As ∈ Rrs×k is a learnable bottleneck adaptor of rank rs.
+
+5.2 Null-Space Channel 
+
+When din > k , the null space ker( W ) has dimension din − k. Features in this subspace are completely invisible to the frozen encoder and inaccessible to the spectral channel. We project the feature matrix 
+
+X onto ker( W ) and extract the top-m principal components: 
+
+X⊥ = X(I − V V ⊤), znull = An (V⊥h), (10) where V⊥ ∈ Rm×din is the orthonormal PCA basis of the null-space-projected data X⊥, and An ∈
+
+Rrs×m is a learnable adaptor. By construction W V ⊥ = 0 and V ⊤V⊥ = 0 : the two channels operate on orthogonal subspaces. Both V⊥ and V are frozen; only An is learned. Figure 1 and proofs given by Appendix B confirm that NS-PCA directions carry higher per-dimension accuracy than the encoder output and that PCA ordering substantially outperforms random null-space selection. 
+
+5.3 Channel Fusion and Output 
+
+The two channels are summed in a shared bottleneck, then projected to the GNN activation space: 
+
+p(h) = Q
+
+h
+
+As (V T h ⊙ μ)
+
+| {z }
+
+> spectral channel
+
++ An (V⊥h)
+
+| {z }
+
+> null-space channel
+
+i
+
++ bp, (11) where Q and bp are the shared projection and bias. This fusion is lossless since V ⊤V ⊤⊥ = 0 .When din ≤ k + m, SRP uses a projective fallback p(h) = ( hweak P )Q + bp. Here, hweak = h −
+
+(hV ⊙ (1 −μ)) V ⊤ directly preserves all weak spectral and null-space signals. Thus, a single adaptor 
+
+P ∈ Rdin ×rs becomes mathematically isomorphic to the dual-channel architecture (Appendix B.5). 
+
+5.4 Complexity Analysis 
+
+The proposed SRP exhibits exceptional efficiency, characterized by strictly linear time complexity with respect to the graph size and a trainable parameter footprint drastically smaller than standard LoRA-style adaptations. 
+
+Time Complexity. Initial SVD and null-space computations are performed once offline. During training, by pre-computing the heavy input projections, SRP’s forward-pass overhead is reduced to 
+
+O(|V| rs(k + m + h)) . Since rs ≪ h and k, m ≪ din , this linear cost is asymptotically negligible compared to the backbone’s heavy message-passing complexity of O(|E| din ).
+
+Space Complexity. SRP introduces a minimal set of trainable parameters. For a standard n-layer network, combining the initial dual-channel layer and n − 1 projective fallback layers yields exactly 
+
+rs(k +m+(2 n−1) h)+ nh +n trainable parameters. This scales strictly as O(nr sh), avoiding input-dimension ( din ) dependencies, making it far smaller than full fine-tuning or LoRA-style baselines. Additionally, frozen buffers ( V, V ⊤⊥ ) require only O(din (k + m) + nhk ) memory, while activation memory remains O(|V| din ), identical to the unmodified backbone. 66 Experiments 
+
+6.1 Experimental Setup Datasets. We evaluate the effectiveness of SRP on ten benchmark datasets spanning both node-and graph-level classification tasks. For node classification (5-shot), we consider five widely used benchmarks, including the citation networks Cora [39], CiteSeer [39], and PubMed [39], as well as the large-scale datasets Flickr [40] and ogbn-arxiv [41]. For graph classification (50-shot), we use five molecular and biological graph datasets from TUDataset [42]: ENZYMES, DD, NCI1, NCI109, and Mutagenicity. These benchmarks exhibit substantial diversity in graph scale, topology, and feature dimensionality. Detailed dataset statistics are provided in Appendix A. 
+
+Pre-training strategies and Baselines. To evaluate the compatibility and generality of SRP across different self-supervised paradigms, we conduct experiments under two representative pre-training strategies: GraphCL [17] and SimGRACE [19]. We compare SRP against ten representative baselines, including: Classifier Only (a linear classifier trained on frozen features), GPPT [11] (link-prediction-based prompting), GraphPrompt [37] (readout-level prompting), All-in-one [43] (multi-task prompt-ing), GPF and GPF-plus [8] (feature-level prompting), EdgePrompt and EdgePrompt-plus [9] (edge-level prompting), and GraphLoRA [32] (structure-aware low-rank adaptation). For fair comparison, all methods use the same backbone architecture, pre-trained checkpoints, and evaluation protocol following Prog [44]. Table 1: Performance on node-level benchmarks (5-seed avg.). Bold = best, underline = second best. 
+
+Pre-training Tuning Methods Cora CiteSeer PubMed ogbn-arxiv Flickr 
+
+GraphCL Classifier Only 53 .05 ±4.76 38 .62 ±3.43 64 .28 ±4.51 21 .15 ±1.64 24 .32 ±2.93 
+
+GPPT 50 .96 ±6.67 39 .50 ±1.67 60 .47 ±4.75 17 .99 ±1.14 24 .35 ±1.84 
+
+GraphPrompt 55 .71 ±4.62 40 .81 ±2.11 63 .47 ±2.23 21 .03 ±1.92 26 .08 ±3.44 
+
+ALL-in-one 38 .00 ±4.17 40 .27 ±2.09 58 .61 ±3.49 16 .42 ±2.98 25 .08 ±3.44 
+
+GPF 58 .52 ±4.07 43 .55 ±2.80 67 .67 ±3.14 21 .73 ±1.75 23 .98 ±1.71 
+
+GPF-plus 52 .24 ±4.59 38 .47 ±3.27 64 .30 ±4.58 21 .03 ±1.96 25 .32 ±2.02 
+
+EdgePrompt 58 .60 ±4.46 43 .31 ±3.23 67 .76 ±3.01 21 .90 ±1.71 24 .83 ±2.78 
+
+EdgePrompt+ 62 .88 ±6.43 46 .20 ±0.99 67 .41 ±5.25 23 .18 ±1.26 25 .57 ±3.04 
+
+GraphLoRA 63 .35 ±4.32 45 .98 ±3.97 67 .21 ±3.15 23 .26 ±1.89 25 .71 ±3.16 
+
+SRP (Ours) 68 .11 ±2.29 49 .02 ±2.26 68 .81 ±3.92 24 .75 ±1.79 26 .39 ±2.11 
+
+SimGRACE Classifier Only 52 .27 ±2.74 40 .45 ±3.55 56 .72 ±3.80 20 .75 ±2.92 25 .53 ±3.98 
+
+GPPT 52 .07 ±7.65 40 .25 ±3.29 58 .65 ±5.12 17 .76 ±1.80 23 .37 ±4.66 
+
+GraphPrompt 51 .42 ±2.80 41 .74 ±2.22 55 .98 ±2.94 20 .48 ±2.57 25 .88 ±3.81 
+
+ALL-in-one 34 .64 ±4.06 38 .95 ±2.35 54 .18 ±4.70 16 .72 ±2.90 27 .68 ±4.58 
+
+GPF 58 .23 ±4.19 44 .87 ±4.35 61 .55 ±3.79 21 .86 ±2.91 26 .51 ±4.69 
+
+GPF-plus 52 .27 ±3.34 41 .02 ±3.49 56 .95 ±3.86 21 .44 ±3.77 28 .35 ±5.50 
+
+EdgePrompt 58 .37 ±4.51 43 .94 ±4.15 61 .10 ±3.69 21 .85 ±2.54 30 .12 ±5.04 
+
+EdgePrompt+ 62 .40 ±7.97 46 .62 ±2.53 64 .91 ±5.58 22 .74 ±2.34 28 .50 ±4.08 
+
+GraphLoRA 63 .06 ±3.64 46 .39 ±6.15 64 .33 ±5.23 23 .22 ±2.97 28 .02 ±3.54 
+
+SRP (Ours) 67 .24 ±7.31 51 .37 ±5.24 67 .32 ±4.10 24 .01 ±2.91 28 .48 ±3.26 
+
+6.2 Main Results 
+
+We compare the node-level and graph-level classification accuracy of our methods and other baselines. Table 1 and Table 2 report results under GraphCL and SimGRACE pre-training. We make several key observations. First, SRP consistently achieves the best or second best performance across almost all dataset. Second, the gains are most pronounced on node classification benchmarks with high input dimension, where the null-space channel can extract substantial discriminative signal from the frozen encoder. Third, on graph classification benchmarks where the input dimension is small, SRP operates via its projective fallback (Section 5.3), yet remains superior to the strongest baselines, confirming that the spectral reversal mask provides meaningful gains. These results validate the central thesis of this work: inverting the spectral priority of frozen GNN weights is a broadly effective strategy for graph prompt tuning. 7Table 2: Performance on graph-level benchmarks (5-seed avg.). Bold = best, underline = second best. 
+
+Pre-training Tuning Methods ENZYMES DD NCI1 NCI109 Mutagenicity 
+
+GraphCL Classifier Only 30 .50 ±1.16 62 .89 ±2.19 62 .49 ±1.95 61 .68 ±0.93 66 .62 ±1.87 
+
+GraphPrompt 27 .83 ±1.61 64 .33 ±1.79 63 .19 ±1.71 62 .18 ±0.48 67 .62 ±0.65 
+
+ALL-in-one 25 .92 ±0.55 66 .54 ±1.82 57 .52 ±2.61 62 .74 ±0.78 63 .43 ±2.53 
+
+GPF 30 .08 ±1.25 64 .54 ±2.22 62 .66 ±1.83 62 .29 ±0.90 66 .54 ±1.85 
+
+GPF-plus 31 .00 ±1.50 67 .26 ±2.29 64 .56 ±1.10 62 .84 ±0.22 66 .82 ±1.63 
+
+EdgePrompt 29 .50 ±1.57 64 .16 ±2.13 63 .05 ±2.11 62 .59 ±0.93 66 .87 ±1.88 
+
+EdgePrompt+ 34 .00 ±1.25 67 .98 ±2.05 66 .30 ±2.54 66 .52 ±0.91 67 .47 ±2.37 
+
+GraphLoRA 36 .05 ±1.89 68 .33 ±1.93 66 .54 ±2.71 66 .40 ±0.96 67 .12 ±2.11 
+
+SRP (Ours) 36 .32 ±2.65 69 .71 ±1.72 66 .93 ±1.81 68 .18 ±0.55 69 .35 ±1.80 
+
+SimGRACE Classifier Only 27 .07 ±1.04 61 .77 ±2.40 61 .27 ±3.64 62 .12 ±1.10 67 .36 ±0.71 
+
+GraphPrompt 26 .87 ±1.47 62 .58 ±1.84 62 .45 ±1.52 62 .41 ±0.69 68 .03 ±0.78 
+
+ALL-in-one 25 .73 ±1.18 65 .16 ±1.47 58 .52 ±1.59 62 .01 ±0.66 64 .43 ±1.00 
+
+GPF 28 .53 ±1.76 65 .64 ±0.70 61 .45 ±3.13 61 .90 ±1.26 67 .19 ±0.74 
+
+GPF-plus 27 .33 ±2.01 67 .20 ±1.56 61 .61 ±2.89 62 .84 ±0.23 67 .69 ±0.64 
+
+EdgePrompt 29 .33 ±2.30 63 .97 ±2.14 62 .02 ±3.02 62 .02 ±1.03 67 .55 ±0.85 
+
+EdgePrompt+ 32 .67 ±2.53 67 .72 ±1.62 67 .07 ±1.96 66 .53 ±1.30 68 .31 ±1.36 
+
+GraphLoRA 35 .17 ±1.42 67 .02 ±1.97 66 .83 ±2.39 65 .33 ±1.04 67 .58 ±1.67 
+
+SRP (Ours) 35 .38 ±1.88 68 .12 ±1.97 66 .53 ±2.94 67 .07 ±0.83 68 .92 ±2.73 
+
+Table 3: Ablation Study of Different Variants on GraphCL and SimGRACE. 
+
+Variant GraphCL SimGRACE Cora CiteSeer Avg. ∆ Cora CiteSeer Avg. ∆
+
+SRP (full) 68 .1±2.3 49 .0±2.3 −0.0 67 .2±7.3 51 .4±5.2 −0.0
+
+SRP-NM (w/o null channel) 63 .4±2.8 41 .1±3.8 −6.3 60 .3±5.9 43 .5±2.9 −7.4
+
+SRP-NS (w/o spectral channel) 64 .4±2.1 45 .6±3.2 −3.6 63 .5±6.6 47 .7±4.3 −3.7
+
+SRP-NR (w/o reverse) 64 .7±2.7 48 .0±4.0 −2.2 63 .4±4.4 49 .9±4.9 −2.7
+
+SRP-Bi (bidirectional) 64 .7±3.3 47 .9±3.3 −2.3 63 .0±4.5 50 .0±4.8 −2.8
+
+6.3 Ablation Study 
+
+To disentangle the contributions of different components in SRP, we evaluate four ablation variants under both GraphCL and SimGRACE pre-training settings: SRP-NM removes the null-space channel, 
+
+SRP-NS removes the spectral channel, SRP-NR disables spectral reversal by adopting uniform weighting across all singular directions (i.e., μj ≡ 1), and SRP-Bi replaces the reverse weighting strategy with a bidirectional mask that amplifies both dominant and trailing spectral directions. The results in Table 3 reveal a consistent trend across both pre-training frameworks. 
+
+Effectiveness of the spectral and null-space channels. Both the spectral channel and the null-space channel play essential roles in extracting discriminative information for downstream adaptation. Removing either component leads to clear performance degradation. In particular, SRP-NM and 
+
+SRP-NS consistently underperform the full SRP model across all datasets and pre-training settings, demonstrating that both weak spectral directions and null-space information contribute substantially to effective prompt learning. 
+
+Effectiveness of the spectral reversal principle. SRP improves adaptation by reversing the pre-trained spectral bias and emphasizing weak singular directions. When this mechanism is removed (SRP-NR ) or replaced with bidirectional amplification ( SRP-Bi ), performance consistently declines relative to the full SRP model. These results suggest that selectively emphasizing trailing singular directions is more effective than uniformly weighting or jointly amplifying both spectral extremes for few-shot graph adaptation. 
+
+6.4 Additional Evaluation Label sensitivity We analyzed the impact of the number of labels for each class during prompt tuning in downstream tasks, as shown in Figure 3. We found that the performance of node classification tasks fluctuates significantly with changes in the number of samples when the shot number is 8extremely few. In contrast, graph classification tasks are less affected by the number of labels. 
+
+Parameter sensitivity. We study the sensitivity of SRP to its two key hyperparameters: the null-space PCA dimension m and the adaptor bottleneck rank rs and numbers of labels. m controls how many low-amplification singular directions are used to construct the spectral reparameterization subspace, rs determines the capacity of the lightweight adapter, shot number reflects the ability to fine tune the model with a limited number of labels. Figure 3 reports 5-shot node classification accuracy under GraphCL as we vary rs ∈ { 16 , 32 , 64 , 128 } and m ∈ { 4, 8, 16 , 32 } independently. Performance remains stable across a wide range of values, with accuracy plateauing at the default settings ( rs=32 , m=16 ), confirming that SRP is robust to the choice of these hyperparameters and does not require extensive tuning in practice. 
+
+Convergence Speed. We also investigate the convergence speed of our method compared with other strong baselines. Figure 4 illustrates the accuracy curves of our method and the baselines under two pre-training strategies. According to Figure 4, we can observe that SRP can generally converge faster than other methods, which means extra efficiency by adopting fewer epoch numbers in tuning the whole pre-trained models. 16 32 64 128            
+
+> Bottleneck rank ( rs)
+> 50 60 70
+> Accuracy (%)
+> 4816 32
+> Null-space PCA dim ( m)
+> 40 50 60 70
+> Accuracy (%)
+> 13510 full
+> Number of Shots
+> 40 60 80
+> Accuracy (%)
+> 10 30 50 100 full
+> Number of Shots
+> 30 40 50 60 70
+> Accuracy (%)
+
+Cora CiteSeer PubMed NCI1 DD ENZYMES 
+
+Figure 3: Label Sensitivity and Parameter Sensitivity of NS-PCA and bottleneck rank. 0 25 50 75 100 125 150 175 200                                   
+
+> Epochs
+> 20 30 40 50 60
+> Accuracy
+> (a) Cora with GraphCL
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 20 30 40 50
+> Accuracy
+> (b) CiteSeer with GraphCL
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 40 50 60
+> Accuracy
+> (c) PubMed with GraphCL
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 50 55 60 65
+> Accuracy
+> (d) DD with GraphCL
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 20 30 40 50 60
+> Accuracy
+> (e) Cora with SimGRACE
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 20 30 40 50
+> Accuracy
+> (f) CiteSeer with SimGRACE
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 30 40 50 60 70
+> Accuracy
+> (g) PubMed with SimGRACE
+> 025 50 75 100 125 150 175 200
+> Epochs
+> 55 60 65
+> Accuracy
+> (h) DD with SimGRACE
+> ClassifierOnly GPF GPFplus EdgePrompt EdgePrompt+ GraphLoRA SRP
+
+Figure 4: Convergence speed of different methods. 
+
+## 7 Conclusion 
+
+In this work, we identified spectral bias as a key bottleneck in adapting pre-trained GNNs, where self-supervised objectives overemphasize dominant singular directions while underutilizing lower-energy components. Using the DPMS, we empirically and theoretically showed that downstream utility is often concentrated in these underexplored spectral directions. To address this misalignment, we introduced SRP, a parameter-efficient framework that rebalances spectral contributions of frozen encoders via soft-thresholding and null-space augmentation. By reallocating capacity toward under-utilized components, SRP achieves state-of-the-art performance across diverse benchmarks while 9using less than 7% of backbone parameters. Our results highlight a simple but important principle: in parameter-efficient adaptation, which directions are adapted can matter more than how many parameters are introduced. 
+
+Limitations and Future Works. While SRP remains robustness across different graph homophily levels and backbone architectures according to our additional results C, its spectral reweighting currently relies on a shared singular basis and a global threshold, which may not fully capture region-specific frequency heterogeneity. In addition, the effectiveness of the null-space channel depends on the relationship between input dimensionality and encoder rank, and can be limited when the frozen transformation has little or no null space. Future work includes instance- or structure-adaptive spectral reweighting driven by downstream feedback, as well as extending the spectral perspective to multi-modal graph representation learning. 
+
+## Acknowledgments and Disclosure of Funding 
+
+This work was supported by the National Natural Science Foundation of China (No. 62276053); Center for HPC, University of Electronic Science and Technology of China; Sichuan Province Science and Technology Support Program (No. 2025ZDZX0016). 
+
+## References 
+
+[1] Xiangguo Sun, Jiawen Zhang, Xixi Wu, Hong Cheng, Yun Xiong, and Jia Li. Graph prompt learning: A comprehensive survey and beyond. arXiv preprint arXiv:2311.16534 , 2023. [2] Xingbo Fu, Zehong Wang, Zihan Chen, Jiazheng Li, Yaochen Zhu, Zhenyu Lei, Cong Shen, Yanfang Ye, Chuxu Zhang, and Jundong Li. Graph prompting for graph learning models: Recent advances and future directions. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 , KDD ’25, page 6010–6020, New York, NY, USA, 2025. Association for Computing Machinery. [3] Thomas N Kipf and Max Welling. Semi-supervised classification with graph convolutional networks. In International Conference on Learning Representations , 2017. [4] Petar Veliˇ ckovi´ c, Guillem Cucurull, Arantxa Casanova, Adriana Romero, Pietro Lio, and Yoshua Bengio. Graph attention networks. In International Conference on Learning Representations ,2018. [5] Keyulu Xu, Weihua Hu, Jure Leskovec, and Stefanie Jegelka. How powerful are graph neural networks? In International Conference on Learning Representations , 2019. [6] Will Hamilton, Zhitao Ying, and Jure Leskovec. Inductive representation learning on large graphs. In Advances in neural information processing systems , 2017. [7] Shaked Brody, Uri Alon, and Eran Yahav. How attentive are graph attention networks? In 
+
+International Conference on Learning Representations , 2022. [8] Taoran Fang, Yunchao Zhang, Yang Yang, Chunping Wang, and Lei Chen. Universal prompt tuning for graph neural networks. Advances in Neural Information Processing Systems , 2023. [9] Xingbo Fu, Yinhan He, and Jundong Li. Edge prompt tuning for graph neural networks. In 
+
+International Conference on Learning Representations , 2025. [10] Jiazheng Li, Jundong Li, and Chuxu Zhang. Instance-aware graph prompt learning. Transactions on Machine Learning Research , 2025. [11] Mingchen Sun, Kaixiong Zhou, Xin He, Ying Wang, and Xin Wang. Gppt: Graph pre-training and prompt tuning to generalize graph neural networks. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2022. [12] Xingtong Yu, Chang Zhou, Yuan Fang, and Xinming Zhang. Multigprompt for multi-task pre-training and prompting on graphs. In Proceedings of the ACM on Web Conference 2024 ,2024. 10 [13] Xingtong Yu, Yuan Fang, Zemin Liu, and Xinming Zhang. Hgprompt: Bridging homogeneous and heterogeneous graphs for few-shot prompt learning. In Proceedings of the AAAI Conference on Artificial Intelligence , 2024. [14] Renhong Huang, Jiarong Xu, Xin Jiang, Chenglu Pan, Zhiming Yang, Chunping Wang, and Yang Yang. Measuring task similarity and its implication in fine-tuning graph neural networks. In Proceedings of the AAAI Conference on Artificial Intelligence , 2024. [15] Petar Veliˇ ckovi´ c, William Fedus, William L Hamilton, Pietro Liò, Yoshua Bengio, and R Devon Hjelm. Deep graph infomax. In International Conference on Learning Representations , 2019. [16] Fan-Yun Sun, Jordan Hoffmann, Vikas Verma, and Jian Tang. Infograph: Unsupervised and semi-supervised graph-level representation learning via mutual information maximization. In 
+
+International Conference on Learning Representations , 2020. [17] Yuning You, Tianlong Chen, Yongduo Sui, Ting Chen, Zhangyang Wang, and Yang Shen. Graph contrastive learning with augmentations. Advances in neural information processing systems , 2020. [18] Yanqiao Zhu, Yichen Xu, Feng Yu, Qiang Liu, Shu Wu, and Liang Wang. Deep graph contrastive representation learning. arXiv preprint arXiv:2006.04131 , 2020. [19] Jun Xia, Lirong Wu, Jintao Chen, Bozhen Hu, and Stan Z Li. Simgrace: A simple framework for graph contrastive learning without data augmentation. In Proceedings of the ACM Web Conference 2022 , 2022. [20] Shantanu Thakoor, Corentin Tallec, Mohammad Gheshlaghi Azar, Rémi Munos, Petar Veliˇ ckovi´ c, and Michal Valko. Bootstrapped representation learning on graphs. In ICLR Workshop on Geometrical and Topological Representation Learning , 2021. [21] Zaixi Zhang, Qi Liu, Hao Wang, Chengqiang Lu, and Chee-Kong Lee. Motif-based graph self-supervised learning for molecular property prediction. Advances in Neural Information Processing Systems , 2021. [22] Zhenyu Hou, Xiao Liu, Yukuo Cen, Yuxiao Dong, Hongxia Yang, Chunjie Wang, and Jie Tang. Graphmae: Self-supervised masked graph autoencoders. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2022. [23] Zhenyu Hou, Yufei He, Yukuo Cen, Xiao Liu, Yuxiao Dong, Evgeny Kharlamov, and Jie Tang. Graphmae2: A decoding-enhanced masked self-supervised graph learner. In Proceedings of the ACM on Web Conference , pages 737–746, 2023. [24] Weihua Hu, Bowen Liu, Joseph Gomes, Marinka Zitnik, Percy Liang, Vijay Pande, and Jure Leskovec. Strategies for pre-training graph neural networks. In International Conference on Learning Representations , 2020. [25] Ruiyi Fang, Bingheng Li, Zhao Kang, Qiuhao Zeng, Nima Hosseini Dashtbayaz, Ruizhi Pu, Boyu Wang, and Charles Ling. On the benefits of attribute-driven graph domain adaptation. In 
+
+The Thirteenth International Conference on Learning Representations , 2025. [26] Zehong Wang, Zheyuan Zhang, Nitesh V Chawla, Chuxu Zhang, and Yanfang Ye. Gft: Graph foundation model with transferable tree vocabulary. Advances in neural information processing systems , 2024. [27] Shuo Wang, Bokui Wang, Zhixiang Shen, Boyan Deng, et al. Multi-Domain Graph Foundation Models: Robust Knowledge Transfer via Topology Alignment. In Forty-second International Conference on Machine Learning , 2025. [28] Haonan Yuan, Qingyun Sun, Junhua Shi, Xingcheng Fu, Bryan Hooi, Jianxin Li, and Philip S Yu. How Much Can Transfer? BRIDGE: Bounded Multi-Domain Graph Foundation Model with Generalization Guarantees. In Forty-second International Conference on Machine Learning ,2025. 11 [29] Xiaodong He, Haolan He, Ruiyi Fang, Ming Sun, and Zhao Kang. Structure-centric graph foundation model via geometric bases. In Proceedings of the 43rd International Conference on Machine Learning , 2026. [30] Xiaodong He, Xincheng Wang, and Zhao Kang. Scgfm-art: Amortized relational transport for structure-centric graph foundation models. arXiv preprint arXiv:2609.20419 , 2026. [31] Xuanting Xie, Zhaochen Guo, Bingheng Li, Xingtong Yu, Zhifei Liao, Zhao Kang, and Yuan Fang. Clustering as reasoning: A k-means interpretation of chain-of-thought graph learning. In 
+
+Proceedings of the 43rd International Conference on Machine Learning , 2026. [32] Zhe-Rui Yang, Jindong Han, Chang-Dong Wang, and Hao Liu. Graphlora: Structure-aware contrastive low-rank adaptation for cross-graph transfer learning. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 1 , pages 1785–1796, 2025. [33] Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language models. In 
+
+International Conference on Learning Representations , 2022. [34] Xingbo Fu, Zhenyu Lei, Zihan Chen, Binchi Zhang, Chuxu Zhang, and Jundong Li. GraphTOP: Graph topology-oriented prompting for graph neural networks. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. [35] Yongqi Huang, Jitao Zhao, Dongxiao He, Xiaobao Wang, Yawen Li, Yuxiao Huang, Di Jin, and Zhiyong Feng. One prompt fits all: Universal graph adaptation for pretrained models. In 
+
+Advances in Neural Information Processing Systems , volume 38, 2025. [36] Quanxin Wang, Xuanting Xie, Bingheng Li, Xingtong Yu, Shuo Wang, Ruiyi Fang, and Zhao Kang. Dynamic graph prompting via topology-routed mixed-curvature experts. arXiv preprint arXiv:2608.06031 , 2026. [37] Zemin Liu, Xingtong Yu, Yuan Fang, and Xinming Zhang. Graphprompt: Unifying pre-training and downstream tasks for graph neural networks. In Proceedings of the ACM Web Conference 2023 , 2023. [38] Zhen Tan, Ruocheng Guo, Kaize Ding, and Huan Liu. Virtual node tuning for few-shot node classification. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2023. [39] Zhilin Yang, William Cohen, and Ruslan Salakhudinov. Revisiting semi-supervised learning with graph embeddings. In International conference on machine learning , 2016. [40] Hanqing Zeng, Hongkuan Zhou, Ajitesh Srivastava, Rajgopal Kannan, and Viktor Prasanna. Graphsaint: Graph sampling based inductive learning method. In International Conference on Learning Representations , 2020. [41] Weihua Hu, Matthias Fey, Marinka Zitnik, Yuxiao Dong, Hongyu Ren, Bowen Liu, Michele Catasta, and Jure Leskovec. Open graph benchmark: Datasets for machine learning on graphs. 
+
+Advances in neural information processing systems , 2020. [42] Christopher Morris, Nils M Kriege, Franka Bause, Kristian Kersting, Petra Mutzel, and Marion Neumann. Tudataset: A collection of benchmark datasets for learning with graphs. arXiv preprint arXiv:2007.08663 , 2020. [43] Xiangguo Sun, Hong Cheng, Jia Li, Bo Liu, and Jihong Guan. All in one: Multi-task prompting for graph neural networks. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , 2023. [44] Chenyi Zi, Haihong Zhao, Xiangguo Sun, Yiqing Lin, Hong Cheng, and Jia Li. Prog: A graph prompt learning benchmark. arXiv preprint arXiv:2406.05346 , 2024. [45] Hongbin Pei, Bingzhe Wei, Kevin Chen-Chuan Chang, Yu Lei, and Bo Yang. Geom-gcn: Geo-metric graph convolutional networks. In International Conference on Learning Representations ,2020. 12 [46] Shuo Wang, Xiangyu Wang, Quanxin Wang, Bailin Wu, Bokui Wang, Shunyang Huang, Boyan Deng, Haonan Liu, Ruiyi Fang, Zhenxiang Xu, Boyu Wang, and Zhao Kang. The post-GCN decade revisited: Curvature-stratified evaluation of relational learning. arXiv preprint arXiv:2606.06397 , 2026. [47] Roger A. Horn and Charles R. Johnson. Matrix Analysis . Cambridge University Press, 2 edition, 2013. [48] David A. McAllester. Some pac-bayesian theorems. Machine Learning , 37(3):355–363, 1999. [49] Bingheng Li, Erlin Pan, and Zhao Kang. PC-Conv: Unifying homophily and heterophily with two-fold filtering. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 38, 2024. 13 A Dataset Statistics 
+
+Tables 4 and 5 summarize the basic statistics of all ten benchmark datasets used in our main experiments and three benchmark in our extension to heterophilic graphs [45]. Table 4: Node-level benchmark datasets. #Feat. is the raw input feature dimension; #Classes is the number of downstream classes. 
+
+Dataset #Nodes #Edges #Feat. #Classes Task 
+
+Cora 2,708 10,556 1,433 7 Node CiteSeer 3,327 9,104 3,703 6 Node PubMed 19,717 88,648 500 3 Node ogbn-arxiv 169,343 1,166,243 128 40 Node Flickr 89,250 899,756 500 7 Node Cornell 183 298 1703 5 Node Squirrel 5201 217073 2089 5 Node Chameleon 2277 36101 2277 5 Node 
+
+Table 5: Graph-level benchmark datasets (TUDataset). Avg. Nodes and Avg. Edges are computed over the graph collection. 
+
+Dataset #Graphs Avg. Nodes Avg. Edges #Feat. #Classes Task 
+
+ENZYMES 600 32.63 124.27 3 6 Graph DD 1,178 284.32 1,431.32 89 2 Graph NCI1 4,110 29.87 64.60 37 2 Graph NCI109 4,127 29.68 64.26 38 2 Graph Mutagenicity 4,337 30.32 61.54 14 2 Graph 
+
+Our next objective is to investigate how variations in curvature [46], an important structural property in graph representation learning, may affect the performance of our method. 
+
+## B Proofs of Theoretical Results 
+
+In this section, we provide the rigorous mathematical proofs for the theoretical claims presented in Section 4. 
+
+B.1 Proof of Proposition 4.1 (Spectral Concentration) Statement: Given the rank-1 update ∆W (t) = −ηt g(t)(h(t))⊤ and the spectral alignment condition 
+
+Et
+
+∥(I − Pr )h(t)∥2/∥h(t)∥2 ≤ δ2, the cumulative gradient update satisfies: 
+
+E∥Pr ∆W ⊤∥2
+
+> F
+
+
+
+E∥∆W ∥2
+
+> F
+
+ ≥ 1 − δ2.
+
+Proof. Consider the transpose of the gradient update at a single step t:
+
+(∆ W (t))⊤ = −ηt h(t)(g(t))⊤. (12) We can decompose the input vector h(t) into two orthogonal components using the projection matrix 
+
+Pr and its orthogonal complement (I − Pr ):
+
+h(t) = Pr h(t) + ( I − Pr )h(t). (13) The Frobenius norm squared of the update transposed is determined by the outer product of these vectors. Utilizing the property ∥ab ⊤∥2 
+
+> F
+
+= ∥a∥22∥b∥22, we have: 
+
+∥(∆ W (t))⊤∥2 
+
+> F
+
+= η2 
+
+> t
+
+∥h(t)∥22∥g(t)∥22. (14) Similarly, the energy of the update residing outside the top-r principal subspace is: 
+
+∥(I − Pr )(∆ W (t))⊤∥2 
+
+> F
+
+= η2 
+
+> t
+
+∥(I − Pr )h(t)∥22∥g(t)∥22. (15) 14 Assuming that the magnitude of the upstream gradient ∥g(t)∥22 is independent of the normalized directional projection of h(t) over the training trajectory, we can take the expectation over t:
+
+E∥(I − Pr )∆ W ⊤∥2
+
+> F
+
+ = E
+
+ ∥(I − Pr )h(t)∥22
+
+∥h(t)∥22
+
+· η2 
+
+> t
+
+∥h(t)∥22∥g(t)∥22
+
+
+
+. (16) Given the spectral alignment condition Et
+
+∥(I − Pr )h(t)∥2/∥h(t)∥2 ≤ δ2, it directly follows that: 
+
+E∥(I − Pr )∆ W ⊤∥2
+
+> F
+
+ ≤ δ2 E∥∆W ⊤∥2
+
+> F
+
+ = δ2 E∥∆W ∥2
+
+> F
+
+. (17) By the Pythagorean theorem for the Frobenius norm, ∥Pr ∆W ⊤∥2 
+
+> F
+
++ ∥(I − Pr )∆ W ⊤∥2 
+
+> F
+
+= ∥∆W ∥2 
+
+> F
+
+.Substituting the upper bound yields the final concentration result: 
+
+E∥Pr ∆W ⊤∥2
+
+> F
+
+ ≥ (1 − δ2) E∥∆W ∥2
+
+> F
+
+, (18) which concludes the proof. 
+
+B.2 Proof of Theorem 4.2 (Reachability and Approximation Limits) Statement: For a frozen encoder W = U ΣV ⊤ and an optimal downstream classifier Wdown , the minimum approximation error using any linear head A is ε2(W ) = ∥PN Wdown ∥2 
+
+> F
+
+, achieved at 
+
+A∗ = U Σ−1V ⊤Wdown .
+
+Proof. The objective is to minimize the approximation error L(A) = ∥Wdown − W ⊤A∥2 
+
+> F
+
+over all possible downstream projection heads A ∈ Rdout ×C . Substituting the compact SVD of the transposed encoder W ⊤ = V ΣU ⊤ into the objective yields: 
+
+L(A) = ∥Wdown − V ΣU ⊤A∥2 
+
+> F
+
+. (19) Since the columns of V are orthonormal, V V ⊤ forms the orthogonal projection onto col (V ), and 
+
+PN = I − V V ⊤ is the projection onto the null space ker( W ). We can orthogonally decompose the target matrix Wdown as: 
+
+Wdown = V V ⊤Wdown + PN Wdown . (20) Because the term V ΣU ⊤A lies entirely within the column space col (V ), it is orthogonal to PN Wdown .By applying the Pythagorean theorem for the Frobenius norm, we can decouple the objective function: 
+
+L(A) = ∥V V ⊤Wdown − V ΣU ⊤A∥2 
+
+> F
+
++ ∥PN Wdown ∥2 
+
+> F
+
+. (21) The second term, ∥PN Wdown ∥2 
+
+> F
+
+, is entirely independent of A and represents the irreducible error (the fundamental blind spot). To minimize L(A), we must force the first term to zero: 
+
+V V ⊤Wdown = V ΣU ⊤A. (22) Left-multiplying both sides by V ⊤ (noting that V ⊤V = I) gives: 
+
+V ⊤Wdown = Σ U ⊤A. (23) Since Σ is a diagonal matrix of strictly positive singular values, it is invertible. We can explicitly solve for A by left-multiplying by U Σ−1:
+
+A∗ = U Σ−1V ⊤Wdown . (24) Substituting A∗ back into L(A) eliminates the first term, formally proving that the minimum reachable error is exactly: 
+
+ε2(W ) = min  
+
+> A
+
+L(A) = ∥PN Wdown ∥2 
+
+> F
+
+. (25) This establishes both the optimal projection head structure and the irreducible nature of downstream targets residing in the null space. 15 B.3 Null-Space PCA Optimality (Proof of Theorem B.1) Theorem B.1 (Optimality of Null-Space PCA) . Let ΣX = E[xx ⊤] be the input feature covariance and PN = I − V V ⊤ the orthogonal projector onto ker( W ). Among all orthonormal matrices 
+
+No ∈ Rdin ×m satisfying W N o = 0 , the null-space PCA basis uniquely solves: 
+
+N ∗ 
+
+> o
+
+= arg max 
+
+> No
+
+tr  N ⊤ 
+
+> o
+
+ΣX No
+
+ N ⊤ 
+
+> o
+
+No = Im, W N o = 0 . (26) 
+
+Standard PCA (unconstrained) is generically infeasible for (26) and therefore suboptimal. Proof. The constraint W N o = 0 is equivalent to V ⊤No = 0 (since ker( W ) = ker( V ⊤)). Writing 
+
+No = PN C for an arbitrary matrix C, the constraint V ⊤No = 0 is automatically satisfied, and (26) reduces to: 
+
+max  
+
+> C⊤PNC=Im
+
+tr( C⊤PN ΣX PN C).
+
+By the Ky Fan maximum theorem [47], the maximum equals Pmj=1 λj (PN ΣX PN ), attained uniquely by the top-m eigenvectors of PN ΣX PN —the null-space PCA basis. An unconstrained PCA solution lies generically outside ker( W ) (a measure-zero coincidence would be needed for it to satisfy 
+
+V ⊤No = 0 ), so it is infeasible and thus suboptimal. 
+
+B.4 PAC-Bayes Generalization Bound (Proof of Theorem B.2) Theorem B.2 (PAC-Bayes Generalization Bound) . Let Θ denote SRP’s learnable parameters with 
+
+dΘ = |V w|rs + mr s + rsdout + dout + 1 . Let ˆR(Θ) be the empirical risk on n labeled examples, 
+
+R(Θ) the expected risk, and δ ∈ (0 , 1) . For any prior π and posterior ρ concentrated at ˆΘ, with probability ≥ 1 − δ:
+
+R( ˆΘ) ≤ ˆR( ˆΘ) + 
+
+r KL( ρ∥π) + log(2 √n/δ )2n . (27) 
+
+Setting π = N (0 , κ 2IdΘ ) and ρ = N ( ˆΘ, ˆσ2IdΘ ) with κ = κ(W ) := σmax /σ min , one obtains: 
+
+R( ˆΘ) ≤ ˆR( ˆΘ) + 
+
+r |V w|rs log κ(W ) + log(2 n/δ )2n , (28) 
+
+where dΘ = O(|V w|rs) is the dominant parameter count (spectral adaptor A ∈ R|V w |× rs ). Proof. Equation (27) is McAllester’s PAC-Bayes bound [48]. For the chosen Gaussian prior and posterior, the KL divergence evaluates to: 
+
+KL( ρ∥π) = 12
+
+"
+
+dΘ log κ2
+
+ˆσ2 − dΘ + dΘ ˆσ2 + ∥ ˆΘ∥2
+
+κ2
+
+#
+
+. (29) The effective signal scale per direction satisfies μj /σ j ≤ μj /σ min ≤ 1/σ min , so ∥ ˆΘ∥2 = O(dΘ/σ 2
+
+> min
+
+).Setting κ = σmax /σ min and optimizing ˆσ2 yields KL( ρ∥π) = O(dΘ log κ(W )) . Substituting into (27) with dΘ ≈ |V w|rs gives (28). 
+
+Complexity interpretation. The bound depends on |V w| (number of under-served directions targeted by SRP) rather than on k (total singular directions) or din dout (full-weight dimension). Since DPMS-guided prompting restricts capacity to the weak subspace, the effective model complexity is |V w|rs ≪
+
+kr s ≪ din dout , directly linking the DPMS-based design philosophy to a tighter generalization bound. 
+
+B.5 Algebraic Equivalence of the Projective Fallback 
+
+In our SRP architecture, we introduce a projective fallback path when the input dimension is small, specifically when din ≤ k + m. In this section, we rigorously prove that this fallback is not a heuristic deviation, but rather an exact algebraic simplification of the dual-channel architecture. 16 Theorem B.3 (Algebraic Isomorphism of the Fallback) . Let the pre-trained weight have rank k,and let V ∈ Rdin ×k be its right singular vectors. Let μ ∈ Rk denote the soft-threshold mask. When 
+
+din − k ≤ m, the projective fallback parameterized by a single adaptor P ∈ Rdin ×rs acting on hweak 
+
+spans the exact same hypothesis space as the dual-channel prompt parameterized by As ∈ Rk×rs
+
+and An ∈ R(din −k)×rs .Proof. First, we analyze the structure of the dual-channel prompt. The hidden representation h can be orthogonally decomposed into the reachable subspace h∥ = hV V ⊤ and the exact null space 
+
+h⊥ = h(I − V V ⊤) = hP N . In the dual-channel mode, the target response Zdual is the sum of the masked spectral channel and the null-space channel: 
+
+Zdual = ( hV diag( μ)) As + ( hV ⊤⊥ )An, (30) where V ⊤⊥ acts as the PCA basis matrix of the null space. Crucially, when din − k ≤ m, the required PCA dimension m exceeds or equals the dimension of the entire null space. Thus, the columns of 
+
+V ⊤⊥ simply form a complete orthonormal basis for PN , meaning V ⊤⊥ V⊥ = PN .Next, we analyze the input to the projective fallback, defined as hweak = h − (hV diag(1 − μ)) V ⊤.We can expand h using the orthogonal decomposition h = hV V ⊤ + hP N :
+
+hweak = ( hV V ⊤ + hP N ) − hV diag(1 − μ)V ⊤
+
+= hV  I − diag(1 − μ)V ⊤ + hP N
+
+= hV diag( μ)V ⊤ + hP N . (31) Equation (31) reveals a critical property: hweak flawlessly preserves both the masked weak spectral signals and the entirety of the null-space signals, seamlessly superimposing them in the original ambient space Rdin .Applying the single linear adaptor P to hweak yields: 
+
+Zfallback = hweak P =  hV diag( μ)(V ⊤P ) + ( hP N )P. (32) To prove the isomorphism, we must show that there exists a matrix P such that Zfallback = Zdual for any arbitrary As and An. By comparing Eq. (32) with Eq. (30), and using the identity hP N P =
+
+hV ⊤⊥ (V⊥P ), this equivalence requires: 
+
+V ⊤P = As and V⊥P = An. (33) Since V and V ⊤⊥ span mutually orthogonal complementary subspaces, the concatenated matrix 
+
+[V, V ⊤⊥ ] ∈ Rdin ×din is an orthogonal square matrix, and thus strictly invertible. Consequently, we can uniquely solve for P :
+
+P = V A s + V ⊤⊥ An. (34) Equation (34) demonstrates that optimizing the single matrix P over hweak is mathematically identical to independently optimizing As and Bn in their respective sub-manifolds. Therefore, when din ≤
+
+k + m, the projective fallback explicitly circumvents the redundant PCA calculations while strictly maintaining the theoretical capacity and spectral-reversal philosophy of SRP. 
+
+## C Additional Experiments and Analysis 
+
+C.1 Generalization to GraphGPS and Graphormer 
+
+To evaluate whether SRP extends beyond conventional message-passing GNNs, we replace the default backbone with GraphGPS and Graphormer and evaluate on two node-level datasets (Cora and CiteSeer) and two graph-level datasets (NCI1 and ENZYMES). We follow the same pre-training objective, data split, few-shot setting, training budget, and evaluation protocol as in the main experi-ments. Classifier-only, GraphLoRA, and SRP use the same frozen encoder and downstream splits. We retain the default SRP configuration with adaptor dimension r = 32 and PCA dimension m = 16 .Results are averaged over five random seeds. SRP improves over Classifier-only in all eight settings, with an average absolute gain of 12 .48 
+
+percentage points. It achieves the best result in six settings and remains within 0.82 percentage points of GraphLoRA in the other two. These results indicate that spectral rebalancing is not specific to standard message-passing GNNs and can also be applied to hybrid local–global and attention-based graph encoders. 17 Table 6: Performance of SRP with GraphGPS and Graphormer backbones. Results are reported as mean ± standard deviation over five runs.                                                                                     
+
+> Backbone Dataset Classifier-only GraphLoRA SRP GraphGPS Cora 48 .17 ±6.12 64 .33 ±6.88 66 .62 ±5.27
+> GraphGPS CiteSeer 39 .13 ±4.57 46 .80 ±3.38 58 .74 ±5.01
+> GraphGPS NCI1 63 .32 ±1.51 62 .49 ±1.93 66 .81 ±2.13
+> GraphGPS ENZYMES 35 .08 ±2.82 45 .00 ±3.25 47 .75 ±2.71
+> Graphormer Cora 51 .13 ±4.04 62 .88 ±5.49 65 .69 ±5.97
+> Graphormer CiteSeer 39 .01 ±1.74 47 .13 ±1.72 54 .89 ±1.60
+> Graphormer NCI1 56 .75 ±2.76 60 .54 ±1.03 59 .72 ±2.75
+> Graphormer ENZYMES 26 .75 ±2.41 39 .67 ±2.49 38 .92 ±2.13
+
+C.2 Role and Sensitivity of the Temperature Coefficient 
+
+Recall that the spectral mask is defined as 
+
+μj = sigmoid(( τ σ max − σj )γ) , (35) where τ determines the spectral cutoff and γ controls the sharpness of the transition around it. The interval μj ∈ [0 .1, 0.9] corresponds to a transition width of approximately 4.39 /γ in singular-value units. Thus, γ controls the smoothness of the partition without changing the cutoff determined by τ .We evaluate γ from an extremely soft mask to an approximately discrete partition. Results are reported as mean accuracy over five seeds. Table 7: Sensitivity to the temperature coefficient γ.                                 
+
+> Mask setting Cora CiteSeer NCI1 ENZYMES
+> γ= 0 .001 64.55 47.64 66.63 36.42
+> γ= 0 .164.88 48.03 66.52 36.92
+> γ= 1 67.80 48.81 66.96 36.50
+> γ= 10 68.10 48.99 66.80 36.67
+> γ= 100 68.06 48.87 66.84 36.25 Hard threshold (STE) 67.95 48.90 66.89 35.67
+
+At γ = 0 .001 , the mask is nearly constant around 0.5, with entropy close to one bit, and therefore provides little distinction between strong and weak directions. Increasing γ to 10 improves accuracy by 3.55 points on Cora and 1.35 points on CiteSeer. For γ ≥ 1, performance becomes stable. At 
+
+γ = 10 , the mask entropy decreases to 0.004 –0.064 bits, and only 0.3% –3.6% of directions remain in the transition region. Further sharpening therefore affects only a small number of boundary directions. We use γ = 10 for all datasets without dataset-specific tuning. To separate spectral selection from generic dimensionality reduction, we further construct masks with exactly the same cardinality as the learned γ = 10 mask, while selecting the strongest, weakest, or random singular directions. Table 8: Matched-cardinality comparison of different spectral selections.                       
+
+> Dataset Strong-kRandom-kWeak-kHard (STE) Soft γ= 10
+> Cora 64.25 64.44 67.80 67.95 68.10
+> CiteSeer 47.10 47.46 48.78 48.90 48.99
+> NCI1 66.42 66.45 66.87 66.89 66.80
+
+Weak-k consistently outperforms Strong-k and Random-k, particularly on Cora and CiteSeer, showing that the gain is not explained by dimensionality reduction alone. The similar performance of the soft and hard masks is also expected when few singular values lie near the cutoff. The sigmoid mask provides a differentiable relaxation during optimization while becoming nearly discrete after convergence. 18 C.3 Extension to Heterophilic Graphs 
+
+Although the main benchmarks are predominantly homophilic, the SRP architecture is not restricted to homophilic graphs. The connection can be understood from the spectral filtering induced by message passing. Consider 
+
+Z = bAW ⊤H, W = U ΣV ⊤, (36) and let the normalized graph Laplacian be 
+
+L = I − bAsym = ΦΛΦ ⊤. (37) For a graph signal s, its graph frequency can be measured by its normalized Dirichlet energy, 
+
+freq( s) = s⊤Ls s⊤s . (38) Since bAsym ϕi = (1 − λi)ϕi, repeated propagation scales the i-th graph Fourier component by 
+
+(1 − λi)K after K propagation steps. Standard message passing therefore favors low-frequency components while attenuating high-frequency variation. During pre-training, the features used to update the weights have already passed through this prop-agation operator. Consequently, the feature covariance observed by optimization is biased toward graph-frequency components preserved by message passing. This provides a graph-specific connec-tion between the graph spectrum and the singular spectrum analyzed in our method. SRP introduces its prompt after neighborhood aggregation: 
+
+H(ℓ+1) = ϕ
+
+ bAW (ℓ)⊤H(ℓ) + p(ℓ)(H(ℓ))
+
+
+
+. (39) The prompt p(ℓ) is therefore not filtered again by the same bA in the current layer, providing a complementary pathway for node-local and high-frequency information suppressed by the frozen message-passing branch. We further evaluate SRP on three heterophilic datasets using GraphCL pre-training and the same hyperparameter configuration as in the main experiments. Across both homophilic and heterophilic graph data, prior approaches typically rely on carefully designed filters to balance the learned graph representations [49], whereas our method demonstrates robustness to varying levels of heterophily without requiring such specialized designs. Table 9: Performance on heterophilic graph benchmarks.                                   
+
+> Dataset Classifier-only GraphLoRA SRP SRP vs. GraphLoRA Cornell 32 .22 ±8.35 45 .56 ±14 .34 51 .67 ±5.72 +6 .11
+> Squirrel 23 .08 ±1.98 23 .06 ±1.40 25 .12 ±1.47 +2 .06
+> Chameleon 31 .74 ±1.88 31 .43 ±1.44 33 .58 ±2.76 +2 .15
+
+SRP outperforms GraphLoRA on all three datasets. The improvement is particularly clear on Squirrel and Chameleon, where GraphLoRA falls below the Classifier-only baseline while SRP remains above it. These results support the applicability of SRP beyond homophilic settings. 
+
+C.4 Scalability and Runtime 
+
+The number of trainable SRP parameters is independent of the number of graph nodes and edges, while the dominant computation remains the frozen GNN backbone. Thus, SRP remains applicable to large graphs. In our experiments, including ogbn-arxiv with nearly 170 ,000 nodes, all runs were conducted on a single NVIDIA RTX 3090 GPU with 24 GB memory. We additionally compare runtime against GPF, which has the lowest empirical per-epoch runtime among the prompt-learning baselines in our main experiments. SRP is faster than GPF on five of the six evaluated datasets, indicating that its spectral operations do not introduce substantial training-time overhead. 19 Table 10: Per-epoch runtime in seconds. Lower is better.               
+
+> Dataset GPF SRP Cora 0.121 0.077
+> CiteSeer 0.131 0.084
+> PubMed 0.678 0.508
+> ENZYMES 0.221 0.292 DD 0.191 0.136
+> NCI1 0.342 0.297
+
+C.5 Difference from GraphLoRA 
+
+GraphLoRA and SRP both introduce low-dimensional trainable components around a frozen GNN, but they address different adaptation objectives and construct different adaptation subspaces. GraphLoRA focuses on feature and structural distribution shifts between source and target graphs through a structure-aware low-rank adaptation branch. Its low-rank correction remains within the message-passing pathway: 
+
+∆Z(ℓ)GraphLoRA = bA ∆W (ℓ)⊤H(ℓ). (40) SRP instead targets the spectral capacity allocation of the frozen transformation. For 
+
+W (ℓ) = U (ℓ)Σ(ℓ)V (ℓ)⊤, (41) it explicitly constructs prompts from two complementary subspaces. The spectral channel can be written as 
+
+Pspec =  HV ⊙ μ(Σ) AsQ, μj = sigmoid(( τ σ max − σj )γ) , (42) while the null-space channel is 
+
+Pnull = HN A nQ, col( N ) ⊆ ker( W ). (43) The resulting layer is 
+
+H(ℓ+1) = ϕ
+
+ bAW (ℓ)⊤H(ℓ) + Pspec + Pnull 
+
+
+
+. (44) Hence, SRP does not merely impose a low-rank parameter budget: it explicitly selects where adapta-tion is concentrated according to the singular geometry of the frozen transformation. GraphLoRA learns a flexible low-rank correction from graph-structural objectives, whereas SRP directs adaptation toward weak singular and null-space directions. The position of the adaptation branch also differs. If 
+
+H∆W ⊤ = X
+
+> i
+
+ϕic⊤ 
+
+> i
+
+, (45) then a GraphLoRA-style correction inside message passing becomes 
+
+bA∆W ⊤H = X
+
+> i
+
+(1 − λi)ϕic⊤ 
+
+> i
+
+, (46) and is therefore filtered by the propagation operator. In contrast, 
+
+ZSRP = bAW ⊤H + p(H), (47) injects p(H) after aggregation, so its graph Fourier components are not multiplied again by (1 − λi)
+
+within the same layer. This gives SRP a complementary pathway for information suppressed by the frozen message-passing branch. 
+
+C.6 Difference from Standard LoRA 
+
+Standard LoRA and SRP are both parameter-efficient adaptation methods, but differ in their adaptation target, trainable-subspace geometry, and interaction with graph propagation. LoRA freezes W and learns an additive low-rank update 
+
+Weff = W + ∆ W, ∆W = BA, rank(∆ W ) ≤ r. (48) 20 For a message-passing GNN layer, 
+
+ZLoRA = bA(W + BA )⊤H = bAW ⊤H + bAA ⊤B⊤H. (49) Thus, although the pretrained parameters remain frozen, LoRA changes the effective linear operator and parameterizes a low-rank subspace in weight-update space. SRP instead leaves the original message-passing operator unchanged and learns a representation-space prompt: 
+
+ZSRP = bAW ⊤H + p(H), (50) where 
+
+p(H) = (HV ⊙ μ(Σ)) As + ( HN )An
+
+Q + b, col( N ) ⊆ ker( W ). (51) The two channels therefore do not factorize a weight update; rather, they determine which information from the hidden representation is injected through the prompt. Another distinction lies in the adaptation subspace. The low-rank constraint in LoRA controls the dimensionality of the update but does not explicitly determine how its energy is distributed across the singular directions of the frozen weight matrix. SRP instead derives its prompt-reading directions from the singular geometry of W and redirects prompt capacity toward weak singular directions and 
+
+ker( W ).This distinction is particularly relevant for GNNs. Let 
+
+L = I − bA = ΦΛΦ ⊤. (52) If A⊤B⊤H = Φ C, the LoRA correction becomes 
+
+∆ZLoRA = Φ( I − Λ) C, (53) and is therefore filtered by the same graph propagation operator. By contrast, the SRP prompt is added after aggregation and is not multiplied again by I − Λ in the current layer. In summary, LoRA provides generic low-rank operator adaptation, whereas SRP preserves the frozen operator and explicitly targets weak singular and null-space directions through a post-aggregation prompt. 
+
+C.7 Clarification of the Singular-Value Groups in Figure 1 
+
+Let 
+
+σ1 ≥ σ2 ≥ · · · ≥ σk > 0 (54) denote the nonzero singular values of a frozen layer W , sorted in descending order. We define the five singular-value groups by 
+
+bq =
+
+ qk 
+
+5
+
+
+
+, Qq = {bq−1 + 1 , . . . , b q }, q = 1 , . . . , 5, (55) with b0 = 0 . Thus, Q1 contains the directions with the largest singular values and Q5 contains the weakest nonzero singular directions; group sizes differ by at most one. Exact zero-singular-value directions are treated separately by the null-space channel. The quintile partition depends only on the spectrum of the frozen weight W . The downstream classifier Wdown enters only through the downstream-demand term in DPMS and does not affect the group construction. 
+
+C.8 Why SRP Shows Larger Gains on Node-Level Tasks 
+
+The difference between node- and graph-level performance can be attributed mainly to input dimen-sionality, null-space capacity, and graph-level readout. 
+
+Larger null-space capacity. For a first-layer transformation 
+
+W ∈ Rh×din , W = U ΣV ⊤, (56) if rank( W ) = k, then 
+
+dim ker( W ) = din − k ≥ din − h. (57) 21 Hence, when din ≫ h, the first frozen layer necessarily contains a large right null space. The node-classification datasets have input dimensions of 1433 (Cora), 3703 (CiteSeer), 500 (PubMed), 
+
+500 (Flickr), and 128 (ogbn-arxiv), whereas the graph-classification datasets contain only 3–89 input dimensions. With h = 128 , the null-space dimensions of the first-layer weights on Cora and CiteSeer are at least 1305 and 3575 , respectively; on Cora we indeed observe a 1305 -dimensional null space. In contrast, when din ≤ h, the first layer may have full column rank and 
+
+dim ker( W ) = 0 . (58) Graph-level datasets therefore provide substantially less capacity for the null-space channel, and SRP relies more heavily on spectral reversal or the projective fallback. 
+
+Graph-level readout. Node classification predicts directly from each node representation: 
+
+ˆyi = C(zi + pi), (59) so a node-local prompt directly affects the prediction of node i. Graph classification instead aggregates node representations. With mean pooling, 
+
+g = 1
+
+Ng
+
+1⊤H, ∆g = 1
+
+Ng
+
+1⊤P. (60) If P = Φ C, then 
+
+∆g = 1
+
+Ng
+
+X
+
+> j
+
+(1⊤ϕj )c⊤ 
+
+> j
+
+. (61) For the combinatorial Laplacian of a connected graph, 
+
+1⊤ϕj = 0 , j > 1. (62) Mean readout therefore preserves the constant component while cancelling many nonstationary node-local variations. Sum pooling has the same directional effect up to scaling, which can reduce the contribution of local information recovered by SRP. 
+
+Cross-graph consistency. For node classification on a single graph, define the graph frequency of the j-th feature direction by 
+
+qj = (Hv j )⊤L(Hv j )
+
+∥Hv j ∥22
+
+. (63) This quantity has a consistent meaning on the same graph. For graph classification, however, 
+
+qg,j = (Hg vj )⊤Lg (Hg vj )
+
+∥Hg vj ∥22
+
+, (64) and the same vj can correspond to different graph frequencies across different graphs. Large variation in qg,j weakens the correspondence between a shared singular direction and complementary graph-frequency information. These factors help explain why the empirical gains are generally larger on node-level benchmarks. 
+
+C.9 Why the Gains Are Larger on Some Smaller Datasets 
+
+The observed trend is better explained by spectral complement capacity than by dataset size alone, because input dimension and graph size are confounded in the current benchmarks. Cora and CiteSeer contain 2,708 and 3,327 nodes but have input dimensions of 1,433 and 3,703 , respectively. In contrast, ogbn-arxiv contains 169 ,343 nodes with only 128 input dimensions, while Flickr contains 
+
+89 ,250 nodes with 500 input dimensions. The exact right-null-space dimension is 
+
+dim ker( W ) = din − rank( W ), (65) which depends on the input dimension and weight rank rather than directly on the number of nodes. Cora and CiteSeer therefore provide substantially greater capacity for the null-space channel. 22 A second factor is local frequency heterogeneity. SRP currently uses a shared right-singular basis V
+
+and a global spectral threshold, 
+
+μj = sigmoid(( τ σ max − σj )γ) . (66) For a graph partitioned into regions R1, . . . , RM , define 
+
+xr,j = HRr vj , qr,j = x⊤ 
+
+> r,j
+
+LRr xr,j 
+
+x⊤ 
+
+> r,j
+
+xr,j 
+
+. (67) When Var r (qr,j ) is large, the same singular direction can represent different graph-frequency charac-teristics across regions. A single global threshold can therefore become less precise as local frequency heterogeneity increases. Accordingly, the observed performance trend is more closely associated with input dimensionality, null-space capacity, and local frequency heterogeneity than with graph size itself. 
+
+## D Computational Complexity 
+
+D.1 Compute Resources Usage. 
+
+All experiments are conducted on a workstation running the Ubuntu 22.04 LTS operating system. The hardware configuration includes a 13th Gen Intel(R) Core(TM) i9-13900K CPU and an NVIDIA GeForce RTX 3090 GPU equipped with 24GB of memory. Furthermore, the software environment is built using CUDA 12.1 and Python 3.10.19, utilizing PyTorch 2.5.1 and PyTorch Geometric 2.7.0 for the model implementations. 
+
+D.2 Complexity Analysis. 
+
+SRP’s per-layer forward pass: (i) V -projection O(|V| kd in ) (pre-computable); (ii) mask O(|V| k);(iii) A-projection O(|V| kr s); (iv) N -projection O(|V| md in ) (pre-computable); (v) B-projection 
+
+O(|V| mr s); (vi) Q-projection O(|V| rsdout ). Trainable-path cost: O(|V| (k + m)rs + |V| rsdout ),negligible vs. backbone’s O(|E| din ).We analyze the time and space complexity of SRP under a two-layer GCN backbone with L = 2 
+
+frozen layers. Let N denote the number of nodes, |E| the number of edges, d the raw input feature dimension, h the hidden (and output) dimension, k = rank( W ) ≤ h the numerical rank of each frozen weight W ∈ Rh×din , m the null-space PCA dimension ( null_pca_dim , default m=64 ), and 
+
+r the shared bottleneck rank ( r_shared , default r=8 ). 
+
+Initialisation. The initialisation of SRP involves two SVD computations and one null-space projec-tion, all performed once before training. For each frozen weight Wi, the reduced SVD Wi = UiΣiV ⊤
+
+> i
+
+costs O(k2din ,i ) time (thin SVD of an h × din ,i matrix). For the first layer, when d > k + m
+
+holds and the dual-channel path is activated, SRP additionally projects the node-feature matrix 
+
+X ∈ RN ×d onto the null space via Xnull = X − XV 0V ⊤ 
+
+> 0
+
+, costing O(N dk ), followed by a truncated SVD of the centred Xnull to obtain the top-m null-space PCA basis Nmat ∈ Rd×m, which costs 
+
+O(min( N, d )2 max( N, d )) but is performed on CPU once and cached as a frozen buffer. Summing across layers, the total initialisation time is O(k2d + N dk + min( N, d )2 max( N, d )) , which for typ-ical datasets satisfies N d ≪ min( N, d )2 max( N, d ), so the dominant term is the one-time null-space PCA. This cost is paid once before any gradient step and does not affect training throughput. 
+
+Per-forward-pass time complexity. During training and inference, get_prompt is invoked once per GNN layer per forward pass. For the first layer operating in the dual-channel mode ( d > k + m), the three dominant operations are hv = hW − 
+
+> 0
+
+V0 ∈ RN ×k at cost O(N dk ), hnull = hW − 
+
+> 0
+
+Nmat ∈
+
+RN ×m at cost O(N dm ), and the two bottleneck projections zspec = ( hv ⊙ s)A ∈ RN ×r and 
+
+znull = hnull B ∈ RN ×r at cost O(N (kr + mr )) , followed by the output projection zQ + b at cost 
+
+O(N rh ). Since k, m ≪ d and r ≪ k, m , the total for layer 0 is O(N d (k + m)) . For the second layer operating under the projective fallback ( din = h ≤ k + m), the cost is O(N h 2 + N hr ), which collapses to O(N h 2). The backbone GCN message-passing itself costs O(|E| h + N dh ) across the two layers. Combining prompt and backbone, the overall per-forward-pass complexity is 
+
+O N d (k + m) + N h 2 + |E| h = O N dh + |E| h,
+
+23 where the equality uses k ≤ h and m ≪ h. Thus SRP adds no asymptotic overhead beyond the backbone GNN’s own message-passing and projection costs. 
+
+Parameter count and space complexity. SRP introduces only a small set of trainable parameters. For layer 0 (dual-channel): A0 ∈ Rk×r , B0 ∈ Rm×r , Q0 ∈ Rr×h, b0 ∈ Rh, and the scalar threshold 
+
+τ0, contributing kr + mr + rh + h + 1 = r(k + m + h) + h + 1 parameters. For layer 1 (projective fallback): P1 ∈ Rh×r, Q1 ∈ Rr×h, b1 ∈ Rh, and τ1, contributing 2rh + h + 1 parameters. The total trainable parameter count is therefore r(k + m + 3 h) + 2 h + 2 . The additional memory consists of frozen buffers: V0 ∈ Rd×k and Nmat ∈ Rd×m for layer 0, and V1 ∈ Rh×k for layer 1, totalling 
+
+d(k + m) + hk floating-point values. The activation memory during a forward pass is O(N d ) for the null-space projections of the full feature matrix, which is at most O(N d )—identical to the GCN input tensor. Overall, SRP’s space overhead is O(d(k + m) + hk ) in parameters and buffers, with the number of trainable parameters scaling as O(r(k + m + h)) = O(rh ), far smaller than any full fine-tuning or LoRA baseline of comparable expressiveness. 24
