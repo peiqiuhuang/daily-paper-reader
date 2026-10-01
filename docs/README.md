@@ -6,43 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-30
-- 运行时间：2026-09-30 23:04:29 UTC
+- 最新运行日期：2026-10-01
+- 运行时间：2026-10-01 23:36:27 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：1
-- 速读区：6
+- 本次总论文数：4
+- 精读区：0
+- 速读区：4
 
 ### 今日简报（AI）
-今日精选 7 篇前沿论文，聚焦大模型任务构建与安全防御的最新进展。
-重点推荐《From Weak Task Specifications》一文，探讨如何通过优化任务构建提升科学提取智能体的表现。
-建议关注大模型自我进化与提示词安全领域，通过精读核心论文掌握提升模型鲁棒性的实操策略。
-- 详情：[/202609/30/README](/202609/30/README)
+今日速览 4 篇前沿论文，涵盖稀疏自编码器特征识别、多智能体策略优化及 AI 音乐创作。
+重点关注 PULSE 框架如何利用稀疏自编码器精准解析模型特征，为理解 AI 决策机制提供新视角。
+建议优先深入研究特征可解释性方向，以提升对复杂模型内部逻辑的掌控力。
+- 详情：[/202610/01/README](/202610/01/README)
 
 ### 精读区论文标签
-1. [From Weak Task Specifications to Scientific Extraction Agents: Optimizing Task Construction](/202609/30/2609.34829v1-from-weak-task-specifications-to-scientific-extraction-agents-optimizing-task-construction)  
-   标签：评分：8.0/10、query:bopl
-   evidence：优化特定任务的提示配置和指令
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Climbing the Hill: Prompt Injection Red-Teaming Against Frontier Models with Curriculum Reinforcement Learning](/202609/30/2609.33628v1-climbing-the-hill-prompt-injection-red-teaming-against-frontier-models-with-curriculum-reinforcement-learning)  
+1. [PULSE: Identifying Demonstration-Utility Features with Sparse Autoencoders](/202610/01/2609.32469v1-pulse-identifying-demonstration-utility-features-with-sparse-autoencoders)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过强化学习自动生成提示注入
-2. [Direct Self-Evolving Optimization: Evolving LLMs without Challenger Training](/202609/30/2609.34279v1-direct-self-evolving-optimization-evolving-llms-without-challenger-training)  
-   标签：评分：7.0/10、query:bopl
-   evidence：自动任务生成与求解器优化
-3. [Don't Inoculate Everything: Stratified Inoculation Prompting Narrows Backdoor Triggers and Preserves Desired Traits](/202609/30/2609.35356v1-dont-inoculate-everything-stratified-inoculation-prompting-narrows-backdoor-triggers-and-preserves-desired-traits)  
-   标签：评分：7.0/10、query:bopl
-   evidence：用于控制模型行为的分层接种提示技术
-4. [Reasoning-Preserving Fine-Tuning of Post-RL LLMs with Null-Basis LoRA](/202609/30/2609.25618v1-reasoning-preserving-fine-tuning-of-post-rl-llms-with-null-basis-lora)  
+   evidence：上下文学习的自动示例选择
+2. [Multi-Agent System Search via Active Substructure-aware Policy Optimization](/202610/01/2609.32430v1-multi-agent-system-search-via-active-substructure-aware-policy-optimization)  
    标签：评分：6.0/10、query:bopl
-   evidence：使用零空间LoRA进行参数高效微调
-5. [Nonparametric In-Context Learning under Growing Geometric Complexity: Minimax Optimality and Local Geometry-Adaptivity of Transformers](/202609/30/2609.31458v1-nonparametric-in-context-learning-under-growing-geometric-complexity-minimax-optimality-and-local-geometry-adaptivity-of-transformers)  
+   evidence：多智能体提示词与结构的自动搜索
+3. [Getting Motif-ated: Controllable AI Compositions from Injected Motif Prompts](/202610/01/2609.32788v1-getting-motif-ated-controllable-ai-compositions-from-injected-motif-prompts)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于上下文学习（ICL）的Transformer研究
-6. [ProTTT: Learning to Learn Semantic User Memory with Test-Time Training](/202609/30/2609.32564v1-prottt-learning-to-learn-semantic-user-memory-with-test-time-training)  
+   evidence：使用指令提示词改造符号音乐模型
+4. [Rubric-Aware On-Policy Self-Distillation for LLM Personalization](/202610/01/2609.35262v1-rubric-aware-on-policy-self-distillation-for-llm-personalization)  
    标签：评分：6.0/10、query:bopl
-   evidence：用户记忆的元学习框架
+   evidence：基于提示的个性化准则感知在线自蒸馏
 
 
 <div class="dpr-home-promo-card">
