@@ -6,88 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-02
-- 运行时间：2026-10-02 23:16:47 UTC
+- 最新运行日期：2026-10-03
+- 运行时间：2026-10-03 22:03:16 UTC
 - 运行状态：成功
-- 本次总论文数：22
-- 精读区：11
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-今日精选 22 篇前沿论文，深度解析双层优化算法的理论突破与大模型提示词优化策略。
-重点关注双层规划中的一阶预言机优化与切向次微分最优性条件，为复杂优化问题提供严谨数学支撑。
-建议优先研读双层优化相关论文，并结合提示词压缩技术提升大模型长文本处理效率。
-- 详情：[/202610/02/README](/202610/02/README)
+今日精选 17 篇前沿论文，重点攻克双层整数规划难题与视觉语言模型重编程。
+双层非凸二次规划的析取割法及视觉语言模型的结构化提示重参数化技术表现卓越。
+建议优先研读双层优化求解方案，以提升复杂决策问题的建模与计算效率。
+- 详情：[/202610/03/README](/202610/03/README)
 
 ### 精读区论文标签
-1. [Optimal Stochastic Bilevel Optimization with First-Order Oracles](/202610/02/2610.01843v1-optimal-stochastic-bilevel-optimization-with-first-order-oracles)  
-   标签：评分：10.0/10、query:bopl
-   evidence：针对非凸-强凸双层优化的随机一阶方法
-2. [Necessary Optimality Conditions for Bilevel Programming using Tangential Subdifferentials](/202610/02/2609.36948v1-necessary-optimality-conditions-for-bilevel-programming-using-tangential-subdifferentials)  
+1. [On solving integer bilevel optimization problems with a non-convex quadratic follower objective function using disjunctive cuts](/202610/03/2610.01197v1-on-solving-integer-bilevel-optimization-problems-with-a-non-convex-quadratic-follower-objective-function-using-disjunctive-cuts)  
    标签：评分：9.0/10、query:bopl
-   evidence：非光滑双层规划的必要最优性条件
-3. [A true single-level reformulation for pessimistic bilevel optimization](/202610/02/2609.38014v1-a-true-single-level-reformulation-for-pessimistic-bilevel-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：悲观双层优化的单层重构方法
-4. [Dr. OPD: Learning What to Follow for Optimal On-Policy Distillation of Large Language Models](/202610/02/2609.38025v1-dr-opd-learning-what-to-follow-for-optimal-on-policy-distillation-of-large-language-models)  
-   标签：评分：9.0/10、query:bopl
-   evidence：将最优权重蒸馏公式化为双层优化问题
-5. [K2P: Label-Free Knowledge to Prompt Distillation](/202610/02/2609.38898v1-k2p-label-free-knowledge-to-prompt-distillation)  
-   标签：评分：9.0/10、query:bopl
-   evidence：无标签的知识到提示蒸馏
-6. [Anchoring Adversarial Trajectories to Data Manifolds: A Bilevel Transfer Optimization Framework](/202610/02/2609.38991v1-anchoring-adversarial-trajectories-to-data-manifolds-a-bilevel-transfer-optimization-framework)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于迁移攻击的分布双层优化问题
-7. [Improved KKT Complexity for First-Order Bilevel Optimization under Weak Lower-Level Convexity](/202610/02/2609.39736v1-improved-kkt-complexity-for-first-order-bilevel-optimization-under-weak-lower-level-convexity)  
-   标签：评分：9.0/10、query:bopl
-   evidence：弱凸性下的首阶双层优化
-8. [AdaGEPA: Adaptive Feedback Allocation for Reflective Prompt Optimization](/202610/02/2609.39927v1-adagepa-adaptive-feedback-allocation-for-reflective-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于反思性提示词优化的自适应反馈
-9. [Ranking-Aware Prompt Optimization for Multimodal Clinical Diagnosis](/202610/02/2609.40361v1-ranking-aware-prompt-optimization-for-multimodal-clinical-diagnosis)  
-   标签：评分：9.0/10、query:bopl
-   evidence：使用帕累托进化优化多模态临床诊断的提示词
-10. [AnchorPrompt: Self-Distilled Soft Prompts for Robust Audio-Language Models](/202610/02/2610.00706v1-anchorprompt-self-distilled-soft-prompts-for-robust-audio-language-models)  
-   标签：评分：9.0/10、query:bopl
-   evidence：为音频语言模型学习软提示向量的高效适配方法
-11. [Sparse Experimental Design for Nonsmooth Estimators via Bilevel Optimization](/202610/02/2610.01237v1-sparse-experimental-design-for-nonsmooth-estimators-via-bilevel-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：将非平滑估计器问题重构为双层规划问题
+   evidence：整数双层优化算法
+2. [Reprogramming Vision-Language Models via Structured Prompt Reparameterization](/202610/03/2609.36680v1-reprogramming-vision-language-models-via-structured-prompt-reparameterization)  
+   标签：评分：8.0/10、query:bopl
+   evidence：用于模型适配的结构化提示词重参数化
+3. [Learning Universal Costs via Multi-Observation Inverse Optimal Transport](/202610/03/2609.37291v1-learning-universal-costs-via-multi-observation-inverse-optimal-transport)  
+   标签：评分：8.0/10、query:bopl
+   evidence：将双层优化问题重新表述为单层凸规划
+4. [Learning as Deepfakes Evolve: RF-Prompt for Continual Audio Deepfake Detection](/202610/03/2609.37586v1-learning-as-deepfakes-evolve-rf-prompt-for-continual-audio-deepfake-detection)  
+   标签：评分：8.0/10、query:bopl
+   evidence：非对称持续提示学习方法
+5. [Prompt2Skill: Unsupervised Skill Optimization From Natural Language Instructions](/202610/03/2609.38593v1-prompt2skill-unsupervised-skill-optimization-from-natural-language-instructions)  
+   标签：评分：8.0/10、query:bopl
+   evidence：无监督自动化技能与提示词优化
+6. [Efficient Task Adaptation in Large Language Models: A Survey of Weight-Based, Prompt-Based, and Embedding-Based Adaptations](/202610/03/2610.00928v1-efficient-task-adaptation-in-large-language-models-a-survey-of-weight-based-prompt-based-and-embedding-based-adaptations)  
+   标签：评分：8.0/10、query:bopl
+   evidence：大语言模型中基于提示和参数高效适配的综述
 
 ### 速读区论文标签
-1. [Climbing the Hill: Prompt Injection Red-Teaming Against Frontier Models with Curriculum Reinforcement Learning](/202610/02/2609.33628v2-climbing-the-hill-prompt-injection-red-teaming-against-frontier-models-with-curriculum-reinforcement-learning)  
+1. [Ready2Blend: From Natural-Language Instructions to Composable Alignment Prompts](/202610/03/2609.39365v1-ready2blend-from-natural-language-instructions-to-composable-alignment-prompts)  
    标签：评分：8.0/10、query:bopl
-   evidence：通过课程强化学习自动生成提示
-2. [How Much Prompt Is Enough? A Blackbox Minimization of Few-Shots in LLMs](/202610/02/2609.36289v1-how-much-prompt-is-enough-a-blackbox-minimization-of-few-shots-in-llms)  
-   标签：评分：8.0/10、query:bopl
-   evidence：针对少样本提示的黑盒提示最小化框架
-3. [MemFold: Learning Compact Soft Memory for Long-Context Personalization via On-Policy Optimization](/202610/02/2609.36435v1-memfold-learning-compact-soft-memory-for-long-context-personalization-via-on-policy-optimization)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过策略内优化基于行为优化软记忆
-4. [BRIDGE: Bilevel Retrieval-Credit-Aware Agentic Reinforcement Learning](/202610/02/2609.36505v1-bridge-bilevel-retrieval-credit-aware-agentic-reinforcement-learning)  
-   标签：评分：8.0/10、query:bopl
-   evidence：用于检索器和LLM策略联合学习的双层优化
-5. [Is Human-Readable Text Necessary for Effective LLM Fine-Tuning?](/202610/02/2609.35868v1-is-human-readable-text-necessary-for-effective-llm-fine-tuning)  
+   evidence：将需求映射到模块化提示库中的固定长度对齐提示
+2. [PE-OPSD: Internalizing Prompt Enhancement into Flow-matching Models via On-Policy Self-Distillation](/202610/03/2609.36638v1-pe-opsd-internalizing-prompt-enhancement-into-flow-matching-models-via-on-policy-self-distillation)  
    标签：评分：7.0/10、query:bopl
-   evidence：通过梯度反馈优化连续合成输入嵌入
-6. [Selecting What Matters: Semantic Compression-Guided Selective Pooling for Long-Context Embeddings](/202610/02/2609.37782v1-selecting-what-matters-semantic-compression-guided-selective-pooling-for-long-context-embeddings)  
+   evidence：通过自蒸馏将提示增强内化到生成模型中
+3. [Capturing In-Context Learning Dynamics with Task Operators](/202610/03/2610.01054v1-capturing-in-context-learning-dynamics-with-task-operators)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于长上下文嵌入的语义压缩提示
-7. [Prequential E-Values for Selected-GP Near-Optimality Certificates](/202610/02/2609.39123v1-prequential-e-values-for-selected-gp-near-optimality-certificates)  
+   evidence：语境学习动力学的机制分析
+4. [Skeleton-and-Strategy Prompting: Training-Free Negation Understanding for Vision-Language Models](/202610/03/2610.01180v1-skeleton-and-strategy-prompting-training-free-negation-understanding-for-vision-language-models)  
    标签：评分：7.0/10、query:bopl
-   evidence：使用高斯过程的超参数优化停止规则
-8. [Comparative study of adapting pre-trained models for driving behavior video captioning](/202610/02/2609.39542v1-comparative-study-of-adapting-pre-trained-models-for-driving-behavior-video-captioning)  
+   evidence：免训练的上下文学习提示
+5. [Optimal Momentum Methods for Stochastic Multilevel Compositional Optimization](/202610/03/2610.01572v1-optimal-momentum-methods-for-stochastic-multilevel-compositional-optimization)  
    标签：评分：7.0/10、query:bopl
-   evidence：比较大语言模型的微调和提示方法
-9. [Gaze Prompts: Temporally Dense Human Attention for Vision-Language-Action Fine-Tuning](/202610/02/2609.34550v1-gaze-prompts-temporally-dense-human-attention-for-vision-language-action-fine-tuning)  
+   evidence：随机多级复合优化
+6. [Learning to Predict Distributions over Weight Updates for Test-Time Adaptation](/202610/03/2610.01934v1-learning-to-predict-distributions-over-weight-updates-for-test-time-adaptation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：用于参数高效 LoRA 估计和自适应的超网络
+7. [Scalable, Transferable Meta-network for Data Selection Requires a Different Loss (and Why the Obvious Choice is Problematic)](/202610/03/2610.02092v1-scalable-transferable-meta-network-for-data-selection-requires-a-different-loss-and-why-the-obvious-choice-is-problematic)  
+   标签：评分：7.0/10、query:bopl
+   evidence：使用目标验证目标的元学习数据选择
+8. [SOLAR: A State-Driven Online Learning Rate Scheduler for LLM Pretraining](/202610/03/2609.34681v1-solar-a-state-driven-online-learning-rate-scheduler-for-llm-pretraining)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于VLA微调的视觉提示
-10. [EvE: An Alternate Optimizer to Adam](/202610/02/2609.35614v1-eve-an-alternate-optimizer-to-adam)  
+   evidence：学习优化框架内的在线学习调度
+9. [Don't Inoculate Everything: Stratified Inoculation Prompting Narrows Backdoor Triggers and Preserves Desired Traits](/202610/03/2609.35356v3-dont-inoculate-everything-stratified-inoculation-prompting-narrows-backdoor-triggers-and-preserves-desired-traits)  
    标签：评分：6.0/10、query:bopl
-   evidence：用于超参数或架构搜索的优化器
-11. [Reasoning with Continuous Latent Diffusion](/202610/02/2609.35694v2-reasoning-with-continuous-latent-diffusion)  
+   evidence：接种提示以限制不必要的泛化
+10. [Beyond Prompt Count: How Data Shapes Transfer in On-Policy Distillation](/202610/03/2609.37377v1-beyond-prompt-count-how-data-shapes-transfer-in-on-policy-distillation)  
    标签：评分：6.0/10、query:bopl
-   evidence：学习紧凑的提示编码器以替代教师Transformer
+   evidence：蒸馏过程中的提示词选择与效用分析
+11. [MetaSteer: Context-Conditioned, nonlinear Steering via Attention-Projection Adaptation](/202610/03/2609.38718v1-metasteer-context-conditioned-nonlinear-steering-via-attention-projection-adaptation)  
+   标签：评分：6.0/10、query:bopl
+   evidence：通过注意力投影自适应进行上下文调节的引导
 
 
 <div class="dpr-home-promo-card">
