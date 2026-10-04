@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-10-04 <!--dpr-date:20261004-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202610/04/2609.37930v1-learning-what-to-remember-long-horizon-counterfactual-memory-optimization" data-sidebar-item="{&quot;title&quot;: &quot;Learning What to Remember: Long-horizon Counterfactual Memory Optimization&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2609.37930v1-learning-what-to-remember-long-horizon-counterfactual-memory-optimization&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;优化语言模型的持久文本记忆&quot;}">Learning What to Remember: Long-horizon Counterfactual Memory Optimization</a>
   * 2026-10-03 <!--dpr-date:20261003-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202610/03/2610.01197v1-on-solving-integer-bilevel-optimization-problems-with-a-non-convex-quadratic-follower-objective-function-using-disjunctive-cuts" data-sidebar-item="{&quot;title&quot;: &quot;On solving integer bilevel optimization problems with a non-convex quadratic follower objective function using disjunctive cuts&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2610.01197v1-on-solving-integer-bilevel-optimization-problems-with-a-non-convex-quadratic-follower-objective-function-using-disjunctive-cuts&quot;, &quot;score&quot;: &quot;9.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;bopl&quot;}], &quot;evidence&quot;: &quot;整数双层优化算法&quot;}">On solving integer bilevel optimization problems with a non-convex quadratic follower objective function using disjunctive cuts</a>
