@@ -1,0 +1,1974 @@
+Preprint
+RANGE-GRPO: POLICY OPTIMIZATION VIA PAIRWISE
+RELATIONS AMONG REWARD INTERVALS
+Ryunyi Lee, Kangjun Noh, Somin Kim, Heedong Kim, Kyungwoo Song∗
+Yonsei University
+ABSTRACT
+As the use of large language models (LLMs) expands, post-training has be-
+come increasingly important for adapting them to downstream tasks.
+How-
+ever, obtaining reliable supervision remains costly, especially in domains with-
+out reference answers or executable verifiers. LLM-as-a-Judge provides scalable
+pseudo-rewards for unlabeled responses, but a single point score does not ex-
+plicitly represent reward uncertainty. This motivates representing pseudo-rewards
+as conformally calibrated reward ranges. We propose Range-GRPO, a semi-
+supervised post-training framework that combines limited labeled data with unla-
+beled prompts. In Group Relative Policy Optimization (GRPO), learning signals
+depend on relative reward comparisons within each rollout group. The proposed
+objective compares reward ranges pairwise rather than reducing them to point re-
+wards, allowing interval uncertainty to affect both the magnitude and direction of
+these signals. Our theoretical analysis characterizes this distinction and shows that
+the proposed objective recovers the Dr.GRPO advantage when all reward ranges
+collapse to points. Empirically, Range-GRPO achieves the highest in-distribution
+and out-of-distribution average performance among the evaluated semi-supervised
+methods while requiring fewer training resources.
+1
+INTRODUCTION
+Adapting large language models (LLMs) to new tasks and domains requires reliable supervision,
+yet obtaining it at scale remains difficult. Existing benchmarks provide limited coverage of task
+distributions (Kiela et al., 2021) and may suffer from data leakage (Roberts et al., 2024; White et al.,
+2025). These limitations motivate semi-supervised post-training methods that use limited labeled
+data to learn from large collections of unlabeled prompts. LLM-as-a-Judge (LaaJ) offers a scalable
+way to assign pseudo rewards to unlabeled responses (Lee et al., 2024; Bai et al., 2022). However,
+a judge may assign high scores to flawed reasoning and low scores to valid but atypical responses.
+It may also react to surface cues unrelated to correctness (Ye et al., 2025; Zheng et al., 2023; Wu &
+Aji, 2025), but a single scalar score does not express the uncertainty of that evaluation. Conformal
+calibration offers a promising approach to representing this uncertainty through reward intervals
+(Sheng et al., 2025). In this setting, it measures the discrepancies between predicted and reference
+rewards on a small labeled calibration set and uses the empirical error distribution to construct
+intervals for new responses. Under exchangeability, these intervals cover the reference reward with
+marginal coverage of at least 1−α (Angelopoulos & Bates, 2023). This guarantee provides statistical
+support for the calibrated intervals, but does not specify how to construct effective policy learning
+signals from them.
+We therefore seek an objective that uses calibrated intervals directly to determine relative credit
+among responses. Some existing approaches predict task outputs as intervals and derive rewards by
+comparing these intervals with known reference values (Lin et al., 2026; Liu et al., 2026; Wu et al.,
+2026). These comparisons cannot yield rewards for unlabeled responses without the corresponding
+reference information. More closely related, Uncertainty-Aware Reward Modeling (UARM) follows
+a reweighting approach for Group Relative Policy Optimization (GRPO) (Shao et al., 2024), using
+the widths of calibrated intervals to scale advantages computed from point rewards (Pan et al., 2026).
+*Corresponding author: kyungwoo.song@gmail.com
+1
+arXiv:2610.01548v2  [cs.LG]  2 Oct 2026
+
+
+Preprint
+However, this rescaling can adjust advantage magnitudes but cannot change the direction determined
+by the point rewards, even when those rewards provide a misleading learning signal.
+We address this gap with Range-GRPO, a semi-supervised post-training framework that learns from
+unlabeled prompts using conformally calibrated reward intervals. The proposed objective aggregates
+pairwise midpoint differences into group-relative advantages, using the widths of both reward inter-
+vals to weight the contribution of each comparison. By changing the balance between positive and
+negative pairwise contributions, this weighting can alter both advantage magnitudes and signs even
+when the interval midpoints remain fixed. When all reward intervals collapse to points, this objective
+recovers the credit assignment of Dr.GRPO as a special case (Liu et al., 2025).
+As the policy learns, its response distribution can drift from the initial labeled calibration distribu-
+tion, motivating weighted conformal inference to account for this shift. To construct reward intervals
+under this drift, we adapt Robust Weighted Conformal Inference (RoWCI), which performs shift-
+aware LaaJ calibration in a low-cardinality judgment state space (Noh et al., 2026).
+Our main contributions are as follows:
+• We propose Range-GRPO, to our knowledge the first semi-supervised GRPO framework
+to construct on-policy learning signals through pairwise comparisons of conformal reward
+intervals.
+• We theoretically show that pairwise interval comparisons exploit range information beyond
+scalar reduction to determine both the magnitude and direction of learning signals, while
+retaining Dr.GRPO as the point-reward special case.
+• Empirically, Range-GRPO outperforms the evaluated range-based methods on the synthetic
+task. On real reasoning benchmarks, it achieves the highest ID and OOD average accuracies
+among the evaluated semi-supervised methods, with relative improvements of 5.2% and
+7.0% over the strongest baseline in our comparison, respectively.
+2
+RELATED WORK
+2.1
+REWARD SUPERVISION
+Reinforcement learning with verifiable rewards (RLVR) typically derives rewards from ground truth
+answers (Guo et al., 2025; Ma et al., 2025) or executable verifiers. Prior work also combines out-
+come rewards with signals derived from internal model states (Sun et al., 2026). Methods based
+on majority voting use agreement among unlabeled rollouts to construct pseudo labels (Wei et al.,
+2025; Zuo et al., 2025). Another line of work uses LaaJ to assign rewards according to explicit
+rubrics (Zhou et al., 2026; Gunjal et al., 2026). TraPO, a semi-supervised RLVR framework, uses a
+small labeled set to select unlabeled samples whose learning trajectories align with those of labeled
+samples (Yang et al., 2026). Together, these approaches broaden the scope of available reward su-
+pervision beyond direct outcome verification. However, consensus rewards may reinforce incorrect
+answers, while point rewards from LLM judges may reflect biases unrelated to response quality.
+Range-GRPO uses judge estimates with limited labeled calibration data to construct conformal re-
+ward intervals that represent reward uncertainty on unlabeled rollouts.
+2.2
+CONFORMAL CALIBRATION
+Conformal calibration is a promising approach to quantifying uncertainty in LLM judge evaluations
+(Sheng et al., 2025). It constructs prediction intervals from labeled calibration data and provides
+marginal coverage guarantees under exchangeability (Angelopoulos & Bates, 2023). However, pol-
+icy updates can shift the response distribution away from the calibration distribution, potentially vi-
+olating the exchangeability assumption underlying these guarantees. Weighted Conformal Inference
+(WCI) addresses covariate shift by reweighting calibration samples using density ratios (Tibshirani
+et al., 2019). RoWCI, which we adopt, mitigates weight instability due to nuisance variation in
+LLM judge inputs (Noh et al., 2026). Recent studies have integrated conformal prediction into LLM
+training. CONST selects prompts for annotation based on conformal prediction set size (Xiao et al.,
+2026). CFA uses conformal prediction sets to estimate answer reliability and reweight preference
+2
+
+
+Preprint
+pairs while retaining the given preference labels (Chen et al., 2026). UARM uses calibrated re-
+ward interval widths to rescale GRPO advantages derived from point rewards. However, its interval
+calibration procedure does not explicitly correct for shifts between the calibration and response dis-
+tributions (Pan et al., 2026). In contrast, Range-GRPO accounts for these shifts when constructing
+conformal reward intervals for unlabeled rollouts.
+2.3
+RANGE-BASED LEARNING SIGNALS
+Several studies derive scalar rewards by comparing predicted ranges with task targets. BAGEN re-
+wards narrow ranges that contain the realized cost of the remaining trajectory (Lin et al., 2026).
+REC-RL rewards predicted count ranges that contain the target, assigning larger rewards as both
+bounds approach it (Liu et al., 2026). TempR1 uses the overlap between predicted and ground-truth
+temporal intervals as a reward signal (Wu et al., 2026). Other studies use ranges to account for
+uncertainty in training signals. In its interval setting, Variance-Aware PPO samples scalar rewards
+uniformly from a predicted reward range and uses the corresponding variance to regularize policy
+updates (Banerjee et al., 2025). IRPM-Interval constructs Student’s t confidence intervals over cho-
+sen and rejected score groups to define binary rollout rewards (Song et al., 2026). UARM uses
+the median quantile as a point reward and the width of a conformally calibrated reward range to
+reweight response advantages without changing their signs (Pan et al., 2026). Range-GRPO instead
+assigns relative credit within each rollout group through pairwise comparisons of conformal reward
+intervals, allowing reward uncertainty to influence both advantage magnitudes and signs.
+3
+PRELIMINARIES
+3.1
+GROUP RELATIVE POLICY OPTIMIZATION
+Group Relative Policy Optimization (GRPO) is a critic-free variant of Proximal Policy Optimization
+(PPO) that estimates advantages by comparing the rewards of multiple responses to the same prompt
+(Shao et al., 2024). For a prompt q ∼PQ, the old policy samples G responses oi ∼πθold(· |
+q). Under outcome supervision, GRPO computes Ai = (ri −¯r)/σr from the response rewards
+r1, . . . , rG, where ¯r = G−1 P
+j rj and σr = std(r1, . . . , rG). If σr = 0, we set Ai = 0. For
+token k, let ρi,k = πθ(oi,k | q, oi,<k)/πθold(oi,k | q, oi,<k). GRPO applies the same response-level
+advantage Ai to all tokens in oi and maximizes
+JGRPO(θ) = E
+"
+1
+G
+G
+X
+i=1
+1
+|oi|
+|oi|
+X
+k=1
+n
+min
+ ρi,kAi, clip(ρi,k, 1 −ϵ, 1 + ϵ)Ai
+
+−βDKL
+i,k
+o#
+.
+(1)
+In Eq. (1), DKL
+i,k penalizes deviation from a fixed reference policy πref, while ϵ and β control the
+clipping range and KL regularization strength, respectively. Since Ai determines the direction and
+magnitude of the learning signal for oi, the quality of advantage estimates directly affects policy
+updates. We build on Dr.GRPO, a variant of GRPO that computes Ai without normalization by σr
+and removes response length normalization from the objective (Liu et al., 2025). For convenience,
+Appendix A summarizes the notation used throughout the paper.
+3.2
+REWARD RANGE CONSTRUCTION
+We adapt Robust Weighted Conformal Inference (ROWCI) to construct reward ranges for responses
+generated by the current policy when reference rewards are unavailable (Noh et al., 2026). At a
+fixed optimization step t, let X = (q, o), where o ∼πθt(· | q), and let Y ∈[0, 1] denote the
+corresponding reference reward. Let Psrc and Pt denote the source and target distributions over
+(X, Y ), respectively. We observe both X and Y in the source data but only X in rollouts from πθt.
+Following RoWCI, we represent X using a low-cardinality judgment state Z = ϕ(X) to reduce
+sensitivity to surface cues in LaaJ evaluations. When some judgment-state components depend
+on relationships with other responses in the same rollout group, the state extractor additionally
+conditions on the corresponding group. We suppress this group-context argument in the notation
+ϕ(X). We perform distribution-shift reweighting in the judgment-state space and assume Psrc(Y |
+Z) ≈Pt(Y | Z) and P Z
+t ≪P Z
+src, where P Z
+src and P Z
+t denote the source and target distributions of
+Z, respectively.
+3
+
+
+Preprint
+(a) Overall Range-GRPO Pipeline
+Data & Calibration Setup
+Source
+DB
+(labeled)
+Policy
+π0
+o
+Judge
+Zsrc
+Calibration
+DB
+(labeled)
+Policy
+π0
+o
+Judge
+Zcal
+Labels Y
+Train
+Scorer
+sZ
+Fixed source states
+Zsrc
+Calibration bank
+|sZ(Z) − Y |
+Iterative On-Policy Training
+Reward Range Construction
+Policy Update
+Policy DB
+(unlabeled)
+Target DRE
+DB
+(unlabeled)
+Policy
+πt
+o
+o1
+oG
+o
+o1
+oG′
+Zt
+pol
+Z1
+ZG
+Judge
+Zt
+dre
+Z1
+ZG′
+Scorer
+sZ
+Reward ranges
+i
+Fixed source states
+Zsrc
+Density ratio
+ŵt
+Calibration
+bank
+Reuse
+Pairwise
+comparison
+Ii ↔ Ij
+Advantage
+Ai,t
+RANGE
+Policy update
+πt+1
+Next iteration
+(b) Scalar Reduction vs. Range-GRPO (with Oracle Reference)
+Calibrated ranges
+Oracle reward yi
+Midpoint ci
+o1
+0.30
+1.00
+o2
+0.50
+0.56
+o3
+0.40
+0.46
+0.0
+0.5
+1.0
+Oracle (illustrative)
+Rewards
+Advantages
+y1 = 0.54
+A1* = +0.0400
+y2 = 0.56
+A2* = +0.0600
+y3 = 0.40
+A3* = −0.1000
+ȳ = 0.50
+Signal: o2
+Scalar reduction
+(midpoint)
+Midpoints (c̄ = 0.5367)
+c1 = 0.65
+c2 = 0.53
+c3 = 0.43
+Advantages
+A1 ≈ +0.1133
+A2 ≈ −0.0067
+A3 ≈ −0.1067
+Signal: o2
+Range-GRPO
+λ = 1
+Pairwise weights
+ω12 ≈ 0.7246
+ω23 ≈ 0.9434
+ω13 ≈ 0.7246
+Advantages
+A1 ≈ +0.0821
+A2 ≈ +0.0025
+A3 ≈ −0.0846
+Signal: o2
+Figure 1: Overview of Range-GRPO and its learning signals. (a) At initialization, Range-GRPO
+fits a state scorer on labeled source rollouts and computes nonconformity scores on calibration roll-
+outs. Each iteration generates policy and target DRE rollouts with G and G′ responses, respectively,
+and updates density ratios using the target states and reused source states. The density ratios, fixed
+scorer, and calibration scores are used to construct reward ranges, from which pairwise interval com-
+parisons construct the advantages for policy updates. (b) An illustrative comparison uses identical
+reward intervals for both methods. Although the interval for o2 lies above that for o3 with the same
+width, midpoint reduction assigns it a negative advantage under Dr.GRPO. Range-GRPO instead
+downweights pairwise contributions involving wider, more uncertain intervals, turning this advan-
+tage positive and aligning the direction of the learning signal with the oracle preference.
+Given a fixed state scorer sZ : Z →[0, 1], we compute the nonconformity score EZ
+j = |sZ(Zj) −
+Yj| for each source calibration pair (Xj, Yj), where Zj = ϕ(Xj). A binary domain classifier outputs
+bptgt
+t (z) ≈Pr(C = 1 | Z = z), where C = 0 and C = 1 denote the source and target domains,
+respectively. We compute the calibration weights as bwt(z) = msrc
+mt
+bptgt
+t
+(z)
+1−bptgt
+t
+(z), where msrc and mt are
+the numbers of source and target samples used to train the domain classifier. The reward range is
+constructed as bIα,t(X) =
+
+sZ(ϕ(X))−bτα,t(ϕ(X)), sZ(ϕ(X))+bτα,t(ϕ(X))
+
+∩[0, 1], where bτα,t(z)
+is the weighted conformal cutoff for nominal marginal coverage 1 −α. For the weighted cutoff, we
+include a point mass at +∞with weight bwt(z) for the new response. In the main experiments, we
+instead normalize the nonconformity scores to account for variation in reward uncertainty across
+scorer outputs, as described in Section C.3. Range-GRPO constructs a reward interval for each of
+the G responses to a prompt.
+4
+METHOD
+We formulate the Range-GRPO objective and characterize its pairwise credit assignment relative
+to reducing each reward range to a point reward at a fixed relative position. Range-GRPO reduces
+to Dr.GRPO when all reward ranges collapse to points. Finally, we describe the on-policy training
+procedure that integrates this objective with shift-aware conformal reward calibration, as illustrated
+in Figure 1.
+4
+
+
+Preprint
+4.1
+RANGE-GRPO OBJECTIVE
+At iteration t, the current policy πt := πθt generates G responses oi ∼πt(· | q) for each prompt
+q. Each response is associated with a calibrated reward interval Ii := bIα,t(Xi) = [Li, Ui], whose
+center and half-width are ci = (Li +Ui)/2 and hi = (Ui −Li)/2, respectively. Below, we suppress
+the dependence on q, t, and α, with i indexing the response of interest and j a comparison response.
+Definition (Range-GRPO objective). For each pair of responses i̸ = j, define the comparison
+weight ωij =
+λ
+hi+hj+λ, where λ > 0. The corresponding pairwise signal is gij = ωij(ci −cj).
+Range-GRPO aggregates these signals into the response-level advantage
+ARANGE
+i
+= 1
+G
+X
+j̸=i
+gij = 1
+G
+X
+j̸=i
+ωij(ci −cj).
+(2)
+We define the Range-GRPO objective by replacing the Dr.GRPO response-level advantage
+ADr.GRPO
+i
+with ARANGE
+i
+, while retaining the remaining objective structure.
+The center difference ci −cj determines the direction of the pairwise signal, while ωij scales its
+magnitude. We use reward interval width as a proxy for uncertainty in the reward estimate. Im-
+portantly, the reliability of a pairwise comparison depends on the uncertainty of both responses. A
+wide interval for either response reduces confidence in the difference between their centers, even
+when the other interval is narrow. We therefore define ωij using the combined half-width hi +hj, so
+that uncertainty in either response attenuates the corresponding pairwise contribution. The reference
+width λ controls the sensitivity of this attenuation to interval width.
+Proposition 1 (Range-GRPO under Zero Interval Widths). Suppose Ii = [ri, ri] for all i =
+1, . . . , G. Then ωij = 1 for every pair, and
+ARANGE
+i
+= 1
+G
+X
+j̸=i
+(ri −rj) = ri −¯r = ADr.GRPO
+i
+.
+(3)
+Thus, Range-GRPO reduces exactly to Dr.GRPO when all reward intervals collapse to points.
+4.2
+PRESERVING RANGE INFORMATION THROUGH PAIRWISE CREDIT ASSIGNMENT
+A point reduction maps each reward interval Ii = [Li, Ui] to a single scalar reward. For a fixed
+relative position ξ ∈[0, 1], define rpt
+i
+= ξLi + (1 −ξ)Ui = ci + (1 −2ξ)hi. The lower bound
+(LB), midpoint, and upper bound (UB) correspond to ξ = 1, ξ = 1/2, and ξ = 0, respectively. Since
+different combinations of ci and hi can yield the same rpt
+i , the scalar reward alone does not uniquely
+determine the underlying interval. This limitation becomes explicit under midpoint reduction, where
+rpt
+i
+= ci is independent of hi.
+We examine how this information loss affects group-relative credit assignment. For a rollout group
+G, let Apt
+i (G) = rpt
+i −¯rpt(G), where ¯rpt(G) denotes the mean point reward in G. In the following,
+we isolate the effect of interval width by holding midpoint rewards fixed.
+Proposition 2 (Effect of Pairwise Range Information on Credit Assignment). Let the point rewards
+be interval midpoints (ξ = 1/2) and consider two rollout groups with G = 3, Gj = {i, ℓ, j} and
+Gk = {i, ℓ, k}, where rpt
+j
+= rpt
+k > rpt
+i
+> rpt
+ℓand hj < hk. The intervals of i and ℓremain fixed
+across the two groups. Suppose |gik| < giℓ< |gij|. Then
+(1)
+ARANGE
+i
+(Gj) < 0 < ARANGE
+i
+(Gk),
+(2)
+Apt
+i (Gj) = Apt
+i (Gk),
+(3)
+sign
+ Awt
+i (Gj)
+
+= sign
+ Awt
+i (Gk)
+
+,
+where Awt
+i (G) = ηi(G)Apt
+i (G) with ηi(G) > 0.
+Proposition 2 shows that the advantage sign for response i under Range-GRPO can reverse as inter-
+val widths change, even when the midpoint rewards remain fixed. For response i, cj = ck > ci > cℓ
+implies giℓ> 0 and gij, gik < 0. Since hj < hk, the wider interval of k yields ωik < ωij, thereby
+reducing the magnitude of its negative pairwise contribution.
+5
+
+
+Preprint
+Algorithm 1 The Range-GRPO Algorithm
+1: Input: Prompt sets Dpol
+U , Dsrc
+L , Dcal
+L , Ddre
+U ; initial policy π0; frozen judge J
+2: Hyperparameters: miscoverage rate α; reference width λ; group size G; number of training iterations T
+Stage 1: Data and Calibration Setup
+3: Generate source rollouts from Dsrc
+L and calibration rollouts from Dcal
+L using π0
+4: Obtain reference rewards Ysrc and Ycal from the labeled data
+5: Extract source states Zsrc and calibration states Zcal = {Zcal
+j }ncal
+j=1 with J
+6: Fit the state scorer sZ : Z →[0, 1] on (Zsrc, Ysrc)
+7: Compute calibration nonconformity scores {EZ
+j }ncal
+j=1 as defined in Section 3.2
+8: Fix sZ and retain Zsrc for DRE and {(Zcal
+j , EZ
+j )}ncal
+j=1 for calibration throughout training
+9: for t = 0, . . . , T −1 do
+Stage 2: On-Policy Reward Range Construction
+10:
+Sample a policy prompt batch Qt from Dpol
+U
+11:
+Generate G rollouts per prompt in Qt using πt
+12:
+Sample fresh target DRE rollouts from πt on Ddre
+U
+13:
+Extract Zpol
+t
+and Zdre
+t
+with J
+14:
+Fit a binary domain classifier on Zsrc and Zdre
+t
+to estimate the target-to-source density ratio bwt(·)
+15:
+for each policy rollout Xi with state Zpol
+i,t do
+16:
+Compute the weighted conformal cutoff bτα,t(Zpol
+i,t ) as defined in Section 3.2
+17:
+bIα,t(Xi) ←
+
+sZ(Zpol
+i,t ) −bτα,t(Zpol
+i,t ), sZ(Zpol
+i,t ) + bτα,t(Zpol
+i,t )
+
+∩[0, 1]
+18:
+end for
+Stage 3: Range-GRPO Policy Update
+19:
+Compute the advantage ARANGE
+i,t
+for each rollout within each prompt group using Eq. (2)
+20:
+Update πt by optimizing the Range-GRPO objective on the policy rollouts to obtain πt+1
+21: end for
+22: Output: final policy πT
+The resulting advantages of response i are ARANGE
+i
+(Gj) =
+1
+G(giℓ+ gij) and ARANGE
+i
+(Gk) =
+1
+G(giℓ+ gik). The assumed inequality gives giℓ+ gij < 0 < giℓ+ gik, establishing result (1).
+Under midpoint reduction, j and k retain the same point reward despite having different interval
+widths, yielding the same point-reduction advantage in result (2). Finally, ηi(Gj) and ηi(Gk) are both
+positive. Response-level reweighting therefore preserves the sign of the common point-reduction
+advantage, so result (3) follows.
+UARM (Pan et al., 2026) provides a concrete example of the response-level weighting in state-
+ment (3). For a matched comparison with Range-GRPO, we use the same reward intervals and set
+ri = ci for every response. The UARM reweighting rule then gives
+AUARM
+i
+(G) = ηUARM
+i
+Apt
+i (G),
+ηUARM
+i
+=
+σsignal
+σ2
+signal + σ2
+noise,i
+> 0.
+(4)
+The scaling factor can be written as
+σ2
+signal
+σ2
+signal+σ2
+noise,i
+1
+σsignal = ηUARM
+i
+> 0, since σsignal > 0. The
+positive scaling factor can change the advantage magnitude, but the centered midpoint reward still
+determines its sign. Under this matched comparison, UARM satisfies statement (3). In contrast,
+Range-GRPO applies interval-dependent weights to the individual pairwise signals before aggrega-
+tion, which allows the advantage sign to change as shown in Proposition 2.
+4.3
+ON-POLICY TRAINING PROCEDURE
+Range-GRPO combines the proposed objective with the reward range construction in Section 3.2 for
+on-policy training. At initialization, it fits the state scorer and computes nonconformity scores using
+rollouts from the initial policy. Each iteration then generates fresh policy and target DRE rollouts,
+updates the density ratio weights, and constructs reward ranges for the policy update.
+Calibration Setup. We use four disjoint sets of prompts: an unlabeled policy set Dpol
+U , a labeled
+source set Dsrc
+L , a labeled calibration set Dcal
+L , and an unlabeled target set Ddre
+U
+for density ratio
+estimation (DRE). The source and calibration sets come from the same labeled prompt distribution,
+whereas the policy and target DRE sets come from the same unlabeled prompt distribution.
+6
+
+
+Preprint
+Table 1: Range-GRPO achieves the highest mean test accuracy among the compared range-
+based methods. We select the checkpoint with the highest validation accuracy over ten training
+epochs and report its test accuracy. All values are means ± sample standard deviations across
+three seeds. Cov. and Width summarize empirical coverage and mean interval width on unlabeled
+responses over the full training phase. We set the miscoverage rate to α = 0.1. Bold and underlined
+values indicate the best and second best results, respectively, for accuracy and interval width.
+Advantage
+Method
+Acc. (%) ↑
+Cov. (%)
+Width ↓
+Scalar reductions
+LB
+27.63 ± 2.84
+93.69 ± 0.65
+0.3942 ± 0.0098
+Midpoint
+23.97 ± 7.61
+93.95 ± 1.47
+0.4070 ± 0.0120
+UB
+24.60 ± 2.71
+92.64 ± 0.89
+0.3930 ± 0.0122
+LB
+30.33 ± 7.68
+93.29 ± 0.27
+0.3753 ± 0.0126
+Midpoint
+31.77 ± 14.11
+93.02 ± 0.11
+0.3699 ± 0.0094
+UB
+29.83 ± 4.84
+93.35 ± 0.75
+0.3785 ± 0.0136
+Main comparison
+UARM
+20.43 ± 3.61
+94.41 ± 0.23
+0.4311 ± 0.0090
+Range-GRPO (Ours)
+39.40 ± 7.70
+93.05 ± 0.70
+0.3595 ± 0.0206
+GRPO
+Dr.GRPO
+The initial policy π0 generates rollouts from Dsrc
+L and Dcal
+L . Let ϕ denote the fixed state-extraction
+procedure implemented by the frozen judge J, so that each rollout Xi is mapped to a judgment state
+Zi = ϕ(Xi). The same state-extraction procedure is applied to all four sets throughout training.
+Each source and calibration rollout receives a reference reward Yi ∈[0, 1] from the labeled data. We
+fit the state scorer sZ using the source states and rewards and compute calibration nonconformity
+scores as described in Section 3.2. The state scorer, source and calibration states, and calibration
+nonconformity scores remain fixed throughout training.
+On-Policy Training. At iteration t, the current policy πt and the unlabeled prompt distribution
+induce the target distribution Pt. We sample a batch of prompts from Dpol
+U
+and generate G rollouts
+per prompt. Using the same policy and sampling settings, we also generate G′ rollouts per target
+DRE prompt from the fixed set Ddre
+U . The judge J extracts states from both sets of rollouts, but we
+exclude the target DRE rollouts from policy updates.
+We fit a binary domain classifier on the fixed source states and the current target DRE states, without
+using correctness rewards, to update the estimated state density ratios bwt. Using these weights with
+the fixed calibration states and nonconformity scores, we construct a reward range bIα,t(Xi) for
+each policy rollout Xi. For each prompt, we compute advantages by comparing its G reward ranges
+pairwise using Eq. (2). We then optimize the Range-GRPO objective on the policy rollouts using
+these advantages to obtain πt+1. Algorithm 1 summarizes the procedure.
+5
+EXPERIMENTS
+5.1
+TOY EXPERIMENT
+Setup. We adapt a synthetic task from prior work (Lee et al., 2026) into a candidate selection task.
+GPT-2-small (Radford et al., 2019) serves as the policy, and the prompt does not include the ranking
+rule. The rank of the selected candidate determines the true reward. Accuracy measures how often
+the policy selects the candidate with rank 1, which receives the highest reward. The labeled training
+pool serves only to fit the state scorer and calibrate reward intervals.
+We compare Range-GRPO with LB, Midpoint, UB, and UARM. LB, Midpoint, and UB have sep-
+arate variants using the GRPO (Shao et al., 2024) and Dr.GRPO (Liu et al., 2025) advantage for-
+mulas. All methods share the data allocation and use the same on-policy reward range construction
+described in Section 4.3. This controlled comparison focuses on how the methods derive learn-
+ing signals from reward ranges. We use the true rewards of unlabeled responses only to compute
+empirical coverage.
+7
+
+
+Preprint
+Table 2: Range-GRPO achieves the highest ID and OOD averages among semi-supervised
+methods. We report published baseline results from TraPO (Yang et al., 2026), while methods
+marked with ∗are evaluated under our experimental setting. For the reproduced TraPO configura-
+tions, values in parentheses indicate the entropy regularization coefficients. All training methods
+use 1,024 (1K) ID and 1,024 (1K) OOD prompts. Semi-supervised methods use labeled ID prompts
+and unlabeled OOD prompts, whereas the fully supervised model uses labels for all 2K prompts.
+GPQA† denotes GPQA-diamond. Bold and underlined scores indicate the best and second-best re-
+sults among semi-supervised methods, respectively, with ties receiving the same formatting. The
+fully supervised result is provided for reference only and excluded from this ranking.
+In-Distribution
+Out-of-Distribution
+Model / Method
+AIME 24/25 AMC MATH-500 Minerva Olympiad Avg.
+ARC-c GPQA† MMLU-Pro Avg.
+Backbone
+Qwen-Base
+11.5/4.9
+31.3
+43.6
+7.4
+15.6
+19.0
+18.2
+11.1
+16.9
+15.4
+Qwen-Instruct
+12.5/10.2
+48.5
+80.4
+32.7
+41.0
+37.6
+70.3
+24.7
+34.1
+43.0
+Fully supervised
+Supervised (2K)
+17.3/12.4
+56.8
+81.4
+38.6
+44.8
+41.9
+82.0
+38.9
+52.4
+57.8
+Semi-supervised
+TTRL
+16.4/13.6
+49.9
+66.9
+26.5
+37.8
+35.2
+62.0
+31.8
+43.5
+45.8
+Self-certainty
+16.0/10.9
+53.0
+78.4
+34.2
+39.0
+38.6
+77.1
+32.8
+45.7
+51.9
+Token-level Entropy
+17.7/11.0
+51.7
+77.0
+33.1
+41.0
+38.6
+76.5
+30.8
+44.7
+50.7
+Sentence-level Entropy
+15.7/10.0
+51.4
+77.4
+34.9
+37.5
+37.8
+75.1
+31.3
+44.3
+50.2
+TraPO (entropy=0.001)∗
+17.7/12.2
+55.9
+79.2
+37.5
+41.3
+40.6
+80.4
+34.8
+43.5
+52.9
+UARM∗
+17.1/9.5
+53.2
+80.4
+33.5
+40.9
+39.1
+78.9
+36.9
+34.2
+50.0
+Range-GRPO (ours), λ = 1
+20.6/14.4
+57.0
+83.0
+33.8
+47.3
+42.7
+80.9
+40.4
+48.4
+56.6
+All methods draw from the same labeled and unlabeled pools and have equal budgets for total rollout
+generation, including auxiliary generation. We train all methods for ten epochs with G = 8.
+Results. Table 1 shows that Range-GRPO achieves the highest mean test accuracy (39.40%) among
+the compared methods, exceeding the best scalar reduction result by 7.63 percentage points. All
+methods achieve mean empirical coverage above the nominal 90% level on unlabeled responses
+over the full training phase. Range-GRPO also yields the smallest mean interval width (0.3595).
+Appendix B.2 provides additional training details and validation curves.
+5.2
+MAIN EXPERIMENTS
+We evaluate Range-GRPO on established reasoning benchmarks to complement the synthetic toy
+experiment. These experiments examine whether Range-GRPO can effectively learn from unla-
+beled prompts with limited labeled supervision and generalize beyond the labeled source domain.
+Appendix C provides implementation details.
+Baselines. We adapt the training and evaluation setting used for Table 2 in Yang et al. (2026),
+without increasing the data or policy rollout budgets. The comparison includes the semi-supervised
+results reported in that table for TTRL (Zuo et al., 2025), Self-certainty (Zhao et al., 2026), and the
+Token-level Entropy and Sentence-level Entropy baselines (Agarwal et al., 2025). We additionally
+reproduce TraPO under our experimental setting and implement UARM (Pan et al., 2026) with a
+quantile reward model as a direct baseline.
+Training Setup. For policy training, we use Qwen2.5-Math-7B (Yang et al., 2024) and generate
+G = 8 responses per prompt. The training data comprise 1,024 labeled mathematics prompts from
+OpenR1-Math-220k (Hugging Face, 2025) and 1,024 unlabeled MMLU-Pro prompts (Wang et al.,
+2024). For Range-GRPO and UARM, we reserve part of the training data for their auxiliary com-
+ponents, including reward estimation, calibration, and density ratio estimation (DRE) where appli-
+cable. Training follows the TraPO schedule of ten labeled warmup epochs followed by five epochs
+8
+
+
+Preprint
+using both labeled and unlabeled prompts. Labeled updates use binary correctness rewards based on
+reference answers, while each method defines its own learning signals for unlabeled updates.
+Reward Range Construction. After labeled warmup and before unlabeled policy updates begin,
+we use the resulting policy to generate the source and calibration responses for reward range con-
+struction. A frozen Qwen3-4B-Instruct (Yang et al., 2025) judge extracts judgment states for these
+responses. We then fit a lightweight XGBoost scorer on the source states and compute calibration
+nonconformity scores. The scorer and calibration scores remain fixed during subsequent training,
+while density ratios are updated at each iteration using fresh target responses from the current policy.
+For each unlabeled response, we combine its scorer prediction with the weighted calibration scores
+to construct a calibrated reward range with α = 0.1.
+Evaluation. We evaluate performance on both in-distribution (ID) mathematical benchmarks and
+out-of-distribution (OOD) benchmarks outside the labeled mathematics domain. The ID bench-
+marks include AIME 2024, AIME 2025, AMC, MATH-500 (Lightman et al., 2024), Minerva
+(Lewkowycz et al., 2022), and OlympiadBench (He et al., 2024), whereas the OOD benchmarks
+include ARC-c (Clark et al., 2018), GPQA-diamond (Rein et al., 2024), and MMLU-Pro. We report
+avg@32 on AIME 2024, AIME 2025, and AMC, and pass@1 on the remaining benchmarks.
+Quantitative Analysis. Table 2 shows that Range-GRPO achieves the highest ID and OOD averages
+among semi-supervised methods. It also achieves the best accuracy on eight of the nine individual
+benchmarks. Both averages exceed those of our TraPO reproduction with an entropy coefficient of
+0.001. Notably, Range-GRPO attains this performance while reserving part of the same training
+prompt pool for scorer fitting, calibration, and density ratio estimation rather than policy optimiza-
+tion. Despite this auxiliary allocation, its total response budget, including both policy and judge
+outputs, is approximately 18.2% smaller than that of TraPO.
+Detailed prompt allocation and response accounting are provided in Section C. Range-GRPO also
+achieves higher ID and OOD averages than UARM, which applies uncertainty weights at the re-
+sponse level. This result is consistent with the benefit of preserving interval-dependent pairwise
+structure when constructing learning signals. Range-GRPO also remains competitive with the fully
+supervised 2K setting, exceeding its ID average while remaining close on OOD. Together, these
+results support the effectiveness of Range-GRPO for semi-supervised post-training across the eval-
+uated benchmarks.
+Table 3: Uncertainty-aware pairwise weighting
+can reverse the learning signal for a correct re-
+sponse. On this unlabeled OOD training instance,
+midpoint scalarization under Dr.GRPO assigns the
+correct response R7 a negative advantage because
+its midpoint is 0.7384, below the group mean of
+0.7402. Range-GRPO (λ=1) instead yields a pos-
+itive advantage by weighting pairwise comparisons
+according to interval uncertainty. Correctness labels
+are shown only for post-hoc interpretation.
+Response
+Correctness
+Calibrated range
+R1
+Incorrect
+[0.0000, 0.1173]
+R2–R6, R8
+Correct
+[0.7082, 1.0000]
+R7
+Correct
+[0.4767, 1.0000]
+Qualitative Analysis. To examine the prac-
+tical benefit of preserving pairwise range in-
+formation as analyzed in Section 4.2, we
+compare its credit assignment with scalar re-
+duction in the Range-GRPO training logs.
+Table 3 illustrates how pairwise weighting
+based on interval widths can reverse the ad-
+vantage sign relative to the scalar-reduction
+baseline on an unlabeled OOD training in-
+stance. We compare Range-GRPO with mid-
+point scalarization under Dr.GRPO, which
+achieves the second-highest mean test accu-
+racy in Table 1. Both methods use the same
+eight responses and calibrated intervals. The
+midpoint baseline assigns R7 a negative ad-
+vantage because its midpoint lies below the
+group mean. The six negative comparisons involve wider counterpart intervals than the positive
+comparison with R1. Range-GRPO therefore assigns smaller weights to those six comparisons,
+yielding a positive advantage for R7. This example suggests that interval-aware pairwise weighting
+can produce a learning signal better aligned with response correctness.
+6
+CONCLUSION
+We present Range-GRPO, a semi-supervised post-training framework that learns from unlabeled
+prompts with limited labeled supervision. The proposed objective assigns relative credit to each
+9
+
+
+Preprint
+response through pairwise comparisons of reward intervals. Our theoretical analysis shows that
+Range-GRPO includes Dr.GRPO as a special case under zero-width intervals, while its pairwise
+credit assignment allows range information to affect both the direction and magnitude of the learning
+signal. Empirically, Range-GRPO outperforms the other semi-supervised methods in both ID and
+OOD average performance and achieves the best result on eight of the nine individual benchmarks.
+Together, these findings highlight the value of using interval relations to determine not only the
+strength of a learning signal but also its direction. Beyond the evaluated tasks, future work could
+extend this framework to domains where reward supervision is uncertain and expert annotations are
+limited.
+REFERENCES
+Shivam Agarwal, Zimin Zhang, Lifan Yuan, Jiawei Han, and Hao Peng. The unreasonable effec-
+tiveness of entropy minimization in LLM reasoning. In The Thirty-ninth Annual Conference on
+Neural Information Processing Systems, 2025. URL https://openreview.net/forum?
+id=UfFTBEsLgI.
+Anastasios N. Angelopoulos and Stephen Bates. Conformal prediction: A gentle introduction. Foun-
+dations and Trends in Machine Learning, 16(4):494–591, 2023. doi: 10.1561/2200000101.
+Yuntao Bai, Saurav Kadavath, Sandipan Kundu, Amanda Askell, Jackson Kernion, Andy Jones,
+Anna Chen, Anna Goldie, Azalia Mirhoseini, Cameron McKinnon, et al. Constitutional ai: Harm-
+lessness from ai feedback. arXiv preprint arXiv:2212.08073, 2022.
+Debangshu Banerjee, Kintan Saha, and Aditya Gopalan. Towards reliable, uncertainty-aware align-
+ment, 2025. URL https://arxiv.org/abs/2507.15906.
+Tiejin Chen, Xiaoou Liu, Vishnu Nandam, Kuan-Ru Liou, and Hua Wei. Conformal feedback align-
+ment: Quantifying answer-level reliability for robust llm alignment. In Findings of the Association
+for Computational Linguistics: EACL 2026, pp. 3561–3572, 2026.
+Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa Schoenick, and
+Oyvind Tafjord. Think you have solved question answering? try arc, the ai2 reasoning challenge.
+arXiv preprint arXiv:1803.05457, 2018.
+Anisha Gunjal, Anthony Wang, Elaine Lau, Vaskar Nath, Yunzhong He, Bing Liu, and Sean
+Hendryx. Rubrics as rewards: Reinforcement learning beyond verifiable domains. In Interna-
+tional Conference on Learning Representations, volume 2026, pp. 127924–127945, 2026.
+Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Peiyi Wang, Qihao Zhu, Runxin Xu, Ruoyu
+Zhang, Shirong Ma, Xiao Bi, et al. DeepSeek-R1 incentivizes reasoning in LLMs through rein-
+forcement learning. Nature, 645:633–638, 2025. doi: 10.1038/s41586-025-09422-z.
+Chaoqun He, Renjie Luo, Yuzhuo Bai, Shengding Hu, Zhen Thai, Junhao Shen, Jinyi Hu, Xu Han,
+Yujie Huang, Yuxiang Zhang, Jie Liu, Lei Qi, Zhiyuan Liu, and Maosong Sun. OlympiadBench:
+A challenging benchmark for promoting AGI with olympiad-level bilingual multimodal scien-
+tific problems. In Lun-Wei Ku, Andre Martins, and Vivek Srikumar (eds.), Proceedings of the
+62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Pa-
+pers), pp. 3828–3850, Bangkok, Thailand, August 2024. Association for Computational Linguis-
+tics.
+doi: 10.18653/v1/2024.acl-long.211.
+URL https://aclanthology.org/2024.
+acl-long.211/.
+Hugging Face. Open R1: A fully open reproduction of DeepSeek-R1, January 2025. URL https:
+//github.com/huggingface/open-r1.
+Douwe Kiela, Max Bartolo, Yixin Nie, Divyansh Kaushik, Atticus Geiger, Zhengxuan Wu, Bertie
+Vidgen, Grusha Prasad, Amanpreet Singh, Pratik Ringshia, et al. Dynabench: Rethinking bench-
+marking in nlp. In Proceedings of the 2021 conference of the North American chapter of the
+Association for Computational Linguistics: human language technologies, pp. 4110–4124, 2021.
+10
+
+
+Preprint
+Harrison Lee, Samrat Phatale, Hassan Mansoor, Thomas Mesnard, Johan Ferret, Kellie Ren Lu,
+Colton Bishop, Ethan Hall, Victor Carbune, Abhinav Rastogi, and Sushant Prakash. RLAIF vs.
+RLHF: Scaling reinforcement learning from human feedback with AI feedback. In Proceedings of
+the 41st International Conference on Machine Learning, volume 235 of Proceedings of Machine
+Learning Research, pp. 26874–26901. PMLR, 2024. URL https://proceedings.mlr.
+press/v235/lee24t.html.
+Seonggyun Lee, Sungjun Lim, Seojin Park, Soeun Cheon, and Kyungwoo Song. Semi-supervised
+preference optimization with limited feedback. In International Conference on Learning Repre-
+sentations, volume 2026, pp. 51284–51313, 2026.
+Aitor Lewkowycz, Anders Andreassen, David Dohan, Ethan Dyer, Henryk Michalewski, Vinay Ra-
+masesh, Ambrose Slone, Cem Anil, Imanol Schlag, Theo Gutman-Solo, et al. Solving quantitative
+reasoning problems with language models. Advances in neural information processing systems,
+35:3843–3857, 2022.
+Hunter Lightman, Vineet Kosaraju, Yuri Burda, Harrison Edwards, Bowen Baker, Teddy Lee, Jan
+Leike, John Schulman, Ilya Sutskever, and Karl Cobbe. Let’s verify step by step. In International
+Conference on Learning Representations, volume 2024, pp. 39578–39601, 2024.
+Yuxiang Lin, Zihan Wang, Mengyang Liu, Yuxuan Shan, Longju Bai, Junyao Zhang, Xing Jin,
+Boshan Chen, Jinyan Su, Xingyao Wang, et al. Bagen: Are llm agents budget-aware?
+arXiv
+preprint arXiv:2606.00198, 2026.
+Hui Liu, Yunlai Teng, Kunlong Bai, Pengfei Qi, Haotian Yan, Liang Li, and Junlan Feng. Rec-rl:
+Referring expression counting via gaussian and range-based reward optimization. arXiv preprint
+arXiv:2605.16460, 2026.
+Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi, Tianyu Pang, Chao Du, Wee Sun Lee, and Min
+Lin. Understanding R1-Zero-like training: A critical perspective. In Conference on Language
+Modeling (COLM), 2025.
+Edward Loper and Steven Bird. Nltk: The natural language toolkit. In Proceedings of the ACL-02
+Workshop on Effective tools and methodologies for teaching natural language processing and
+computational linguistics, pp. 63–70, 2002.
+Xueguang Ma, Qian Liu, Dongfu Jiang, Ge Zhang, Zejun MA, and Wenhu Chen. General-reasoner:
+Advancing LLM reasoning across all domains. In The Thirty-ninth Annual Conference on Neu-
+ral Information Processing Systems, 2025. URL https://openreview.net/forum?id=
+pBFVoll8Xa.
+Kangjun Noh, Ryunyi LEE, Heejin Jung, Young Jin Kim, and Kyungwoo Song. Reliable LLM-as-a-
+judge evaluation via transferable calibration. In ICML 2026 Workshop on Statistical Frameworks
+for Uncertainty in Agentic Systems, 2026. URL https://openreview.net/forum?id=
+AIBoVLkc31.
+Licheng Pan, Haocheng Yang, Haoxuan Li, Yichen Sun, Yunsheng Lu, Shijian Wang, Lei Shen,
+Yuan Lu, Zhixuan Chu, and Hao Wang. Uncertainty-aware reward modeling for stable rlhf. arXiv
+preprint arXiv:2606.19818, 2026.
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever.
+Language
+models
+are
+unsupervised
+multitask
+learners.
+Technical
+report,
+OpenAI,
+2019.
+URL https://cdn.openai.com/better-language-models/language_
+models_are_unsupervised_multitask_learners.pdf.
+David Rein, Betty Li Hou, Asa Cooper Stickland, Jackson Petty, Richard Yuanzhe Pang, Julien
+Dirani, Julian Michael, and Samuel R. Bowman. GPQA: A graduate-level google-proof Q&A
+benchmark. In First Conference on Language Modeling, 2024. URL https://openreview.
+net/forum?id=Ti67584b98.
+Manley Roberts, Himanshu Thakur, Christine Herlihy, Colin White, and Samuel Dooley. To the
+cutoff... and beyond? a longitudinal perspective on LLM data contamination. In The Twelfth
+International Conference on Learning Representations, 2024. URL https://openreview.
+net/forum?id=m2NVG4Htxs.
+11
+
+
+Preprint
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang,
+Mingchuan Zhang, YK Li, Yang Wu, et al. Deepseekmath: Pushing the limits of mathemati-
+cal reasoning in open language models. arXiv preprint arXiv:2402.03300, 2024.
+Huanxin Sheng, Xinyi Liu, Hangfeng He, Jieyu Zhao, and Jian Kang. Analyzing uncertainty of
+LLM-as-a-judge: Interval evaluations with conformal prediction. In Proceedings of the 2025
+Conference on Empirical Methods in Natural Language Processing, pp. 11286–11328, 2025.
+Haonan Song, Qingchen Xie, Huan Zhu, Feng Xiao, Luxi Xing, Liu Kang, Fuzhen Li, Zhiy-
+ong Zheng, Feng Jiang, Ziheng Li, Kun Yan, Qingyi Si, Yanghua Xiao, Hongcheng Guo,
+and Fan Yang.
+IRPM: Intergroup relative preference modeling for pointwise generative re-
+ward models.
+In Forty-third International Conference on Machine Learning, 2026.
+URL
+https://openreview.net/forum?id=JuiHYauZNk.
+Zhongxiang
+Sun,
+Qipeng
+Wang,
+Haoyu
+Wang,
+Xiao
+Zhang,
+and
+Jun
+Xu.
+Mech-
+anistic
+detection
+and
+mitigation
+of
+hallucination
+in
+large
+reasoning
+mod-
+els.
+In
+International
+Conference
+on
+Learning
+Representations,
+2026.
+URL
+https://proceedings.iclr.cc/paper_files/paper/2026/hash/
+0271e4dc4e81459121a07b9634d5e79d-Abstract-Conference.html.
+Ryan J Tibshirani, Rina Foygel Barber, Emmanuel Candes, and Aaditya Ramdas.
+Confor-
+mal prediction under covariate shift. In Advances in Neural Information Processing Systems,
+volume 32, 2019.
+URL https://proceedings.neurips.cc/paper/2019/hash/
+8fb21ee7a2207526da55a679f0332de2-Abstract.html.
+Yubo Wang, Xueguang Ma, Ge Zhang, Yuansheng Ni, Abhranil Chandra, Shiguang Guo, Weiming
+Ren, Aaran Arulraj, Xuan He, Ziyan Jiang, et al. Mmlu-pro: A more robust and challenging multi-
+task language understanding benchmark. Advances in Neural Information Processing Systems,
+37:95266–95290, 2024.
+Lai Wei, Yuting Li, Chen Wang, Yue Wang, Linghe Kong, Weiran Huang, and Lichao Sun. First
+SFT, second RL, third UPT: Continual improving multi-modal LLM reasoning via unsupervised
+post-training. In The Thirty-ninth Annual Conference on Neural Information Processing Systems,
+2025. URL https://openreview.net/forum?id=HL1j92hb6z.
+Colin White, Samuel Dooley, Manley Roberts, Arka Pal, Benjamin Feuer, Siddhartha Jain, Ravid
+Shwartz-Ziv, Neel Jain, Khalid Saifullah, Sreemanti Dey, et al.
+Livebench: A challenging,
+contamination-limited llm benchmark. In International Conference on Learning Representations,
+volume 2025, pp. 91595–91631, 2025.
+Minghao Wu and Alham Fikri Aji. Style over substance: Evaluation biases for large language
+models. In Proceedings of the 31st International Conference on Computational Linguistics, pp.
+297–312, 2025.
+Tao Wu, Li Yang, Gen Zhan, Yabin Zhang, Yiting Liao, Junlin Li, Deliang Fu, Li Zhang, and Limin
+Wang. TempR1: Improving temporal understanding of MLLMs via temporal-aware multi-task
+reinforcement learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pp. 2756–2767, 2026.
+Zhiping Xiao, Yusheng Zhao, Qixin Zhang, Jiaye Xie, Wanjia Zhao, Weizhi Zhang, Xiao Luo,
+Philip S. Yu, and Ming Zhang. Sample lottery: Unsupervised discovery of critical instances for
+LLM reasoning. In The Fourteenth International Conference on Learning Representations, 2026.
+URL https://openreview.net/forum?id=76OZBE4Rb6.
+An Yang, Beichen Zhang, Binyuan Hui, Bofei Gao, Bowen Yu, Chengpeng Li, Dayiheng Liu, Jian-
+hong Tu, Jingren Zhou, Junyang Lin, et al.
+Qwen2.5-Math technical report: Toward math-
+ematical expert model via self-improvement.
+arXiv preprint arXiv:2409.12122, 2024.
+URL
+https://arxiv.org/abs/2409.12122.
+An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu,
+Chang Gao, Chengen Huang, Chenxu Lv, et al.
+Qwen3 technical report.
+arXiv preprint
+arXiv:2505.09388, 2025.
+12
+
+
+Preprint
+Shenzhi Yang, Guangcheng Zhu, Haobo Wang, Xing Zheng, Yingfan Ma, Zhongqi Chen, Bowen
+Song, Weiqiang Wang, Junbo Zhao, and Gang Chen. TraPO: A semi-supervised reinforcement
+learning framework for boosting LLM reasoning. In International Conference on Learning Rep-
+resentations, volume 2026, pp. 115067–115102, 2026.
+Jiayi Ye, Yanbo Wang, Yue Huang, Dongping Chen, Qihui Zhang, Nuno Moniz, Tian Gao, Werner
+Geyer, Chao Huang, Pin-Yu Chen, et al. Justice or prejudice? quantifying biases in llm-as-a-
+judge. In International Conference on Learning Representations, volume 2025, pp. 102351–
+102390, 2025.
+Xuandong Zhao, Zhewei Kang, Aosong Feng, Sergey Levine, and Dawn Song. Learning to rea-
+son without external rewards. In International Conference on Learning Representations, volume
+2026, pp. 2548–2581, 2026.
+Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang,
+Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, et al. Judging LLM-as-a-judge with MT-Bench and
+Chatbot Arena. Advances in neural information processing systems, 36:46595–46623, 2023.
+Yang Zhou, Sunzhu Li, Shunyu Liu, Wenkai Fang, Kongcheng Zhang, Jiale Zhao, Jingwen Yang,
+Yihe Zhou, Jianwei Lv, Tongya Zheng, Hengtong Lu, Wei Chen, Yan Xie, and Mingli Song.
+Breaking the exploration bottleneck: Rubric-scaffolded reinforcement learning for open-ended
+LLM reasoning.
+In Forty-third International Conference on Machine Learning, 2026.
+URL
+https://openreview.net/forum?id=IM8ZHjhD0v.
+Yuxin Zuo, Kaiyan Zhang, Li Sheng, Shang Qu, Ganqu Cui, Xuekai Zhu, Haozhan Li, Yuchen
+Zhang, Xinwei Long, Ermo Hua, Biqing Qi, Youbang Sun, Zhiyuan Ma, Lifan Yuan, Ning Ding,
+and Bowen Zhou. TTRL: Test-time reinforcement learning. In The Thirty-ninth Annual Confer-
+ence on Neural Information Processing Systems, 2025. URL https://openreview.net/
+forum?id=VuVhgEiu20.
+13
+
+
+Preprint
+A
+NOTATION
+Table 4: Notation used throughout the paper. Symbols are grouped by their roles and ordered
+approximately by their first appearance in the paper.
+Notation
+Meaning
+GRPO and policy optimization
+q, PQ
+Prompt and prompt distribution.
+G, G′, oi, oi,k
+Policy and target DRE responses per prompt, response i, and token k of response
+i.
+πθ, πθold, πref, πt
+Parameterized policy, old rollout policy, fixed reference policy, and current pol-
+icy πt := πθt.
+ri, ¯r, σr
+Response reward, group-mean reward, and group reward standard deviation.
+Ai, ADr.GRPO
+i
+GRPO and Dr.GRPO response-level advantages.
+ρi,k, DKL
+i,k
+PPO likelihood ratio and token-level KL penalty.
+ϵ, β
+PPO clipping parameter and KL regularization coefficient.
+Reward-range construction
+t, X = (q, o), Y
+Optimization iteration, prompt-response pair, and reference reward.
+Psrc, Pt
+Source and iteration-t target distributions over (X, Y ).
+Z = ϕ(X), Z
+Low-cardinality judgment state, state-extraction mapping, and state space.
+P Z
+src, P Z
+t
+Source and target marginal distributions of the judgment state.
+sZ, EZ
+j
+Fixed state scorer and absolute calibration nonconformity score.
+C, bptgt
+t (z)
+Domain indicator (0: source; 1: target) and estimated posterior Pr(C = 1 |
+Z = z).
+bwt(z), msrc, mt
+Target-to-source density-ratio weight and source/target sample counts used for
+its estimation.
+α, bτα,t(z)
+Miscoverage level and calibrated reward-space radius.
+bIα,t(X)
+Calibrated reward interval for prompt-response pair X.
+Range-GRPO credit assignment
+Ii = [Li, Ui]
+Reward interval for response i, with lower and upper endpoints Li and Ui.
+ci, hi
+Interval center ci = (Li + Ui)/2 and half-width hi = (Ui −Li)/2.
+λ, ωij
+Reference-width parameter and pairwise reliability weight ωij = λ/(hi + hj +
+λ).
+gij
+Pairwise credit signal gij = ωij(ci −cj).
+ARANGE
+i
+Range-GRPO response-level advantage obtained by aggregating pairwise sig-
+nals.
+ξ, rpt
+i
+Relative position for scalar interval reduction and the resulting point reward.
+G, ¯rpt(G), Apt
+i (G)
+Rollout group, its mean point reward, and point-reduction advantage.
+Awt
+i (G), ηi(G)
+Generic positively reweighted point advantage and its scaling factor.
+ηUARM
+i
+, σsignal, σnoise,i
+UARM scaling factor and its signal/noise quantities.
+Training procedure
+Dpol
+U , Dsrc
+L , Dcal
+L , Ddre
+U
+Unlabeled policy, labeled source, labeled calibration, and unlabeled target-DRE
+prompt sets.
+J, Ysrc, Ycal
+Frozen judge and source/calibration reward collections.
+Zsrc, Zcal, ncal
+Source and calibration state collections and number of calibration rollouts.
+Qt, Zpol
+t
+, Zdre
+t
+, T
+Policy-prompt batch, policy/DRE state collections at iteration t, and total num-
+ber of training iterations.
+Appendix-specific notation
+Zi = (zi1, . . . , zi5)
+Five-dimensional judgment state used in the main experiments.
+Rj, ψ(v), bqα,t(Z)
+Normalized nonconformity score, residual-scale function, and weighted cutoff
+for normalized conformal calibration.
+Continued on next page
+14
+
+
+Preprint
+Table 4 (continued). Notation used throughout the paper.
+Notation
+Meaning
+ζ
+Signal-variance stabilizer used in the UARM baseline.
+B
+TOY EXPERIMENT
+B.1
+DATA AND TRAINING
+Task. Following SSPO (Lee et al., 2026), we construct a synthetic dataset using words from the
+Natural Language Toolkit (NLTK) word list (Loper & Bird, 2002). We define a task-specific ranking
+rule for the candidate words. Each prompt contains ten candidate words labeled A–J, and the policy
+selects one letter. We first sort the words by increasing length, preserving the input order for words
+of equal length. We then reorder only the three shortest words alphabetically, treating uppercase
+and lowercase letters alike. The remaining seven words retain their order. A selection is correct if
+rank(o) = 1, while the reward is determined by r(o) = (11 −rank(o))/10. In the example shown
+in Table 5, the final order begins with nominee, savoy, and wanton. Training, validation, and test
+sets have disjoint prompt compositions.
+Data allocation.
+For policy training and auxiliary range construction, we use 1,200 synthetic
+prompts: 200 labeled and 1,000 unlabeled. We allocate these prompts to scorer fitting, calibration,
+density ratio estimation (DRE), and policy training. Table 6 summarizes this allocation together
+with the separate validation and test sets. All methods use the same prompt partitions.
+Table 5: Example candidates with their ranks
+and hidden rewards.
+Choice
+Word
+Length
+Rank
+Reward
+A
+intoxicating
+12
+8
+0.3
+B
+transcendental
+14
+10
+0.1
+C
+tenacious
+9
+5
+0.6
+D
+nocturne
+8
+4
+0.7
+E
+knickerbocker
+13
+9
+0.2
+F
+savoy
+5
+2
+0.9
+G
+hypodermic
+10
+6
+0.5
+H
+blossomtime
+11
+7
+0.4
+I
+nominee
+7
+1
+1.0
+J
+wanton
+6
+3
+0.8
+Table 6: Prompt allocation, separating policy
+learning from range construction.
+Split
+Role
+Prompts
+Labeled
+Scorer / source DRE
+100
+Calibration
+100
+Unlabeled Policy
+900
+Target DRE
+100
+Validation Model selection
+400
+Test
+Evaluation
+1,000
+Total
+2,600
+Training and model selection. All methods train for ten epochs without warmup or labeled policy
+updates. Table 7 summarizes the training settings. We select learning rates from {1, 2, 4, 5} ×
+10−5 and KL coefficients from {0, 0.01, 0.1}. For Range-GRPO, we select λ = 0.2 from the grid
+{0.2, 0.4, 0.6, 0.8, 1}. We select the best checkpoint in each run based on validation accuracy, then
+choose hyperparameters using the mean of these best validation accuracies across three seeds.
+B.2
+LEARNING SIGNALS
+Advantage construction. All methods in this toy comparison use the interval construction proce-
+dure in Section B.3 but apply different rules to compute advantages from the resulting intervals. The
+scalar baselines use the lower bound (LB), upper bound (UB), or midpoint of each interval as the
+reward and compute either GRPO or Dr.GRPO advantages. Range-GRPO uses the objective defined
+in Section 4.1 with λ = 0.2 and no additional advantage normalization.
+We adapt UARM (Pan et al., 2026) by using the midpoint of each interval as the reward estimate
+for the corresponding response. The shared interval construction procedure replaces the original
+quantile reward model so that all advantage rules use the same source of uncertainty. We retain the
+published advantage formula and use a signal variance stabilizer of 10−6.
+15
+
+
+Preprint
+Table 7: Policy training configuration and selected hyperparameters. (a) summarizes the shared
+training configuration for all methods. (b) lists the selected learning rate and KL coefficient for each
+method. We select the hyperparameters by mean best validation accuracy across three seeds. LR
+denotes the learning rate.
+(a) Training configuration
+Setting
+Value
+Model
+GPT-2-small
+Batch size
+16
+Responses per prompt 8
+Epochs
+10
+Warmup epochs
+0
+Optimizer
+AdamW
+Clipping
+0.2
+Entropy coefficient
+0.01
+Checkpoint
+Best validation accuracy
+Seeds
+6200, 6201, 6202
+(b) Selected hyperparameters
+Method
+LR
+KL
+LB (GRPO)
+4 × 10−5
+0.1
+Midpoint (GRPO)
+5 × 10−5
+0
+UB (GRPO)
+5 × 10−5
+0.1
+LB (Dr.GRPO)
+5 × 10−5
+0
+Midpoint (Dr.GRPO)
+5 × 10−5
+0
+UB (Dr.GRPO)
+5 × 10−5
+0
+UARM
+5 × 10−5 0.01
+Range-GRPO (λ = 0.2)
+5 × 10−5
+0
+Training dynamics. Figure 2 shows the validation curves for each method at the selected hyperpa-
+rameter settings. Range-GRPO shows a stronger upward trend in validation accuracy, particularly
+relative to the scalar baselines using GRPO advantages.
+0
+2
+4
+6
+8
+10
+Epoch
+0
+20
+40
+60
+Validation accuracy (%)
+(a) GRPO
+LB
+UB
+Midpoint
+UARM
+Range-GRPO
+0
+2
+4
+6
+8
+10
+Epoch
+(b) Dr.GRPO
+LB
+UB
+Midpoint
+UARM
+Range-GRPO
+Figure 2: Validation accuracy at the selected hyperparameter settings. Curves show the mean ±
+sample standard deviation across three seeds. We show scalar baselines with GRPO and Dr.GRPO
+advantages separately and include the same UARM and Range-GRPO curves in both comparisons.
+B.3
+RANGE CONSTRUCTION
+Response features. To simplify state construction in the toy task, we compute Z directly from word
+features rather than using an LLM judge. For each selected word, Z contains five fixed features:
+Brown corpus frequency, Brown genre count, WordNet synset count, WordNet noun status, and
+surprisal of the first token under GPT-2 after a fixed end-of-sequence context. We apply log(1 + x)
+to the first three features and use fixed standardization for all five.
+Scorer and calibration scores. We adapt the RoWCI scorer (Noh et al., 2026) to the toy task using
+an XGBoost regressor that predicts rewards from Z. Using responses from the initial pretrained
+policy, we fit the scorer and compute calibration nonconformity scores on their respective prompt
+partitions. The fitted scorer and calibration scores remain fixed for the rest of training. All methods
+share the fitted scorer, calibration scores, and DRE source data.
+Updates during training. At each update using unlabeled responses, a random forest estimates den-
+sity ratios from a fixed source feature set and features extracted from new target responses sampled
+by each method’s current policy on the shared target prompt pool. These ratios reweight the fixed
+calibration scores to account for changes in the response distribution without new target reward la-
+bels. For numerical stability, we cap the estimated density-ratio weights at their 95th percentile. The
+weighted cutoff also accounts for the weight of the query response. We clip intervals to [0, 1] and use
+16
+
+
+Preprint
+this full range when the cutoff is infinite. We exclude unlabeled rewards from policy optimization
+and use them for coverage diagnostics at a nominal level of 90%.
+Response budget. Table 8(b) details the response budget for policy training, scorer fitting, cali-
+bration, and target DRE, excluding validation and test evaluations. Source DRE reuses the scorer
+responses and therefore requires no additional generations. Because we compute Z directly from
+word features, the toy experiment does not require an LLM judge.
+Table 8: Range construction settings and response budget. (a) summarizes the range construction
+settings. (b) reports the response budget for policy training and range construction.
+(a) Range construction settings
+Setting
+Value
+Scorer
+XGBoost regressor
+Trees / depth
+200 / 4
+DRE
+Random forest
+Trees / depth
+200 / 8
+DRE target per update
+255 responses
+Refresh
+Each unlabeled update
+Nominal coverage
+90%
+Weight cap
+95th percentile
+(b) Response budget
+Category
+Responses
+Unlabeled policy
+72,000
+Scorer
+5,600
+Calibration
+5,600
+Target DRE
+145,350
+Total
+228,550
+C
+EXPERIMENTAL DETAILS
+We adapt the experimental setting of Table 2 in TraPO (Yang et al., 2026) for both Range-GRPO and
+UARM (Pan et al., 2026). For all methods, we initialize the policy from Qwen2.5-Math-7B (Yang
+et al., 2024). Following TraPO, we select the checkpoint with the highest mean validation accuracy
+across AIME, AMC, MATH, Minerva, and OlympiadBench. Results under our experimental setting
+are reported from a single training run per configuration.
+C.1
+TRAPO
+We reproduce TraPO using its official implementation. The entropy coefficient differs between the
+paper and the official implementation: the paper uses 0.01, whereas the released configuration uses
+0.001. We therefore evaluate both entropy coefficients while keeping all other settings fixed. As
+shown in Table 9, an entropy coefficient of 0.001 outperforms 0.01 on all benchmarks except GPQA,
+improving the average ID and OOD performance by 2.6 and 1.2 percentage points, respectively. We
+therefore report the results with an entropy coefficient of 0.001 in the main table.
+For budget accounting, we follow the TraPO training procedure, which uses a warmup of 10 epochs
+followed by 5 epochs that combine labeled and unlabeled signals. TraPO generates rollouts for
+both labeled and unlabeled prompts in every training epoch. During warmup, only labeled roll-
+outs contribute to policy updates, while unlabeled rollouts accumulate pass rate trajectories. In the
+subsequent stage, TraPO uses these trajectories to select reliable unlabeled samples for policy up-
+dates. We therefore count both labeled and unlabeled rollouts across all 15 training epochs. Table 10
+summarizes the resulting response budget.
+C.2
+UARM
+Reward Model Training.
+We use a frozen Qwen2.5-Math-7B checkpoint (Yang et al., 2024) as
+the RM backbone and train only a quantile head. The quantile head jointly predicts multiple reward
+quantiles for each prompt-response pair. For each prompt reserved for RM training, validation,
+or calibration, the initial policy generates 140 responses. Correctness checks against the ground
+truth provide binary reward targets: one for a correct answer and zero otherwise. Within each
+configuration, we retain the RM checkpoint with the lowest validation loss. Among configurations,
+we select the one with the highest mean validation AUC of the predicted median rewards. We use a
+separate labeled subset for calibration. Both the RM and calibration parameters remain fixed during
+policy training.
+17
+
+
+Preprint
+Table 9: Performance of reproduced TraPO configurations with different entropy coefficients.
+All training methods use 1,024 (1K) ID and 1,024 (1K) OOD prompts. GPQA† denotes GPQA-
+diamond. Bold and underlined scores indicate the best and second-best results, respectively.
+In-Distribution
+Out-of-Distribution
+Model / Method
+AIME 24/25 AMC MATH-500 Minerva Olympiad Avg.
+ARC-c GPQA† MMLU-Pro Avg.
+TraPO (entropy=0.01)
+17.3/10.3
+52.6
+77.6
+33.8
+36.3
+38.0
+78.8
+36.9
+39.5
+51.7
+TraPO (entropy=0.001)
+17.7/12.2
+55.9
+79.2
+37.5
+41.3
+40.6
+80.4
+34.8
+43.5
+52.9
+Table 10: Response budget for the main experiments. The table compares the response budget
+for TraPO, UARM, and Range-GRPO. For TraPO, unlabeled rollouts include those generated during
+warmup. The UARM budget includes RM processing, whereas the Range-GRPO budget includes
+judge generations.
+Category
+TraPO
+UARM
+Range-GRPO
+Labeled policy
+122,880
+92,160
+92,160
+Unlabeled rollouts
+122,880
+40,960
+37,120
+RM training
+0
+28,560
+0
+RM calibration
+0
+7,280
+0
+RM processing
+0
+76,800
+0
+Scorer fitting
+0
+0
+1,280
+Calibration
+0
+0
+768
+Target DRE
+0
+0
+57,600
+Judge generations
+0
+0
+12,096
+Total allocation
+245,760
+245,760
+201,024
+Policy Training.
+The experiment uses 2,048 prompts, comprising 1,024 labeled and 1,024 unla-
+beled prompts. Table 12 shows the allocation of labeled prompts to disjoint subsets. Following the
+warmup setting for other baselines in Table 2, training begins with ten epochs of labeled updates.
+The next five epochs combine labeled and unlabeled updates, giving 15 epochs in total. For labeled
+updates, we center the binary correctness rewards by their group mean, as in Dr.GRPO (Liu et al.,
+2025). Unlabeled updates use UARM advantages within the GRPO objective. We set the signal
+variance stabilizer to ζ = 10−6. For policy checkpoint selection, we choose the checkpoint with
+the highest mean accuracy across the five validation benchmarks. Table 11 lists the main training
+settings.
+Table 11: UARM training configuration for the cross-domain setting. The table reports the policy
+training settings in (a) and the reward model training and calibration settings in (b).
+(a) Policy training
+Setting
+Value
+Model
+Qwen2.5-Math-7B
+Learning rate
+10−6
+Batch size
+64 prompts
+Responses per prompt
+8
+Epochs
+15
+Warmup epochs
+10
+(b) RM training and calibration
+Setting
+Value
+Learning rate
+10−4
+Batch size
+1,024 responses
+Quantile outputs
+11
+Hidden dimensions
+256, 64
+Maximum epochs
+600
+Patience
+30
+Miscoverage α
+0.1
+Response Budget.
+For budget accounting, we count each generated response and each response
+processed by the RM as one budget unit. RM processing includes offline feature extraction and
+unlabeled response scoring. This accounting convention is used only for budget allocation. It does
+not assume that response generation and RM processing require the same computational cost.
+18
+
+
+Preprint
+Table 12: Data allocation for UARM and Range-GRPO in the main experiments. (a) summa-
+rizes the UARM allocation across policy learning and RM training, validation, and calibration. (b)
+details the Range-GRPO allocation across policy learning, scorer fitting, calibration, source DRE,
+and target DRE.
+(a) UARM
+Role
+Prompts
+Labeled policy
+768
+RM training
+184
+RM validation
+20
+Calibration
+52
+Unlabeled policy
+1,024
+Total
+2,048
+(b) Range-GRPO
+Role
+Prompts
+Labeled policy
+768
+Scorer / source DRE
+160
+Calibration
+96
+Unlabeled policy
+928
+Target DRE
+96
+Total
+2,048
+C.3
+RANGE-GRPO
+Reward range construction.
+We use Qwen3-4B-Instruct-2507 1 as a frozen judge. The judge
+extracts a low-cardinality judgment state Z using general criteria that are not tied to a specific task
+domain. Each judge input contains one problem and a group of eight responses. For each response,
+we provide its reasoning, submitted answer, and agreement with other responses. Reference answers
+and correctness labels are not provided. For response i, the judge extracts Zi = (zi1, . . . , zi5) ∈
+{0, 0.5, 1}5 according to Table 13. The judge produces a single deterministic structured output for
+each group of eight responses, with a maximum length of 768 tokens.
+Table 13: Five components of the judgment state Z. The first three states assess the response
+itself, while the last two capture agreement with other responses in the same rollout group. Each
+state takes a score of 0, 0.5, or 1.
+State Criterion
+Score 0
+Score 0.5
+Score 1
+Response-level assessment
+z1
+Answer
+verification
+The judge identifies a
+contradiction when
+independently checking
+the submitted answer
+against the problem.
+The judge cannot verify or
+refute the submitted
+answer with sufficient
+confidence.
+The judge independently
+verifies the submitted
+answer against the
+problem.
+z2
+Reasoning
+consistency
+The visible reasoning
+contains a decisive error
+or conflicts with the
+submitted answer.
+The visible reasoning is
+incomplete or insufficient
+to establish the submitted
+answer.
+The visible reasoning
+consistently supports the
+submitted answer.
+z3
+Requirement
+compliance
+The response omits or
+violates an explicit task
+requirement.
+It remains unclear whether
+all explicit requirements
+are satisfied.
+The response satisfies all
+explicit task requirements.
+Group-level agreement
+z4
+Absolute
+agreement
+No other response gives
+the same answer.
+One to three other
+responses give the same
+answer.
+Four to seven other
+responses give the same
+answer.
+z5
+Relative
+agreement
+Fewer responses support
+this answer than the most
+supported alternative.
+This answer and the most
+supported alternative
+receive equal support.
+More responses support
+this answer than any
+alternative.
+1https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507
+19
+
+
+Preprint
+For the main experiments, we follow the range construction procedure in Algorithm 1 with two
+practical implementation choices. First, to align with the TraPO warmup schedule, we treat the
+policy immediately after labeled warmup as π0. At this stage, π0 generates the source and calibration
+responses for scorer fitting and calibration. We keep the fitted scorer and calibration nonconformity
+scores fixed throughout subsequent training.
+Second, we normalize the calibration nonconformity scores so that differences in scorer predictions
+are reflected more clearly during range construction. For a scorer prediction sZ(Z) ∈[0, 1], we
+define
+Rj = |Yj −sZ(Zj)|
+ψ(sZ(Zj)) ,
+ψ(v) = max{2 min(v, 1 −v), 0.05}.
+(5)
+For the same positive prediction error, the normalized nonconformity score increases as the scorer
+prediction approaches 0 or 1, until ψ(v) reaches its floor of 0.05. This makes the nonconformity
+score sensitive to the scorer prediction in addition to the absolute prediction error.
+We compute the weighted cutoff bqα,t(Z) from the normalized nonconformity scores and rescale it
+for each query response as bτα,t(Z) = ψ(sZ(Z)) bqα,t(Z). Here, ψ(sZ(Z)) sets the query-specific
+error scale, while bqα,t(Z) provides the corresponding normalized conformal cutoff. We then use
+bτα,t(Z) in the range construction of Algorithm 1. Together, normalization and query-specific rescal-
+ing allow the constructed ranges to reflect differences in scorer confidence more directly. At each
+unlabeled update, we refit the DRE classifier using the fixed source states and fresh target states
+generated by the current policy. Table 14 summarizes the main range construction settings.
+Table 14: Range construction settings for the main experiments. The scorer and calibration non-
+conformity scores remain fixed after warmup, whereas DRE is refreshed at each unlabeled update.
+Setting
+Value
+Scorer
+XGBoost regressor
+Trees / depth
+200 / 2
+DRE
+Random forest
+Trees / depth
+200 / 4
+DRE target per update
+768 responses
+Refresh
+Each unlabeled update
+Nominal coverage
+90%
+Weight cap
+95th percentile
+Policy Training.
+Table 12(b) summarizes the prompt allocation used for Range-GRPO. The five
+subsets remain fixed and disjoint at the prompt level; scorer fitting and source DRE share the same
+responses, with correctness labels used only for scorer fitting.
+We train for ten labeled warmup epochs followed by five active epochs using both labeled and
+unlabeled prompts. During active training, labeled updates use binary correctness rewards, while
+unlabeled updates use Range-GRPO advantages following Algorithm 1. Table 15 summarizes the
+main training settings.
+Response Budget.
+Table 10 details the response budget for policy training and reward range con-
+struction. We include both policy rollouts and judge generations when computing the Range-GRPO
+response budget. The resulting budget is 201,024 units, which is 18.2% lower than the 245,760 units
+used for TraPO and UARM. Under this reduced budget, Range-GRPO still achieves strong overall
+performance, as shown in Table 2.
+Wall-clock Runtime.
+Table 16 reports the observed wall-clock runtime for the main experiments.
+All runs use NVIDIA RTX PRO 6000 Blackwell Server Edition GPUs. The GPU count refers to the
+allocation during active training. UARM uses four GPUs for policy training and one dedicated GPU
+for the reward model (RM), whereas Range-GRPO shares four GPUs between policy and judge
+phases.
+Training time includes initialization, rollout generation, policy updates, and validation. Range-
+GRPO training time also accounts for judge loading and calls, scorer fitting, calibration, and DRE
+20
+
+
+Preprint
+Table 15: Range-GRPO policy training settings for the main experiments. (a) summarizes the
+policy training configuration. (b) lists the main optimization and Range-GRPO settings. LR denotes
+the learning rate.
+(a) Policy training
+Setting
+Value
+Batch size
+64 prompts
+Responses per prompt
+8
+Warmup epochs
+10
+Active epochs
+5
+Optimizer
+AdamW
+PPO clipping
+0.2
+(b) Main configuration
+Setting
+Value
+LR
+3 × 10−6
+Entropy coefficient
+0.01
+KL coefficient
+0
+λ
+1
+Maximum prompt tokens
+3,072
+Maximum response tokens
+4,096
+Table 16: Range-GRPO maintains comparable wall-clock training time despite the additional
+judge phase. Each run consists of 10 warmup epochs followed by 5 active epochs. Phase durations
+and total training times are independently rounded to one decimal place.
+Method
+Active GPUs
+Warmup (h)
+Active (h)
+Training (h)
+TraPO (entropy=0.01)
+4
+12.8
+10.6
+23.4
+TraPO (entropy=0.001)
+4
+12.6
+7.0
+19.7
+UARM
+5
+6.5
+9.9
+16.4
+Range-GRPO (ours)
+4
+6.3
+10.0
+16.3
+updates. UARM requires an additional 2.6 h for RM preparation before policy training, resulting in
+a total wall-clock time of 19.0 h when this preparation is included.
+TraPO (entropy=0.01) has a longer active phase than TraPO (entropy=0.001). This difference is
+consistent with their average unlabeled response lengths of 2,244 and 553 tokens, respectively. De-
+spite the additional judge phase, Range-GRPO shows a training wall-clock comparable to UARM
+while using four rather than five active GPUs. This practical efficiency is consistent with the reduced
+response budget reported in Table 10.
+21

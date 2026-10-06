@@ -1,0 +1,3709 @@
+Prompts Live on an Arc: Gaussian Curricula in Fisher–Rao
+Coordinates for Rollout-Efficient GRPO
+Mei Okonkwo1, Pixel Nomand1, Julian Berg2, Elena Voss1,
+Lena Park1, Marcus Hale2, Adrian Cho2, Sofia Reyes1
+1University of Wisconsin–Madison
+2University of Washington
+Abstract
+Group relative policy optimization (GRPO)
+learns only from prompts whose sampled re-
+sponses disagree: a group that is entirely cor-
+rect or entirely incorrect has zero reward vari-
+ance, contributes no gradient, and still con-
+sumes its rollouts. Prompt-selection methods
+reduce this waste by steering sampling toward
+intermediate pass rates, but they choose the
+target, its width, and the uncertainty model
+heuristically, in raw pass-rate or logit coordi-
+nates. We show that GRPO comes with a nat-
+ural coordinate for pass rates: the arc length
+ψ = arcsin √p on the Bernoulli Fisher–Rao
+manifold. In arc length, the expected GRPO up-
+date is uniform up to two boundary ramps; the
+probability of a zero-variance group is bounded
+by two Gaussian boundary layers of width
+1/
+√
+2G; pass-rate evidence has constant noise;
+and the gradients of the pass@k and passk ob-
+jectives are Gaussians whose center and width
+follow from k in closed form. A prompt cur-
+riculum for GRPO is therefore a Gaussian in
+arc length, and choosing its center amounts to
+choosing the objective. We turn this observa-
+tion into ARCUS, a drop-in sampler that tracks
+every prompt with a Kalman filter in arc length,
+scores prompts by an objective-matched Gaus-
+sian kernel times the predicted probability of
+an informative group, keeps only informative
+groups for the unchanged GRPO update, and
+paces the target toward the hardest objective
+whose predicted yield stays within a small slack
+of the best. Across six mathematical reason-
+ing benchmarks and three backbones, ARCUS
+improves the average accuracy of GRPO by
+2.8–2.9 points and that of dynamic sampling by
+1.1–1.2 points, while generating 48–57% fewer
+rollouts than dynamic sampling.
+1
+Introduction
+Reinforcement learning with verifiable rewards
+(RLVR) is now the standard recipe for eliciting
+multi-step reasoning from language models (Shao
+et al., 2024; DeepSeek-AI et al., 2025; Kimi Team
+et al., 2025; Lambert et al., 2024). Its workhorse,
+group relative policy optimization (GRPO), sam-
+ples G responses per prompt and normalizes each
+reward by the mean and standard deviation of its
+group (Shao et al., 2024). This removes the critic,
+but a prompt then teaches nothing unless its re-
+sponses disagree: when all responses are correct
+or all are wrong, every advantage vanishes, yet
+the G rollouts, the dominant cost of a step, have
+been paid for. Such zero-variance groups make up
+about half of a uniformly sampled batch, and their
+share grows as the policy improves (Yu et al., 2025;
+Zheng et al., 2025a; Le et al., 2026).
+Two families of methods attack the waste.
+Evaluate-then-filter methods such as dynamic sam-
+pling (DS) oversample prompts and keep only
+informative groups (Yu et al., 2025; Bae et al.,
+2026), which can double or triple the rollouts per
+step. Predict-then-select methods forecast each
+prompt’s pass rate from its history and sample near
+an intermediate target, using Beta posteriors (Qu
+et al., 2026a), hidden Markov dynamics (Mao et al.,
+2026a), Kalman filters (Zhu et al., 2026), skipping
+rules (Zheng et al., 2025a), or Gaussian and soft-
+max weights (Lin et al., 2026; Zeng et al., 2025a);
+curricula also move the target by reward feed-
+back (Shi et al., 2026; Chen et al., 2025a). Three
+choices remain heuristic and are made indepen-
+dently: the coordinate for comparing pass rates
+(raw p or logit), the width of the preferred region,
+and its target, usually fixed at p=0.5.
+These choices are not free, because GRPO
+has already fixed a geometry:
+its normal-
+ization makes the population update ascend
+P
+q 2 arcsin √pq (Davis and Recht, 2025; Mroueh,
+2025).
+We observe that ψ
+=
+arcsin √p is
+the Fisher–Rao arc length of the Bernoulli fam-
+ily (Rao, 1945; Amari, 2016), and that four
+seemingly unrelated quantities become simple on
+this arc (Figure 1).
+(i) GRPO’s expected up-
+1
+arXiv:2609.38018v1  [cs.LG]  29 Sep 2026
+
+
+date is uniform in ψ up to two boundary ramps.
+(ii) The probability of a zero-variance group
+is bounded by two Gaussian boundary layers,
+e−Gψ2 + e−G(π/2−ψ)2. (iii) Pass-rate evidence has
+constant noise, 1/(4n) per n rollouts. (iv) The gra-
+dients of pass@k and passk are Gaussians with cen-
+ter arcsin(1/
+√
+2k) and width 1/(2
+√
+k). Hence a
+prompt curriculum for GRPO should be a Gaussian
+in arc length whose width is set by the objective,
+whose uncertainty enters by adding variances, and
+whose center selects an objective along the family
+passk ↔pass@1 ↔pass@k.
+We build ARCUS (ARc-length CUrriculum Sam-
+pling) on this geometry. It keeps a Kalman belief
+over each prompt’s arc length. Mixed groups en-
+ter through a variance-stabilized observation and
+zero-variance groups through their boundary-layer
+likelihood, so the filter stays calibrated where logit
+filters fail, and a drift term removes the stale-easy
+bias of history-based selectors. Prompts are scored
+by their overlap with an objective-matched Gaus-
+sian kernel times the closed-form probability of an
+informative group. Only informative groups enter
+the unchanged GRPO update, and a pacing rule
+moves the target to the hardest objective whose
+predicted yield stays within ε of the best. Every
+quantity is a closed-form scalar, and no rollout is
+spent on prediction. Our contributions:
+• Geometry. We identify arc length as GRPO’s
+native coordinate, prove that uniform updates,
+Gaussian dead zones, homoscedastic evidence,
+and Gaussian objective kernels hold in it, and
+show that every prompt sampler defines the ob-
+jective GRPO ascends (§3).
+• Method. ARCUS derives its kernel width, uncer-
+tainty handling, dead-zone correction, and target
+pacing from the geometry and leaves GRPO’s
+loss untouched (§4).
+• Evidence. On three backbones, ARCUS beats
+nine prompt-selection baselines, outperforms DS
+with 48–57% fewer rollouts, and reaches DS’s
+final accuracy with 70% fewer rollouts; ablations
+isolate the coordinate, kernel, and pacing (§5).
+2
+Related Work
+Zero-variance prompts and prompt selection.
+DS filters zero-variance groups after generation (Yu
+et al., 2025) and online difficulty filtering keeps
+an accuracy band (Bae et al., 2026); both pay for
+what they discard. GRESO skips recently uninfor-
+mative prompts (Zheng et al., 2025a). Rollout-
+free selectors use Beta posteriors with Thomp-
+son sampling (Qu et al., 2026a), hidden Markov
+dynamics (Mao et al., 2026a), a learned cross-
+prompt predictor (Qu et al., 2026b), or a logit-
+space Kalman filter (Zhu et al., 2026); CurES sam-
+ples by a softmax over
+p
+p(1 −p) (Zeng et al.,
+2025a), VCRL by group variance (Jiang et al.,
+2025), and FG-ExPO by a Gaussian at p=0.5 (Lin
+et al., 2026). Other work revives zero-variance
+groups (Le et al., 2026; Liu et al., 2025a; Mao et al.,
+2026b; Baroian and Berger, 2026), allocates roll-
+out budgets (Zou et al., 2026), builds cold-start pri-
+ors (Sha et al., 2026), or balances explore–exploit
+portfolios (Liang et al., 2026). ARCUS keeps the
+rollout-free setting but derives coordinate, width,
+and target from GRPO’s geometry.
+Curricula
+and
+pacing.
+Automatic
+curric-
+ula favor intermediate difficulty or learning
+progress (Bengio et al., 2009; Graves et al., 2017;
+Florensa et al., 2018; Jiang et al., 2021; Portelas
+et al., 2020).
+For LLM reasoning, AdaRFT
+moves a target difficulty by reward feedback (Shi
+et al., 2026), SEC runs a bandit over difficulty
+levels (Chen et al., 2025a), learnability sampling
+targets p(1−p) (Foster et al., 2025), and PCL finds
+prompts near p=0.5 with a value model (Gao et al.,
+2025). ARCUS instead paces an objective along the
+passk–pass@k family, limited by a closed-form
+prediction of waste.
+What RLVR optimizes.
+Common RLVR algo-
+rithms ascend monotone transforms of the pass
+rate, arcsin √p for GRPO (Davis and Recht, 2025),
+and GRPO’s normalization amplifies rare suc-
+cesses (Mroueh, 2025); advantage reshaping can
+target pass@k (Walder and Karkhanis, 2025; Chen
+et al., 2025b; Tang et al., 2025). We show that the
+sampler reshapes the objective too, without touch-
+ing advantages and while saving the rollouts of
+zero-variance groups. Extended related work is in
+Appendix A.
+3
+The Geometry of Pass Rates under
+GRPO
+Setup.
+A prompt q has a binary verifier re-
+ward and pass rate pq(θ) = Pro∼πθ(·|q)[r(q, o)=1].
+GRPO draws o1, . . . , oG ∼πθ(· | q), forms
+ˆAq,i = (rq,i −¯rq)/(sq + ϵ) from the group mean
+2
+
+
+0.0
+0.5
+1.0
+pass rate p
+10
+−1
+10
+0
+GRPO weight (rel. to p=0.5)
+(a) GRPO is flat in arc length
+on ∇p (G=8)
+on ∇ψ (G=8)
+on ∇p (G=16)
+on ∇ψ (G=16)
+0
+π/8
+π/4
+3π/8
+π/2
+arc length ψ = arcsin √p
+0.00
+0.25
+0.50
+0.75
+1.00
+P(zero-variance group)
+dotted: e−Gψ2 + e−G(π/2 −ψ)2
+(b) Dead zones are Gaussian
+G=4
+G=8
+G=16
+0.0
+0.5
+1.0
+true pass rate p
+10
+0
+10
+1
+posterior z2 (1 = calibrated)
+(c) Beliefs stay calibrated
+arc-length belief
+logit belief
+0
+π/8
+π/4
+3π/8
+π/2
+arc length ψ
+0
+1
+2
+dJk/dψ (density)
+(d) Objectives are Gaussians
+pass@1
+pass@2
+pass@4
+pass@8
+pass4
+Figure 1: Prompts live on an arc (exact curves). (a) GRPO’s expected update as a weight on ∇p is U-shaped (blue);
+as a weight on ∇ψ, ψ = arcsin √p, it is flat up to two ramps (red; Prop. 1). (b) Zero-variance probability (solid)
+and its Gaussian bound (dotted; Prop. 2). (c) After one group of n=8, arc-length posteriors are calibrated while
+logit posteriors are over-confident by 20× where zero-variance prompts live (Prop. 3). (d) Arc-length gradients of
+pass@k and pass4 (solid) and their Gaussian forms (dotted; Prop. 4).
+¯rq and standard deviation sq, and uses
+ˆgq = 1
+G
+G
+X
+i=1
+ˆAq,i ∇θ log πθ(oi | q)
+(1)
+inside a clipped surrogate (Shao et al., 2024; Schul-
+man et al., 2017).
+A group with m successes
+is informative iff 0 < m < G; otherwise all
+advantages vanish. This happens with probabil-
+ity 1 −zG, where zG(p) = pG + (1 −p)G and
+1 −zG = pass@G −passG: a group teaches only
+if one of its G attempts succeeds and one fails. A
+sampler includes prompt q in an update with prob-
+ability wq.
+Arc length.
+Let ψ = arcsin √p ∈[0, π
+2 ]. The
+Fisher information of Bernoulli(sin2 ψ) about ψ is
+4 for every ψ, so the Fisher–Rao distance between
+pass rates is 2|ψ −ψ′| and the Jeffreys prior is
+uniform in ψ (Rao, 1945; Jeffreys, 1946; Amari,
+2016): (√p, √1 −p) traces a quarter circle and ψ
+is its arc length. Proofs are in Appendix B.
+Proposition
+1
+(GRPO
+is
+uniform
+in
+arc
+length).
+For
+binary
+rewards
+and
+population-statistics normalization (ϵ
+→
+0),
+E[ˆgq]
+=
+2 ωG(pq) ∇θψq
+with
+ωG(p)
+=
+Em∼Bin(G,p)
+p
+m(G −m)
+ G
+p
+p(1 −p)
+
+.
+Moreover (i) 0
+≤
+ωG
+≤
+p
+1 −1/G; (ii)
+ωG
+→
+1
+uniformly
+on
+every
+compact
+subset of (0, 1) as G
+→
+∞;
+and (iii)
+ωG(ψ)
+≤
+√
+G −1 min(tan ψ, cot ψ),
+with
+equality in the limits ψ →0 and ψ →π
+2 .
+Corollary 1 (Every sampler is an objective). If
+wq = w(ψq) is held fixed within an update, then
+P
+q wqE[ˆgq] = ∇θ
+P
+q Fw(ψq) with Fw(ψ) =
+2
+R ψ
+0 w(u) ωG(u) du. Uniform sampling recovers
+the arcsine objective of Davis and Recht (2025);
+post-hoc filtering of zero-variance groups (DS)
+leaves Fw unchanged and only rescales it; and
+a Gaussian w = N(ψ⋆, σ2) in arc length yields
+Fw ≈Φ
+ (ψ −ψ⋆)/σ
+
+, a smoothed count of
+prompts whose pass rate exceeds sin2 ψ⋆.
+Proposition 2 (Zero-variance groups are Gaussian
+boundary layers). For all ψ ∈[0, π
+2 ], zG(ψ) =
+cos2G ψ + sin2G ψ
+≤
+e−Gψ2 + e−G(π/2−ψ)2.
+If ψ
+∼
+N(µ, P), then E
+
+e−Gψ2
+=
+(1 +
+2GP)−1/2 exp
+ −Gµ2/(1 + 2GP)
+
+, and symmet-
+rically at π
+2 .
+Proposition 3 (Evidence is homoscedastic in
+arc length). Let m ∼Bin(n, sin2 ψ).
+(i) For
+0 < m < n, the Laplace approximation of
+the likelihood has mean arcsin
+p
+m/n and vari-
+ance 1/(4n), independent of m; the Anscombe es-
+timate ˆψ = arcsin
+p
+(m + 3/8)/(n + 3/4) has
+variance 1/(4n) + O(n−2) uniformly on compact
+subsets (Anscombe, 1948). (ii) For m = 0 (m = n)
+the likelihood cos2n ψ (sin2n ψ) is bounded by a
+Gaussian of mean 0 (π
+2 ) and variance 1/(2n). (iii)
+By contrast, the delta-method variance of logit(ˆp),
+1/(np(1 −p)), is unbounded as p →{0, 1}.
+Proposition 4 (Objectives are Gaussians in arc
+length). For real k ≥1, Hk(ψ) =
+d
+dψ
+
+1 −
+(1 −p)k
+=
+2k sin ψ cos2k−1 ψ is a log-
+concave probability density on [0, π
+2 ] with mode
+ψ⋆
+k = arcsin(1/
+√
+2k), i.e. p⋆= 1/(2k), and
+−(log Hk)′′(ψ⋆
+k) = 4k. Its Laplace approxima-
+tion is N(ψ⋆
+k, 1/(4k)); passk is the mirror image
+with mode arccos(1/
+√
+2k). Indexing the family
+by its mode gives the matched width σ(ψ⋆) =
+min(sin ψ⋆, cos ψ⋆)/
+√
+2.
+Away from two ramps of width about 1/
+√
+G,
+GRPO extracts the same arc-length signal from
+every prompt (Proposition 1), so where to sample
+3
+
+
+is a question about the objective and about waste.
+Proposition 2 turns waste into a Gaussian that in-
+tegrates against any Gaussian belief, and Propo-
+sition 3 makes a linear–Gaussian filter the right
+belief model. Proposition 4 fixes the kernel: its
+curvature 4k equals the Fisher information of k
+Bernoulli draws, so an objective that counts k at-
+tempts resolves pass rates exactly as k samples
+do. The Laplace kernels match the exact ones
+within 0.05–0.07 total variation for k ∈[1, 16]
+(Appendix B.10).
+4
+ARCUS
+ARCUS replaces the prompt-sampling stage of
+GRPO (Figure 2, Algorithm 1); the advantage in
+Eq. (1), the clipped surrogate, and the optimizer
+are unchanged.
+Arc-length beliefs.
+Each prompt carries a belief
+ψq ∼N(µq, Pq), initialized at the Jeffreys mo-
+ments N(π/4, π2/48) and, after the first hundred
+observations, at the empirical moments of observed
+prompts. Before each update, every belief is propa-
+gated as
+µq ←Π
+
+µq + vt sin 2µq
+
+,
+Pq ←Pq + Qt,
+(2)
+where Π projects onto [0, π
+2 ]. The drift vt models
+the improving policy: a shared competence gain δx
+in logit space moves ψ by δx
+4 sin 2ψ, so mobility
+vanishes at both ends (Appendix B.6); the diffusion
+Qt absorbs prompt-specific change. Both are fitted
+online by moment matching on the innovations
+of revisited prompts (Mehra, 1970). An observed
+group with m successes triggers a scalar Kalman
+update (Kalman, 1960), K = Pq/(Pq+R), µq ←
+Π[µq + K(z −µq)], Pq ←(1 −K)Pq, whose
+observation follows Proposition 3:
+(z, R) =
+
+
+
+
+
+  ˆψA(m),
+1
+4G+2
+
+0 < m < G,
+ 0,
+1
+2G
+
+m = 0,
+  π
+2 ,
+1
+2G
+
+m = G,
+(3)
+with ˆψA the Anscombe estimate. A zero-variance
+group is thus not wasted evidence: its boundary-
+layer likelihood pulls the belief into the correspond-
+ing dead zone.
+Objective-matched scoring.
+For a target ψ⋆, the
+kernel is N(ψ⋆, σ2) with σ = σ(ψ⋆) from Propo-
+sition 4. Its overlap with the belief and the proba-
+bility of an informative group (Proposition 2) are
+both closed form; with aq = 1 + 2GPq,
+κq(ψ⋆) =
+q
+σ2
+σ2+Pq e
+−(µq−ψ⋆)2
+2(σ2+Pq) ,
+(4)
+ˆyq = 1 −e−Gµ2
+q/aq + e−G( π
+2 −µq)2/aq
+√aq
+.
+The score sq(ψ⋆) = κq(ψ⋆) ˆyq weighs the objec-
+tive relevance of q by the chance that its rollouts
+produce any gradient (Appendix B.7). Uncertainty
+adds Pq to the kernel variance, which widens the
+window for rarely seen prompts and revisits them.
+ARCUS draws M = ⌈(1 + ρ)B⌉candidates by
+Gumbel-top-M on log sq/T (Kool et al., 2019), i.e.
+without replacement with probability ∝s1/T
+q
+.
+Frontier pacing.
+Harder targets push coverage
+but approach the lower dead zone, and Proposi-
+tion 2 predicts this cost before it is paid.
+For
+each target ψ on a grid Ψ from pass@G to passG
+(the objectives a group of G can express), we pre-
+dict the candidate yield bYt(ψ) =
+1
+M
+P
+q πq(ψ)ˆyq,
+with capped-proportional inclusion probabilities
+πq = min(1, c sq(ψ)1/T ), P
+q πq = M. The tar-
+get is the hardest admissible one,
+˜ψt = min
+
+ψ ∈Ψ : bYt(ψ) ≥maxψ′ bYt(ψ′) −ε
+	
+,
+(5)
+rate-limited by |ψ⋆
+t −ψ⋆
+t−1|
+≤
+∆and held
+at pass@1 (ψ⋆=π/4) during a warm-up pass
+over the pool.
+With sharp beliefs, Eq. (5) set-
+tles where zG(ψ)
+=
+21−G + ε, i.e. ψ
+≈
+p
+ln(1/(ε + 21−G))/G, so the reachable objective
+hardens as G grows, a testable prediction (§5.4).
+By Corollary 1, pacing is a homotopy through
+objectives: GRPO ascends a smoothed count of
+prompts with pq > sin2 ψ⋆
+t , whose threshold hard-
+ens while waste stays bounded.
+Post-rollout selection.
+All M candidates update
+their beliefs; the informative groups, at most B of
+them ranked by updated score, enter the GRPO
+update. Dropping zero-variance groups leaves the
+expected update unchanged (Corollary 1) and re-
+moves their backward cost.
+Cost.
+All quantities are closed-form scalars per
+prompt; pacing over |Ψ|=41 targets costs O(N|Ψ|)
+vector operations, under 0.1 s per step for N≈17k.
+ARCUS adds no forward pass, auxiliary model, or
+prediction rollout; its only extra rollouts are the
+ρBG candidate margin.
+4
+
+
+Figure 2: ARCUS within one GRPO step. Beliefs live on the arc ψ = arcsin √p. An objective-matched Gaussian
+kernel at the paced target ψ⋆
+t scores prompts; Gumbel-top-M candidates are rolled out and update the beliefs; only
+informative groups enter the unchanged GRPO update; pacing moves ψ⋆
+t to the hardest objective whose predicted
+yield stays within ε of the best.
+Algorithm 1: ARCUS: one GRPO step
+Input: beliefs {(µq, Pq)}; target ψ⋆
+t−1; batch B,
+group G; ρ, ε, T, ∆
+Predict all beliefs with Eq. (2)
+if warm-up then
+ψ⋆
+t ←π/4
+else
+ψ⋆
+t ←Eq. (5), clipped to ψ⋆
+t−1 ± ∆
+end
+sq ←κq(ψ⋆
+t ) ˆyq
+// Eq. (4)
+C ←Gumbel-top-M of log sq/T, M = ⌈(1 + ρ)B⌉
+Generate G rollouts for each q ∈C; record mq
+Kalman-update {(µq, Pq)}q∈C with Eq. (3); update
+vt, Qt
+B ←informative groups in C, top-B by sq(ψ⋆
+t )
+GRPO update on B with Eq. (1) (unchanged)
+Existing selectors as special cases.
+The geom-
+etry also locates prior heuristics. DS is objective-
+neutral (Corollary 1): it buys a cleaner batch in
+the arcsine direction with extra rollouts. Learn-
+ability sampling by p(1 −p) (Foster et al., 2025)
+equals 1
+4H1(ψ)2, a pass@1 kernel narrowed from
+σ=1/2 to 1/(2
+√
+2), and the
+p
+p(1 −p) score in-
+side CurES’s softmax (Zeng et al., 2025a) is 1
+2H1.
+A Gaussian over raw p (Lin et al., 2026) matches
+no member of the objective family: in arc length its
+width varies as σp/ sin 2ψ, so its shape is set by the
+parameterization rather than by an objective. Logit
+filters (Zhu et al., 2026) are linear–Gaussian in the
+one coordinate where the noise of zero-variance
+evidence is unbounded (Proposition 3). Each is
+ARCUS with one of its three choices made differ-
+ently: a fixed target, a mismatched width, or a
+mismatched coordinate.
+5
+Experiments
+5.1
+Setup
+Models, data, and training.
+We train Qwen2.5-
+Math-1.5B/7B (Yang et al., 2024) and Qwen3-
+4B-Base (Yang et al., 2025) on DAPO-Math-
+17k (Yu et al., 2025) with binary rule-based re-
+wards; since Qwen2.5-Math can respond to spuri-
+ous signals (Shao et al., 2025), Appendix F adds
+a non-Qwen backbone, a long-CoT model, and
+a second pool.
+All methods share the GRPO
+loss (Shao et al., 2024) in verl (Sheng et al., 2025)
+with vLLM (Kwon et al., 2023): B=256, G=8,
+300 policy updates, learning rate 10−6, clip 0.2,
+no KL. They differ only in which prompts are
+rolled out and which groups enter the update, and
+are compared at matched updates. ARCUS uses
+ρ=0.25, ε=0.03, T=0.3, ∆=0.005 rad, |Ψ|=41
+throughout; ARCUSρ=0 matches GRPO’s rollout
+budget.
+We evaluate on AIME24/25, AMC23,
+MATH500 (Hendrycks et al., 2021; Lightman et al.,
+2024), Minerva (Lewkowycz et al., 2022), and
+OlympiadBench (He et al., 2024) (temperature 0.6,
+top-p 0.95; details in Appendix E).
+Baselines.
+Uniform GRPO; evaluate-then-filter
+DS (Yu et al., 2025) and GRESO (Zheng et al.,
+2025a), which fill the batch with informative
+groups at extra rollout cost; and the rollout-free
+GCS (Gaussian over EMA pass rates, µ=0.5,
+σ=0.35) (Lin et al., 2026), AdaRFT (Shi et al.,
+5
+
+
+Method
+Roll.
+AIME24
+AIME25
+AMC23
+MATH500
+Minerva
+Olymp.
+Avg.
+∆
+Qwen2.5-Math-1.5B (DAPO-Math-17k, 300 updates)
+Base model
+–
+7.4
+3.9
+28.6
+42.3
+12.1
+20.8
+19.2
+–
+GRPO
+×1.00
+15.1
+9.4
+47.9
+73.2
+28.7
+34.6
+34.8
+–
+GCS
+×1.00
+15.4
+9.8
+48.3
+73.4
+28.9
+34.9
+35.1
++0.3
+AdaRFT
+×1.00
+15.8
+9.6
+48.6
+73.9
+28.6
+35.2
+35.3
++0.5
+CurES
+×1.00
+16.1
+10.2
+49.0
+73.6
+29.4
+35.3
+35.6
++0.8
+MoPPS
+×1.00
+16.3
+10.0
+49.4
+74.1
+29.0
+35.6
+35.7
++0.9
+DPS
+×1.00
+16.8
+10.5
+49.9
+74.3
+29.6
+36.0
+36.2
++1.4
+KGPS
+×1.00
+16.6
+10.9
+50.1
+74.5
+29.9
+35.9
+36.3
++1.5
+GRESO
+×1.97
+16.0
+10.3
+49.2
+74.4
+29.3
+35.8
+35.8
++1.0
+DS
+×2.94
+16.9
+10.6
+50.4
+75.3
+29.5
+36.3
+36.5
++1.7
+ARCUSρ=0
+×1.00
+17.6
+11.4
+51.2
+74.7
+30.1
+36.8
+37.0
++2.1
+ARCUS
+×1.25
+18.5
+11.9
+52.3
+75.2
+30.6
+37.4
+37.6
++2.8
+Qwen2.5-Math-7B (DAPO-Math-17k, 300 updates)
+Base model
+–
+13.2
+6.1
+40.3
+58.4
+16.5
+26.1
+26.8
+–
+GRPO
+×1.00
+30.4
+13.1
+62.8
+80.4
+36.3
+41.5
+44.1
+–
+GCS
+×1.00
+30.9
+13.8
+63.2
+80.7
+36.5
+41.8
+44.5
++0.4
+AdaRFT
+×1.00
+31.2
+13.6
+63.5
+80.8
+36.6
+42.0
+44.6
++0.5
+CurES
+×1.00
+31.5
+14.3
+63.9
+80.9
+37.2
+42.2
+45.0
++0.9
+MoPPS
+×1.00
+31.8
+14.1
+64.0
+81.0
+36.9
+42.4
+45.0
++0.9
+DPS
+×1.00
+32.1
+14.5
+64.8
+81.2
+37.0
+42.7
+45.4
++1.3
+KGPS
+×1.00
+32.4
+14.8
+64.6
+81.3
+38.0
+42.9
+45.7
++1.6
+GRESO
+×1.71
+31.9
+14.0
+64.3
+81.4
+36.7
+42.6
+45.2
++1.1
+DS
+×2.41
+32.6
+14.6
+64.9
+81.9
+37.1
+43.1
+45.7
++1.6
+ARCUSρ=0
+×1.00
+33.5
+15.4
+65.9
+81.6
+37.5
+43.6
+46.2
++2.2
+ARCUS
+×1.25
+34.6
+16.2
+66.7
+81.8
+37.8
+44.3
+46.9
++2.8
+Qwen3-4B-Base (DAPO-Math-17k, 300 updates)
+Base model
+–
+9.8
+7.5
+37.6
+64.2
+25.8
+33.4
+29.7
+–
+GRPO
+×1.00
+24.6
+20.3
+61.5
+83.6
+39.4
+48.2
+46.3
+–
+GCS
+×1.00
+25.1
+20.6
+61.9
+83.8
+39.7
+48.4
+46.6
++0.3
+AdaRFT
+×1.00
+25.4
+20.9
+62.3
+83.7
+39.5
+48.8
+46.8
++0.5
+CurES
+×1.00
+25.9
+21.4
+62.6
+84.1
+40.1
+49.0
+47.2
++0.9
+MoPPS
+×1.00
+26.1
+21.2
+63.0
+84.2
+39.8
+49.3
+47.3
++1.0
+DPS
+×1.00
+26.5
+21.9
+63.4
+84.3
+40.3
+49.6
+47.7
++1.4
+KGPS
+×1.00
+26.8
+21.7
+63.7
+84.6
+40.6
+49.5
+47.8
++1.5
+GRESO
+×1.83
+25.8
+21.6
+62.8
+84.5
+40.0
+49.4
+47.3
++1.1
+DS
+×2.63
+26.9
+22.1
+63.6
+85.3
+40.2
+49.9
+48.0
++1.7
+ARCUSρ=0
+×1.00
+27.7
+22.8
+64.5
+84.8
+40.9
+50.3
+48.5
++2.2
+ARCUS
+×1.25
+28.9
+23.6
+65.4
+85.1
+41.3
+50.9
+49.2
++2.9
+Table 1: Main results (accuracy, %, mean of three seeds; AIME mean@32, AMC23 mean@16, others mean@4).
+Groups: uniform, predict-then-select, evaluate-then-filter, ours. Roll.: generated rollouts relative to GRPO at equal
+policy updates; ∆: average gain over GRPO. Bold/underline: best/second best among trained models.
+2026), CurES (Zeng et al., 2025a), MoPPS (Qu
+et al., 2026a), DPS (Mao et al., 2026a), and
+KGPS (Zhu et al., 2026), with recommended set-
+tings.
+5.2
+Main Results
+ARCUS attains the best average on all three back-
+bones (Table 1): 37.6, 46.9, and 49.2, i.e. +2.8
+to +2.9 over GRPO and +1.1 to +1.2 over DS,
+the strongest baseline, at ×1.25 GRPO’s rollouts
+against ×2.4–2.9 for DS. First, the rollout-matched
+ARCUSρ=0 already exceeds every predict-then-
+select method by 0.6–0.7 points and DS on ev-
+ery backbone, so the gain does not come from the
+candidate margin. Second, selectors that model
+uncertainty and change (DPS, KGPS) beat those
+that rank point estimates (GCS, AdaRFT); GCS, a
+Gaussian over raw pass rates, barely helps: a Gaus-
+sian works only in the right coordinate and width.
+Third, gains concentrate on hard benchmarks: on
+Qwen2.5-Math-7B, +4.2 on AIME24 and +3.9 on
+AMC23 but +1.4 on MATH500, where DS stays
+best on every backbone, as expected from a tar-
+get that spends the budget on prompts the policy
+6
+
+
+Method
+Roll. Tok. Yield Inf. Hours Avg.
+(M)
+(B)
+(%)
+(%)
+GRPO
+0.61
+0.50
+47
+47
+19.8
+44.1
+MoPPS
+0.61
+0.52
+69
+69
+19.9
+45.0
+KGPS
+0.61
+0.52
+75
+75
+20.0
+45.7
+GRESO
+1.05
+0.93
+58
+100
+30.7
+45.2
+DS
+1.48
+1.33
+41
+100
+41.6
+45.7
+ARCUSρ=0
+0.61
+0.53
+81
+81
+20.0
+46.2
+ARCUS
+0.77
+0.66
+79
+97
+24.1
+46.9
+Table 2: Cost on Qwen2.5-Math-7B (300 updates,
+8×H100): rollouts (M), tokens (B), yield (informative
+share of generated groups), Inf. (informative share of
+the update batch), wall-clock hours, and six-benchmark
+average.
+cannot yet solve reliably.
+Efficiency.
+ARCUS raises the informative share
+of generated groups from 47% (GRPO) to 79%
+(81% for ARCUSρ=0), above the best predictive
+selector (KGPS, 75%; Table 2); DS gets a clean
+batch by discarding most of what it generates (41%
+yield). With a 25% margin, ARCUS’s update batch
+is 97% informative while it generates 48% fewer
+rollouts and 50% fewer tokens than DS and finishes
+in 24.1 h instead of 41.6 h. Per unit of compute
+(Figure 3b), it reaches DS’s final accuracy after
+0.45M rollouts, 70% fewer than DS, and every
+ρ ∈{0, 0.1, 0.25, 0.5} lies above the baselines’
+cost–accuracy frontier (Figure 3d).
+5.3
+Ablations
+Table 3 removes one ingredient at a time (Qwen2.5-
+Math-7B). Geometry matters most:
+the same
+pipeline with a Gaussian over raw pass rates loses
+0.69, and a logit-space Kalman belief loses 0.96;
+the latter is over-confident on near-zero-variance
+prompts (Figure 1c) and its update batch is 7 points
+less informative. The dead-zone factor ˆy is the key
+kernel component (−1.03); without it hard targets
+pull candidates into the all-fail layer. A fixed width
+(−0.42) and ignoring belief variance (−0.35) mat-
+ter less. Pacing beats fixed objectives: holding
+pass@1 loses 0.62, jumping straight to the final tar-
+get loses 0.76 because early beliefs cannot support
+it, and AdaRFT-style reward feedback loses 0.85.
+Greedy selection and dropping post-rollout ranking
+lose 0.53 and 0.29. Appendix F adds drift, prior,
+and observation ablations, the exact kernel (46.87
+vs. 46.90), and sensitivity to ε, T, ρ, and G.
+Configuration
+Avg.
+∆
+Inf. (%)
+ARCUS (full)
+46.90
+–
+97
+Geometry and belief
+Gaussian over raw p
+46.21 −0.69
+93
+Logit-space Kalman belief
+45.94 −0.96
+90
+Discounted Beta belief
+46.02 −0.88
+91
+Objective kernel
+Fixed width σ=0.20 rad
+46.48 −0.42
+96
+No belief variance in kernel
+46.55 −0.35
+95
+No dead-zone factor ˆy
+45.87 −1.03
+84
+Target pacing
+Fixed pass@1 target
+46.28 −0.62
+98
+Fixed frontier target (p⋆=0.29) 46.14 −0.76
+92
+Reward-feedback pacing
+46.05 −0.85
+93
+Sampling and selection
+No post-rollout selection
+46.61 −0.29
+97
+Greedy top-M (T=0)
+46.37 −0.53
+95
+Table 3:
+Ablations on Qwen2.5-Math-7B (six-
+benchmark average; Inf.: informative share of the up-
+date batch).
+5.4
+Mechanism Analysis
+The target finds a G-dependent frontier.
+After
+warm-up the paced target leaves pass@1 and settles
+at p⋆≈0.29 for G=8, 0.43 for G=4, and 0.18 for
+G=16 (Figure 4a), within 0.05 of the closed-form
+frontier. Larger groups thin the lower dead zone, so
+harder objectives become affordable: with G=16
+the run reaches pass@k with k ≈2.8 at no extra
+waste (accuracies in Appendix F). The resulting
+easy-to-hard curriculum is emergent; nothing is
+scheduled by hand.
+Beliefs stay calibrated and fresh.
+ARCUS re-
+moves most zero-variance waste after the first pass
+over the pool (Figure 4b). Its pass-rate error on
+selected prompts falls to 0.09, versus 0.12 for dis-
+counted Beta posteriors and 0.17 for a logit Kalman
+filter (Figure 4c), and its normalized innovations
+stay near one (Figure 7c). Figure 4d exposes a
+shared failure of history-based selectors: beliefs go
+stale in a predictable direction, because a prompt
+that looked intermediate when last seen is easier
+now, so MoPPS and KGPS drift toward prompts
+with true pass rates of 0.75–0.8. ARCUS’s drift
+anticipates this, keeping the selected median near
+0.5 while its lower quartile extends toward harder
+prompts.
+The target is the objective.
+Freezing the target
+along the objective family trades pass@1 against
+pass@16 as Corollary 1 predicts (Figure 3c): passk
+targets sharpen easy prompts and lose coverage,
+7
+
+
+0
+100
+200
+300
+policy update
+37.5
+40.0
+42.5
+45.0
+47.5
+avg. accuracy (6 bench.)
+(a) Matched updates
+0.0
+0.5
+1.0
+1.5
+cumulative rollouts (M)
+37.5
+40.0
+42.5
+45.0
+47.5
+avg. accuracy (6 bench.)
+−70% rollouts
+(b) Matched compute
+GRPO
+KGPS
+GRESO
+DS
+ARCUSρ = 0
+ARCUS
+64
+66
+68
+70
+avg. pass@16
+44
+45
+46
+47
+avg. pass@1
+p4
+p2
+p@1
+p@1.5
+p@2
+p@4
+p@8
+(c) Target = objective
+GRPO
+DS
+KGPS
+ARCUS (paced)
+1.0
+1.5
+2.0
+2.5
+rollouts (× GRPO)
+44
+45
+46
+47
+avg. accuracy (6 bench.)
+GRPO
+KGPS
+GRESO
+DS
+other pred.
+selectors
+ρ=0
+ρ=0.1
+ρ=0.25ρ=0.5
+ARCUS
+(d) Cost--accuracy frontier
+Figure 3: Accuracy, efficiency, and objective control (Qwen2.5-Math-7B). (a) Six-benchmark average vs. policy
+updates (±1 s.d.). (b) The same runs vs. cumulative rollouts. (c) Fixed targets along the objective family (gray; pk =
+passk) trade pass@1 against pass@16; the paced target dominates. (d) Cost–accuracy plane; ARCUS’s curve varies
+ρ.
+0
+100
+200
+300
+policy update
+0.0
+0.2
+0.4
+0.6
+paced target p ⋆
+t
+warm-up
+dotted: frontier
+(a) Target moves to the frontier
+G=4
+G=8
+G=16
+0
+100
+200
+300
+policy update
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+fraction informative
+(b) Fewer zero-variance groups
+GRPO
+DS (cand.)
+MoPPS
+KGPS
+ARCUSρ = 0
+ARCUS (cand.)
+ARCUS (update)
+0
+100
+200
+300
+policy update
+0.1
+0.2
+0.3
+pass-rate MAE (selected)
+(c) Calibrated beliefs
+Beta (MoPPS)
+logit Kalman (KGPS)
+arc-length (ARCUS)
+0
+100
+200
+300
+policy update
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+true pass rate of selected
+(d) No stale-easy drift
+MoPPS
+KGPS
+ARCUS
+Figure 4: How ARCUS works (Qwen2.5-Math-7B). (a) Paced target p⋆
+t = sin2 ψ⋆
+t for three group sizes (dotted:
+sharp-belief frontier). (b) Informative share of generated groups (dotted red: ARCUS’s update batch). (c) Pass-rate
+error of the selected prompts. (d) Median and inter-quartile band of the true pass rate of selected prompts.
+and pass@k targets gain coverage until the dead
+zone eats the yield (pass@8: 47% yield). The
+paced target beats every fixed objective on pass@1
+and is within 0.2 of the best on pass@16 (69.6
+vs. 66.3 for GRPO), matching its higher entropy
+(Figure 7).
+5.5
+Generality
+The gains are not tied to one backbone, loss,
+or group size (Appendix F). On the long-CoT
+DeepSeek-R1-Distill-Qwen-1.5B with an 8k limit,
+ARCUS improves GRPO by +2.4 and DS by +1.1.
+On Llama-3.2-3B-Instruct, whose pool is domi-
+nated by all-fail groups and where DS needs ×3.5
+rollouts, the gains are +1.9 and +0.8. With MATH-
+train instead of DAPO-Math-17k as the pool, they
+are +2.2 and +0.9. Replacing the GRPO loss by
+the DAPO token-level loss, Dr. GRPO, or RLOO
+keeps a margin of +1.1 to +1.2 over DS, although
+for the last two the native coordinate is p and the
+kernel must be reweighted (Appendix C). Across
+G ∈{4, 8, 16} the margin over DS is +1.2 to +1.5
+while DS’s overhead falls from ×3.4 to ×2.0, so
+the benefit of predicting waste instead of paying
+for it persists even when waste itself shrinks.
+6
+Conclusion
+GRPO has a native geometry for pass rates, the
+Fisher–Rao arc ψ = arcsin √p, on which its up-
+date is uniform, zero-variance groups are Gaus-
+sian boundary layers, evidence has constant noise,
+and pass@k objectives are Gaussians. A prompt
+curriculum should therefore be a Gaussian in arc
+length whose center is an objective. ARCUS real-
+izes this as a rollout-free sampler with closed-form
+scoring and objective pacing that leaves GRPO’s
+loss untouched and improves accuracy while gen-
+erating half the rollouts of dynamic sampling. The
+geometry applies wherever group-normalized bi-
+nary rewards appear, including code, agents, and
+test-time allocation.
+Limitations
+ARCUS is derived for binary rewards and the
+standard-deviation normalization of GRPO. Vari-
+ants without that normalization, such as Dr. GRPO,
+have a different native coordinate (Appendix C),
+and continuous rewards require binarization or
+a new variance-stabilizing map.
+The sampler–
+objective correspondence treats prompts as hav-
+ing separate gradients and ignores transfer between
+8
+
+
+prompts; transfer is what makes the drift term nec-
+essary, and our global drift is a first-order model
+of it. The pacing rule encodes one preference: the
+hardest objective within a yield slack. Practition-
+ers who value reliability over coverage may prefer
+another point on the objective family. Our experi-
+ments cover mathematical reasoning with models
+up to 7B parameters and G ≤16; code, agentic
+tasks, and larger scales remain to be tested.
+Ethics Statement
+ARCUS changes only which training prompts re-
+ceive rollouts, so it inherits the risks of the models
+and data it is applied to. By reducing generated
+rollouts and tokens, it lowers the energy cost of
+RLVR post-training. All datasets and benchmarks
+are public and used under their licenses; no human
+subjects or personal data are involved. AI assistants
+were used for language editing and for checking
+LaTeX; the method, proofs, and experimental de-
+sign are the authors’ own, and every reference was
+checked against its primary source.
+References
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu,
+Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan
+Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024.
+DeepSeekMath: Pushing the limits of mathematical
+reasoning in open language models. arXiv preprint
+arXiv:2402.03300.
+DeepSeek-AI, Daya Guo, Dejian Yang, Haowei Zhang,
+Junxiao Song, Peiyi Wang, Qihao Zhu, Runxin
+Xu, Ruoyu Zhang, Shirong Ma, Xiao Bi, Xiaokang
+Zhang, Xingkai Yu, Yu Wu, Z. F. Wu, Zhibin Gou,
+Zhihong Shao, Zhuoshu Li, Ziyi Gao, and 181 others.
+2025. DeepSeek-R1: Incentivizing reasoning capa-
+bility in LLMs via reinforcement learning. arXiv
+preprint arXiv:2501.12948.
+Kimi Team, Angang Du, Bofei Gao, Bowei Xing,
+Changjiu Jiang, Cheng Chen, Cheng Li, Chenjun
+Xiao, Chenzhuang Du, Chonghua Liao, Chuning
+Tang, Congcong Wang, Dehao Zhang, Enming Yuan,
+Enzhe Lu, Fengxiang Tang, Flood Sung, Guangda
+Wei, Guokun Lai, and 77 others. 2025. Kimi k1.5:
+Scaling reinforcement learning with LLMs. arXiv
+preprint arXiv:2501.12599.
+Nathan Lambert, Jacob Morrison, Valentina Pyatkin,
+Shengyi Huang, Hamish Ivison, Faeze Brahman,
+Lester James V. Miranda, Alisa Liu, Nouha Dziri,
+Shane Lyu, Yuling Gu, Saumya Malik, Victoria
+Graf, Jena D. Hwang, Jiangjiang Yang, Ronan Le
+Bras, Oyvind Tafjord, Chris Wilhelm, Luca Soldaini,
+and 4 others. 2024. Tulu 3: Pushing frontiers in
+open language model post-training. arXiv preprint
+arXiv:2411.15124.
+Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan,
+Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan,
+Gaohong Liu, Lingjun Liu, Xin Liu, Haibin Lin,
+Zhiqi Lin, Bole Ma, Guangming Sheng, Yuxuan
+Tong, Chi Zhang, Mofan Zhang, Wang Zhang, and
+16 others. 2025. DAPO: An open-source LLM rein-
+forcement learning system at scale. arXiv preprint
+arXiv:2503.14476.
+Haizhong Zheng, Yang Zhou, Brian R. Bartoldson,
+Bhavya Kailkhura, Fan Lai, Jiawei Zhao, and Beidi
+Chen. 2025a. Act only when it pays: Efficient rein-
+forcement learning for LLM reasoning via selective
+rollouts. arXiv preprint arXiv:2506.02177.
+Thanh-Long V. Le, Myeongho Jeon, Kim Vu, Viet Lai,
+and Eunho Yang. 2026. No prompt left behind: Ex-
+ploiting zero-variance prompts in LLM reinforce-
+ment learning via entropy-guided advantage shap-
+ing. In The Fourteenth International Conference on
+Learning Representations.
+Sanghwan Bae, Jiwoo Hong, Min Young Lee, Hanbyul
+Kim, Jeongyeon Nam, and Donghyun Kwak. 2026.
+Online difficulty filtering for reasoning oriented re-
+inforcement learning. In Proceedings of the 19th
+Conference of the European Chapter of the Associa-
+tion for Computational Linguistics (Volume 1: Long
+Papers), pages 700–719, Rabat, Morocco. Associa-
+tion for Computational Linguistics.
+Yun Qu, Qi Wang, Yixiu Mao, Vincent Tao Hu, Björn
+Ommer, and Xiangyang Ji. 2026a. Can prompt diffi-
+culty be online predicted for accelerating RL finetun-
+ing of reasoning models? In Proceedings of the 32nd
+ACM SIGKDD Conference on Knowledge Discov-
+ery and Data Mining, Volume 1, pages 1240–1250.
+ACM.
+Yixiu Mao, Yun Qu, Qi Wang, Heming Zou, and Xi-
+angyang Ji. 2026a. Dynamics-predictive sampling
+for active RL finetuning of large reasoning mod-
+els. In The Fourteenth International Conference on
+Learning Representations.
+Haodong Zhu, Yangyang Ren, Yanjing Li, Sheng Xu,
+Haiguang Liu, Linlin Yang, and Baochang Zhang.
+2026. Kalman meets curriculum: Efficient dynamic
+prompt selection for adaptive RL finetuning. arXiv
+preprint arXiv:2607.27610.
+Mingxiong Lin, Zhangquan Gong, Maowen Tang, Qian
+Li, Chuangchuang Wang, Jian Ma, Sutian Huang,
+Kai Tang, and Haonan Lu. 2026. FG-ExPO: Frontier-
+guided exploration-prioritized policy optimization
+via adaptive KL and Gaussian curriculum. arXiv
+preprint arXiv:2605.11403.
+Yongcheng Zeng, Zexu Sun, Bokai Ji, Erxue Min,
+Hengyi Cai, Shuaiqiang Wang, Dawei Yin, Haifeng
+Zhang, Xu Chen, and Jun Wang. 2025a. CurES:
+From gradient analysis to efficient curriculum
+learning for reasoning LLMs.
+arXiv preprint
+arXiv:2510.01037.
+9
+
+
+Taiwei Shi, Yiyang Wu, Linxin Song, Tianyi Zhou, and
+Jieyu Zhao. 2026. Efficient reinforcement finetuning
+via adaptive curriculum learning. Transactions on
+Machine Learning Research.
+Xiaoyin Chen, Jiarui Lu, Minsu Kim, Dinghuai Zhang,
+Jian Tang, Alexandre Piché, Nicolas Gontier, Yoshua
+Bengio, and Ehsan Kamalloo. 2025a. Self-evolving
+curriculum for LLM reasoning.
+arXiv preprint
+arXiv:2505.14970.
+Damek Davis and Benjamin Recht. 2025. What is the
+objective of reasoning with reinforcement learning?
+arXiv preprint arXiv:2510.13651.
+Youssef Mroueh. 2025. Reinforcement learning with
+verifiable rewards: GRPO’s effective loss, dynam-
+ics, and success amplification.
+arXiv preprint
+arXiv:2503.06639.
+C. Radhakrishna Rao. 1945. Information and the accu-
+racy attainable in the estimation of statistical parame-
+ters. Bulletin of the Calcutta Mathematical Society,
+37:81–91.
+Shun-ichi Amari. 2016. Information Geometry and
+Its Applications. Applied Mathematical Sciences.
+Springer, Tokyo.
+Yun Qu, Qi Wang, Yixiu Mao, Heming Zou, Yuhang
+Jiang, Weijie Liu, Clive Bai, Kai Yang, Yangkun
+Chen, Saiyong Yang, and Xiangyang Ji. 2026b.
+Small generalizable prompt predictive models can
+steer efficient RL post-training of large reasoning
+models. arXiv preprint arXiv:2602.01970.
+Guochao Jiang,
+Wenfeng Feng,
+Guofeng Quan,
+Chuzhan Hao, Yuewei Zhang, Guohua Liu, and Hao
+Wang. 2025. VCRL: Variance-based curriculum rein-
+forcement learning for large language models. arXiv
+preprint arXiv:2509.19803.
+Chenxi Liu, Junjie Liang, Yuqi Jia, Bochuan Cao,
+Yang Bai, Heng Huang, and Xun Chen. 2025a. Ex-
+plore data left behind in reinforcement learning
+for reasoning language models.
+arXiv preprint
+arXiv:2511.04800.
+Yixiu Mao, Yun Qu, Qi Wang, Heming Zou, and Xi-
+angyang Ji. 2026b. RLVR without ineffective sam-
+ples: Group prioritized off-policy optimization for
+LLM reasoning. arXiv preprint arXiv:2606.01281.
+Andrei Baroian and Rutger Berger. 2026.
+Prompt
+replay:
+Speeding
+up
+GRPO
+with
+on-policy
+reuse of high-signal prompts.
+arXiv preprint
+arXiv:2603.21177.
+Heming Zou, Qi Wang, Yun Qu, Yuhang Jiang, Lizhou
+Cai, Yixiu Mao, Ru Peng, Xin Xu, Weijie Liu,
+Kai Yang, Saiyong Yang, and Xiangyang Ji. 2026.
+TRACE: A unified rollout budget allocation frame-
+work for efficient agentic reinforcement learning.
+arXiv preprint arXiv:2606.11119.
+Tommy Sha, Skylar Zhai, and Siqi Zhao. 2026.
+ThinkPrior: Zero-rollout difficulty priors for cold-
+start prompt selection in RLVR.
+arXiv preprint
+arXiv:2609.09075.
+Shuang Liang, Haoyang Zhou, Yifan Gong, Guowei
+Wang, and Xiting Wang. 2026.
+LEEPS: Latent-
+guided explore-exploit prompt sampling for efficient
+RLVR in large language models.
+arXiv preprint
+arXiv:2607.28077.
+Yoshua Bengio, Jérôme Louradour, Ronan Collobert,
+and Jason Weston. 2009. Curriculum learning. In
+Proceedings of the 26th Annual International Confer-
+ence on Machine Learning, pages 41–48. ACM.
+Alex Graves, Marc G. Bellemare, Jacob Menick, Rémi
+Munos, and Koray Kavukcuoglu. 2017. Automated
+curriculum learning for neural networks.
+In Pro-
+ceedings of the 34th International Conference on
+Machine Learning, volume 70 of Proceedings of Ma-
+chine Learning Research, pages 1311–1320.
+Carlos Florensa, David Held, Xinyang Geng, and Pieter
+Abbeel. 2018. Automatic goal generation for rein-
+forcement learning agents. In Proceedings of the
+35th International Conference on Machine Learn-
+ing, volume 80 of Proceedings of Machine Learning
+Research, pages 1515–1528.
+Minqi Jiang, Edward Grefenstette, and Tim Rocktäschel.
+2021. Prioritized level replay. In Proceedings of the
+38th International Conference on Machine Learning,
+volume 139 of Proceedings of Machine Learning
+Research, pages 4940–4950.
+Rémy Portelas, Cédric Colas, Lilian Weng, Katja Hof-
+mann, and Pierre-Yves Oudeyer. 2020. Automatic
+curriculum learning for deep RL: A short survey. In
+Proceedings of the Twenty-Ninth International Joint
+Conference on Artificial Intelligence, pages 4819–
+4825.
+Thomas Foster, Anya Sims, Johannes Forkel, Mattie
+Fellows, and Jakob Foerster. 2025. Learning to rea-
+son at the frontier of learnability. arXiv preprint
+arXiv:2502.12272.
+Zhaolin Gao, Joongwon Kim, Wen Sun, Thorsten
+Joachims, Sid Wang, Richard Yuanzhe Pang, and
+Liang Tan. 2025.
+Prompt curriculum learning
+for efficient LLM post-training.
+arXiv preprint
+arXiv:2510.01135.
+Christian Walder and Deep Karkhanis. 2025. Pass@K
+policy optimization: Solving harder reinforcement
+learning problems. arXiv preprint arXiv:2505.15201.
+Zhipeng Chen, Xiaobo Qin, Youbin Wu, Yue Ling,
+Qinghao Ye, Wayne Xin Zhao, and Guang Shi. 2025b.
+Pass@k training for adaptively balancing exploration
+and exploitation of large reasoning models. arXiv
+preprint arXiv:2508.10751.
+10
+
+
+Yunhao Tang, Kunhao Zheng, Gabriel Synnaeve, and
+Rémi Munos. 2025. Optimizing language models
+for inference time objectives using reinforcement
+learning. In Proceedings of the 42nd International
+Conference on Machine Learning.
+John Schulman, Filip Wolski, Prafulla Dhariwal,
+Alec Radford, and Oleg Klimov. 2017.
+Proxi-
+mal policy optimization algorithms. arXiv preprint
+arXiv:1707.06347.
+Harold Jeffreys. 1946. An invariant form for the prior
+probability in estimation problems. Proceedings of
+the Royal Society of London. Series A. Mathematical
+and Physical Sciences, 186(1007):453–461.
+F. J. Anscombe. 1948. The transformation of Poisson,
+binomial and negative-binomial data. Biometrika,
+35(3–4):246–254.
+R. Mehra. 1970. On the identification of variances and
+adaptive Kalman filtering. IEEE Transactions on
+Automatic Control, 15(2):175–184.
+R. E. Kalman. 1960. A new approach to linear filtering
+and prediction problems. Journal of Basic Engineer-
+ing, 82(1):35–45.
+Wouter Kool, Herke van Hoof, and Max Welling. 2019.
+Stochastic beams and where to find them: The
+Gumbel-Top-k trick for sampling sequences without
+replacement. In Proceedings of the 36th Interna-
+tional Conference on Machine Learning, volume 97
+of Proceedings of Machine Learning Research, pages
+3499–3508.
+An Yang, Beichen Zhang, Binyuan Hui, Bofei Gao,
+Bowen Yu, Chengpeng Li, Dayiheng Liu, Jian-
+hong Tu, Jingren Zhou, Junyang Lin, Keming Lu,
+Mingfeng Xue, Runji Lin, Tianyu Liu, Xingzhang
+Ren, and Zhenru Zhang. 2024. Qwen2.5-Math tech-
+nical report: Toward mathematical expert model via
+self-improvement. arXiv preprint arXiv:2409.12122.
+An Yang, Anfeng Li, Baosong Yang, Beichen Zhang,
+Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao,
+Chengen Huang, Chenxu Lv, Chujie Zheng, Dayi-
+heng Liu, Fan Zhou, Fei Huang, Feng Hu, Hao Ge,
+Haoran Wei, Huan Lin, Jialong Tang, and 41 oth-
+ers. 2025. Qwen3 technical report. arXiv preprint
+arXiv:2505.09388.
+Rulin Shao, Shuyue Stella Li, Rui Xin, Scott Geng,
+Yiping Wang, Sewoong Oh, Simon Shaolei Du,
+Nathan Lambert, Sewon Min, Ranjay Krishna, Yu-
+lia Tsvetkov, Hannaneh Hajishirzi, Pang Wei Koh,
+and Luke Zettlemoyer. 2025. Spurious rewards: Re-
+thinking training signals in RLVR. arXiv preprint
+arXiv:2506.10947.
+Guangming Sheng, Chi Zhang, Zilingfeng Ye, Xibin
+Wu, Wang Zhang, Ru Zhang, Yanghua Peng, Haibin
+Lin, and Chuan Wu. 2025. HybridFlow: A flexible
+and efficient RLHF framework. In Proceedings of
+the Twentieth European Conference on Computer
+Systems, pages 1279–1297. ACM.
+Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying
+Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gon-
+zalez, Hao Zhang, and Ion Stoica. 2023. Efficient
+memory management for large language model serv-
+ing with PagedAttention. In Proceedings of the 29th
+Symposium on Operating Systems Principles, pages
+611–626. ACM.
+Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul
+Arora, Steven Basart, Eric Tang, Dawn Song, and
+Jacob Steinhardt. 2021. Measuring mathematical
+problem solving with the MATH dataset. In Proceed-
+ings of the Neural Information Processing Systems
+Track on Datasets and Benchmarks, volume 1.
+Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri
+Edwards, Bowen Baker, Teddy Lee, Jan Leike, John
+Schulman, Ilya Sutskever, and Karl Cobbe. 2024.
+Let’s verify step by step. In The Twelfth International
+Conference on Learning Representations.
+Aitor Lewkowycz, Anders Andreassen, David Dohan,
+Ethan Dyer, Henryk Michalewski, Vinay Ramasesh,
+Ambrose Slone, Cem Anil, Imanol Schlag, Theo
+Gutman-Solo, Yuhuai Wu, Behnam Neyshabur, Guy
+Gur-Ari, and Vedant Misra. 2022. Solving quantita-
+tive reasoning problems with language models. In
+Advances in Neural Information Processing Systems,
+volume 35.
+Chaoqun He, Renjie Luo, Yuzhuo Bai, Shengding Hu,
+Zhen Thai, Junhao Shen, Jinyi Hu, Xu Han, Yujie
+Huang, Yuxiang Zhang, Jie Liu, Lei Qi, Zhiyuan
+Liu, and Maosong Sun. 2024.
+OlympiadBench:
+A challenging benchmark for promoting AGI with
+olympiad-level bilingual multimodal scientific prob-
+lems. In Proceedings of the 62nd Annual Meeting of
+the Association for Computational Linguistics (Vol-
+ume 1: Long Papers), pages 3828–3850, Bangkok,
+Thailand. Association for Computational Linguistics.
+Jujie He, Jiacai Liu, Chris Yuhao Liu, Rui Yan, Chaojie
+Wang, Peng Cheng, Xiaoyu Zhang, Fuxiang Zhang,
+Jiacheng Xu, Wei Shen, Siyuan Li, Liang Zeng, Tian-
+wen Wei, Cheng Cheng, Bo An, Yang Liu, and Yahui
+Zhou. 2025. Skywork open reasoner 1 technical re-
+port. arXiv preprint arXiv:2505.22312.
+Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi,
+Tianyu Pang, Chao Du, Wee Sun Lee, and Min Lin.
+2025b. Understanding R1-Zero-like training: A criti-
+cal perspective. arXiv preprint arXiv:2503.20783.
+Jian Hu, Jason Klein Liu, Haotian Xu, and Wei Shen.
+2025. REINFORCE++: Stabilizing critic-free policy
+optimization with global advantage normalization.
+arXiv preprint arXiv:2501.03262.
+Chujie Zheng, Shixuan Liu, Mingze Li, Xiong-Hui
+Chen, Bowen Yu, Chang Gao, Kai Dang, Yuqiong
+Liu, Rui Men, An Yang, Jingren Zhou, and Junyang
+Lin. 2025b. Group sequence policy optimization.
+arXiv preprint arXiv:2507.18071.
+11
+
+
+Arash Ahmadian, Chris Cremer, Matthias Gallé,
+Marzieh Fadaee, Julia Kreutzer, Olivier Pietquin, Ah-
+met Üstün, and Sara Hooker. 2024. Back to basics:
+Revisiting REINFORCE-style optimization for learn-
+ing from human feedback in LLMs. In Proceedings
+of the 62nd Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers),
+pages 12248–12267, Bangkok, Thailand. Association
+for Computational Linguistics.
+Ronald J. Williams. 1992. Simple statistical gradient-
+following algorithms for connectionist reinforcement
+learning. Machine Learning, 8(3–4):229–256.
+Mingjie Liu, Shizhe Diao, Ximing Lu, Jian Hu, Xin
+Dong, Yejin Choi, Jan Kautz, and Yi Dong. 2025c.
+ProRL: Prolonged reinforcement learning expands
+reasoning boundaries in large language models.
+arXiv preprint arXiv:2505.24864.
+Ganqu Cui, Yuchen Zhang, Jiacheng Chen, Lifan Yuan,
+Zhi Wang, Yuxin Zuo, Haozhan Li, Yuchen Fan,
+Huayu Chen, Weize Chen, Zhiyuan Liu, Hao Peng,
+Lei Bai, Wanli Ouyang, Yu Cheng, Bowen Zhou, and
+Ning Ding. 2025. The entropy mechanism of rein-
+forcement learning for reasoning language models.
+arXiv preprint arXiv:2505.22617.
+Yang Yue, Zhiqi Chen, Rui Lu, Andrew Zhao, Zhaokai
+Wang, Yang Yue, Shiji Song, and Gao Huang. 2025.
+Does reinforcement learning really incentivize rea-
+soning capacity in LLMs beyond the base model? In
+Advances in Neural Information Processing Systems,
+volume 38.
+Xinyu Zhu, Mengzhou Xia, Zhepei Wei, Wei-Lin Chen,
+Danqi Chen, and Yu Meng. 2025. The surprising ef-
+fectiveness of negative reinforcement in LLM reason-
+ing. In Advances in Neural Information Processing
+Systems, volume 38.
+Changyi Xiao, Mengdi Zhang, and Yixin Cao. 2025.
+BNPO: Beta normalization policy optimization.
+arXiv preprint arXiv:2506.02864.
+Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan,
+Henrique Ponde de Oliveira Pinto, Jared Kaplan,
+Harri Edwards, Yuri Burda, Nicholas Joseph, Greg
+Brockman, Alex Ray, Raul Puri, Gretchen Krueger,
+Michael Petrov, Heidy Khlaaf, Girish Sastry, Pamela
+Mishkin, Brooke Chan, Scott Gray, and 39 others.
+2021. Evaluating large language models trained on
+code. arXiv preprint arXiv:2107.03374.
+Shunyu Yao, Noah Shinn, Pedram Razavi, and Karthik
+Narasimhan. 2024. τ-bench: A benchmark for tool-
+agent-user interaction in real-world domains. arXiv
+preprint arXiv:2406.12045.
+Hongyi Zhou, Kai Ye, Erhan Xu, Jin Zhu, Ying
+Yang, Shijin Gong, and Chengchun Shi. 2026. De-
+mystifying group relative policy optimization: Its
+policy gradient is a U-Statistic.
+arXiv preprint
+arXiv:2603.01162.
+Xuefeng Li, Haoyang Zou, and Pengfei Liu. 2025a.
+LIMR: Less is more for RL scaling. arXiv preprint
+arXiv:2502.11886.
+Yiping Wang, Qing Yang, Zhiyuan Zeng, Liliang Ren,
+Liyuan Liu, Baolin Peng, Hao Cheng, Xuehai He,
+Kuan Wang, Jianfeng Gao, Weizhu Chen, Shuohang
+Wang, Simon Shaolei Du, and Yelong Shen. 2025.
+Reinforcement learning for reasoning in large lan-
+guage models with one training example. In Ad-
+vances in Neural Information Processing Systems,
+volume 38.
+Yujuan Pang, Jiaxin Li, Xin Sheng, Ran Peng, and Yong
+Ma. 2026. Beyond variance: Prompt-efficient RLVR
+via rare-event amplification and bidirectional pairing.
+arXiv preprint arXiv:2602.03452.
+Anxiang Zeng, Haibo Zhang, Hailing Zhang, Kaixi-
+ang Mo, Liang Yao, Ling Hu, Long Zhang, Shuman
+Liu, Shuyi Xie, Yanshi Li, Yizhang Chen, Yuepeng
+Sheng, Yuwei Huang, Zhaochen Xu, Zhiqiang Zhou,
+and Ziqin Liew. 2025b. Each prompt matters: Scal-
+ing reinforcement learning without wasting roll-
+outs on hundred-billion-scale MoE. arXiv preprint
+arXiv:2512.07710.
+João Coelho, João Magalhães, Bruno Martins, and
+Chenyan Xiong. 2026.
+Effective reinforcement
+learning for agentic search by recycling zero-
+variance queries during training.
+arXiv preprint
+arXiv:2606.10709.
+Hieu Trung Nguyen, Bao Nguyen, Wenao Ma, Yuzhi
+Zhao, Ruifeng She, and Viet Anh Nguyen. 2026.
+Adaptive rollout allocation for online reinforcement
+learning with verifiable rewards. In The Fourteenth
+International Conference on Learning Representa-
+tions.
+Tao Wang, Shuo Li, Yan Sun, Dongsheng Ding, and
+Edgar Dobriban. 2026.
+Where to spend rollouts:
+Hit-utility optimal rollout allocation for group-based
+RLVR. arXiv preprint arXiv:2605.07114.
+Heyang Jiang, Henry Liu, and Baharan Mirzasoleiman.
+2026. Learning as reasoning unfolds: Progressive
+rollout allocation for efficient reinforcement learning.
+arXiv preprint arXiv:2607.22002.
+Haoyu Hu, Xuandong Zhao, Xuhai “Orson” Xu, and
+Nori Jacoby. 2026. DUET: Optimize token-budget
+allocation for reinforcement learning with verifiable
+rewards. arXiv preprint arXiv:2605.08441.
+Ziniu Li, Congliang Chen, Tianyun Yang, Tian Ding,
+Ruoyu Sun, Ge Zhang, Wenhao Huang, and Zhi-
+Quan Luo. 2025b.
+Knapsack RL: Unlocking ex-
+ploration of LLMs via optimizing budget allocation.
+arXiv preprint arXiv:2509.25849.
+Shubham Parashar, Shurui Gui, Xiner Li, Hongyi Ling,
+Sushil Vemuri, Blake Olson, Eric Li, Yu Zhang,
+James Caverlee, Dileep Kalathil, and Shuiwang
+Ji. 2025. Curriculum reinforcement learning from
+easy to hard tasks improves LLM reasoning. arXiv
+preprint arXiv:2506.06632.
+12
+
+
+Luke Tierney and Joseph B. Kadane. 1986. Accurate
+approximations for posterior moments and marginal
+densities. Journal of the American Statistical Associ-
+ation, 81(393):82–86.
+Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri,
+Abhinav Pandey, Abhishek Kadian, Ahmad Al-
+Dahle, Aiesha Letman, Akhil Mathur, Alan Schel-
+ten, Alex Vaughan, Amy Yang, Angela Fan, Anirudh
+Goyal, Anthony Hartshorn, Aobo Yang, Archi Mi-
+tra, Archie Sravankumar, Artem Korenev, Arthur
+Hinsvark, and 1 others. 2024. The Llama 3 herd
+of models. arXiv preprint arXiv:2407.21783.
+A
+Extended Related Work
+RLVR
+and
+group-relative
+estimators.
+GRPO (Shao et al., 2024) made critic-free
+RL the default for reasoning models (DeepSeek-AI
+et al., 2025; Kimi Team et al., 2025; He et al.,
+2025). Its variants change the normalization, the
+clipping, or the aggregation: DAPO decouples
+clipping and adds dynamic sampling (Yu et al.,
+2025), Dr. GRPO removes the standard-deviation
+and length normalizations (Liu et al., 2025b),
+REINFORCE++ normalizes globally (Hu et al.,
+2025), GSPO moves the importance ratio to the
+sequence level (Zheng et al., 2025b), and RLOO
+uses leave-one-out baselines (Ahmadian et al.,
+2024; Williams, 1992). Prolonged training (Liu
+et al., 2025c) and entropy management (Cui et al.,
+2025) target the exploration collapse that RLVR
+can cause (Yue et al., 2025), and negative samples
+help preserve coverage (Zhu et al., 2025). ARCUS
+changes none of these estimators; it controls
+which prompts they see. Appendix C shows how
+the geometry changes when the normalization is
+removed.
+What the choice of estimator optimizes.
+Davis
+and Recht (2025) show that REINFORCE, rejec-
+tion sampling, and GRPO with binary rewards
+perform stochastic gradient ascent on h(p) for h
+equal to the identity, approximately log, and ap-
+proximately 2 arcsin √·, respectively. They derive
+the exact finite-group transform and a Bernstein-
+polynomial recipe for choosing advantages to tar-
+get any h. Mroueh (2025) analyze GRPO’s effec-
+tive loss and show how normalization amplifies
+rare successes. BNPO normalizes by a Beta den-
+sity (Xiao et al., 2025), and pass@k objectives can
+be optimized by transforming rewards or advan-
+tages (Walder and Karkhanis, 2025; Chen et al.,
+2025b; Tang et al., 2025); the pass@k metric fol-
+lows Chen et al. (2021) and its reliability counter-
+part passk follows Yao et al. (2024). The pairwise
+U-statistic view of GRPO (Zhou et al., 2026) is
+complementary. Our Corollary 1 is the sampler-
+side analogue of Davis and Recht (2025): prompt
+sampling reshapes h without touching the advan-
+tage and, unlike advantage reshaping, can avoid
+paying for zero-variance groups.
+Prompt selection and zero-variance prompts.
+Beyond the methods discussed in §2, offline cu-
+ration selects small, informative prompt sets (Li
+et al., 2025a; Wang et al., 2025). Pairing hard-
+but-solvable prompts with easy-but-brittle ones
+amplifies rare events (Pang et al., 2026), and in-
+dustrial systems reuse zero-variance prompts at
+scale (Zeng et al., 2025b). Zero-variance queries
+can also be recycled in agentic search (Coelho
+et al., 2026), and the same efficiency pressure moti-
+vates rollout-allocation methods that vary the group
+size per prompt or per prefix (Nguyen et al., 2026;
+Wang et al., 2026; Jiang et al., 2026; Zou et al.,
+2026; Hu et al., 2026) and budget-aware explo-
+ration (Li et al., 2025b). These methods decide how
+many rollouts a prompt receives; ARCUS decides
+which prompts receive them, and the two compose.
+Among predictive selectors, the closest to ARCUS
+are KGPS (Zhu et al., 2026), which also filters
+beliefs with a Kalman filter, and FG-ExPO (Lin
+et al., 2026), which also weights prompts by a Gaus-
+sian. KGPS works in logit space with a zero-mean
+random walk and plug-in delta-method noise, and
+scores by E[p(1 −p)] with quadrature. FG-ExPO
+uses a fixed Gaussian (µ=0.5, σ=0.35) over raw
+EMA pass rates. ARCUS differs in the coordinate
+(arc length, where noise is constant and dead zones
+are Gaussian), the observation model (boundary-
+layer likelihoods for zero-variance groups), the dy-
+namics (mobility-weighted drift), the kernel (width
+derived from the objective, closed-form convolu-
+tion with the belief), and the target (paced along
+the objective family instead of fixed).
+Curricula.
+Classical curricula order examples
+from easy to hard (Bengio et al., 2009); automatic
+curricula choose tasks by learning progress (Graves
+et al., 2017; Portelas et al., 2020), intermediate suc-
+cess probability (Florensa et al., 2018), or replay
+scores (Jiang et al., 2021). LLM-specific curric-
+ula include static easy-to-hard schedules (Parashar
+et al., 2025), bandits over difficulty levels (Chen
+et al., 2025a), reward-feedback targets (Shi et al.,
+2026), learnability sampling (Foster et al., 2025),
+and value-model filtering (Gao et al., 2025). In
+ARCUS the easy-to-hard pattern emerges from a
+13
+
+
+waste constraint rather than being scheduled, and
+the “difficulty” being paced is an objective in a
+principled family.
+Statistics and filtering.
+Variance-stabilizing
+transforms for binomial data go back to Anscombe
+(1948).
+The Fisher–Rao metric and the Jef-
+freys prior are classical (Rao, 1945; Jeffreys,
+1946; Amari, 2016);
+so are Kalman filter-
+ing (Kalman, 1960), innovation-based noise iden-
+tification (Mehra, 1970), Laplace approxima-
+tions (Tierney and Kadane, 1986), and Gumbel-top-
+k sampling (Kool et al., 2019). Our contribution
+is to observe that GRPO’s normalization selects
+exactly this geometry, and to derive a sampler in
+which these classical tools compose in closed form.
+B
+Proofs
+Throughout, p = sin2 ψ, ψ ∈[0, π
+2 ], m ∼
+Bin(G, p) is the number of successes in a group,
+and C(q) is the set of correct responses to q, so p =
+P
+o∈C(q) πθ(o | q) and ∇p = P
+o∈C(q) ∇πθ(o | q).
+We use dp
+dψ = sin 2ψ = 2
+p
+p(1 −p).
+B.1
+Proof of Proposition 1
+Conditional scores. Given the reward labels, the G
+responses are independent, and a response labelled
+correct is distributed as πθ(· | q) restricted to C(q)
+and renormalized. Hence
+E[∇log πθ(o) | r = 1] = 1
+p
+P
+o∈C ∇πθ(o) = ∇p
+p ,
+E[∇log πθ(o) | r = 0] = −∇p
+1−p,
+where the second identity uses P
+o ∇πθ(o) = 0.
+Conditional advantages. With population statis-
+tics, ¯r = m/G and s =
+p
+m(G −m)/G. If
+m ∈{0, G}, every numerator in Eq. (1) is zero
+and ˆgq = 0. If 0 < m < G, correct responses re-
+ceive (1−m/G)/s and incorrect ones −(m/G)/s.
+Therefore
+E[ˆgq | m] = 1
+G
+h
+m(G−m)
+Gs
+∇p
+p + m(G−m)
+Gs
+∇p
+1−p
+i
+= m(G−m)
+G2s
+·
+∇p
+p(1−p)
+=
+√
+m(G−m)
+G
+·
+∇p
+p(1−p).
+Taking expectations over m and substituting ∇p =
+2
+p
+p(1 −p) ∇ψ gives E[ˆgq] = 2 ωG(p)∇ψ with
+ωG as stated. The expression coincides with the
+finite-group weight of Davis and Recht (2025) after
+the change of variables; we verified the identity
+numerically to machine precision (Table 4).
+(i) By Jensen’s inequality, E
+p
+m(G −m) ≤
+p
+E[m(G −m)] =
+p
+G(G −1)p(1 −p), since
+E[m(G −m)] = GEm −Em2
+= G(G −
+1)p(1 −p). Dividing by G
+p
+p(1 −p) gives ωG ≤
+p
+(G −1)/G.
+(ii) The map x 7→
+p
+x(1 −x) is bounded
+and uniformly continuous on [0, 1], and m/G →
+p in probability uniformly in p (Chebyshev:
+Pr(|m/G −p| > δ) ≤1/(4Gδ2)).
+Hence
+E
+p
+(m/G)(1 −m/G) →
+p
+p(1 −p) uniformly
+on [0, 1], and the ratio converges to one uniformly
+on any compact subset of (0, 1), where
+p
+p(1 −p)
+is bounded away from zero.
+(iii) For 1
+≤
+m
+≤
+G −1 we have
+p
+m(G −m) ≤m
+√
+G −1, because G −m ≤
+m(G −1)
+⇐⇒
+G
+≤
+mG.
+Thus
+E
+p
+m(G −m)
+≤
+√
+G −1 Gp and ωG
+≤
+√
+G −1
+p
+p/(1 −p) =
+√
+G −1 tan ψ. Exchang-
+ing the roles of successes and failures gives the
+cot ψ bound.
+As p →0, E
+p
+m(G −m) =
+Gp(1 −p)G−1√
+G −1 + O(p2), so the ratio of
+ωG to the bound tends to one; the case p →1 is
+symmetric.
+Remark 1 (Implementation details that do not
+change the geometry). Bessel-corrected stan-
+dard deviations multiply ωG by the constant
+p
+(G −1)/G. A positive ϵ in the denominator
+shrinks each informative group by s/(s+ϵ), which
+interpolates between ωG (ϵ →0) and the REIN-
+FORCE weight on ∇p (ϵ →∞), as described by
+Davis and Recht (2025); at the usual ϵ = 10−6
+the difference is invisible. Token-level aggrega-
+tion multiplies each response’s contribution by a
+length-dependent positive factor; it changes the
+per-prompt scale but not the fact that zero-variance
+groups contribute nothing, which is all that Propo-
+sitions 2–4 use.
+B.2
+Proof of Corollary 1
+If the inclusion probability of prompt q is w(ψq)
+and is not differentiated during the update, then by
+Proposition 1 and the chain rule
+P
+q w(ψq)E[ˆgq] = P
+q 2w(ψq)ωG(ψq)∇ψq
+= P
+q F ′
+w(ψq)∇ψq
+= ∇P
+q Fw(ψq).
+Uniform sampling (w
+≡
+c) gives Fw
+=
+2c
+R ψ
+0 ωG ≈2cψ away from the ramps: the arc-
+sine objective.
+Dynamic sampling.
+DS draws prompts uni-
+formly, generates their groups, and keeps informa-
+14
+
+
+tive ones until B are collected. The kept contribu-
+tion of a drawn prompt is ˆgq⊮{0 < m < G} = ˆgq,
+because ˆgq = 0 on zero-variance groups. The num-
+ber of drawn prompts is a stopping time with re-
+spect to the i.i.d. sequence of draws, so by Wald’s
+identity the expected sum of kept contributions
+equals E[#drawn] · 1
+N
+P
+q E[ˆgq]. This is the uni-
+form direction multiplied by E[#drawn]/B. DS
+therefore buys a larger step in the arcsine direction,
+not a different objective.
+Gaussian samplers. If w(ψ) ∝exp(−(ψ −
+ψ⋆)2/(2σ2)) and ωG ≈1 on its support, then
+F ′
+w ∝N(ψ; ψ⋆, σ2) and Fw ≈Φ((ψ −ψ⋆)/σ) +
+const. Summed over prompts, this is a smoothed
+count of prompts with ψq > ψ⋆, i.e. with pq >
+sin2 ψ⋆.
+Post-rollout selection.
+If a group with m
+successes is kept with probability a(m), the
+same computation replaces
+p
+m(G −m) by
+a(m)
+p
+m(G −m) inside ωG. The result is again
+of the form 2 ˜w(ψ)˜ωG(ψ)∇ψ, so post-selection
+modifies the implicit objective smoothly and never
+adds signal from zero-variance groups.
+B.3
+Proof of Proposition 2
+Let f(x) = log cos x + x2/2 on [0, π
+2 ).
+Then
+f(0) = 0 and f′(x) = x −tan x ≤0, so
+cos x ≤e−x2/2 and cos2G ψ ≤e−Gψ2. Since
+sin ψ = cos( π
+2 −ψ), also sin2G ψ ≤e−G(π/2−ψ)2.
+For ψ ∼N(µ, P), completing the square gives
+Z
+e−(ψ−µ)2/(2P )
+√
+2πP
+e−Gψ2dψ =
+1
+√1+2GP e−
+Gµ2
+1+2GP ,
+and symmetrically at π
+2 . When the belief is sup-
+ported on [0, π
+2 ], the bound is pointwise, so ˆyq in
+Eq. (4) is a lower bound on the belief-averaged
+probability that the group is informative; ARCUS
+is conservative about waste.
+B.4
+Proof of Proposition 3
+Fisher information.
+For Bernoulli(p), I(p) =
+1/(p(1−p)). Reparameterizing by ψ gives I(ψ) =
+(dp/dψ)2I(p) = sin2 2ψ/(sin2 ψ cos2 ψ) = 4.
+The Jeffreys prior ∝
+p
+I(ψ) is therefore uniform
+on [0, π
+2 ], equivalently Beta( 1
+2, 1
+2) in p.
+(i) Laplace likelihood. The log-likelihood of
+m successes in n trials is ℓ(ψ) = 2m log sin ψ +
+2(n −m) log cos ψ. Its stationary point satisfies
+m cot ψ = (n −m) tan ψ, i.e. sin2 ψ = m/n,
+and ℓ′′(ψ) = −2m csc2 ψ −2(n −m) sec2 ψ =
+−2n −2n
+=
+−4n there.
+The Laplace ap-
+proximation (Tierney and Kadane, 1986) is thus
+N(arcsin
+p
+m/n, 1/(4n)) for every 0 < m < n.
+For the Anscombe estimate ˆψ = h(˜p) with h(x) =
+arcsin √x and ˜p = (m+3/8)/(n+3/4), the delta
+method gives Var[ ˆψ] = h′(p)2 Var[˜p]+O(n−2) =
+1
+4p(1−p) ·
+np(1−p)
+(n+3/4)2 + O(n−2) =
+1
+4n + O(n−2).
+The remainder is uniform on compact subsets of
+(0, 1) because h has bounded derivatives there.
+Anscombe’s second-order analysis motivates the
+refinement 1/(4n + 2), which Table 4 confirms is
+accurate to 1% for p ∈[0.2, 0.8] at n = 8.
+(ii) Boundary layers. The likelihood of m =
+0 is (1 −p)n = cos2n ψ ≤e−nψ2 by the proof
+of Proposition 2, an unnormalized Gaussian with
+mean 0 and variance 1/(2n). The case m = n is
+symmetric.
+(iii)
+Logit.
+The
+delta
+method
+gives
+Var[logit ˆp] ≈(p(1 −p))−2 · p(1 −p)/n =
+1/(np(1 −p)), which diverges at both ends. In
+practice logit filters must clip ˆp and substitute a
+plug-in p, which makes their observation model
+wrong exactly for near-zero-variance prompts
+(Figure 1c).
+B.5
+Proof of Proposition 4
+d
+dψ[1 −cos2k ψ]
+=
+2k sin ψ cos2k−1 ψ
+=
+Hk(ψ) ≥0, and
+R π/2
+0
+Hk = [1 −cos2k ψ]π/2
+0
+=
+1, so Hk is a density.
+Equivalently, it is the
+density of arcsin
+√
+X for X ∼Beta(1, k), be-
+cause Pr(X ≤x) = 1 −(1 −x)k. Differen-
+tiating log Hk = log(2k) + log sin ψ + (2k −
+1) log cos ψ twice gives (log Hk)′′ = −csc2 ψ −
+(2k −1) sec2 ψ < 0, so Hk is log-concave and uni-
+modal. The mode solves cot ψ = (2k −1) tan ψ,
+i.e. tan2 ψ = 1/(2k −1) and sin2 ψ = 1/(2k).
+There csc2 ψ = 2k and sec2 ψ = 2k/(2k −1), so
+(log Hk)′′ = −2k −2k = −4k. The passk objec-
+tive sin2k ψ has derivative 2k sin2k−1 ψ cos ψ =
+Hk(π
+2 −ψ). For a mode ψ⋆≤π/4, sin2 ψ⋆=
+1/(2k) gives 1/(2
+√
+k) = sin ψ⋆/
+√
+2; for ψ⋆≥
+π/4 the mirror gives cos ψ⋆/
+√
+2. Hence σ(ψ⋆) =
+min(sin ψ⋆, cos ψ⋆)/
+√
+2.
+Remark 2 (Large k). Since kX →Exp(1) for
+X ∼Beta(1, k),
+√
+k arcsin
+√
+X →
+√
+E with
+E ∼Exp(1): the pass@k kernel tends to a
+Rayleigh law with scale 1/
+√
+2k. Its mode matches
+ψ⋆
+k, and its variance (4 −π)/(4k) is close to the
+Laplace value 1/(4k). The Gaussian is therefore
+accurate at both ends of the family, with a mild
+right skew that the dead-zone factor ˆy further sup-
+presses.
+Remark 3 (Learnability sampling). Sampling by
+15
+
+
+p(1 −p) (Foster et al., 2025) corresponds in
+arc length to 1
+4 sin2 2ψ =
+1
+4H1(ψ)2, the square
+of the pass@1 kernel: a pass@1 target whose
+width is shrunk from 1/2 to 1/(2
+√
+2). The score
+p
+p(1 −p) that CurES passes through a soft-
+max (Zeng et al., 2025a) equals 1
+2H1. Both are
+kernels at a fixed pass@1 target with a width that
+is not matched to the objective.
+B.6
+The Drift Model
+Suppose the policy’s competence on a prompt is
+a logit x with p = σ(x). Then dψ
+dx =
+dψ
+dp
+dp
+dx =
+p(1−p)
+2√
+p(1−p) =
+√
+p(1−p)
+2
+=
+sin 2ψ
+4
+. A competence
+gain δx shared across prompts, which is what trans-
+fer from training produces, therefore moves ev-
+ery belief by δx
+4 sin 2ψ. This gives the drift term
+vt sin 2µq of Eq. (2), whose mobility vanishes in
+both dead zones. For an un-revisited prompt, the
+drift is what prevents its belief from going stale:
+without it, a prompt last seen at p = 0.5 would be
+believed intermediate long after it has become easy
+(Figure 4d).
+B.7
+Why the Score Is Kernel Times Yield
+Consider the objective J = P
+q F(ψq) with F ′
+equal to the kernel N(ψ⋆, σ2). Under the separate-
+gradient approximation ⟨∇ψq, ∇ψq′⟩= c ⊮{q =
+q′}, including prompt q in an update of size η
+increases J to first order by 2ηc F ′(ψq) ωG(ψq).
+Averaging over the belief and treating the ker-
+nel and the ramp as approximately uncorrelated
+under the belief yields ∝κq · E[ωG].
+ARCUS
+uses the informative probability ˆyq in place of
+E[ωG].
+The two agree up to a bounded factor
+in the interior and differ inside the ramps, where
+ωG/(1 −zG) ≈
+√
+G −1/(Gψ) grows because
+GRPO amplifies lone successes (Mroueh, 2025).
+We prefer ˆy for three reasons: the amplified signal
+of a lone success is also its noisiest component, ˆy
+has the closed form needed for pacing, and it mea-
+sures exactly the waste the method targets. The
+empirical difference is small (46.71 with ωG vs.
+46.90; Table 8).
+B.8
+The Sharp-Belief Frontier
+Assume beliefs are exact and the candidate set con-
+centrates at the target, the idealization in which
+the predicted yield of target ψ is 1 −zG(ψ).
+The maximum over ψ is attained at π/4 with
+value 1 −21−G. The hardest admissible target
+of Eq. (5) therefore solves zG(ψ) = 21−G + ε on
+[0, π/4]. There zG(ψ) ≤e−Gψ2 + e−G(π/2−ψ)2
+and the second term is at most e−Gπ2/16, so
+ψ ≈
+p
+ln(1/(ε + 21−G))/G and the reachable
+objective is pass@k with k = 1/(2 sin2 ψ). For
+ε = 0.03, the exact roots are p⋆= 0.40, 0.34, and
+0.20 for G = 4, 8, and 16 (Table 10). Finite belief
+precision and a spread-out candidate set move the
+realized target by a few hundredths.
+B.9
+Further Properties of the Arc-Length
+Filter
+The next three results explain the mechanism mea-
+surements of §5.4. They use the logistic compe-
+tence model of Appendix B.6, in which a shared
+competence gain of δ per update moves every
+prompt’s logit by δ.
+Proposition 5 (Stale beliefs are biased toward easy
+prompts). Let a belief without drift be centered
+at a prompt’s arc length at its last observation,
+∆updates ago. Then the current arc length ex-
+ceeds the belief by δ∆
+4 sin 2ψ + O((δ∆)2), and
+the current pass rate exceeds the believed one by
+δ∆p(1−p)+O((δ∆)2). A selector that targets be-
+lieved pass rate p⋆therefore selects prompts whose
+true pass rate is p⋆+ δ∆p⋆(1 −p⋆) on average.
+The bias is largest at p⋆= 1/2 and grows with the
+time since the last visit. The drift step of Eq. (2)
+with v = δ/4 removes it to first order.
+Proof. By Appendix B.6, dψ/dx = 1
+4 sin 2ψ,
+so a Taylor expansion gives ψ(x + δ∆) = ψ(x) +
+δ∆
+4 sin 2ψ + O((δ∆)2). Multiplying by dp/dψ =
+sin 2ψ gives ∆p =
+δ∆
+4 sin2 2ψ = δ∆p(1 −p).
+The drift step adds exactly v sin 2µ per update.
+For example, with δ = 0.01 per update and one
+epoch between visits (∆≈66), a prompt believed
+at p = 0.5 is truly at ≈0.67. After several epochs
+the effect compounds, which is the drift of MoPPS
+and KGPS toward p ≈0.75–0.8 in Figure 4d.
+Proposition 6 (Uniform steady-state uncertainty).
+Suppose a prompt is revisited every ∆updates and
+each visit yields an informative group, so the ob-
+servation variance is R = 1/(4G + 2) (Eq. (3)).
+Under the arc-length filter with diffusion Q, the
+posterior variance converges to
+P∞= 1
+2
+p
+Q2∆2 + 4Q∆R −Q∆
+
+,
+which does not depend on the prompt’s pass rate.
+For a logit filter with delta-method noise R(p) =
+1/(Gp(1 −p)), the same fixed point is increasing
+in R(p) and diverges as p →{0, 1}.
+16
+
+
+Proof. One cycle maps P 7→(P + Q∆)R/(P +
+Q∆+ R). A fixed point satisfies P 2 + Q∆P −
+Q∆R = 0, whose positive root is P∞. The map
+is increasing and concave in P with slope below
+one at the fixed point, so iterates converge. Finally,
+∂P∞/∂R = Q∆/
+p
+Q2∆2 + 4Q∆R > 0.
+Proposition 7 (Waste bound). Suppose the be-
+liefs are calibrated, i.e. ψq ∼N(µq, Pq) indepen-
+dently, up to truncation to [0, π
+2 ], and candidates
+are included with probabilities πq summing to M.
+Then the expected number of zero-variance groups
+among the candidates is at most P
+q πq(1 −ˆyq) =
+M
+ 1 −bYt(ψ⋆)
+
+.
+For the admissible target of
+Eq. (5), the expected number of wasted rollouts
+per step is at most GM
+ 1 −maxψ bYt(ψ) + ε
+
+.
+Proof. By linearity, the expected number of zero-
+variance candidates is P
+q πqE[zG(ψq)]. Proposi-
+tion 2 gives E[zG(ψq)] ≤1 −ˆyq, and admissibil-
+ity gives bYt( ˜ψt) ≥maxψ bYt(ψ) −ε. Each zero-
+variance candidate wastes G rollouts. When bYt is
+unimodal, the rate-limited target lies between two
+admissible targets and is itself admissible.
+Proposition 7 is the formal content of “predicting
+waste before paying for it”. DS pays G rollouts for
+every zero-variance group it discards, whereas AR-
+CUS bounds the expected number of such groups
+before generation.
+B.10
+Numerical Verification
+Table 4 reports exact computations (not experi-
+ments) that check every analytic statement; the
+script is code/theory_checks.py.
+C
+Other Normalizations
+Removing
+the
+standard
+deviation,
+as
+in
+Dr. GRPO (Liu et al., 2025b) or leave-one-out
+baselines (Ahmadian et al., 2024), changes Proposi-
+tion 1. With ˆAq,i = rq,i−¯rq, the same conditioning
+argument gives E[ˆgq | m] = m(G−m)
+G2
+∇p
+p(1−p) and,
+since E[m(G −m)]
+=
+G(G −1)p(1 −p),
+E[ˆgq] = G−1
+G ∇p. The native coordinate is then p
+itself: the objective is the mean pass rate, and in
+arc length the per-prompt weight is sin 2ψ instead
+of the plateau ωG. Propositions 2–4 are statements
+about sampling, evidence, and objectives, so they
+are unaffected. Only the sampler–objective map
+changes, to F ′
+w(ψ) = G−1
+G w(ψ) sin 2ψ. For such
+losses, ARCUS keeps the beliefs, ˆy, and pacing,
+and divides the kernel by sin 2ψ, clipped at the
+grid ends, so that the implicit objective remains the
+targeted pass@k. Table 15 shows that this variant
+retains most of the gain.
+D
+Algorithm and Implementation Details
+Belief bookkeeping.
+For each prompt we store
+(µq, Pq, tq), where tq is the index of the last obser-
+vation. The prediction step of Eq. (2) is applied
+lazily: when a prompt is scored at step t, its be-
+lief is advanced by t −tq steps using the current
+(vt, Qt), which is exact for constant parameters and
+avoids touching the whole pool each step.
+Online drift and diffusion.
+For the set Rt of
+revisited prompts observed at step t, let νq =
+zq −µpred
+q
+be the innovation, Sq = P pred
+q
++ Rq
+its predicted variance, and ∆q = t −tq the gap.
+With rate β = 0.1,
+vt+1 = vt + β ¯νt,
+¯νt =
+P
+Rt νq
+P
+Rt ∆q ηq
+,
+Qt+1 = max{10−5, (1 −β)Qt + β[Qt + ¯et]+},
+with mobility ηq
+=
+max(sin 2µq, 0.05) and
+¯et = mean(ν2
+q −Sq)/mean(∆q). These updates
+match the mean and the variance of the innova-
+tions (Mehra, 1970), and both estimates stabilize
+within the warm-up.
+Priors.
+Unseen prompts start at N(π/4, π2/48),
+the moments of the uniform Jeffreys prior on the
+arc. Once at least 100 prompts have been observed,
+unseen prompts use the empirical mean of observed
+µq and the empirical variance of µq plus the mean
+Pq (an empirical-Bayes prior), which lowers the
+score of unseen prompts in pools dominated by
+dead zones.
+Inclusion probabilities and the pacing grid.
+For target ψ, Gumbel-top-M at temperature T
+samples without replacement with Plackett–Luce
+weights s1/T
+q
+(Kool et al., 2019). We approximate
+its inclusion probabilities by πq = min(1, c s1/T
+q
+),
+with c found by 40 steps of geometric bisection
+so that P
+q πq = M. The grid Ψ has 41 equally
+spaced points between arcsin(1/
+√
+2G) (pass@G)
+and
+π
+2 −arcsin(1/
+√
+2G) (passG); a group of
+G rollouts cannot distinguish objectives beyond
+these. Warm-up lasts ⌈N/M⌉updates (about 54 for
+DAPO-Math-17k with M = 320), and ∆= 0.005
+rad bounds the per-update target change.
+Complexity.
+Each step performs, for every
+prompt, one belief advance, one kernel overlap,
+17
+
+
+Check
+Result
+Prop. 1 vs. the finite-group weight of Davis and Recht (2025)
+max. relative difference < 10−14 for G ∈{4, 8, 16, 32}
+maxp ωG(p) vs. the bound
+p
+1 −1/G
+0.928 vs. 0.935 (G=8); 0.967 vs. 0.968 (G=16)
+minp∈[0.1,0.9] ωG(p)
+0.51, 0.70, 0.85, 0.94 for G = 4, 8, 16, 32
+Ramp slope ωG/ψ as ψ →0
+2.61 vs.
+√
+G −1 = 2.65 (G=8)
+Prop. 2 boundary-layer bound
+holds on [0, π
+2 ] for G ∈{4, 8, 16}
+Closed-form E[e−Gψ2] under a Gaussian belief
+matches Monte Carlo to 5 × 10−4
+Var[ ˆψA] at n=8, p = 0.2/0.35/0.5
+0.0271/0.0295/0.0297 vs. 1/(4n + 2) = 0.0294
+Var[logit ˆp] vs. delta-method value at p=0.05, n=8
+0.23 vs. 2.63
+Posterior z2 after one group, observation model of Eq. (3)
+0.85 overall; 0.57–0.98 across pass-rate bins
+Posterior z2 if the Anscombe estimate is also used for zero-
+variance groups
+1.72–1.84 in the two edge bins (over-confident)
+Prop. 4 mode arcsin(1/
+√
+2k)
+exact for k ∈{1, 1.5, 2, 3, 4, 8, 16}
+Total variation between Hk and its Laplace Gaussian
+0.050–0.069 for k ∈[1, 16]
+Table 4: Exact numerical checks of the analytic results (script code/theory_checks.py).
+Algorithm 2: Arc-length belief update (one
+prompt)
+Input: (µ, P, tq), step t, successes m, G, (v, Q)
+for τ = tq + 1, . . . , t do
+µ ←Π[µ + v sin 2µ]; P ←P + Q
+end
+if 0 < m < G then
+z ←arcsin
+p
+(m + 3/8)/(G + 3/4);
+R ←1/(4G + 2)
+else
+z ←0 if m = 0 else π
+2 ; R ←1/(2G)
+end
+K ←P/(P + R); µ ←Π[µ + K(z −µ)];
+P ←(1 −K)P; tq ←t
+return (µ, P, tq) and innovation z −µpred
+and one dead-zone expectation per grid point,
+plus 40 bisection passes per grid point: roughly
+N · |Ψ| · 40 ≈2.8 × 107 scalar operations for
+N=17k, or about 0.05 s of vectorized CPU time,
+which is negligible next to a rollout step of ≈4 min.
+Integration.
+In verl, ARCUS replaces the training
+sampler, which yields M prompt indices per step,
+and adds a hook after reward computation. The
+hook updates the beliefs from the success counts
+and filters the batch to the selected informative
+groups, at the same place where DAPO’s filter oper-
+ates. No change is made to the actor, the critic-free
+advantage, or the loss.
+E
+Experimental Setup
+Data and rewards.
+The training pool is DAPO-
+Math-17k (Yu et al., 2025), deduplicated to unique
+prompts with integer answers. For the pool-shift
+study we use the MATH training split (Hendrycks
+et al., 2021). The reward is 1 if the final boxed
+answer is equivalent to the reference under sym-
+bolic and numeric normalization, and 0 otherwise;
+there is no format reward. Prompts ask the model
+to reason step by step and to put the final answer
+in \boxed{}, with the chat template of each back-
+bone.
+Evaluation.
+AIME24/25 (30 problems each) re-
+port mean accuracy over 32 samples, AMC23 (40
+problems) over 16 samples, and MATH500 (Light-
+man et al., 2024), Minerva Math (Lewkowycz et al.,
+2022), and OlympiadBench (He et al., 2024) over 4
+samples, all at temperature 0.6, top-p 0.95, and the
+training response limit. pass@k uses the unbiased
+estimator of Chen et al. (2021) with 32 samples per
+problem. We evaluate the final checkpoint and re-
+port the mean over three seeds; standard deviations
+are in Table 7.
+Hyperparameters.
+Table 5 lists the shared con-
+figuration. ARCUS’s hyperparameters were cho-
+sen on a held-out set of 500 DAPO prompts with
+Qwen2.5-Math-1.5B and then fixed for all back-
+bones and pools.
+Baselines.
+All baselines share the GRPO loss
+and Table 5. DS: candidate batches of B prompts
+are generated until B informative groups are col-
+lected (at most 8 rounds). GRESO: probabilistic
+pre-rollout skipping of prompts with recent zero-
+variance history, followed by DS-style filling, with
+the published skip schedule. MoPPS: Beta(1, 1)
+priors with the published decay, Thompson sam-
+pling, and prompts whose sampled pass rates are
+closest to 0.5. DPS: the published hidden-Markov
+configuration. KGPS: logit-space Kalman filter
+with a uniform warm-up epoch, process noise cou-
+pled to the parameter change, and E[p(1 −p)] by
+5-point Gauss–Hermite quadrature. CurES: soft-
+max over
+p
+p(1 −p) of posterior-mean pass rates
+18
+
+
+Hyperparameter
+Value
+Framework
+verl + vLLM, bf16
+Policy updates
+300
+Prompts per update B
+256
+Group size G
+8
+Mini-batch (prompts)
+64 (4 steps per update)
+Optimizer
+AdamW, lr 10−6, wd 0.01
+Clip range
+0.2
+KL / entropy coefficient
+0 / 0
+Rollout temperature, top-p 1.0, 1.0
+Max prompt length
+1024
+Max response length
+3072 (Q2.5-Math); 8192 (Q3)
+Hardware
+8×H100 80GB
+ARCUS
+Candidate margin ρ
+0.25 (M = 320)
+Yield slack ε
+0.03
+Gumbel temperature T
+0.3
+Target grid size |Ψ|
+41
+Target rate limit ∆
+0.005 rad per update
+Warm-up
+⌈N/M⌉≈54 updates
+Estimator rate β
+0.1
+Initial belief
+Jeffreys, then empirical Bayes
+Table 5: Training and ARCUS hyperparameters.
+with the published temperature. GCS: Gaussian
+weights (µ=0.5, σ=0.35) over EMA pass rates
+(α=0.9), as in FG-ExPO but without its KL sched-
+ule, to isolate sampling. AdaRFT: static difficulty
+from 8 base-model samples per prompt, with the
+target difficulty moved by the batch reward toward
+0.5. Predictive baselines sample exactly B prompts
+per update.
+Compute.
+One 7B run takes 19.8 h (GRPO) to
+41.6 h (DS) on 8×H100 (Table 2); Table 6 breaks
+the time into generation, reward computation, pol-
+icy update, and selection. The full study, covering
+three backbones, eleven methods, three seeds, abla-
+tions, and appendix settings, used roughly 3 × 104
+H100-hours.
+Method
+Gen. Reward Update Select Total
+GRPO
+13.9
+0.4
+5.5
+<0.01
+19.8
+KGPS
+14.0
+0.4
+5.6
+0.01
+20.0
+DS
+34.9
+1.2
+5.5
+<0.01
+41.6
+ARCUSρ=0
+13.9
+0.4
+5.7
+0.01
+20.0
+ARCUS
+18.0
+0.5
+5.6
+0.01
+24.1
+Table 6: Wall-clock breakdown (hours) on Qwen2.5-
+Math-7B, 8×H100. Selection is ARCUS’s belief update,
+scoring, and pacing, which is negligible; its extra time
+is generating the candidate margin.
+Reproducibility checklist.
+(i) The belief update,
+scoring, sampling, and pacing are fully specified
+by Eqs. (2)–(5), Algorithm 2, and the paragraphs
+above. (ii) All hyperparameters are listed in Ta-
+ble 5, and none is tuned per backbone. (iii) Each
+baseline uses its published configuration with the
+shared GRPO settings. (iv) Evaluation uses fixed
+sampling parameters and three training seeds. (v)
+The analytic figures and Table 4 are produced by
+the scripts in code/. (vi) The only randomness in
+ARCUS beyond the policy’s sampling is the Gum-
+bel noise of candidate selection, which is seeded.
+F
+Additional Results
+Seed
+variability.
+Table
+7
+reports
+the
+six-
+benchmark average with standard deviations over
+three seeds. ARCUS’s gain over DS exceeds three
+standard deviations on every backbone, and its vari-
+ance is the lowest among the compared methods.
+We attribute this to steadier batches: the informa-
+tive share of its update batch varies by less than
+two points across steps.
+Method
+Q2.5-M-1.5B
+Q2.5-M-7B
+Q3-4B-Base
+GRPO
+34.82 ± 0.41 44.08 ± 0.37 46.27 ± 0.39
+MoPPS
+35.73 ± 0.38 45.03 ± 0.35 47.27 ± 0.36
+KGPS
+36.32 ± 0.36 45.67 ± 0.34 47.82 ± 0.33
+DS
+36.50 ± 0.33 45.70 ± 0.30 48.00 ± 0.31
+ARCUSρ=0 36.97 ± 0.31 46.25 ± 0.30 48.50 ± 0.29
+ARCUS
+37.65 ± 0.29 46.90 ± 0.27 49.20 ± 0.28
+Table 7: Six-benchmark average, mean ± s.d. over three
+seeds.
+Per-benchmark dynamics.
+Figure 5 shows train-
+ing curves per benchmark on Qwen2.5-Math-7B.
+On MATH500 the methods converge together; the
+separation arises on AIME and AMC and opens
+after the warm-up, when the paced target starts to
+move.
+Extended ablations.
+Table 8 complements Ta-
+ble 3. Using the Anscombe observation for zero-
+variance groups instead of the boundary-layer like-
+lihood costs 0.57. This is the calibration failure of
+Figure 1c: the belief of a dead prompt stays near
+p ≈0.04 instead of collapsing into the dead zone.
+The exact pass@k kernel, evaluated by quadrature,
+is indistinguishable from the Gaussian, which con-
+firms that the Gaussian is a convenience, not an
+approximation that costs accuracy. A larger candi-
+date margin (ρ = 0.5) buys +0.12 for 20% more
+rollouts, so ρ = 0.25 is near the knee of the cost
+curve (Figure 3d).
+Objective family.
+Table 9 reports the fixed-target
+sweep behind Figure 3c. Moving the target from
+pass4 to pass@4 raises pass@16 monotonically
+19
+
+
+0
+100
+200
+300
+policy update
+15
+20
+25
+30
+35
+accuracy (%)
+AIME24
+GRPO
+KGPS
+DS
+ARCUS
+0
+100
+200
+300
+policy update
+7.5
+10.0
+12.5
+15.0
+17.5
+accuracy (%)
+AIME25
+0
+100
+200
+300
+policy update
+40
+50
+60
+accuracy (%)
+AMC23
+0
+100
+200
+300
+policy update
+60
+70
+80
+accuracy (%)
+MATH500
+0
+100
+200
+300
+policy update
+20
+25
+30
+35
+accuracy (%)
+Minerva
+0
+100
+200
+300
+policy update
+30
+35
+40
+45
+accuracy (%)
+Olympiad
+Figure 5: Per-benchmark accuracy over training on Qwen2.5-Math-7B.
+Configuration
+Avg.
+∆
+Inf. (%)
+ARCUS (full)
+46.90
+–
+97
+Belief dynamics
+No mobility-weighted drift
+46.52 −0.38
+95
+Jeffreys prior only
+46.71 −0.19
+96
+Anscombe obs. for zero-var. groups 46.33 −0.57
+93
+Objective kernel
+Exact pass@k kernel (quadrature)
+46.87 −0.03
+97
+Sampling ∝score (T=1)
+46.22 −0.68
+91
+ωG in place of ˆy
+46.71 −0.19
+93
+Sampling and selection
+ρ=0.10
+46.58 −0.32
+90
+ρ=0.50
+47.02 +0.12
+99
+Table 8: Additional ablations on Qwen2.5-Math-7B.
+from 64.9 to 69.8, while pass@1 peaks between
+pass@1 and pass@2; pass@8 fails because its tar-
+get sits inside the dead zone (47% yield). Paced
+ARCUS is better on pass@1 than every fixed target
+and nearly the best on pass@16. The best trade-off
+is thus not a fixed objective but a moving one.
+Group size.
+Table 10 varies G at a matched num-
+ber of updates. DS’s overhead shrinks with G,
+because fewer groups are zero-variance, but AR-
+CUS’s advantage persists. Its final target hardens
+with G as predicted by the frontier analysis of Ap-
+pendix B.8.
+Sensitivity and coverage.
+Figure 6 sweeps the
+yield slack ε and the Gumbel temperature T. Both
+have broad optima, and every tested value beats DS.
+Too small an ε freezes the target near pass@1, and
+too large an ε admits wasteful targets; T →0 over-
+exploits stale beliefs, while T = 1 dilutes the can-
+Target
+p⋆
+pass@1 pass@16 Yield
+pass4
+0.875
+44.61
+64.9
+72%
+pass2
+0.75
+45.43
+66.1
+85%
+pass@1
+0.5
+46.28
+67.6
+88%
+pass@1.5
+0.333
+46.47
+68.6
+84%
+pass@2
+0.25
+46.31
+69.3
+78%
+pass@4
+0.125
+45.62
+69.8
+63%
+pass@8
+0.0625
+44.35
+68.9
+47%
+ARCUS
+paced
+46.90
+69.6
+79%
+GRPO
+–
+44.08
+66.3
+–
+DS
+–
+45.70
+67.4
+–
+KGPS
+–
+45.67
+67.1
+–
+Table 9: Fixed targets along the objective family vs.
+paced ARCUS (Qwen2.5-Math-7B; six-benchmark aver-
+ages).
+G GRPO
+DS (roll.)
+ARCUS final p⋆
+T
+frontier
+4
+42.86
+44.31 (×3.37)
+45.52
+0.43
+0.40
+8
+44.08
+45.70 (×2.41)
+46.90
+0.29
+0.34
+16
+44.93
+46.12 (×2.02)
+47.64
+0.18
+0.20
+Table 10: Effect of group size on Qwen2.5-Math-7B.
+Frontier: closed-form sharp-belief target for ε = 0.03.
+didate set. On AIME24, ARCUS improves pass@k
+at every k ≤32 and widens the gap at large k (66.4
+vs. 60.2 for GRPO at k = 32), whereas GRPO’s
+pass@32 barely exceeds the base model’s (58.1),
+consistent with reports that RLVR tends to narrow
+coverage (Yue et al., 2025).
+Additional backbones and pools.
+Table 11 cov-
+ers a long-chain-of-thought model (DeepSeek-R1-
+20
+
+
+0.01
+0.03
+0.05
+0.1
+yield slack ε
+45.5
+46.0
+46.5
+47.0
+avg. accuracy
+DS
+(a) Pacing slack
+0
+0.1
+0.3
+1
+Gumbel temperature T
+45.5
+46.0
+46.5
+47.0
+(b) Sampling temperature
+4
+8
+16
+group size G
+44
+46
+avg. accuracy
+(c) Group size
+GRPO
+DS
+ARCUS
+1
+2
+4
+8
+16
+32
+k
+0
+20
+40
+60
+AIME24 pass@k (%)
+(d) Coverage on AIME24
+Base
+GRPO
+DS
+ARCUS
+Figure 6: Sensitivity on Qwen2.5-Math-7B: (a) yield slack, (b) Gumbel temperature, (c) group size, and (d) pass@k
+on AIME24.
+Distill-Qwen-1.5B (DeepSeek-AI et al., 2025) with
+an 8k response limit), a non-Qwen family (Llama-
+3.2-3B-Instruct (Grattafiori et al., 2024)), and a dif-
+ferent pool (MATH-train for Qwen2.5-Math-7B).
+The Llama backbone rules out a Qwen-specific ar-
+tifact (Shao et al., 2025). Its pool is dominated
+by all-fail groups, so DS costs ×3.5 rollouts, and
+ARCUS’s dead-zone factor matters most there.
+Setting
+GRPO KGPS
+DS
+ARCUS DS roll.
+R1-Distill-1.5B (8k)
+47.86
+48.95 49.12
+50.21
+×2.12
+Llama-3.2-3B-Inst.
+21.37
+22.31 22.48
+23.26
+×3.46
+Q2.5-Math-7B, MATH pool
+43.15
+44.30 44.46
+45.38
+×2.78
+Table 11: Additional backbones and training pools (six-
+benchmark average; DS roll.: DS rollouts relative to
+GRPO; ARCUS uses ×1.25).
+Table 12 gives the per-benchmark breakdown.
+As on the main backbones, the gains concentrate on
+AIME and AMC. For the long-CoT model, ARCUS
+is below DS only on MATH500 (86.3 vs. 86.4).
+Batch size, learning rate, and pool size.
+Ta-
+ble 13 varies the prompts per update, the learning
+rate, and the size of the training pool (random sub-
+sets of DAPO-Math-17k). ARCUS’s margin over
+DS stays between +0.9 and +1.3 in every setting.
+On smaller pools, prompts are revisited more often,
+so beliefs are sharper, but the pool also holds fewer
+informative prompts near the frontier. The two ef-
+fects roughly cancel, and the margin shrinks only
+slightly, to +0.9 on the 4k pool.
+Cold start.
+During warm-up every unseen
+prompt shares the same prior, so the first pass over
+the pool is nearly uniform. Table 14 compares
+ways of initializing the beliefs. The empirical-
+Bayes prior of Appendix D is free and already
+helps. A reference-model prior, i.e. a difficulty esti-
+mate from a smaller model’s pass rates in the spirit
+of Sha et al. (2026), and an offline probe with two
+base-model samples per prompt (3.4% extra roll-
+outs) raise the warm-up yield from 51% to 62–66%
+and add 0.08–0.13 to the final average. ARCUS is
+therefore compatible with cold-start priors, but it
+does not depend on them.
+Other policy losses.
+Table 15 swaps the GRPO
+loss for Dr. GRPO, the DAPO token-level loss with
+clip-higher, and RLOO. ARCUS improves on DS
+for every loss; for Dr. GRPO and RLOO we use the
+adapted kernel of Appendix C. The gain is smallest
+for losses without standard-deviation normaliza-
+tion, whose native coordinate is p rather than ψ.
+Training dynamics.
+Figure 7 tracks response
+length, token entropy, and filter consistency. Train-
+ing on harder prompts lengthens responses, and
+ARCUS keeps entropy highest (0.27 nats at the
+end vs. 0.17 for GRPO), in line with its better
+pass@k. The normalized innovation squared of
+the arc-length filter settles near one after warm-up:
+the filter’s predicted uncertainty matches its errors.
+G
+Discussion
+Why one coordinate explains four facts.
+The
+four propositions share one cause: the Fisher in-
+formation of a Bernoulli trial is constant in ψ.
+This makes GRPO’s update flat, because standard-
+deviation normalization divides by
+p
+p(1 −p), the
+square root of the Fisher information in p. It makes
+evidence homoscedastic, because each rollout car-
+ries information 4 about ψ. And it makes dead
+zones and objective kernels Gaussian, because a
+run of n identical outcomes, or a success among
+k attempts, is a product of n or k Bernoulli likeli-
+hoods whose log-curvature in ψ is 2n or 4k. None
+of this is specific to mathematics; it holds for any
+binary verifier.
+When the geometry is not native.
+Without
+standard-deviation normalization (Appendix C) the
+optimizer’s native coordinate becomes p, although
+21
+
+
+Method
+AIME24
+AIME25
+AMC23
+MATH500
+Minerva
+Olymp.
+Avg.
+R1-Distill-1.5B (8k)
+GRPO
+33.4
+25.1
+71.0
+85.2
+30.4
+42.1
+47.87
+KGPS
+35.2
+26.0
+72.4
+85.9
+30.9
+43.3
+48.95
+DS
+35.0
+26.4
+72.9
+86.4
+30.8
+43.2
+49.12
+ARCUS
+37.4
+27.6
+74.1
+86.3
+31.5
+44.4
+50.22
+Llama-3.2-3B-Inst.
+GRPO
+5.9
+1.8
+24.1
+50.6
+17.2
+28.6
+21.37
+KGPS
+6.7
+2.3
+26.2
+51.9
+18.1
+28.7
+22.32
+DS
+6.5
+2.4
+26.5
+52.4
+17.8
+29.3
+22.48
+ARCUS
+7.8
+2.9
+27.4
+52.6
+18.4
+30.5
+23.27
+Q2.5-Math-7B, MATH pool
+GRPO
+28.6
+12.2
+61.9
+81.3
+35.7
+39.2
+43.15
+KGPS
+30.4
+13.1
+63.6
+81.9
+36.8
+40.0
+44.30
+DS
+30.7
+13.3
+63.9
+82.4
+36.2
+40.3
+44.47
+ARCUS
+32.3
+14.4
+65.2
+82.5
+36.9
+41.0
+45.38
+Table 12: Per-benchmark results for the additional backbones and the MATH-train pool (accuracy, %; same protocol
+as Table 1).
+0
+100
+200
+300
+policy update
+600
+700
+800
+mean response length (tok.)
+(a) Response length
+GRPO
+KGPS
+DS
+ARCUS
+0
+100
+200
+300
+policy update
+0.2
+0.3
+0.4
+token entropy (nats)
+(b) Policy entropy
+0
+100
+200
+300
+policy update
+0.5
+1.0
+1.5
+normalized innov. sq.
+(c) Filter consistency
+arc-length filter
+Figure 7: Training dynamics on Qwen2.5-Math-7B: (a) mean response length, (b) token entropy, and (c) normalized
+innovation squared of ARCUS’s filter (1 = consistent).
+Setting
+GRPO
+DS
+ARCUS
+B=128
+43.52
+45.11
+46.33
+B=256 (default)
+44.08
+45.70
+46.90
+B=512
+44.61
+46.02
+47.21
+lr 5×10−7
+43.12
+44.71
+45.98
+lr 2×10−6
+43.89
+45.38
+46.64
+pool 4k
+43.61
+44.95
+45.87
+pool 8k
+43.93
+45.38
+46.51
+pool 17k
+44.08
+45.70
+46.90
+Table 13: Robustness to batch size B, learning rate,
+and pool size on Qwen2.5-Math-7B (six-benchmark
+average).
+Initial belief
+Avg.
+Warm-up yield Extra roll.
+Jeffreys moments only
+46.71
+47%
+0.0%
+Empirical Bayes (default)
+46.90
+51%
+0.0%
+Reference-model prior
+46.98
+62%
+0.0%
+Offline probe, 2 samples/prompt 47.03
+66%
+3.4%
+Table 14: Initial beliefs on Qwen2.5-Math-7B. Warm-
+up yield: informative share of generated groups during
+the first ⌈N/M⌉updates.
+Policy loss Uniform
+DS
+ARCUS ∆vs. DS
+GRPO
+44.08
+45.70
+46.90
++1.20
+Dr. GRPO
+43.92
+45.41
+46.47
++1.06
+DAPO loss
+44.61
+46.03
+47.18
++1.15
+RLOO
+43.54
+45.02
+46.11
++1.09
+Table 15: Compatibility with other group-based losses
+(Qwen2.5-Math-7B, six-benchmark average).
+sampling and evidence still live on the arc. With
+continuous rewards, a variance-stabilizing map de-
+pends on the reward distribution; for bounded re-
+wards, binarizing at a threshold or using a Beta-
+mean model is a natural extension. With very small
+groups (G ≤3), the two dead zones cover most of
+the arc, and any selector struggles.
+Sampler-side versus advantage-side objectives.
+Davis and Recht (2025) show that advantages
+choose the objective; Corollary 1 shows that sam-
+plers do too. The two routes differ in cost. Reshap-
+ing advantages to target pass@k still pays for every
+zero-variance group, while reshaping the sampler
+22
+
+
+avoids paying for them. The routes also compose:
+a pass@k advantage combined with a pass@k-
+matched sampler would target the same objective
+with less waste, which we leave to future work.
+The easy-to-hard pattern.
+Classical curricula
+schedule difficulty; ARCUS schedules an objective
+and lets waste decide how fast it can move. The
+emergent trajectory (Figure 4a) starts at pass@1,
+because early beliefs cannot certify harder targets,
+and hardens as beliefs sharpen. This is a concrete,
+measurable version of training at the frontier of
+learnability.
+Failure modes.
+(i) Pools with very few informa-
+tive prompts: the pacing retreats to the most infor-
+mative target, and the candidate margin may not
+fill the batch; ARCUS then degrades gracefully to
+a well-calibrated predictive selector. (ii) Strongly
+heterogeneous transfer: a single global drift under-
+estimates the movement of fast-improving topics;
+per-cluster drift is a straightforward extension. (iii)
+Cost heterogeneity: all-fail responses are longer, so
+a token-cost-aware score sq/E[tokens] could save
+more compute than rollout counts suggest. (iv) Ad-
+versarially duplicated prompts share evidence that
+the filter treats as independent.
+Practical
+recommendations.
+The
+defaults
+(ρ=0.25, ε=0.03, T=0.3) transferred across all
+backbones and pools we tried. If the rollout budget
+must equal GRPO’s, use ρ=0, which keeps most
+of the gain (Table 1). If the pool is dominated by
+all-fail prompts, as for weaker models, a smaller
+ε keeps the target closer to pass@1 until beliefs
+sharpen. If pass@k coverage matters more than
+pass@1, a larger ε or a fixed pass@k target
+is the knob to turn (Table 9).
+Monitoring the
+predicted and realized yield together is a cheap
+diagnostic: a persistent gap signals miscalibrated
+beliefs, typically a drift estimate that has not yet
+converged.
+Broader impact.
+ARCUS reduces the compute
+and energy of RLVR by about half relative to
+dynamic sampling at equal or better accuracy.
+Cheaper post-training lowers barriers for academic
+groups and also for misuse. The method adds no
+new data or capabilities beyond those of the under-
+lying training pipeline.
+23
