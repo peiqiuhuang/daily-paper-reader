@@ -1,0 +1,769 @@
+Title: Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation
+
+URL Source: https://arxiv.org/pdf/2610.03923v1
+
+Published Time: Tue, 06 Oct 2026 00:10:57 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 
+
+XIAOLIN ZHENG, Zhejiang University, China 
+
+QIYONG ZHONG, Zhejiang University, China 
+
+JIAJIE SU, Zhejiang University, China 
+
+XIANG CHEN, Zhejiang University, China With the rapid advancement of large language models (LLMs), LLM-driven sequential recommendation has emerged as a promising paradigm that formulates next-item prediction as autoregressive generation conditioned on natural-language prompts. Despite their potential, existing methods exhibit high sensitivity to prompt formulations: even semantically equivalent prompts with minor wording variations can lead to substantial performance fluctuations, undermining robustness and incurring considerable manual engineering costs. While continuous prompt learning offers a principled alternative by replacing discrete templates with learnable vectors, directly applying it to recommendation faces two interacting challenges: (1) lack of personalization , where existing continuous prompt methods learn a single task-level instruction shared across all users, yet recommendation inherently requires user-specific reasoning guidance; and (2) semantic drift ,where continuous prompt vectors may be pushed by gradient updates into regions that the LLM cannot interpret meaningfully, degrading generation quality, a risk further amplified when user-specific signals are injected, as personalization pushes each user’s prompt in a different direction away from the initialization. To address these challenges, we propose LRPRec, a learnable prompting framework tailored for LLM-driven sequential recommendation. LRPRec parameterizes instruction prompts as continuous vectors initialized from discrete templates and introduces two complementary mechanisms: a personalized prompt injection 
+
+mechanism that encodes user behavioral signals into a preference embedding and additively injects it into the shared prompts, enabling user-level adaptation while maintaining parameter efficiency; and a semantic drift constraint that regularizes the shared instruction prompts to remain within a trust region around their initialization anchors, preventing optimization from departing the LLM’s effective semantic space. By applying the drift constraint to the shared component while personalization operates additively, our design decouples stability from expressiveness so that neither objective compromises the other. Extensive experiments on three benchmark datasets demonstrate consistent improvements over strong baselines while eliminating the need for manual tuning of background and task inference templates. CCS Concepts: • Information systems → Recommender systems .Additional Key Words and Phrases: Sequential Recommender, Large Language Model, Prompt Learning 
+
+1 Introduction 
+
+Sequential recommendation (SR) [1–4] aims to model users’ evolving interests by leveraging their chronological interaction histories, and has become a fundamental component in modern recom-mender systems [5–7]. Early research in this area mainly adopts ID-based techniques [8, 9], which focus on capturing item transition patterns or co-occurrence signals from user behavior sequences. Despite their effectiveness, such approaches are inherently limited when facing data sparsity and cold-start scenarios, where item identifiers alone provide insufficient semantic information [10]. To alleviate these limitations, content-aware SR methods have been proposed to incorporate auxiliary item information, including textual descriptions, visual content, and other multimodal features [11–13]. By enriching item representations with semantic cues beyond interaction logs, these meth-ods attempt to enhance recommendation quality under sparse data conditions. Nevertheless, their effectiveness is often restricted by the quality of multimodal representations, which are typically  
+
+> Authors’ Contact Information: Xiaolin Zheng, Zhejiang University, Hangzhou, China, xlzheng@zju.edu.cn; Qiyong Zhong, Zhejiang University, Hangzhou, China, youngzhong@zju.edu.cn; Jiajie Su, Zhejiang University, Hangzhou, China, sujiajie@ zju.edu.cn; Xiang Chen, Zhejiang University, Hangzhou, China, wasdnsxchen@zju.edu.cn. arXiv:2610.03923v1 [cs.IR] 2 Oct 2026 2Xiaolin Zheng et al.
+> Fig. 1. Figure 1. Motivation of LRPRec. LLM-driven sequential recommendation suffers from prompt sensitivity, where minor wording variations in semantically equivalent prompts can lead to significant performance fluctuations. Although continuous prompt learning alleviates template dependence, existing methods still face two challenges: (1) lack of personalization, as a shared prompt cannot capture diverse user preferences and reasoning patterns, and (2) semantic drift, where learned prompt vectors may move away from the LLM’s effective semantic space during optimization.
+
+derived from task-agnostic or suboptimal pre-trained encoders and fail to fully capture fine-grained semantic relationships [14, 15]. Recently, the rapid development of Large Language Models (LLMs) [16] has opened new opportu-nities for sequential recommendation, owing to their strong capabilities in semantic understanding, reasoning, and generation [17, 18]. Existing LLM-based recommendation approaches can generally be divided into two paradigms [15, 17]: LLM-powered methods, which utilize LLMs as content encoders to generate item representations consumed by conventional recommenders [19], and 
+
+LLM-driven methods, which directly formulate recommendation as prompt-conditioned autoregres-sive generation [20–22]. While LLM-powered approaches benefit from expressive embeddings, they essentially treat LLMs as feature extractors without exploiting their generative capabilities, and often suffer from semantic misalignment between LLM-derived representations and downstream embedding spaces [23, 24]. In contrast, LLM-driven methods leverage the intrinsic reasoning and language understanding of LLMs [25] to produce personalized results end-to-end, representing a more promising direction. Representative methods include TALLRec [26], which reframes recom-mendation as instruction-tuned generation, and LLaRA [22], which combines textual prompts with collaborative embeddings projected from conventional recommenders. However, as illustrated in Figure 1, a key bottleneck of LLM-driven sequential recommendation lies in the heavy dependence on discrete natural-language prompts . The entire recommendation process is conditioned on a prompt that typically concatenates a background instruction , a task description , the interaction sequence , and a candidate pool . We observe that existing methods are highly sensitive to the prompt formulation: even prompts that are semantically equivalent can produce substantially different rankings when small variations in wording, phrasing, or syntax Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 3
+
+are introduced ( e.g., reordering clauses, replacing synonyms, or changing punctuation). Such prompt sensitivity undermines robustness and reproducibility, and forces practitioners to spend considerable effort on manual prompt engineering before deployment. This issue is particularly problematic in SR, where the same system must reliably serve diverse users, one would expect consistent behavior as long as the essential information (interaction history and candidates) is provided, yet performance fluctuates noticeably across seemingly interchangeable templates. Several prompt learning methods have been proposed to reduce the reliance on handcrafted discrete prompts. POD [27] distills discrete prompts into continuous vectors to bridge user/item IDs and natural language. LASER [28] inserts trainable virtual tokens at both the prefix and suffix of a frozen LLM to inject collaborative signals. PPR [29] generates personalized prefix prompts conditioned on user profiles. RPP [30] employs multi-agent reinforcement learning for instance-wise prompt assembly. PromptAgent [31] uses Monte Carlo Tree Search for automatic prompt optimization. Among these, methods that operate in the discrete prompt space ( e.g., RPP, PromptAgent) still search over natural-language templates, meaning their outputs remain subject to the same wording sensitivity they aim to resolve. In contrast, continuous prompt learning methods (e.g., POD, LASER, PPR) eliminate template dependence by replacing discrete prompts with learnable vectors, representing a more principled direction. However, directly applying continuous prompt tuning to recommendation still exhibits two notable limitations: (1) Lack of user-level adaptive instruction prompts : existing continuous prompt methods optimize task-level prompt representations shared across all users without providing user-specific adaptive instruction signals. While LASER injects collaborative signals via virtual tokens and PPR [29] introduces user-conditioned prefix generation, their personalization relies on shallow user profile features rather than leveraging the LLM’s deep semantic understanding of behavioral patterns, limiting their ability to capture nuanced preference dynamics; and (2) No control over semantic drift : continuous prompt vectors can be pushed by gradients into regions that the LLM cannot interpret meaningfully, yet none of these methods provide explicit mechanisms to keep learned prompts within the LLM’s effective semantic space. As a result, existing continuous prompt learning approaches fall short of achieving both stable and personalized prompt optimization for LLM-driven SR. To address these issues, we propose Learning Robust Personalized Prompts for LLM-driven sequential Rec ommendation (LRPRec). Our key insight is that while replacing discrete templates with learnable continuous prompts eliminates prompt sensitivity, naively applying standard prompt tuning to recommendation is insufficient due to two fundamental challenges unique to this setting. Critically, these two challenges are not independent, they interact in a way that makes addressing them jointly non-trivial: injecting user-specific signals into prompts inherently increases the risk of semantic drift, as personalization pushes each user’s prompt in a different direction away from the initialization; conversely, overly strict drift constraints can suppress the expressiveness needed for effective personalization. Our framework is designed to navigate this tension. 
+
+First, recommendation is inherently a personalization task. Standard prompt tuning learns a single task-level instruction shared across all instances, which is reasonable for generic NLP tasks where the objective is uniform ( e.g., “translate this sentence”). However, in sequential recom-mendation, different users exhibit vastly different preference patterns. For example, a user with concentrated interests requires different reasoning guidance than one with diverse tastes. A fixed, instance-invariant prompt cannot provide optimal inference context for all users simultaneously. To address this, we introduce a personalized prompt injection mechanism that encodes user behavioral signals into a preference embedding and directly adds it to the shared instruction prompts, enabling user-level adaptation while maintaining parameter efficiency. 4 Xiaolin Zheng et al. 
+
+Second, continuous prompts risk drifting away from the LLM’s semantic space during optimization. Unlike discrete tokens that are inherently within the LLM’s vocabulary [32], contin-uous vectors can be pushed by gradients into regions that the LLM cannot interpret meaningfully. Our experiments confirm this: random initialization leads to severe degradation, demonstrating that prompts must reside in semantically valid regions. While template-based initialization pro-vides a good starting point, it offers no guarantee against drift during training, especially when personalized signals are injected, which amplifies the optimization dynamics. To mitigate this, we propose a semantic drift constraint that regularizes the shared instruction prompts to remain within a controlled neighborhood of their initialization anchors, ensuring that optimization improves upon the template without departing from the LLM’s effective semantic space. By applying the drift constraint specifically to the shared prompt component while allowing the personalized injection to operate additively, our design decouples the stability and personalization objectives, enabling both to be optimized without mutual interference. This yields a robust and effective prompting framework that can be directly deployed by simply providing interaction histories and candidate pools. Our contributions are summarized as follows: 
+
+• We identify and empirically characterize the prompt sensitivity problem in LLM-driven sequential recommendation, showing that semantically equivalent prompts can cause substantial perfor-mance variance. We further analyze why standard continuous prompt tuning is insufficient for this setting, revealing two interacting challenges, lack of personalization and semantic drift that must be addressed jointly rather than in isolation. 
+
+• We propose a personalized prompt injection mechanism that encodes user behavioral signals into a preference embedding and additively injects it into the shared learnable prompts, enabling user-level adaptation for the recommendation task while maintaining parameter efficiency. 
+
+• We introduce a semantic drift constraint that regularizes the shared learnable prompts to re-main within a trust region around their initialization anchors. By decoupling this constraint from the personalized component, our design prevents semantic drift without suppressing the expressiveness of user-specific adaptation. 
+
+• Extensive experiments on three benchmark datasets demonstrate that LRPRec consistently improves recommendation performance and robustness over strong baselines, while eliminating the need for manual tuning of background and task inference templates. 
+
+2 Related Work 
+
+Sequential Recommendation. Sequential recommendation has become a prominent research topic due to its effectiveness in modeling the dynamic evolution of user interests over time [1, 33, 34]. Early studies typically relied on the Markov Chain assumption to capture sequential dependencies among user interactions [8]. With the advancement of deep learning, a variety of neural architectures, including Recurrent Neural Networks (RNNs) [35], Convolutional Neural Networks (CNNs) [36], and Graph Neural Networks (GNNs) [37], have been introduced to model complex user–item interaction patterns. To alleviate inherent issues such as data sparsity and cold-start scenarios, content-aware sequential recommendation methods [12] incorporate auxiliary side information, including knowledge graphs [38] and textual descriptions [2, 39], leading to substantial performance improvements. More recently, multimodal learning paradigms have further advanced representation learning in SR [20, 40, 41], enabling the capture of richer sequential behaviors across heterogeneous modalities [13, 42]. Nevertheless, despite these improvements, conventional models remain limited in their ability to perform sophisticated semantic reasoning when compared with 
+
+LLM-based approaches [15, 43]. Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 5
+
+LLMs for Sequential Recommendation. Owing to their strong representation learning and text generation capabilities [44], Large Language Models (LLMs) have recently emerged as a promising direction for boosting sequential recommendation performance [43, 45]. Existing LLM-based recom-mendation approaches can generally be categorized into two paradigms [15, 17, 45]: LLM-powered 
+
+and LLM-driven frameworks. The LLM-powered paradigm [19, 46, 47] integrates LLMs into tradi-tional recommender systems to enhance contextual understanding or semantic representations [14]. For instance, NoteLLM [19] utilizes LLMs to generate compact note-level embeddings for recommendation refinement, while SAID [48] leverages LLMs to construct semantically consis-tent item representations. However, such methods fail to fully exploit the generative strengths of LLMs and often incur notable information loss when transforming LLM outputs into fixed embeddings for downstream tasks [15, 45]. In contrast, the LLM-driven paradigm [17, 22, 43, 49] directly formulates recommendation tasks as prompt-based generation problems, allowing LLMs to produce recommendation results end-to-end. Representative methods include TALLRec [26], which reframes sequential recommendation as a binary prediction task conditioned on user histories, and LLaRA [22], which combines textual prompts with collaborative embeddings projected from recommenders. 
+
+Prompt Learning. Recent studies have explored prompt learning [50, 51] as parameter-efficient paradigms to adapt pre-trained models for recommendation [52, 53], especially under data sparsity and cold-start settings. A foundational line of work reformulates recommendation as language processing with personalized prompt templates [54, 55]. Early continuous prompt tuning methods introduce learnable soft prompts to guide pre-trained encoders without full fine-tuning [56, 57]. POD [27] distills discrete prompts into continuous vectors to bridge user/item IDs and natural language, while LASER [28] proposes Bi-Tuning that inserts trainable virtual tokens at both the prefix and suffix of a frozen LLM to inject collaborative signals and enable controllable generation. Multi-stage approaches such as SCRec [58] separately learn semantic and collaborative prompts before joint prediction [59]. Beyond data-driven prompts, knowledge-enhanced methods such as KPT [60] transform structured knowledge graphs into prompt representations to improve generalization [61]. To address the inherent lack of collaborative filtering capability in LLMs, A-LLMRec [62] injects pre-trained CF embeddings as prompt inputs, and Recommendation Critic [63] trains a separate collaborative model whose outputs serve as soft prompts for the LLM. More recently, prompt learning has shifted toward user-level personalization: PPR [29] generates personalized prefix prompts from user profiles, PeaPOD [64] distills individual preferences into soft prompts, CollaPPA [65] combines collaborative fine-tuning with personalized preference alignment prompts, and LLM-Rec [66] designs multiple prompting strategies for input text enrichment. Automatic prompt optimization methods, including RecPrompt [67] with self-tuning prompt engineering for news recommendation, RPP [30] with multi-agent reinforcement learning for instance-wise prompt assembly, Chat-Rec [68] with multi-turn dialogue prompts, and PromptAgent [31] with Monte Carlo Tree Search, further enable the discovery of expert-level prompts beyond manual design [69]. Unlike existing continuous prompt learning methods that learn task-level prompts without user-specific adaptive instruction signals and lack mechanisms to prevent semantic drift ( e.g., POD, LASER), LRPRec uniquely combines personalized prompt injection with a semantic drift constraint. A key design consideration is that personalization and stability are inherently in tension: injecting user-specific signals increases drift risk, while strict drift control can suppress personalization. LRPRec resolves this by applying the drift constraint to the shared prompt component while allowing personalization to operate additively, enabling both objectives to be achieved without mutual interference. 6 Xiaolin Zheng et al. 
+
+3 Methodology 3.1 Problem Formulation 
+
+We study the sequential recommendation problem under the LLM-driven paradigm. Let I de-note the item universe. For each user 𝑢 , we observe a chronological interaction sequence S𝑢 =
+
+[𝑖 𝑢, 1, 𝑖 𝑢, 2, . . . , 𝑖 𝑢,𝑇 ], where 𝑖 𝑢,𝑡 ∈ I . The goal is to predict the next interacted item 𝑖 𝑢,𝑇 +1 based on S𝑢 .In many LLM-driven recommender systems, the prediction is made over a candidate pool C𝑢 ⊆ I .LLM-driven sequential recommendation reformulates next-item prediction as an autoregressive generation task. Specifically, a prompt template (verbalization function) 𝜋 (·) converts the structured inputs (S 𝑢 , C𝑢 ) into a token sequence (where we omit other prompts for simplicity): 
+
+X𝑢 = 𝜋 (S 𝑢 , C𝑢 ). (1) Conditioned on X𝑢 , an LLM with parameters 𝜃 generates an output text sequence Y𝑢 in an autoregressive manner: 
+
+𝑝 𝜃 (Y𝑢 | X𝑢 ) = 
+
+> |Y𝑢 |
+
+Ö 
+
+> 𝑡 =1
+
+𝑝 𝜃 
+
+ 𝑌 𝑢,𝑡 | X𝑢 , Y𝑢, <𝑡 
+
+ . (2) The generated output is then mapped to an item in C𝑢 (e.g., by matching an item title). Despite its conceptual simplicity, this paradigm depends critically on the discrete natural-language prompt 𝜋 (·) . In practice, even semantically equivalent prompts with minor variations in wording or syntax can lead to noticeable performance fluctuations, which undermines robustness and incurs substantial manual prompt engineering costs. This motivates us to explicitly factorize the prompt and to replace brittle discrete instruction templates with a learnable prompting mechanism. 
+
+3.2 An Overview of LRPRec 
+
+LRPRec is a prompt-learning framework tailored for the LLM-driven sequential recommendation paradigm. It targets a key practical limitation of prior LLM-driven methods: recommendation performance can fluctuate noticeably under semantically equivalent natural-language prompts, which makes deployment brittle and incurs substantial manual prompt engineering overhead. Given a user interaction sequence S𝑢 and a candidate pool C𝑢 , LRPRec first constructs the instance-specific evidence via lightweight serialization (Eq. (4)). Instead of using discrete background and task templates, LRPRec parameterizes the two instruction components as continuous learnable prompt vectors, i.e., Pbg and Ptask (Eq. (5)), which are shared across all users and instances. To adapt the shared prompts to individual users’ preference patterns, we introduce a personalized prompt injection mechanism that encodes user behavioral signals into a preference embedding and directly adds it to the instruction prompts (Section 3.5). Furthermore, to prevent the learnable prompts from drifting away from the LLM’s semantic space during optimization, we incorporate a semantic drift constraint as a regularization term (Section 3.6). The LLM input is formed by concatenating the personalized instruction prompts with the evidence (Eq. (10)), and the LLM performs standard autoregressive generation to output the next-item prediction. To make training efficient and practical, we first adapt the backbone LLM to the recommendation domain via parameter-efficient fine-tuning, and then freeze the adapted LLM weights entirely, updating only the learnable prompt vectors and the projection parameters (Section 3.7). After training, the learned prompts and projection parameters are fixed and reused for all test instances, so inference only requires the raw interaction sequence and candidate set as inputs (Section 3.8), eliminating the need for manual tuning of background and task inference templates. Overall, LRPRec provides a principled replacement for discrete prompt templates in LLM-driven recommenders: it learns a robust instruction context via continuous prompting, injects user-specific Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 7
+
+Fig. 2. The framework of LRPRec. LRPRec first parameterizes background, task, and evidence prompts as continuous vectors initialized from discrete template anchors. It then uses a frozen LLM to encode the user interaction sequence into a preference embedding, which is injected into the prompt vectors for user-aware adaptation. To prevent semantic drift, LRPRec constrains learned prompts to remain within trust regions around their initialization anchors using a hinge-style drift loss. Finally, the personalized prompts guide the LLM to generate and rank the next-item prediction from the candidate set. 
+
+preference signals for personalization, constrains shared prompt optimization within the LLM’s semantic space, and enables stable recommendation under a parameter-efficient scheme. 
+
+3.3 Prompt Decomposition 
+
+A typical prompt used in LLM-driven recommendation interleaves two types of information: (i) 
+
+instruction , which specifies what the model should do and how to format the answer, and (ii) 
+
+evidence , which provides instance-specific inputs such as interaction histories and candidate sets. To make this structure explicit, we decompose the prompt for user 𝑢 into four components: 
+
+X𝑢 =
+
+h
+
+Xbg ; Xtask ; Xseq  
+
+> 𝑢
+
+; Xcand 
+
+> 𝑢
+
+i
+
+, (3) where Xbg is a background prompt providing global context, Xtask is a task prompt describing the next-item prediction goal and the desired output format, Xseq  
+
+> 𝑢
+
+encodes the interaction sequence 
+
+S𝑢 , and Xcand  
+
+> 𝑢
+
+encodes the candidate pool C𝑢 . This decomposition aligns with the common prompt structure adopted in prior LLM-driven methods. We treat Xbg and Xtask as instance-invariant components that are shared across all examples, while Xseq  
+
+> 𝑢
+
+and Xcand  
+
+> 𝑢
+
+are instance-dependent evidence constructed from raw inputs. In particular, we serialize the interaction sequence in chronological order and represent the candidate pool as: 
+
+Xseq  
+
+> 𝑢
+
+= Ser (S 𝑢 ), Xcand  
+
+> 𝑢
+
+= Ser (C 𝑢 ), (4) where Ser (·) denotes a lightweight verbalization operator using item titles, with delimiters to separate items. 8 Xiaolin Zheng et al. 
+
+This factorization isolates the prompt parts that primarily define instruction (Xbg and Xtask )from those that provide evidence (Xseq  
+
+> 𝑢
+
+and Xcand  
+
+> 𝑢
+
+). In the following, we keep the evidence construc-tion unchanged, while learning robust instruction representations to eliminate manual tuning of background and task templates and improve stability across prompt formulations. 
+
+3.4 Learnable Prompting for Robust Recommendation 
+
+Based on the prompt decomposition in Eq. (3), we observe that prompt sensitivity mainly originates from the instruction components, i.e., the discrete natural-language templates used for Xbg and 
+
+Xtask . In contrast, the evidence components Xseq  
+
+> 𝑢
+
+and Xcand  
+
+> 𝑢
+
+are directly derived from raw inputs and are naturally determined once the interaction history and candidate pool are given. Therefore, we propose to keep the evidence construction unchanged and instead replace the brittle discrete instruction templates with learnable continuous prompts .We parameterize the background prompt and the task prompt as two sets of learnable vectors: 
+
+Pbg = {pbg 1 , . . . , pbg  
+
+> 𝑀
+
+}, Ptask = {ptask 1 , . . . , ptask  
+
+> 𝑁
+
+}, (5) where pbg  
+
+> 𝑖
+
+, ptask  
+
+> 𝑗
+
+∈ R𝑑 share the same dimensionality as the LLM input token embeddings, and 𝑀 
+
+and 𝑁 denote the prompt lengths determined by the number of tokens in the chosen initialization template. Intuitively, Pbg provides a learnable global context for recommendation, while Ptask 
+
+specifies the learnable task instruction and output constraint. 
+
+Initialization. We consider two practical initialization strategies. (1) Template-based initialization :initialize the learnable vectors from the token embeddings of a discrete prompt template ( e.g., ahandcrafted background/task prompt). (2) Random initialization : randomly initialize all vectors with the same length as the chosen template. In our experiments, the latter fails completely (discussed in Section 4.3), confirming that prompts must reside within the LLM’s effective semantic space. This observation motivates both our template-based initialization choice and the semantic drift constraint introduced in Section 3.6. While the above formulation eliminates the dependence on discrete templates, directly applying this instance-invariant prompting scheme to recommendation still faces two challenges, which we address in the following two subsections. 
+
+3.5 Personalized Prompt Injection 
+
+The learnable prompts Pbg and Ptask are shared across all users, providing a unified instruction context. However, this instance-invariant design overlooks a fundamental characteristic of rec-ommendation: personalization . In generic NLP tasks such as sentiment classification or machine translation, the task instruction is inherently uniform ( e.g., “classify the sentiment of this review” applies identically to all inputs). In contrast, sequential recommendation requires the LLM to infer user-specific preferences from highly diverse behavioral patterns. Users with concentrated interests (e.g., exclusively watching horror movies) benefit from reasoning that emphasizes genre consistency, while users with broad tastes benefit from reasoning that captures recent interest transitions. A single fixed instruction cannot optimally guide the LLM’s inference for all these diverse scenarios. To reconcile parameter efficiency with personalization, we propose personalized prompt injection :the shared prompts serve as a repository of global recommendation knowledge, while a user-specific preference embedding is directly added to adapt them to each user’s behavioral characteristics. 
+
+User Preference Summarization. Rather than relying on shallow statistics ( e.g., mean-pooling token embeddings) that cannot capture high-level behavioral patterns, we leverage the frozen LLM itself to produce a semantically rich user preference representation. Specifically, we construct a Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 9
+
+preference elicitation prompt that instructs the LLM to summarize the user’s interests from the interaction history. The prompt structure is illustrated below: 
+
+User Preference Elicitation Prompt 
+
+<Instruction>: Here is the user’s interaction sequence: [user_history] .Based on the above interaction history, summarize the user preference: <user_preference> 
+
+where [user_history] is the serialized interaction sequence ( e.g., item titles in chronological order), and <user_preference> is a designated special token appended at the end to serve as the preference aggregation anchor. We feed the above prompt through the frozen LLM and extract the last hidden state at the 
+
+[user_preference] token position from the last transformer layer: 
+
+z𝑢 = h(𝐿 ) 
+
+> [user_pref]
+
+∈ R𝑑 , (6) where 𝐿 denotes the number of transformer layers. Since the LLM processes the entire interac-tion sequence through its full depth before producing h(𝐿 )
+
+> [user_pref]
+
+, this representation encodes a high-level semantic summary of the user’s behavioral patterns, capturing not only item-level co-occurrence but also temporal dynamics and preference evolution that shallow aggregation methods cannot model. Importantly, the LLM parameters remain completely frozen during this process; no gradients are propagated back through the LLM. During training, we pre-compute z𝑢 
+
+for all users offline and cache them, so this step introduces no additional computational overhead to the training loop. 
+
+Preference Projection. Since the LLM’s hidden-state representation and the learnable prompt vectors may not be semantically aligned, we project the user preference summary into the prompt space via a lightweight linear transformation: 
+
+e𝑢 = W𝑝 z𝑢 + b𝑝 ∈ R𝑑 , (7) where W𝑝 ∈ R𝑑 ×𝑑 and b𝑝 ∈ R𝑑 are learnable parameters. 
+
+Direct Injection. The user preference embedding is directly added to each prompt vector, yielding personalized instruction prompts: ˜pbg  
+
+> 𝑖
+
+= pbg  
+
+> 𝑖
+
++ e𝑢 , ∀𝑖 ∈ { 1, . . . , 𝑀 }, (8) ˜ptask  
+
+> 𝑗
+
+= ptask  
+
+> 𝑗
+
++ e𝑢 , ∀𝑗 ∈ { 1, . . . , 𝑁 }. (9) The final LLM input for user 𝑢 is then constructed as: 
+
+eX𝑢 =
+
+h ˜Pbg  
+
+> 𝑢
+
+; ˜ Ptask  
+
+> 𝑢
+
+; Xseq  
+
+> 𝑢
+
+; Xcand 
+
+> 𝑢
+
+i
+
+, (10) where ˜ Pbg  
+
+> 𝑢
+
+= { ˜pbg 1 , . . . , ˜pbg  
+
+> 𝑀
+
+} and ˜ Ptask  
+
+> 𝑢
+
+= { ˜ptask 1 , . . . , ˜ptask  
+
+> 𝑁
+
+}.This design can be interpreted as decomposing each personalized prompt token ˜ p𝑖 = p𝑖 + e𝑢 into a shared component p𝑖 that encodes global recommendation knowledge learned from all training instances, and a user-specific component e𝑢 that injects personalized preference signals. 
+
+Rationale: Instruction-Level Personalization. A key insight behind this design is that, in the LLM’s attention mechanism, instruction prompts directly modulate how the model attends to and reasons over the subsequent evidence tokens ( i.e., the interaction sequence and candidate pool). By injecting user-specific signals into the instruction prompts themselves, rather than appending them as separate input segments, we effectively enable a single set of shared instruction templates to produce user-adaptive reasoning guidance . Concretely, for a user with concentrated interests, the 10 Xiaolin Zheng et al. 
+
+injected preference embedding biases the instruction prompts toward emphasizing consistency patterns; for a user with diverse tastes, the same shared prompts are shifted toward capturing recent interest transitions. This mechanism transforms the instruction prompts from static, universal directives into dynamic, user-conditioned reasoning controllers that steer the LLM’s inference process differently for each individual, without increasing the input sequence length or requiring separate prompt parameters per user. Compared with learning a separate prompt for each user (which would be prohibitively expensive) or appending user embeddings as additional input tokens (which increases sequence length and computational cost), our injection mechanism adds only a single 𝑑 × 𝑑 projection matrix and a bias vector, keeping the additional parameter count negligible relative to the LLM while achieving effective personalization at the instruction level. 
+
+3.6 Semantic Drift Constraint 
+
+In Section 3.4, we adopt template-based initialization to provide a semantically meaningful starting point for the learnable prompts. The necessity of this choice is empirically confirmed by the failure of random initialization (Section 4.3), which demonstrates that prompts must reside within the LLM’s effective semantic space to produce meaningful outputs. However, template-based initialization only guarantees a valid starting point and provides no safeguard against the prompts gradually drifting into semantically invalid regions during gradient-based optimization. As training progresses, the continuous prompt vectors may be pushed away from the manifold of meaningful token embeddings, causing the LLM to receive contexts it was never trained to interpret, ultimately degrading generation quality. To address this, we introduce a semantic drift constraint that regularizes the learned prompts to remain within a controlled neighborhood of their initialization anchors throughout training. 
+
+Anchor Definition. We define the initialization embeddings as fixed semantic anchors: 
+
+Abg = {abg 1 , . . . , abg  
+
+> 𝑀
+
+}, Atask = {atask 1 , . . . , atask  
+
+> 𝑁
+
+}, (11) where each abg  
+
+> 𝑖
+
+(resp. atask  
+
+> 𝑗
+
+) is the token embedding used to initialize pbg  
+
+> 𝑖
+
+(resp. ptask  
+
+> 𝑗
+
+). These anchors are determined at the beginning of training and remain fixed thereafter. 
+
+Hinge-Style Regularization. We adopt a hinge-style constraint that allows prompts to freely optimize within a trust region of radius 𝜖 , but penalizes deviations beyond this margin: 
+
+Ldrift = 1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖 =1
+
+max 
+
+
+
+0, ∥pbg  
+
+> 𝑖
+
+− abg  
+
+> 𝑖
+
+∥2 − 𝜖 
+
+
+
++ 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑗 =1
+
+max 
+
+
+
+0, ∥ptask  
+
+> 𝑗
+
+− atask  
+
+> 𝑗
+
+∥2 − 𝜖 
+
+
+
+, (12) where 𝜖 > 0 is a hyperparameter controlling the allowed drift radius. The margin 𝜖 defines a trust region around each anchor: within this region, the prompt is free to improve upon the discrete template; beyond it, a linear penalty pulls the prompt back toward the anchor. This design balances expressiveness (allowing the prompt to learn better representations than the original template) with stability (preventing drift into regions where the LLM cannot produce meaningful outputs). 
+
+Discussion: Why Constrain Only Shared Prompts. One may note that the final input to the LLM is the personalized prompt ˜ p𝑖 = p𝑖 + e𝑢 (Eqs. (8)–(9)), and question whether the drift constraint should also cover the user-specific component e𝑢 . We argue that this is unnecessary for two reasons. First, e𝑢 is derived from the frozen LLM’s own hidden-state representation (Eq. (6)) via a lightweight linear projection (Eq. (7)); since it originates from the LLM’s internal semantic space, it is inherently interpretable to the model and does not face the same out-of-distribution risk as freely optimized continuous vectors. Second, the semantic drift constraint targets a fundamentally Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 11 
+
+different failure mode: it prevents the shared learnable parameters Pbg , Ptask from being pushed by accumulated gradients into regions that no longer correspond to meaningful language concepts. In contrast, e𝑢 is not a learnable prompt vector but a data-dependent signal computed fresh for each user instance; it adapts the shared prompts to individual preferences, which is precisely the intended personalization behavior. Constraining e𝑢 would suppress personalization and defeat the purpose of the injection mechanism. 
+
+3.7 Training Objective and Optimization 
+
+Let D = {(S 𝑢 , C𝑢 , 𝑖 𝑢,𝑇 +1)} denote the training set. For each instance, we define a target output text sequence Y∗ 
+
+> 𝑢
+
+that uniquely corresponds to the ground-truth next item 𝑖 𝑢,𝑇 +1 (e.g., its canonical title). The recommendation loss optimizes the negative log-likelihood of generating Y∗ 
+
+> 𝑢
+
+conditioned on the personalized prompt input: 
+
+Lrec = −∑︁ 
+
+> 𝑢
+
+log 𝑝 𝜃 
+
+
+
+Y∗ 
+
+> 𝑢
+
+˜Pbg  
+
+> 𝑢
+
+, ˜Ptask  
+
+> 𝑢
+
+, Xseq  
+
+> 𝑢
+
+, Xcand 
+
+> 𝑢
+
+
+
+. (13) Here, 𝑝 𝜃 (·) follows the autoregressive factorization in Eq. (2). Since 𝜃 is frozen, gradients are applied only to the learnable prompt vectors Pbg , Ptask and the projection parameters W𝑝 , b𝑝 .The overall training objective combines recommendation loss with the semantic drift constraint: 
+
+L = Lrec + 𝛼 · L drift , (14) where 𝛼 > 0 is a balancing coefficient. Note that Ldrift only regularizes the shared prompt vectors 
+
+Pbg and Ptask ; the user-specific embedding e𝑢 is instance-dependent and does not require drift regularization (see the Remark at the end of Section 3.6 for a detailed justification). All learnable parameters ( Pbg , Ptask , W𝑝 , b𝑝 ) are jointly optimized under this objective. The semantic drift constraint ensures that the prompts remain within the LLM’s effective semantic space throughout training, providing a spatial safeguard that prevents optimization from departing meaningful regions. 
+
+Decoupled Two-Stage Training. A prerequisite for effective prompt optimization is that the backbone LLM already possesses basic recommendation capabilities. If the learnable prompts are trained on top of a general-purpose LLM that has never been exposed to recommendation data, the prompts must simultaneously teach the model what recommendation is and how to optimally perform it , two fundamentally different objectives that interfere with each other during optimization. To decouple these concerns, we adopt a two-stage training procedure: 
+
+• Stage 1: Recommendation Adaptation. We first fine-tune the backbone LLM on the recom-mendation task using LoRA [70], a parameter-efficient adaptation method. During this stage, we use standard discrete prompt templates and train the model with the same next-item predic-tion objective (Eq. (13)), allowing the LLM to acquire domain-specific knowledge such as item co-occurrence patterns and sequential transition dynamics. 
+
+• Stage 2: Prompt Optimization. After Stage 1 converges, we load the adapted checkpoint, freeze 
+
+all LLM parameters (including the LoRA weights), and train only the learnable prompt vectors 
+
+Pbg , Ptask and the projection parameters W𝑝 , b𝑝 under the full objective L (Eq. (14)). This decoupled design offers two advantages. First, it allows the prompt optimization to focus exclusively on learning optimal instruction representations, since the backbone already understands the recommendation task. Second, it avoids gradient interference between the LLM adaptation and prompt optimization objectives, leading to more stable convergence. 12 Xiaolin Zheng et al. 
+
+3.8 Inference 
+
+After training, the learned prompts Pbg , Ptask and the projection parameters W𝑝 , b𝑝 are fixed and reused across all test instances. Given a new user sequence S𝑢 and candidate pool C𝑢 , we construct the model input as follows: (1) compute the user preference representation z𝑢 by performing a single forward pass of the frozen LLM on the preference elicitation prompt (Eq. (6)), then obtain the preference embedding e𝑢 via Eq. (7); (2) inject it into the shared prompts via Eqs. (8)–(9); (3) concatenate with the serialized evidence: 
+
+eX𝑢 =
+
+h ˜Pbg  
+
+> 𝑢
+
+; ˜ Ptask  
+
+> 𝑢
+
+; Ser (S 𝑢 ) ; Ser (C 𝑢 )
+
+i
+
+, (15) and perform LLM decoding to obtain the predicted output bY𝑢 .The final recommendation ˆ 𝑖 𝑢,𝑇 +1 is obtained by mapping bY𝑢 back to an item in the candidate pool. Notably, inference requires no manual tuning of background or task instruction templates: the system only needs the raw interaction sequence and candidate set as inputs, while the instruction context is provided by the learned continuous prompts personalized with user behavioral signals. 
+
+Efficiency Considerations. The preference representation z𝑢 can be cached for each user and only needs to be recomputed when the user’s interaction sequence is updated. For users whose sequences remain unchanged since training, the cached z𝑢 from the offline pre-computation stage can be directly reused. For new users or users with updated sequences, a single LLM forward pass (without autoregressive decoding) is required to obtain z𝑢 . Since this forward pass processes only the preference elicitation prompt (not the full recommendation input), its cost is modest compared to the subsequent autoregressive decoding step, making deployment practical. 
+
+4 Experiments and Analysis 4.1 Experimental Setup 
+
+Datasets. We evaluate on three datasets: 
+
+• MovieLens [71] is a widely adopted benchmark for movie recommendation, which provides explicit user ratings together with corresponding movie titles. 
+
+• Steam [72] contains user-generated reviews of video games from the Steam Store, along with the associated game titles. 
+
+• LastFM [73], sourced from the Last.fm music service, records user–artist listening interactions as well as artist names. Since fine-tuning large language models typically incurs substantially higher computational costs compared to training conventional recommendation models, we preprocess and sample datasets to keep the scale tractable. Specifically, we retain the MovieLens dataset at its original scale, and for the Steam dataset, we uniformly sample one-third of the users and one-third of the games, preserving the interactions among them to construct a dataset of moderate size. Across all datasets, interaction sequences are ordered by timestamp and split into training, validation, and test sets with a ratio of 8:1:1. This temporal splitting strategy ensures that future interactions are excluded from the training phase, effectively preventing information leakage [74]. After preprocessing, MovieLens contains 1,478 items, 1,063 user sequences, and 112,384 interactions; Steam contains 3,987 items, 13,426 user sequences, and 241,653 interactions; LastFM contains 5,142 items, 1,387 user sequences, and 83,917 interactions. 
+
+Baseline Algorithms. We compare LRPRec with the following representative baselines spanning four categories. 
+
+• Traditional Sequential Recommenders. We include several representative sequential rec-ommendation models that differ in their underlying architectures. GRU4Rec [75] models user Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 13 
+
+behavior sequences using gated recurrent units, capturing sequential dependencies through recurrent state transitions. Caser [36] leverages convolutional neural networks to extract local and global patterns from interaction sequences by applying horizontal and vertical convolu-tional filters. SASRec [72] adopts a self-attention mechanism to model long-range dependencies among items, and has become a strong and widely used attention-based baseline for sequential recommendation. HGN [76] introduces a hierarchical gating network that captures both user-level and item-level sequential patterns through feature gating and instance gating mechanisms. 
+
+BERT4Rec [77] employs a bidirectional transformer with masked item prediction to model users’ interaction preferences, capturing left-to-right and right-to-left sequential dependencies. 
+
+• Proprietary LLM APIs. We evaluate several state-of-the-art proprietary large language models accessed via API in a zero-shot setting. (1) GPT-5.4 [78] is a contemporary proprietary LLM from OpenAI, demonstrating strong reasoning and instruction-following capabilities across diverse tasks. (2) Claude-Opus-4.6 is Anthropic’s most capable model, excelling at complex reasoning, nuanced instruction following, and long-context understanding. (3) Gemini-3.1-Flash [79] is Google’s efficient multimodal model optimized for low-latency inference while maintaining strong generation quality. (4) DeepSeek-V4-Flash [80] is a highly efficient open-weight model from DeepSeek-AI with million-token context support and competitive reasoning performance. 
+
+• LLM-driven Sequential Recommenders. We further compare our approach with LLM-based recommenders that are fine-tuned or adapted for recommendation tasks. (1) Llama2-7B [81] is a widely used open-source large language model released by Meta, which has demonstrated strong capabilities in instruction following and text generation. (2) Llama3.1-8B-Instruct [82] is an instruction-tuned variant of the Llama 3.1 family, offering improved instruction following and reasoning capabilities over its predecessor. (3) MoRec [83] augments conventional recommenda-tion models by incorporating item-side modality information, such as textual features, through a dedicated text encoder. Following the official implementation, we instantiate MoRec with BERT as the text encoder and SASRec as the recommendation backbone. (4) TALLRec [26] applies instruction tuning to large language models using recommendation-oriented corpora, enabling LLMs to perform recommendation tasks via natural language prompts. Since TALLRec formulates recommendation as a binary decision problem ( i.e., predicting YES or NO for a target item), we adapt it to our setting by reformulating the task as selecting the next item from a given candidate set. (5) LLaRA [22] is a Large Language-Recommendation Assistant framework for sequential recommendation that integrates a conventional sequential recommender with a large language model to perform next-item prediction. Following the official SASRec-based implementation, we instantiate LLaRA with SASRec as the sequential recommendation backbone, and represent each item using a hybrid prompt that concatenates item text tokens with a behavioral token projected from the SASRec item embedding via an adapter. (6) MLLM-MSR [20] harnesses multimodal large language models for multimodal sequential recommendation by encoding visual and textual item features jointly. 
+
+• Prompt Learning Enhanced Methods. We compare with prompt-based approaches that optimize soft or discrete prompts for LLM-based recommendation. (1) POD [27] distills the recommendation knowledge of large LLMs into compact continuous prompt representations for efficient inference. (2) PPR [29] generates personalized soft prefix prompts conditioned on user profiles to adapt a frozen LLM for sequential recommendation. (3) LASER [28] introduces a parameter-efficient bi-tuning strategy that inserts learnable virtual tokens at both the input and output ends of an LLM to inject collaborative signals. (4) PromptAgent [31] formulates prompt optimization as a strategic planning problem and employs Monte Carlo tree search to automatically discover expert-level prompts. (5) RPP [30] leverages reinforcement learning to 14 Xiaolin Zheng et al. 
+
+personalize discrete prompt components on a per-user basis, enabling instance-wise prompt selection for recommendation. 
+
+Evaluation Metrics. Following LLaRA [22] and MLLM-MSR [20], we adopt a candidate-based eval-uation protocol with a candidate set size of 20 (1 ground-truth item + 19 uniformly sampled negatives that the user has not previously interacted with). Because (M)LLM-based methods embed item de-scriptions ( e.g., titles) directly into the prompt, an excessively large candidate pool would exceed the context window or cause out-of-memory issues during training and inference. For fair comparison, LRPRec and all baselines that incorporate a candidate pool in the prompt use the same pool size of 20. Each method is required to identify the correct next item from this pool, and we assess performance using the HitRatio@1 (HR@1) metric, which is computed only over valid predictions ( i.e., outputs that correspond to items in the candidate pool): HR@1 = # correct predictions /# valid outputs. When properly prompted, LLM-based recommendation models are able to directly output a single predicted item. In contrast, for conventional recommendation approaches, we treat the item with the highest predicted score as the final recommendation. Notably, as LRPRec adopts a generative prediction framework, it may occasionally produce invalid outputs, such as meaningless tokens or items that do not belong to the predefined candidate pool. To account for this issue, we further report an auxiliary metric, termed ValidRatio, which measures the fraction of predictions that correspond to valid candidate items across all sequences, thereby reflecting the models’ ability to follow task instructions. Inspired by [4], some models may achieve a high HitRatio@1 , yet fail to generate valid or meaningful recommendations. To mitigate this issue, we introduce a new evaluation metric, Valid HitRatio@1 (VHR@1), defined as 𝑉 𝐻𝑅 @1 = 𝑉 𝑎𝑙𝑖𝑑𝑅𝑎𝑡𝑖𝑜 × 𝐻𝑖𝑡𝑅𝑎𝑡𝑖𝑜 @1. This composite metric penalizes models that achieve high accuracy only among valid outputs while producing a large fraction of invalid predictions, thereby preventing inflated performance estimates from models that “gamble” on a subset of valid generations. By jointly accounting for both validity and accuracy in a single score, VHR@1 provides a more faithful reflection of real-world deployment quality than reporting the two metrics independently. 
+
+Implementation Details. (1) Backbone LLM. We use Llama3.1-8B-Instruct [82] as the backbone. The dimension of the hidden states is 4096. (2) Prompt construction. Following Eq. (3), each input consists of four components: (i) the background prompts, (ii) the task prompts, (iii) the interaction sequence, and (iv) the candidate pool. The interaction sequence Xseq  
+
+> 𝑢
+
+is serialized in chronological order, and each item is represented by its title. The candidate pool Xcand  
+
+> 𝑢
+
+is serialized as a list with explicit delimiters. (3) Learnable prompts. We parameterize the instruction prompts as continuous learnable vectors Pbg and Ptask (Eq. (5)). We adopt template-based initialization, where each learnable vector is initialized from the corresponding token embedding of a handcrafted prompt template. The prompt lengths 𝑀 and 𝑁 are naturally determined by the number of tokens in the chosen initialization template; in our default setting, the background template tokenizes to 𝑀 = 12 tokens and the task template tokenizes to 𝑁 = 26 tokens. (4) Personalized prompt injection. For the user preference projection (Eq. (7)), we employ a single linear layer with input and output dimension 
+
+𝑑 = 4096 to project the user preference summary into the prompt space. (5) Semantic drift constraint. For the drift constraint (Eq. (12)), the trust-region radius is set to 𝜖 = 0.5 and the balancing coefficient to 𝛼 = 0.1 by default. (6) Training procedure. As described in Section 3.7, LRPRec adopts a decoupled two-stage training procedure. In Stage 1 (recommendation adaptation), we fine-tune the backbone LLM using LoRA [70] with rank 𝑟 = 8 and scaling factor 𝛼 lora = 16, applied to the query and value projection matrices. We use standard discrete prompt templates and train for 5 epochs with a learning rate of 2 × 10 −4, a batch size of 128, and a cosine learning rate scheduler with warm-up. In Stage 2 (prompt optimization), we load the Stage 1 checkpoint, freeze all LLM parameters (including LoRA weights), and train only the learnable prompt vectors and projection parameters. We employ Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 15 
+
+Table 1. Experimental results on three datasets. The best results are boldfaced and the second-best results are underlined. “ ∗” denotes statistically significant improvements ( 𝑝 < 0.05 ) over the best baseline according to a paired t-test.                                                                                                                                                                                                         
+
+> Methods MovieLens Steam LastFM
+> HR@1 ValidRatio VHR@1 HR@1 ValidRatio VHR@1 HR@1 ValidRatio VHR@1
+> ID-based Sequential Recommendation Caser 0.3924 1.0000 0.3924 0.4287 1.0000 0.4287 0.2312 1.0000 0.2312
+> GRU4Rec 0.3807 1.0000 0.3807 0.4093 1.0000 0.4093 0.2538 1.0000 0.2538
+> HGN 0.3987 1.0000 0.3987 0.4412 1.0000 0.4412 0.2689 1.0000 0.2689
+> SASRec 0.3523 1.0000 0.3523 0.3936 1.0000 0.3936 0.2156 1.0000 0.2156
+> BERT4Rec 0.3926 1.0000 0.3926 0.4495 1.0000 0.4495 0.2721 1.0000 0.2721
+> Proprietary LLM APIs GPT-5.4 0.3842 0.6237 0.2396 0.4183 0.5842 0.2444 0.4126 0.5963 0.2460
+> Claude-Opus-4.6 0.3796 0.6014 0.2283 0.4127 0.5716 0.2359 0.4078 0.5834 0.2379
+> Gemini-3.1-Flash 0.3518 0.5683 0.1999 0.3876 0.5247 0.2034 0.3814 0.5412 0.2064
+> DeepSeek-V4-Flash 0.3247 0.5321 0.1728 0.3612 0.4918 0.1776 0.3563 0.5087 0.1812
+> LLM-driven Sequential Recommendation Llama2-7B 0.0437 0.4518 0.0197 0.0128 0.1587 0.0020 0.0238 0.3521 0.0084
+> Llama3.1-8B-Instruct 0.1847 0.6312 0.1166 0.2156 0.5473 0.1180 0.1423 0.5847 0.0832
+> MoRec 0.2716 1.0000 0.2716 0.3827 1.0000 0.3827 0.1713 1.0000 0.1713
+> TALLRec 0.3978 0.9318 0.3707 0.4572 0.9873 0.4514 0.4263 0.9791 0.4174
+> LLaRA 0.4356 0.9721 0.4234 0.5012 0.9948 0.4986 0.4437 1.0000 0.4437
+> MLLM-MSR 0.4523 0.9823 0.4443 0.5063 0.9891 0.5008 0.4627 0.9867 0.4565
+> Prompt Learning Enhanced Methods POD 0.4253 0.9742 0.4143 0.4812 0.9918 0.4773 0.4361 0.9912 0.4323
+> PPR 0.4187 0.9658 0.4044 0.4756 0.9863 0.4691 0.4289 0.9845 0.4223
+> LASER 0.4487 0.9812 0.4403 0.5036 0.9953 0.5012 0.4589 0.9934 0.4559
+> PromptAgent 0.4312 0.9587 0.4134 0.4868 0.9826 0.4783 0.4417 0.9778 0.4319
+> RPP 0.4412 0.9763 0.4307 0.5078 0.9941 0.5048 0.4568 0.9901 0.4523
+> LRPRec 0.4947 ∗1.0000 0.4947 ∗0.5412 ∗1.0000 0.5412 ∗0.5016 ∗1.0000 0.5016 ∗
+
+a warm-up strategy, initiated with 1/100 of the maximum learning rate, and adjust it using a cosine scheduler. The maximum learning rate is set to 5 × 10 −4. The batch size is set to 𝐵 = 128, and gradient clipping is applied with a maximum norm of 1 .0. All LLM-driven sequential recommenders and prompt learning enhanced methods are trained for 10 epochs, and we select the checkpoint that achieves the best performance on the validation set for final evaluation on the test set. Our implementations for conventional recommenders follow [22], employing the Adam optimizer with a learning rate of 0.001, an embedding dimension of 64, and a batch size of 256. All experiments are conducted on 8 NVIDIA H20 GPUs (96 GB memory each). To mitigate the impact of randomness, all experiments are conducted 5 times with distinct random seeds, and the results are averaged. 
+
+4.2 Overall Performance 
+
+We evaluate LRPRec against baselines from four categories on MovieLens, Steam, and LastFM. The results are reported in Table 1 in terms of HR@1, ValidRatio, and VHR@1. From the results, we derive the following observations: 
+
+(1) Well-adapted LLM methods outperform ID-based methods, but adaptation quality matters. Well-adapted LLM-driven recommenders ( e.g., TALLRec, LLaRA, MLLM-MSR) and prompt learning enhanced methods generally outperform ID-based sequential recommenders across all datasets, as shown in Table 1. However, vanilla or weakly adapted LLM variants ( e.g., Llama2-7B, Llama3.1-8B-Instruct, MoRec) may underperform ID-based baselines, indicating that the reasoning power of LLMs can only be effectively harnessed through proper task-specific adaptation. 16 Xiaolin Zheng et al. 
+
+Table 2. Ablation study on key components of LRPRec. “w/o” denotes removing a component; “w/” denotes replacing with an alternative.                                                                        
+
+> Variants MovieLens Steam LastFM
+> HR@1 ValidRatio VHR@1 HR@1 ValidRatio VHR@1 HR@1 ValidRatio VHR@1
+> Core Module Ablation w/o Personalization 0.4512 0.9983 0.4504 0.5087 0.9967 0.5070 0.4612 1.0000 0.4612
+> w/o Drift Constraint 0.4723 0.9647 0.4556 0.5198 0.9712 0.5048 0.4836 0.9623 0.4654
+> Initialization & Prompt Strategy w/ Random Initialization 0.0875 0.5198 0.0455 0.0922 0.5673 0.0523 0.0769 0.5328 0.0410
+> w/ Discrete Prompt 0.4589 0.9712 0.4457 0.5067 0.9935 0.5034 0.4587 1.0000 0.4587
+> Personalization Design Alternatives w/ Mean-Pool Preference 0.4687 1.0000 0.4687 0.5213 0.9978 0.5202 0.4756 1.0000 0.4756
+> w/ Concat Injection 0.4823 1.0000 0.4823 0.5287 0.9989 0.5281 0.4878 1.0000 0.4878
+> LRPRec 0.4947 1.0000 0.4947 0.5412 1.0000 0.5412 0.5016 1.0000 0.5016
+
+(2) Fine-tuning is essential for LLMs on recommendation tasks. Models without task-specific fine-tuning exhibit notably lower VHR@1 compared to fine-tuned counterparts. In particu-lar, directly prompting LLMs without adaptation leads to extremely low ValidRatio, while even powerful proprietary models cannot match fine-tuned methods. This confirms that task-specific adaptation is critical for effective recommendation, as general-purpose LLMs often generate invalid or out-of-domain items without proper alignment. It is worth noting that proprietary LLM APIs achieve moderate HR@1 among their valid outputs ( e.g., GPT-5.4 attains HR@1 ≈ 0.41 on LastFM), which appears competitive with fine-tuned methods. However, their low ValidRatio ( ≈ 0.60) means that nearly 40% of all predictions are unusable, the model either generates items outside the can-didate pool or produces malformed outputs. This makes these models unreliable for real-world deployment where every user query must receive a valid recommendation. Moreover, proprietary API calls incur substantial monetary costs and latency overhead that scale linearly with the number of users and requests, rendering them impractical for production-scale recommender systems that must serve millions of users in real time. 
+
+(3) LRPRec outperforms all baselines. Among all methods, LRPRec consistently achieves the best performance across all three datasets. Notably, LRPRec maintains a perfect ValidRatio of 1.0000 on all datasets, indicating that the learned prompts reliably guide the LLM to produce valid candidate items. Compared with the strongest baseline, LRPRec achieves notable relative improvements in VHR@1 across all datasets. These improvements stem from LRPRec’s personalized learnable prompting mechanism, which injects user-specific preference signals into the instruction context while constraining semantic drift, thereby providing more effective and stable guidance for the LLM’s generation process. 
+
+4.3 Ablation Study 
+
+To validate the contribution of each component in LRPRec, we design six ablation variants grouped into three categories: (1) core module ablation, (2) initialization and prompt strategy, and (3) personalization design alternatives. Results are reported in Table 2. 
+
+4.3.1 w/o Personalization . This variant removes the personalized prompt injection mechanism entirely. The shared prompts Pbg and Ptask are used directly without adding the user preference embedding e𝑢 , meaning all users receive identical instruction prompts. As shown in Table 2, removing personalization leads to consistent and notable performance drops across all three datasets. Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 17 
+
+This confirms that a single fixed instruction context cannot optimally guide the LLM’s inference for users with diverse behavioral patterns. The personalized injection mechanism enables the shared prompts to produce user-adaptive reasoning guidance, which is essential for recommendation quality. Notably, the ValidRatio remains high in this variant, indicating that the learnable prompts still maintain valid generation behavior. The performance loss is purely in recommendation accuracy, underscoring that personalization contributes to precision rather than validity .
+
+4.3.2 w/o Drift Constraint . This variant removes the semantic drift constraint by setting 𝛼 = 0in Eq. (14), allowing the learnable prompts to optimize freely without any regularization toward their initialization anchors. As shown in Table 2, we observe two effects: (1) ValidRatio drops noticeably, indicating that unconstrained optimization pushes prompts into regions where the LLM produces more invalid outputs; (2) despite maintaining reasonable HitRatio@1, the overall VHR@1 degrades due to the compounding effect of lower validity. These results validate our hypothesis that gradient-based optimization can gradually drift the prompt vectors away from the LLM’s effective semantic space. The hinge-style constraint provides a necessary spatial safeguard: it allows the prompts to improve upon the discrete template within a trust region while preventing them from entering semantically invalid regions that the LLM was never trained to interpret. 
+
+4.3.3 w/ Random Initialization . This variant replaces the template-based initialization with random initialization, i.e., both Pbg and Ptask are initialized from a random distribution. As shown in Table 2, this leads to severe degradation: VHR@1 drops to below 6% on all datasets, while ValidRatio also substantially decreases. This demonstrates that the LLM’s generation behavior is extremely sensitive to the semantic validity of its input context. Random vectors lie far outside the manifold of meaningful token embeddings, causing the LLM to produce incoherent outputs regardless of subsequent optimization. This result provides strong empirical evidence for our design choice of template-based initialization and further motivates the semantic drift constraint: if the starting point matters this much, preventing drift away from it during training is equally critical. 
+
+4.3.4 w/ Discrete Prompt . This variant discards learnable prompting entirely and instead uses the best-performing handcrafted discrete prompt template identified through manual prompt engineering on each dataset. As shown in Table 2, while discrete prompts achieve reasonable per-formance, they consistently underperform LRPRec across all datasets. Moreover, discrete prompts exhibit high variance across different template formulations (as visualized in Figure 3): semantically equivalent templates with minor wording differences can lead to notable performance fluctuations. In contrast, LRPRec learns a single robust instruction context that automatically adapts to the backbone LLM and data distribution, eliminating the need for manual trial-and-error and providing stable performance. 
+
+4.3.5 w/ Mean-Pool Preference . This variant replaces our LLM-based user preference sum-marization with a simpler mean-pooling approach: instead of feeding the interaction sequence through the frozen LLM and extracting the hidden state at the [user_preference] token, we directly compute the mean of the token embeddings from the interaction sequence as the user representation z𝑢 . As shown in Table 2, this leads to moderate but consistent performance drops across all datasets. The mean-pooling approach can only capture shallow token co-occurrence statistics, while our LLM-based summarization leverages the full depth of the transformer to en-code high-level behavioral patterns, including temporal dynamics and preference evolution. This validates the benefit of using the LLM’s deep representations for user preference modeling, even though the LLM parameters remain frozen. 18 Xiaolin Zheng et al. A B C D                     
+
+> Prompt Template
+> 0.420 0.440 0.460 0.480 0.500
+> VHR@1
+> MovieLens
+> ABCD
+> Prompt Template
+> 0.480 0.500 0.520 0.540
+> Steam
+> ABCD
+> Prompt Template
+> 0.440 0.460 0.480 0.500 0.520
+> LastFM
+> ABCD
+> Inference Prompt
+> 0.38 0.40 0.42 0.44 0.46 0.48 0.50 0.52
+> VHR@1
+> MovieLens
+> ABCD
+> Inference Prompt
+> 0.46 0.48 0.50 0.52 0.54 0.56
+> Steam
+> ABCD
+> Inference Prompt
+> 0.40 0.42 0.44 0.46 0.48 0.50 0.52
+> LastFM
+> w/ Handcrafted Prompt LRPRec
+> Train: Prompt A Train: Prompt B Train: Prompt C Train: Prompt D LRPRec Matched (Train=Infer)
+
+Fig. 3. Generalization analysis. Top row: Prompt sensitivity, showing VHR@1 of handcrafted prompts (blue solid) vs. LRPRec (red dashed) across four templates on each dataset; the shaded area highlights the perfor-mance gap. Bottom row: Cross-template transfer, where each colored line represents a model trained with one template and evaluated under all four templates at inference time; the black dashed line denotes LRPRec, which is template-agnostic; circled markers indicate matched (train=infer) conditions. 
+
+4.3.6 w/ Concat Injection . This variant changes the injection mechanism: instead of directly adding e𝑢 to each prompt token, we prepend e𝑢 as an additional prefix token before the instruction prompts, i.e., eX𝑢 = [e𝑢 ; Pbg ; Ptask ; Xseq 
+
+𝑢 ; Xcand 
+
+𝑢 ]. As shown in Table 2, this approach achieves compet-itive but slightly lower performance than LRPRec across all datasets. The concatenation approach relies on the LLM’s attention mechanism to implicitly route user preference information to the in-struction tokens, which is less direct than our additive injection. Moreover, concatenation increases the input sequence length, adding computational overhead during both training and inference. Our additive injection provides a more efficient and effective instruction-level personalization by directly modulating the prompt vectors in the embedding space. 
+
+4.4 Generalization Analysis 
+
+To evaluate whether LRPRec can alleviate the brittleness caused by discrete prompt formulations, we conduct a prompt-level generalization study. Specifically, we prepare four handcrafted prompt templates, denoted as Prompt_A –Prompt_D , which are semantically equivalent but differ in wording, syntactic structure, and length. All templates contain the same essential components (a background role description, the interaction sequence, the candidate pool, and an explicit selection instruction) but present them with different phrasing and organization. We design these templates to vary along three dimensions: verbosity (concise vs. detailed), formality (conversational vs. technical), Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 19 
+
+and structural organization (flat narrative vs. explicitly labeled sections), thereby covering a repre-sentative range of prompt styles that practitioners might employ in practice. The four prompts used in this study are as follows: 
+
+Prompt_A: You are a recommendation system. Here are the interactions of the user: <Interaction>. Here is the candidate pool: <Candidate>. Please choose exactly one item from the candidate pool as the next item the user will interact with. Only output the chosen item. 
+
+Prompt_B: I will give you a user’s interaction history and a set of candidate items. User’s interaction history: <Interaction>. Candidate items: <Candidate>. Based on the user’s history, select the most likely next item from the candidate items. Return only the item name. 
+
+Prompt_C: The user has previously interacted with the following items: <Interaction>. Now you are given a list of candidate items: <Candidate>. Task: predict which candidate item the user will interact with next. Answer with one item from the candidate list. 
+
+Prompt_D: You are an expert sequential recommender. Input: [Interaction Sequence] <Interaction> [Candidate Pool] <Candidate>. Instruction: Pick the single best next-item prediction from the candidate pool. Your output must be exactly one candidate item, without explanation or additional text. 
+
+For each dataset, we use each of the four templates as the initialization source for LRPRec’s learnable prompts. Concretely, the token embeddings of a given template are extracted from the LLM’s embedding layer and used to initialize the learnable vectors Pbg and Ptask (Eq. (5)). Since the four templates differ in length, the resulting prompt lengths 𝑀 and 𝑁 naturally vary across initialization templates. This yields four independently trained LRPRec instances per dataset, each starting from a different semantic anchor. The goal is to examine whether the final learned prompts converge to similar performance regardless of the initialization template, thereby validating that LRPRec is robust to the choice of handcrafted template used for initialization. 
+
+Initialization Robustness. We first evaluate each trained model under two inference protocols, as shown in the top row of Figure 3. (1) w/ handcrafted prompt: we directly use the same discrete template ( e.g., Prompt_A ) at inference time for the model trained with that template. The corresponding results are shown as solid lines in the top row of Figure 3. (2) LRPRec (full model at inference): for each trained model, we apply the complete LRPRec inference pipeline following Eq. (15): we compute the user preference embedding e𝑢 from the frozen LLM, inject it into the learned continuous instruction vectors Pbg and Ptask to obtain personalized prompts ˜ Pbg 
+
+> 𝑢
+
+and ˜ Ptask  
+
+> 𝑢
+
+, and concatenate them with the instance evidence (interaction sequence and candidate pool). Importantly, this inference does not rely on any handcrafted template beyond the evidence serialization. The results are shown as dashed lines in the top row of Figure 3. Across MovieLens, Steam, and LastFM, we highlight two consistent patterns from the top row of Figure 3: (1) Discrete prompts exhibit high sensitivity to template wording. The solid lines fluctuate noticeably across Prompt_A –Prompt_D , confirming that the performance of LLM-driven recommendation is sensitive to the specific discrete prompt used during training and inference. (2) LRPRec achieves robust and superior performance regardless of initialization template. 
+
+The dashed lines are substantially more stable with respect to the initialization template choice and remain consistently above the solid lines for all four templates on all datasets, demonstrating both improved robustness and stronger performance. These results indicate that regardless of which handcrafted template is used to initialize the learnable prompts, the optimization process guided by the semantic drift constraint converges to a high-quality prompt representation within 20 Xiaolin Zheng et al. 
+
+the LLM’s effective semantic space. The personalized prompt injection further contributes to this robustness: by conditioning the instruction prompts on user behavioral signals, LRPRec anchors its reasoning in user-specific preference patterns rather than relying on the surface-level wording of discrete templates, enabling stable and high-quality recommendation without manual tuning of inference-time instruction templates. 
+
+Cross-Template Transfer. Beyond evaluating models with their matched training templates, we further investigate a more challenging scenario: what happens when a model trained with one discrete template is evaluated using a different template at inference time? This cross-template transfer experiment reveals the degree to which discrete-prompt-based models overfit to specific template wordings. As shown in the bottom row of Figure 3, for each dataset we train four models (one per template) and evaluate each model under all four templates at inference time, yielding a 4 × 4transfer matrix. We summarize three key findings from the bottom row of Figure 3: (1) Matched templates yield the best discrete-prompt performance. All discrete-prompt models achieve their best performance under the matched condition (train template = inference template), indicated by the circled markers. This confirms that these models partially memorize surface-level template patterns rather than learning purely task-relevant representations. (2) Mismatched templates cause consistent degradation. The performance degradation under mismatched conditions is consistent across all datasets. Notably, the severity of transfer degradation varies across models: some templates produce more transferable representations while others are more sensitive to template mismatch, indicating that this brittleness is pervasive and unpredictable in practice. (3) LRPRec surpasses all transfer conditions. LRPRec (black dashed line) consistently outperforms 
+
+all transfer conditions, including the matched diagonal, across every dataset. This demonstrates that LRPRec does not merely match the best-case discrete prompt performance but fundamentally transcends the limitations of template-dependent inference. These results have important practical implications: in real-world deployment, the inference prompt may need to be modified ( e.g., for A/B testing, multilingual adaptation, or system up-dates), and discrete-prompt models would suffer unpredictable performance degradation. LRPRec eliminates this fragility entirely by replacing template-dependent inference with learned, template-agnostic continuous instructions. 
+
+4.5 Hyperparameter Sensitivity Analysis 
+
+We investigate the sensitivity of LRPRec to two key hyperparameters: the drift constraint radius 𝜖 
+
+and the constraint weight 𝛼 . For each experiment, we vary one hyperparameter while keeping the other at its default value ( 𝜖 = 0.5, 𝛼 = 0.1). Results are reported at VHR@1 across all datasets. 
+
+4.5.1 Effect of Drift Radius 𝜖 . The drift radius 𝜖 controls the size of the trust region around each initialization anchor. We vary 𝜖 ∈ { 0.1, 0.3, 0.5, 0.7, 1.0, 2.0} and report results in Figure 4(a). When 𝜖 is too small ( e.g., 0.1), the prompts are overly constrained and cannot deviate sufficiently from the discrete template to learn improved representations, resulting in performance close to the discrete prompt baseline (w/ Discrete Prompt in Table 2). As 𝜖 increases to the range of 0.3–0.7, performance improves substantially and remains stable, indicating that the prompts have sufficient freedom to optimize while still being anchored within the LLM’s semantic space. Notably, the per-dataset optimum varies slightly within this range ( e.g., Steam peaks at 𝜖 = 0.3 while LastFM peaks at 𝜖 = 0.7), but the differences are marginal. Beyond 𝜖 = 1.0, performance begins to degrade, as the constraint becomes too loose to effectively prevent semantic drift. At 𝜖 = 2.0, the behavior approaches the unconstrained variant (w/o Drift Constraint), confirming that an excessively large Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 21 0.1 0.3 0.5 0.7 1.0 2.0          
+
+> (a) Drift Radius ²
+> 0.460 0.480 0.500 0.520 0.540 0.560
+> VHR@1
+> default
+> 0.01 0.05 0.1 0.2 0.5 1.0
+> (b) Constraint Weight α
+> 0.460 0.480 0.500 0.520 0.540
+> VHR@1
+> default
+> MovieLens Steam LastFM
+
+Fig. 4. Hyperparameter sensitivity analysis of LRPRec on three datasets. (a) Drift radius 𝜖 . (b) Constraint weight 𝛼 . The dashed vertical lines indicate the default values used in all other experiments. 
+
+trust region provides diminishing regularization. We select 𝜖 = 0.5 as the default value because it achieves consistently strong performance across all datasets without requiring per-dataset tuning. 
+
+4.5.2 Effect of Constraint Weight 𝛼 . The constraint weight 𝛼 balances the recommendation loss Lrec and the drift penalty Ldrift . We vary 𝛼 ∈ { 0.01 , 0.05 , 0.1, 0.2, 0.5, 1.0} in Figure 4(b). When 𝛼 is very small ( e.g., 0.01), the drift constraint has negligible effect, and the model behaves similarly to the unconstrained variant. As 𝛼 increases to 0.05–0.2, performance improves and stabilizes, indicating that moderate regularization strength is sufficient to keep prompts within the effective semantic space. Similar to 𝜖 , the per-dataset optimum within this plateau varies slightly (e.g., MovieLens favors 𝛼 = 0.05 while LastFM favors 𝛼 = 0.2), but the differences remain negligible. However, when 𝛼 becomes too large ( e.g., 0.5 or 1.0), the constraint dominates the optimization objective, severely suppressing the model’s ability to learn task-specific prompt representations and leading to significant performance degradation on all datasets. This sharp degradation at high 
+
+𝛼 values contrasts with the drift radius 𝜖 , which exhibits a more gradual performance change: while the model is robust within 𝛼 ∈ [ 0.05 , 0.2], practitioners should avoid over-regularization. We adopt 
+
+𝛼 = 0.1 as the default since it provides the best trade-off across all three datasets. 
+
+4.6 Cold-Start Analysis 
+
+A key advantage of LRPRec is its personalized prompt injection mechanism, which encodes user behavioral signals into a preference embedding e𝑢 and injects it into the shared learnable prompts. A natural question arises: how does this mechanism perform when user interaction history is sparse? 
+
+To answer this, we conduct a cold-start analysis by partitioning test users into two groups based on their available interaction history length: 
+
+• Cold (≤3 interactions): Users with very sparse behavioral records. The preference embedding is extracted from this short interaction sequence. 
+
+• Warm (>3 interactions): Users with sufficient history, representing the standard setting. Since this analysis aims to isolate the effect of our personalized prompt injection module, we compare LRPRec with its non-personalized ablation variant (w/o Personalization) under different data sparsity conditions, rather than re-evaluating all baselines under each history-length bucket. Results are shown in Figure 5. Based on Figure 5, we identify two notable findings: (1) Personalization benefits even under extreme sparsity. Even with 3 or fewer interactions (Cold group), the LLM-based preference extraction already captures meaningful behavioral signals (such as genre preferences or interaction 22 Xiaolin Zheng et al. Cold Warm 0.440 0.460 0.480 0.500 0.520     
+
+> VHR@1
+> 0.4504
+> 0.4756 0.4983
+> +5.6% +10.6%
+> MovieLens
+> Cold Warm 0.490 0.500 0.510 0.520 0.530 0.540 0.550 0.560 0.570
+> 0.5070
+> 0.5278 0.5446
+> +4.1% +7.4%
+> Steam
+> Cold Warm 0.450 0.460 0.470 0.480 0.490 0.500 0.510 0.520 0.530
+> 0.4612
+> 0.4845 0.5054
+> +5.1% +9.6%
+> LastFM
+> Cold Warm w/o Personalization
+
+Fig. 5. Cold-start analysis. Bars represent LRPRec’s VHR@1 under two user groups; the dashed line indicates w/o Personalization from Table 2. Percentages denote relative improvement over w/o Personalization. 
+
+style), yielding gains over the non-personalized variant across all datasets. This validates the effectiveness of leveraging the LLM’s deep semantic understanding for user preference modeling under data sparsity: unlike traditional collaborative filtering methods that require dense interaction matrices, our approach can extract high-level preference patterns from minimal textual evidence. 
+
+(2) Personalization benefit scales with interaction richness. The relative improvement over w/o Personalization grows from Cold to Warm, and the Warm group performance slightly exceeds the overall results reported in Table 1, which is expected since the full-dataset results represent a weighted average of both Cold and Warm users. This confirms that the preference extraction mechanism degrades gracefully as data becomes sparser, making LRPRec suitable for real-world deployment where users span a wide spectrum of activity levels. 
+
+4.7 Semantic Drift Visualization 
+
+To provide direct empirical evidence for the semantic drift phenomenon and validate the effective-ness of our drift constraint, we visualize the training dynamics of the learnable prompts with and without the constraint. Specifically, we track two quantities throughout training: (1) the average ℓ2
+
+distance between each prompt vector and its initialization anchor ( i.e., the drift distance), and (2) the ValidRatio on the validation set evaluated at each checkpoint. Figure 6 presents the results across all three datasets. The top row shows the drift distance trajectories, and the bottom row shows the corresponding ValidRatio curves. 
+
+Drift Distance Analysis (Top Row). Without the drift constraint (blue curves), the prompt vectors drift continuously away from their initialization anchors throughout training. The drift distance grows monotonically and exceeds the trust region boundary 𝜖 = 0.5 around epoch 4–5, eventually reaching large values by the end of training. This confirms that unconstrained gradient-based optimization indeed pushes the prompts far from the manifold of meaningful token embeddings. In contrast, with the drift constraint (red curves), the drift distance rises quickly during the initial optimization phase but is effectively bounded near 𝜖 , demonstrating that the hinge-style regularization successfully confines the prompts within the trust region while still allowing meaningful optimization. 
+
+ValidRatio Analysis (Bottom Row). The ValidRatio curves reveal a clear causal relationship between drift distance and generation quality. With the drift constraint, ValidRatio stabilizes at 1.0 after a brief warm-up phase, indicating that the LLM consistently produces valid outputs when the prompts remain within the effective semantic space. Without the constraint, ValidRatio begins to Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 23 0 2 4 6 8 10                               
+
+> Training Epoch
+> 0.00 0.50 1.00 1.50
+> Avg. Drift Distance
+> ²= 0.5
+> MovieLens
+> 0246810
+> Training Epoch
+> 0.00 0.25 0.50 0.75 1.00 1.25 1.50
+> ²= 0.5
+> Steam
+> 0246810
+> Training Epoch
+> 0.00 0.50 1.00 1.50 2.00
+> ²= 0.5
+> LastFM
+> 0246810
+> Training Epoch
+> 0.970 0.980 0.990 1.000
+> ValidRatio
+> MovieLens
+> 0246810
+> Training Epoch
+> 0.970 0.980 0.990 1.000
+> Steam
+> 0246810
+> Training Epoch
+> 0.960 0.970 0.980 0.990 1.000
+> LastFM
+> w/ Drift Constraint (LRPRec) w/o Drift Constraint Trust Region Boundary ( ²)
+
+Fig. 6. Semantic drift visualization during training. Top row: average ℓ2 distance between learned prompts and their initialization anchors (drift distance) over training epochs. Bottom row: ValidRatio evaluated at each epoch. The dashed line in the top row indicates the trust region boundary 𝜖 = 0.5. Without the drift constraint (blue), prompts drift unboundedly and ValidRatio degrades; with the constraint (red), prompts are effectively bounded and ValidRatio remains at 1.0. 
+
+degrade once the drift distance exceeds the trust region boundary. Notably, the onset of degradation (around epoch 4–5) coincides precisely with the point where the unconstrained drift distance surpasses 𝜖 . By the end of training, ValidRatio drops noticeably on all three datasets, consistent with the ablation results in Table 2 (w/o Drift Constraint). 
+
+Key Insight. This visualization provides intuitive evidence for the mechanism underlying our drift constraint: the trust region boundary 𝜖 acts as a critical threshold. Within this boundary, the LLM can interpret the prompt context meaningfully; beyond it, the prompts enter regions that the LLM was never trained to process, leading to degraded generation quality. The constraint thus serves as a spatial safeguard that balances expressiveness (allowing prompts to improve upon the discrete template) with stability (preventing departure from the LLM’s effective semantic space). 
+
+5 Conclusion 
+
+In this paper, we proposed LRPRec, a learnable prompting framework for LLM-driven sequential recommendation that addresses the brittleness caused by discrete natural-language prompt for-mulations. Our work is motivated by the observation that existing LLM-driven recommenders are highly sensitive to prompt wording, and that naively applying standard prompt tuning to recommendation faces two fundamental challenges: lack of personalization and semantic drift risk. To overcome these challenges, LRPRec decomposes the prompt into instance-invariant instruction components and instance-dependent evidence, replaces the brittle discrete instruction templates with continuous learnable vectors initialized from handcrafted templates, and introduces two complementary mechanisms. First, we propose a personalized prompt injection mechanism that encodes user behavioral signals into a preference embedding via the frozen LLM and directly adds it to the shared instruction prompts, enabling user-level adaptation while maintaining parameter efficiency. Second, we introduce a semantic drift constraint that regularizes the shared learned 24 Xiaolin Zheng et al. 
+
+prompts to remain within a trust region around their initialization anchors, preventing gradient-based optimization from pushing prompts into regions that the LLM cannot interpret meaningfully. By applying the drift constraint to the shared component while allowing personalization to operate additively, these two mechanisms are decoupled so that stability and expressiveness can be optimized without mutual interference. Extensive experiments on three datasets demonstrate that LRPRec consistently outperforms strong baselines from multiple categories, including ID-based sequential recommenders, multimodal methods, LLM-driven methods, and prompt learning enhanced methods, while maintaining perfect output validity across all datasets. Ablation studies confirm the necessity of each component, and generalization analysis shows that LRPRec remains robust regardless of which handcrafted template is used for initialization, effectively eliminating the need for manual tuning of background and task inference templates. The semantic drift visualization further provides direct empirical evidence for the drift phenomenon and validates the effectiveness of our trust-region constraint. Future work could explore extending learnable prompting to more realistic settings with dynamic candidate generation, larger candidate pools, cross-domain transfer, and online feedback to further improve adaptivity and scalability. Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 25 
+
+Acknowledgments 
+
+This work was supported by the National Natural Science Foundation of China (No. 624B2131). 
+
+References 
+
+[1] Jiajie Su, Chaochao Chen, Zibin Lin, Xi Li, Weiming Liu, and Xiaolin Zheng. 2023. Personalized behavior-aware transformer for multi-behavior sequential recommendation. In Proceedings of the 31st ACM international conference on multimedia . 6321–6331. [2] Yupeng Hou, Shanlei Mu, Wayne Xin Zhao, Yaliang Li, Bolin Ding, and Ji-Rong Wen. 2022. Towards universal sequence representation learning for recommender systems. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 585–593. [3] Jiajie Su, Qiyong Zhong, Yunshan Ma, Weiming Liu, Chaochao Chen, Xiaolin Zheng, Jianwei Yin, and Tat-Seng Chua. 2025. Distilling Transitional Pattern to Large Language Models for Multimodal Session-based Recommendation. arXiv preprint arXiv:2504.10538 (2025). [4] Qiyong Zhong, Jiajie Su, Ming Yang, Yunshan Ma, Xiaolin Zheng, and Chaochao Chen. 2025. An item is worth one token in Multimodal Large Language Models-based Sequential Recommendation. arXiv preprint arXiv:2511.05885 
+
+(2025). [5] Tesfaye Fenta Boka, Zhendong Niu, and Rama Bastola Neupane. 2024. A survey of sequential recommendation systems: Techniques, evaluation, and future directions. Information Systems (2024), 102427. [6] Shoujin Wang, Liang Hu, Longbing Cao, Xiaoshui Huang, Defu Lian, and Wei Liu. 2018. Attention-based transactional context embedding for next-item recommendation. In Proceedings of the AAAI conference on artificial intelligence ,Vol. 32. [7] Qiyong Zhong, Jiajie Su, Yunshan Ma, Julian McAuley, and Yupeng Hou. 2025. Pctx: Tokenizing personalized context for generative recommendation. arXiv preprint arXiv:2510.21276 (2025). [8] Steffen Rendle, Christoph Freudenthaler, and Lars Schmidt-Thieme. 2010. Factorizing personalized markov chains for next-basket recommendation. In Proceedings of the 19th international conference on World wide web . 811–820. [9] Yong Kiam Tan, Xinxing Xu, and Yong Liu. 2016. Improved recurrent neural networks for session-based recommenda-tions. In Proceedings of the 1st workshop on deep learning for recommender systems . 17–22. [10] Yinwei Wei, Xiang Wang, Qi Li, Liqiang Nie, Yan Li, Xuanping Li, and Tat-Seng Chua. 2021. Contrastive Learning for Cold-Start Recommendation. In Proceedings of the 29th ACM International Conference on Multimedia (Virtual Event, China) (MM ’21) . Association for Computing Machinery, New York, NY, USA, 5382–5390. https://doi.org/10.1145/ 3474085.3475665 [11] Siqi Lai, Erli Meng, Fan Zhang, Chenliang Li, Bin Wang, and Aixin Sun. 2022. An attribute-driven mirror graph network for session-based recommendation. In Proceedings of the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1674–1683. [12] Yupeng Hou, Shanlei Mu, Wayne Xin Zhao, Yaliang Li, Bolin Ding, and Ji-Rong Wen. 2022. Towards Universal Sequence Representation Learning for Recommender Systems. In KDD .[13] Hengchang Hu, Wei Guo, Yong Liu, and Min-Yen Kan. 2023. Adaptive Multi-Modalities Fusion in Sequential Recommen-dation Systems. In Proceedings of the 32nd ACM International Conference on Information and Knowledge Management .11. [14] Arpita Vats, Vinija Jain, Rahul Raja, and Aman Chadha. 2024. Exploring the impact of large language models on recommender systems: An extensive review. arXiv preprint arXiv:2402.18590 (2024). [15] Likang Wu, Zhi Zheng, Zhaopeng Qiu, Hao Wang, Hongchao Gu, Tingjia Shen, Chuan Qin, Chen Zhu, Hengshu Zhu, Qi Liu, et al. 2024. A survey on large language models for recommendation. World Wide Web 27, 5 (2024), 60. [16] Qiyong Zhong, Mao Zheng, Mingyang Song, Xin Lin, Jie Sun, Houcheng Jiang, Xiang Wang, and Junfeng Fang. 2026. Sod: Step-wise on-policy distillation for small language model agents. arXiv preprint arXiv:2605.07725 (2026). [17] Qi Wang, Jindong Li, Shiqi Wang, Qianli Xing, Runliang Niu, He Kong, Rui Li, Guodong Long, Yi Chang, and Chengqi Zhang. 2024. Towards next-generation llm-based recommender systems: A survey and beyond. arXiv preprint arXiv:2410.19744 (2024). [18] Wenyue Hua, Lei Li, Shuyuan Xu, Li Chen, and Yongfeng Zhang. 2023. Tutorial on large language models for recommendation. In Proceedings of the 17th ACM Conference on Recommender Systems . 1281–1283. [19] Chao Zhang, Shiwei Wu, Haoxin Zhang, Tong Xu, Yan Gao, Yao Hu, and Enhong Chen. 2024. NoteLLM: A Retrievable Large Language Model for Note Recommendation. In Companion Proceedings of the ACM on Web Conference 2024 .170–179. [20] Yuyang Ye, Zhi Zheng, Yishan Shen, Tianshu Wang, Hengruo Zhang, Peijun Zhu, Runlong Yu, Kai Zhang, and Hui Xiong. 2024. Harnessing Multimodal Large Language Models for Multimodal Sequential Recommendation. arXiv:2408.09698 [cs.IR] https://arxiv.org/abs/2408.09698 26 Xiaolin Zheng et al. 
+
+[21] Jesse Harte, Wouter Zorgdrager, Panos Louridas, Asterios Katsifodimos, Dietmar Jannach, and Marios Fragkoulis. 2023. Leveraging large language models for sequential recommendation. In Proceedings of the 17th ACM Conference on Recommender Systems . 1096–1102. [22] Jiayi Liao, Sihang Li, Zhengyi Yang, Jiancan Wu, Yancheng Yuan, Xiang Wang, and Xiangnan He. 2024. Llara: Large language-recommendation assistant. In Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval . 1785–1795. [23] Qidong Liu, Xian Wu, Wanyu Wang, Yejing Wang, Yuanshao Zhu, Xiangyu Zhao, Feng Tian, and Yefeng Zheng. 2024. Large language model empowered embedding generator for sequential recommendation. arXiv preprint arXiv:2409.19925 (2024). [24] Peiyang Yu, Zeqiu Xu, Jiani Wang, and Xiaochuan Xu. 2025. The application of large language models in recommen-dation systems. arXiv preprint arXiv:2501.02178 (2025). [25] Qiyong Zhong, Mao Zheng, Mingyang Song, Huwei Ji, Houcheng Jiang, Jiajie Su, Li Zhang, Gengsheng Li, and Junfeng Fang. 2026. USA: Update-aware SAM for Cross-domain On-Policy Disitllation of Language Agents. arXiv preprint arXiv:2609.34225 (2026). [26] Keqin Bao, Jizhi Zhang, Yang Zhang, Wenjie Wang, Fuli Feng, and Xiangnan He. 2023. Tallrec: An effective and efficient tuning framework to align large language model with recommendation. In Proceedings of the 17th ACM Conference on Recommender Systems . 1007–1014. [27] Lei Li, Yongfeng Zhang, and Li Chen. 2023. Prompt distillation for efficient llm-based recommendation. In Proceedings of the 32nd ACM international conference on information and knowledge management . 1348–1357. [28] Xinyu Zhang, Linmei Hu, Luhao Zhang, Dandan Song, Heyan Huang, and Liqiang Nie. 2024. Laser: Parameter-Efficient LLM Bi-Tuning for Sequential Recommendation with Collaborative Information. arXiv preprint arXiv:2409.01605 
+
+(2024). [29] Yiqing Wu, Ruobing Xie, Yongchun Zhu, Fuzhen Zhuang, Xu Zhang, Leyu Lin, and Qing He. 2024. Personalized prompt for sequential recommendation. IEEE Transactions on Knowledge and Data Engineering 36, 7 (2024), 3376–3389. [30] Wenyu Mao, Jiancan Wu, Weijian Chen, Chongming Gao, Xiang Wang, and Xiangnan He. 2025. Reinforced prompt personalization for recommendation with large language models. ACM Transactions on Information Systems 43, 3 (2025), 1–27. [31] Xinyuan Wang, Chenxi Li, Zhen Wang, Fan Bai, Haotian Luo, Jiayou Zhang, Nebojsa Jojic, Eric Xing, and Zhiting Hu. 2024. Promptagent: Strategic planning with language models enables expert-level prompt optimization. In International Conference on Learning Representations , Vol. 2024. 23967–24001. [32] Qiyong Zhong, Mao Zheng, Mingyang Song, Houcheng Jiang, Jiajie Su, Huwei Ji, Li Zhang, and Junfeng Fang. 2026. MAS-OPD: On-Policy Distillation for Multi-agent Systems. arXiv preprint arXiv:2609.34234 (2026). [33] Xiaolin Zheng, Jiajie Su, Weiming Liu, and Chaochao Chen. 2022. DDGHM: Dual Dynamic Graph with Hybrid Metric Training for Cross-Domain Sequential Recommendation. In Proceedings of the 30th ACM International Conference on Multimedia . 471–481. [34] Weiming Liu, Xiaolin Zheng, Chaochao Chen, Jiajie Su, Xinting Liao, Mengling Hu, and Yanchao Tan. 2023. Joint internal multi-interest exploration and external domain alignment for cross domain sequential recommendation. In 
+
+Proceedings of the ACM web conference 2023 . 383–394. [35] Chao-Yuan Wu, Amr Ahmed, Alex Beutel, Alexander J Smola, and How Jing. 2017. Recurrent recommender networks. In Proceedings of the tenth ACM international conference on web search and data mining . 495–503. [36] Jiaxi Tang and Ke Wang. 2018. Personalized Top-N Sequential Recommendation via Convolutional Sequence Embedding. In WSDM . ACM, 565–573. [37] Tianwen Chen and Raymond Chi-Wing Wong. 2020. Handling information loss of graph neural networks for session-based recommendation. In Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining . 1172–1180. [38] Xiaowen Huang, Quan Fang, Shengsheng Qian, Jitao Sang, Yan Li, and Changsheng Xu. 2019. Explainable interaction-driven user modeling over knowledge graph for sequential recommendation. In proceedings of the 27th ACM interna-tional conference on multimedia . 548–556. [39] Gabriel de Souza Pereira Moreira, Sara Rabhi, Jeong Min Lee, Ronay Ak, and Even Oldridge. 2021. Transformers4rec: Bridging the gap between nlp and sequential/session-based recommendation. In Proceedings of the 15th ACM conference on recommender systems . 143–153. [40] Lingzi Zhang, Xin Zhou, Zhiwei Zeng, and Zhiqi Shen. 2024. Multimodal Pre-training for Sequential Recommendation via Contrastive Learning. ACM Transactions on Recommender Systems 3, 1 (2024), 1–23. [41] Xingyu Pan, Yushuo Chen, Changxin Tian, Zihan Lin, Jinpeng Wang, He Hu, and Wayne Xin Zhao. 2022. Multimodal meta-learning for cold-start sequential recommendation. In Proceedings of the 31st ACM international conference on information & knowledge management . 3421–3430. Learning Robust Personalized Prompts for LLM-Driven Sequential Recommendation 27 
+
+[42] Wei Ji, Xiangyan Liu, An Zhang, Yinwei Wei, Yongxin Ni, and Xiang Wang. 2023. Online distillation-enhanced multi-modal transformer for sequential recommendation. In Proceedings of the 31st ACM International Conference on Multimedia . 955–965. [43] Zihuai Zhao, Wenqi Fan, Jiatong Li, Yunqing Liu, Xiaowei Mei, Yiqi Wang, Zhen Wen, Fei Wang, Xiangyu Zhao, Jiliang Tang, et al. 2024. Recommender systems in the era of large language models (llms). IEEE Transactions on Knowledge and Data Engineering (2024). [44] Wayne Xin Zhao, Kun Zhou, Junyi Li, Tianyi Tang, Xiaolei Wang, Yupeng Hou, Yingqian Min, Beichen Zhang, Junjie Zhang, Zican Dong, et al. 2023. A survey of large language models. arXiv preprint arXiv:2303.18223 1, 2 (2023). [45] Jianghao Lin, Xinyi Dai, Yunjia Xi, Weiwen Liu, Bo Chen, Hao Zhang, Yong Liu, Chuhan Wu, Xiangyang Li, Chenxu Zhu, et al. 2025. How can recommender systems benefit from large language models: A survey. ACM Transactions on Information Systems 43, 2 (2025), 1–47. [46] Yucong Luo, Qitao Qin, Hao Zhang, Mingyue Cheng, Ruiran Yan, Kefan Wang, and Jie Ouyang. 2024. Molar: Multimodal LLMs with Collaborative Filtering Alignment for Enhanced Sequential Recommendation. arXiv preprint arXiv:2412.18176 (2024). [47] Jiahao Tian, Jinman Zhao, Zhenkai Wang, and Zhicheng Ding. 2024. Mmrec: Llm based multi-modal recommender system. arXiv preprint arXiv:2408.04211 (2024). [48] Jun Hu, Wenwen Xia, Xiaolu Zhang, Chilin Fu, Weichang Wu, Zhaoxin Huan, Ang Li, Zuoli Tang, and Jun Zhou. 2024. Enhancing sequential recommendation via llm-based semantic embedding learning. In Companion Proceedings of the ACM on Web Conference 2024 . 103–111. [49] Xinhang Li, Chong Chen, Xiangyu Zhao, Yong Zhang, and Chunxiao Xing. 2023. E4srec: An elegant effective efficient extensible solution of large language models for sequential recommendation. arXiv preprint arXiv:2312.02443 (2023). [50] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei Liu. 2022. Learning to prompt for vision-language models. 
+
+International Journal of Computer Vision 130, 9 (2022), 2337–2348. [51] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei Liu. 2022. Conditional prompt learning for vision-language models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition . 16816–16825. [52] Yuhao Yang, Lianghao Xia, Da Luo, Kangyi Lin, and Chao Huang. 2024. Graphpro: Graph pre-training and prompt learning for recommendation. In Proceedings of the ACM Web Conference 2024 . 3690–3699. [53] Lei Li, Yongfeng Zhang, and Li Chen. 2023. Personalized prompt learning for explainable recommendation. ACM Transactions on Information Systems 41, 4 (2023), 1–26. [54] Shijie Geng, Shuchang Liu, Zuohui Fu, Yingqiang Ge, and Yongfeng Zhang. 2022. Recommendation as language processing (rlp): A unified pretrain, personalized prompt & predict paradigm (p5). In Proceedings of the 16th ACM Conference on Recommender Systems . 299–315. [55] Junjie Zhang, Ruobing Xie, Yupeng Hou, Wayne Xin Zhao, Leyu Lin, and Ji-Rong Wen. 2026. Recommendation as instruction following: A large language model empowered recommendation approach. ACM Transactions on Information Systems 43, 5 (2026), 1–37. [56] Chunjiang Ge, Rui Huang, Mixue Xie, Zihang Lai, Shiji Song, Shuang Li, and Gao Huang. 2023. Domain adaptation via prompt learning. IEEE Transactions on Neural Networks and Learning Systems (2023). [57] Brian Lester, Rami Al-Rfou, and Noah Constant. 2021. The power of scale for parameter-efficient prompt tuning. arXiv preprint arXiv:2104.08691 (2021). [58] Zhiang Dong, Liya Hu, Jingyuan Chen, Zhihua Wang, and Fei Wu. 2025. Comprehend then predict: Prompting large language models for recommendation with semantic and collaborative data. ACM Transactions on Information Systems 
+
+43, 5 (2025), 1–26. [59] Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi, and Graham Neubig. 2023. Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing. ACM computing surveys 55, 9 (2023), 1–35. [60] Jianyang Zhai, Xiawu Zheng, Chang-Dong Wang, Hui Li, and Yonghong Tian. 2023. Knowledge prompt-tuning for sequential recommendation. In Proceedings of the 31st ACM international conference on multimedia . 6451–6461. [61] Shengding Hu, Ning Ding, Huadong Wang, Zhiyuan Liu, Jingang Wang, Juanzi Li, Wei Wu, and Maosong Sun. 2022. Knowledgeable prompt-tuning: Incorporating knowledge into prompt verbalizer for text classification. In Proceedings of the 60th annual meeting of the association for computational linguistics (volume 1: long papers) . 2225–2240. [62] Sein Kim, Hongseok Kang, Seungyoon Choi, Donghyun Kim, Minchul Yang, and Chanyoung Park. 2024. Large language models meet collaborative filtering: An efficient all-round llm-based recommender system. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 1395–1406. [63] Zhisheng Yang, Xiaofei Xu, Ke Deng, and Li Li. 2025. Enhance Large Language Models as Recommendation Systems with Collaborative Filtering. arXiv preprint arXiv:2510.15647 (2025). [64] Jerome Ramos, Bin Wu, and Aldo Lipani. 2024. Preference distillation for personalized generative recommendation. 
+
+arXiv preprint arXiv:2407.05033 (2024). 28 Xiaolin Zheng et al. 
+
+[65] Weiqi Yue, Tingting Liang, Xixi Sun, Xin Zhang, Leilei Zheng, Yuyu Yin, and Jian Wan. 2026. Collaborative knowledge and personalized preference alignment for sequential recommendation. Knowledge-Based Systems (2026), 116234. [66] Hanjia Lyu, Song Jiang, Hanqing Zeng, Yinglong Xia, Qifan Wang, Si Zhang, Ren Chen, Chris Leung, Jiajie Tang, and Jiebo Luo. 2024. Llm-rec: Personalized recommendation via prompting large language models. In Findings of the Association for Computational Linguistics: NAACL 2024 . 583–612. [67] Dairui Liu, Boming Yang, Honghui Du, Derek Greene, Neil Hurley, Aonghus Lawlor, Ruihai Dong, and Irene Li. 2024. Recprompt: A self-tuning prompting framework for news recommendation using large language models. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management . 3902–3906. [68] Yunfan Gao, Tao Sheng, Youlin Xiang, Yun Xiong, Haofen Wang, and Jiawei Zhang. 2023. Chat-rec: Towards interactive and explainable llms-augmented recommender system. arXiv preprint arXiv:2303.14524 (2023). [69] Kieran Wood, Samuel Kessler, Stephen J Roberts, and Stefan Zohren. 2023. Few-shot learning patterns in financial time-series for trend-following strategies. arXiv preprint arXiv:2310.10500 (2023). [70] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, et al. 2022. Lora: Low-rank adaptation of large language models. Iclr 1, 2 (2022), 3. [71] F. Maxwell Harper and Joseph A. Konstan. 2016. The MovieLens Datasets: History and Context. ACM Trans. Interact. Intell. Syst. 5, 4 (2016), 19:1–19:19. [72] Wang-Cheng Kang and Julian J. McAuley. 2018. Self-Attentive Sequential Recommendation. In ICDM . IEEE Computer Society, 197–206. [73] Iván Cantador, Peter Brusilovsky, and Tsvi Kuflik. 2011. 2nd Workshop on Information Heterogeneity and Fusion in Recommender Systems (HetRec 2011). In Proceedings of the 5th ACM conference on Recommender systems (Chicago, IL, USA) (RecSys 2011) . ACM, New York, NY, USA. [74] Yitong Ji, Aixin Sun, Jie Zhang, and Chenliang Li. 2023. A Critical Study on Data Leakage in Recommender System Offline Evaluation. ACM Trans. Inf. Syst. 41, 3 (2023), 75:1–75:27. [75] Balázs Hidasi, Alexandros Karatzoglou, Linas Baltrunas, and Domonkos Tikk. 2016. Session-based Recommendations with Recurrent Neural Networks. In ICLR (Poster) .[76] Chen Ma, Peng Kang, and Xue Liu. 2019. Hierarchical gating networks for sequential recommendation. In Proceedings of the 25th ACM SIGKDD international conference on knowledge discovery & data mining . 825–833. [77] Fei Sun, Jun Liu, Jian Wu, Changhua Pei, Xiao Lin, Wenwu Ou, and Peng Jiang. 2019. BERT4Rec: Sequential recom-mendation with bidirectional encoder representations from transformer. In Proceedings of the 28th ACM international conference on information and knowledge management . 1441–1450. [78] Aaditya Singh, Adam Fry, Adam Perelman, Adam Tart, Adi Ganesh, Ahmed El-Kishky, Aidan McLaughlin, Aiden Low, AJ Ostrow, Akhila Ananthram, et al. 2025. Openai gpt-5 system card. arXiv preprint arXiv:2601.03267 (2025). [79] Gemini Team, Rohan Anil, Sebastian Borgeaud, Jean-Baptiste Alayrac, Jiahui Yu, Radu Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, Katie Millican, et al. 2023. Gemini: a family of highly capable multimodal models. arXiv preprint arXiv:2312.11805 (2023). [80] DeepSeek-AI. 2026. DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence. 
+
+https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/DeepSeek_V4.pdf (2026). [81] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, Dan Bikel, Lukas Blecher, Cristian Canton-Ferrer, Moya Chen, Guillem Cucurull, David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia Gao, Vedanuj Goswami, Naman Goyal, Anthony Hartshorn, Saghar Hosseini, Rui Hou, Hakan Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel Kloumann, Artem Korenev, Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana Liskovich, Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra, Igor Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan Saladi, Alan Schelten, Ruan Silva, Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang, Aurélien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. 2023. Llama 2: Open Foundation and Fine-Tuned Chat Models. CoRR abs/2307.09288 (2023). [82] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, et al. 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 (2024). [83] Zheng Yuan, Fajie Yuan, Yu Song, Youhua Li, Junchen Fu, Fei Yang, Yunzhu Pan, and Yongxin Ni. 2023. Where to Go Next for Recommender Systems? ID- vs. Modality-based Recommender Models Revisited. In SIGIR . ACM, 2639–2649.

@@ -1,0 +1,273 @@
+Title: Steering Speech-Language Models: Training-Free Task Specialization via Contrastive Activation Addition
+
+URL Source: https://arxiv.org/pdf/2610.04683v1
+
+Published Time: Tue, 06 Oct 2026 01:04:28 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+# STEERING SPEECH-LANGUAGE MODELS: TRAINING-FREE TASK SPECIALIZATION VIA CONTRASTIVE ACTIVATION ADDITION 
+
+# Severin Baroudi 1,2 Yanis Labrak 3 Pierfrancesco Melucci 2,4 Sergio Burdisso 3
+
+# Petr Motlicek 3,5 Hervé Bredin 6 Mirco Ravanelli 2,7 Ricard Marxer 1,81Univ Toulon, Aix Marseille Univ, LIS, CNRS, France 2Mila – Quebec AI Institute 
+
+3Idiap Research Institute, Martigny, Switzerland 4Sapienza University of Rome, Italy 
+
+5Brno University of Technology, Brno’, Czech Republic 6pyannoteAI, Toulouse, France 
+
+7Concordia University, Montréal, Canada 8CNRS, ILLS, Montréal, Canada 
+
+ABSTRACT 
+
+Activation steering has proven effective for controlling the behav-ior of Large Language Models (LLMs) at inference time, but its application to SpeechLLMs remains new, and training-free steer-ing approaches for such models are still largely unexplored. We propose a training-free Contrastive Activation Addition (CAA) pro-tocol that derives steering vectors for common speech tasks (e.g. transcription) in SpeechLLMs from a small number of labeled ut-terances. We showcase that adding these vectors in the represen-tation space, at inference time, enforces better the targeted speech task. We further show that, when combined with prompting, these vectors yield to consistent improvement over prompting alone on most evaluated tasks such as Automatic Speech Recognition (ASR) or Emotion Recognition (ER), and transfer to out-of-domain data. We additionally demonstrate the usefulness of script-normalization directions to enforce the target script of a specific language. 
+
+Index Terms — Activation Steering, SpeechLLM, Automatic Speech Recognition, Emotion Recognition, Interpretability 
+
+1. INTRODUCTION 
+
+The field of mechanistic interpretability provides a set of general-purpose tools, from linear probing to causal intervention on inter-mediate activations [1], and sparse dictionary learning [2], with the objective of isolating human-interpretable components on the inter-nal representations of a neural network. Among these techniques, activation steering directly alters the internal hidden states of a given Large Language Model (LLM), during generation, to control its behavior, style, tone, or persona without any retraining of the model [3]. In particular, these tools have established that humanly interpretable attributes are encoded in LLMs in a linear fashion [4] via specific vectors. With the advantage of being easily interpretable and manipulable (as opposed to sparse autoencoders [2]), the use of steering vectors has recently been transposed and adapted to other modalities, with the goals of improving the controllability, safety, and performance of language models involved in images and audio. For speech, few activation steering approaches involving direc-tions have been proposed. In speech synthesis, a difference in means between emotional and neutral activations controls the emotion of the generated speech [5], and activation editing corrects prosody and mispronunciation post hoc [6]. These interventions effectively con-trol a paralinguistic attribute or a generation style. The framework SALSA [7] freezes the backbone of a SpeechLLM and trains neural networks to learn steering vectors to inject at inference, by maximiz-ing the likelihood of the reference transcript given the audio, making the intervention a parameter-efficient alternative to fine-tuning on 
+
+(a) Extraction of a task direction   
+
+> audio pool
+> ADpos : “Transcribe. . . ”
+> Dneg : “Summarize. . . ” Speech LLM (frozen)
+> μ(ℓ)(Dpos )
+> μ(ℓ)(Dneg )
+
+− r(ℓ)task  
+
+> mean last-token activation at layer ℓ, Eq. (1)
+
+(b) Steering at inference        
+
+> Speech LLM (frozen) audio prompt generated
+> +αr(ℓ⋆)task on all tokens
+> “he hoped there would be stew for dinner”
+
+Fig. 1. Method overview: (a) extraction of a task direction (ASR in this case) from contrasting instructions on the same audio; (b) steering at inference: the direction is added at a single layer ℓ⋆ to every token, audio positions included. low-resource speech. For SpeechLLMs, only two recent training-free methods obtain such vectors using Contrastive Activation Ad-dition (CAA) in the latent space. The first [8] improves transcrip-tion by identifying accent-related directions from pairs of utterances that share the same linguistic content but differ in accent, while the second [9] extracts a chain-of-thought direction to strengthen rea-soning. The latter suggests that performing this type of intervention, improves the ability of the model to reason and follow instructions. In practice, SpeechLLMs are specialized through textual prompt-ing, whose performance can vary substantially across semantically equivalent instructions, a phenomenon known as prompt sensitiv-ity [10]. Supervised fine-tuning (SFT) removes this dependency, but requires labeled data and a new set of weights per task, which make the deployment difficult. Training-free CAA offers a third route, yet in SpeechLLMs it has only been applied to narrow settings (accented transcription or chain-of-thought reasoning), and whether it can spe-cialize a single SpeechLLM towards a range of speech tasks remains open. This motivates our central research question: Are speech tasks linearly encoded in the representation space of Speech-LLMs ? If so, can task directions be leveraged to (a) serve as an alternative to prompting for audio tasks (e.g. transcription), (b) com-plement textual prompting and improve controllability, therefore reducing prompt sensitivity ? Finally, (c) are these task directions generalizable and dataset-agnostic ? In this paper, we propose a generalizable approach involving CAA for inducing and controlling speech tasks in SpeechLLMs. 
+
+(i) We introduce a simple training-free procedure that extracts a task-specific steering vector from a small set of speech or audio examples. By injecting this direction at inference time, we show that a Speech-arXiv:2610.04683v1 [cs.CL] 3 Oct 2026 LLM can be specialized towards a specific speech task without any textual instruction, and that combining steering with prompting out-performs prompting alone while reducing its sensitivity to the choice of prompt. (ii) Moreover, we demonstrate that these task steering vectors are localized and dataset-agnostic, allowing transferability across out-of-domain corpora, such as Automatic Speech Recogni-tion (ASR). (iii) Finally, we show that the textual alphabet of the SpeechLLM can be controlled with the same injection technique, to enforce a non-Latin script where the model would otherwise default to Latin characters, allowing for a more faithful transcription. 
+
+2. ACTIVATION ADDITION 2.1. Extracting a task direction 
+
+We display the complete steering protocol in Figure 1. Let M be a SpeechLLM whose language backbone is a stack of L transformer blocks operating on a residual stream of width d. Given an audio clip 
+
+a and a textual instruction p, the input sequence is the concatenation of the Ta audio tokens produced by the audio encoder and the Tp
+
+tokens of the instruction. We write h(ℓ) 
+
+> i
+
+(a, p ) ∈ Rd for the residual activation at site ℓ and position i, where ℓ ∈ { 0, . . . , L } indexes the embedding output and the L block outputs. Following the refusal-direction protocol [11], we read activa-tions at the post-instruction position i = −1, i.e. the last token of the prompt, which has been shown to aggregate the instruction semantics in textual LLMs. As [11] demonstrated that a refusal direction can be identified from a contrast between the residual streams of refused and complied-with requests, we assume that a task-conditioned behavior can be recoverable from a contrast be-tween different instructions given to a SpeechLLM. We therefore define a positive set Dpos of prompts carrying a target task (e.g. 
+
+“transcribe the given speech” , “give the verbatim transcript of the given audio” ) and a negative set Dneg of instructions for other tasks (e.g. “summarize the given speech” , “translate the given speech” ). Both sets are paired with the same pool A of audio clips, so that the mean activation of each set is: 
+
+μ(ℓ)(D) = 1
+
+|A| |D| 
+
+X
+
+> a∈A
+
+X
+
+> p∈D
+
+h(ℓ)
+
+> −1
+
+(a, p ), (1) and the task direction is defined as the difference in means: 
+
+r(ℓ)task = μ(ℓ)(Dpos ) − μ(ℓ)(Dneg ). (2) Since the two sets share the same audio pool A, the acoustic, speaker and lexical contributions are assumed to cancel on average, so that only the instruction-induced component remains. 
+
+2.2. Task induction via activation addition 
+
+In CAA, steering vectors are traditionally applied at a single site ℓ⋆,following applications in textual LLMs [3, 11]. At every decoding steps, the targeted residual activation is shifted by: 
+
+˜h(ℓ⋆) 
+
+> i
+
+= h(ℓ⋆) 
+
+> i
+
++ α r(ℓ⋆)task , i ∈ P , (3) where α is a task-specific strength expressed in units of ∥r(ℓ⋆)task ∥ and 
+
+P is the set of steered token positions. For textual LLMs, [11] as-sumes that induction can be performed on all token positions (includ-ing the input prompt tokens). In SpeechLLMs, current approaches usually process audio using a speech encoder architecture [12, 13, 14] and feed the representations into a subsequent language back-bone, as continuous embeddings (or discrete tokens) part of the in-put prompt alongside text tokens. As a result, steering all token po-sitions (including the audio tokens) could potentially blur or destroy the audio content processed by the SpeechLLM. We therefore con-sider two variants: all-position steering ( P = audio ∪ input tokens ∪
+
+generated tokens) and text-position only steering, which leaves the audio frames untouched ( P = input tokens ∪ generated tokens), re-ported in Table 2. The strongest steering direction for a given task is defined empirically as the right combination of amplitude α and layer ℓ⋆, that optimizes the target metric (i.e. minimizes Word Error Rate (WER) for ASR and maximizes Weighted Accuracy (WA) for ER). It is selected via a grid search performed using a small audio pool A, drawn exclusively from the training sets of the targeted task. Because Eq. (3) is linear, several directions can be injected at once, provided that they remain mostly orthogonal in the represen-tation space. In this paper, we study the joint injection of a script-normalization direction and a transcription direction, in order to en-force a target alphabet when ASR must be performed in non-latin languages. The script-normalization direction is derived textually by asking a SpeechLLM to translate a sentence from English to one of our targeted transcription languages, also providing words from the target alphabet (e.g. Translate the following English text into Arabic script ( ±d§T  `ryT )1: I would like a cup of coffee ). The latter is applied in conjunction with transcription steering as follows: 
+
+˜hi = hi + α rtask + β rscript , (4) where hi ∈ R(L+1) ×d collects the residual streams of position i over all sites and each direction is non-zero only at its own site. Assuming 
+
+α has already been set by the task grid search, we perform a second grid search to find the right site ℓ∗ and amplitude β for the script-normalization steering. 
+
+3. EXPERIMENTS 
+
+We evaluate our steering methodology across two instruction-following SpeechLLMs, Qwen2-Audio-7B-Instruct [13] and Phi-4-Multimodal-5.6B-Instruct [14], on Automatic Speech Recognition (ASR), Emotion Recognition (ER) and Audio Captioning (AC). Script-Normalization (SN) corrections are solely applied in the case of ASR. For all tasks, directions are extracted from training data and evaluated on each dataset’s official test set. For ASR, we gather 50 utterances from LibriSpeech train-100h [15] and 50 utterances per language from the CommonVoice [16] training sets of English, French, Arabic, Hindi and Russian, for a total of 300 utterances. We extract the transcription direction on this small assembled dataset, and report Word Error Rate (WER) on LibriSpeech and Character Error Rate (CER) on CommonVoice. We further extend our protocol to ER using the IEMOCAP [17] dataset, following the same eval-uation procedure as [18]: a leave-one-session-out five-fold cross-validation with 20% of each training split held out for validation. We subsequently extract the direction from 50 utterances of each training session, (sampled as evenly as possible across emotions) and evaluate on the held-out session, reporting Weighted Accuracy (WA). In our three prompts, we provide the four possible emotions to choose from: angry, happy, neutral, sad . We also evaluate AC on AudioCaps [19], extracting the direction from 100 random training clips and scoring with Consensus-based Image Description Evalua-tion (CIDEr) [20], which scores n-gram overlap with the reference caption while downweighting generic phrases, and ROUGE-1 [21], which measures unigram overlap between the generated caption and the reference. Finally, for SN, we do not require any training data. We simply extract the script direction by prompting the LLM to translate a textual english sentence to the target language, for 30 sentences (as described in section 2). For each SpeechLLM, we manually verify that the meaning of each translated output matches 
+
+> 1Translates to: “The Arabic alphabet.”
+
+Table 1. Task steering results on ASR, ER and AC. Rows with a prompt are averaged over three prompts for each task. Best score for each system is reported in bold. Since our focus is solely on training-free methods, we report LoRA-SFT in grey. 
+
+Method LibriSpeech (WER ↓) CommonVoice (CER ↓) IEMOCAP AudioCaps 
+
+Prompt Task Steering LoRA SFT 
+
+dev clean dev other test clean test other en fr ar hi ru WA ↑ R-1 ↑ CIDEr ↑
+
+Qwen2-Audio-7B-Instruct 
+
+✓ ✗ ✗ 2.77 5.33 2.94 5.66 7.4 9.1 52.3 51.7 22.7 70.0 34.1 0.26 
+
+✗ ✓ ✗ 6.58 10.6 6.03 10.2 13.2 10.8 68.1 73.3 32.0 63.2 40.1 0.43 
+
+✓ ✓ ✗ 2.43 4.87 2.52 5.16 6.9 7.9 45.9 46.6 21.3 74.2 36.0 0.30 
+
+✗ ✗ ✓ 7.54 10.0 8.14 10.1 7.1 6.1 30.2 40.7 14.4 75.3 48.2 0.64 
+
+Phi-4-Multimodal-5.6B-Instruct 
+
+✓ ✗ ✗ 2.12 4.16 2.26 4.71 8.4 20.5 111.2 47.8 91.1 44.0 31.8 0.18 
+
+✗ ✓ ✗ 1.90 4.55 2.11 5.24 11.1 12.2 101.4 72.4 179.8 41.2 23.7 0.06 
+
+✓ ✓ ✗ 1.73 3.68 1.78 4.07 5.2 3.6 100.6 37.9 91.4 45.8 32.6 0.17 
+
+✗ ✗ ✓ 4.66 7.81 4.28 7.25 6.4 5.8 104.7 68.7 92.1 43.9 39.2 0.33 the source sentence. As we want to evaluate the impact of steer-ing along with prompting, performance may heavily vary with the choice of prompt, therefore confounding the effect of CAA. To reduce variability and show the generalizability of our approach across prompts, we score all our prompting results (Tables 1, 3and 4) on the mean of three textual prompts. For transcription on non-latin scripts, we specifically provide the target script for each prompt, (e.g. for Russian: Transcribe the speech word for word in Cyrillic script. Output only the transcription. ) to make sure that the SpeechLLM has information about the target language. Since our approach is training-free, we find insightful to com-pare our methodology against Supervised Fine-Tuning (SFT). For SFT, we train each task using Low-Rank Adaptation (LoRA) [22] adapters ( r=16 , α=32 , dropout 0.05 ) on the LLM attention pro-jections only, feeding the same datasets as the ones used to extract the direction of each task. As SFT requires a development set, we apply early stopping on the lowest development-set loss for each task. Because we focus on inducing speech tasks in SpeechLLMs, all fine-tuning runs are done by feeding the audio only, which ex-plains the discrepancy in results compared to prompting the model. Furthermore, since each fine-tuning run sees so few audio examples (between 50 and 300 utterances depending on the task), we observe strong overfitting during training, which likely explains the lack of improvement on some datasets, such as LibriSpeech (see Table 1). 
+
+4. RESULTS 4.1. Activation sites and direction injection 
+
+Figure 2 shows a visual example of the (ℓ, α ) grid searches per-formed on ASR and ER. Effective injection sites concentrate in the middle layers (10 to 16) for both tasks, displaying a clustered pattern with progressively lower intensities towards the edges. The need for lower α at deeper layers follows from the Add&Norm structure of the residual stream. An injection at layer ℓ persists into all later blocks but is renormalized by fewer of them. Therefore, deeper in-jection sites achieve the same effect with a smaller amplitude and be-come over-saturated at larger values, which can prevent the Speech-LLM from carrying out the targeted task. Having selected the best injection site and amplitude, we com-pare injecting the task steering vector on text positions only, against steering all positions (as depicted in Figure 1). Table 2 reports WER and CER results on LibriSpeech and CommonVoice for both meth-ods. As observed, steering both text and audio tokens yields substan-0 1 2 3 4 5 6 10                                                                                    
+
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%) 012345610
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> steering layer
+> 60 88 116 144 172 200
+> WER (%)
+
+Automatic Speech Recognition 
+
+(LibriSpeech + CommonVoice) 0 1 2 3 4 5 6 10    
+
+> steering amplitude (units of d)
+> 0246810 12 14 16 18 20 22 24 26 28 30
+> 013 26 39 52 65
+> ACC (%)
+
+Emotion Recognition 
+
+(IEMOCAP) 
+
+Fig. 2. grid searches for task induction through activation addition (w/o prompt), on Qwen2-Audio-7B-Instruct , using the training set assembled in Section 3. tially better transcription than steering text tokens only ( 43 .9% and 
+
+19 .1% relative on each dataset). Although the intervention shifts the audio activations, the acoustic content remains mostly intact and the behavior is more strongly elicited. A similar trend was observed on 
+
+Phi-4-Multimodal-5.6B-Instruct .
+
+Table 2. Impact of task steering over the input prompt tokens, on ASR using Qwen2-Audio-7B-Instruct . LibriSpeech WER is the mean of the four splits dev-c/o and test-c/o. CommonVoice CER is the mean over the en/fr/ar/hi/ru test sets. 
+
+Task vector LibriSpeech CommonVoice 
+
+injected at WER ↓ CER ↓
+
+Text tokens 14.90 48.8 Text + Audio tokens 8.35 39.5 4.2. Contrastive Activation Addition results 
+
+Table 1 reports CAA results for ASR, ER, and AC on both Qwen2-Audio-7B-Instruct and Phi-4-Multimodal-5.6B-Instruct , across task-induction methods (prompting, steering, and SFT). Note that we only evaluate the instruction-tuned versions of each model because they allow free-form prompting, unlike the base versions [13]; this explains why our LibriSpeech WERs are slightly higher than results reported in technical reports of base models. Applying task steering alone shows that inducing task behav-iors into a SpeechLLM without textual instructions is indeed pos-sible. On LibriSpeech, we achieve competitive WER results with a direct LoRA-SFT in the case of Qwen2-Audio, and better results than prompting for Phi-4, on the clean sets. On captioning, steering alone strongly improves CIDEr and ROUGE-1 over prompting on Qwen2-Audio ( 0.26 → 0.43 and 34 .1 → 40 .1), but not on Phi-4-Multimodal. We justify this result by the fact that Qwen2-Audio has a default tendency to describe a given audio when no instruction is given, which in conjunction with steering, helps promote the cap-tioning task. On the more challenging CommonVoice dataset, while Phi-4 shows promising results on French, overall CER scores are more mixed for both models, particularly on non-Latin-script lan-guages (Arabic, Hindi, Russian). Manual inspection of high WER and CER transcripts reveals 
+
+two recurring failure modes. First, the model often transcribes the utterance correctly, but fails to stop generating new tokens, there-fore hallucinating a continuation. This means that, while rtask elic-its the transcription behavior, it does not by itself encode when the audio has ended. Second, on non-Latin-script languages, notably Russian and Arabic, many hypotheses preserve the semantic con-tent of the target reference, yet are written in Latin script, implying that WER/CER penalizes script choice rather genuinely wrong tran-scription. A similar problem is observed when prompting the model without steering, even though the target script was specified in the instruction (see Section 3). Adding the task vector on top of the prompt outperforms prompting alone on every benchmark for Qwen2-Audio, and on all but two (CommonVoice Russian and AudioCaps CIDEr) for Phi-4-Multimodal, with the largest absolute gains on Common-Voice. On Qwen2-Audio, this method lowers CommonVoice CER by 5.1 and 6.4 points absolute on Hindi and Arabic, while also improving consistently over the already low WER of LibriSpeech. On Phi-4-Multimodal, gains are largest on LibriSpeech test sets (21.2% relative improvement on test-clean, 13.6% on test-other) and on CommonVoice French and English (82.4% and 38.1% relative CER reduction). On Phi-4-Multimodal, we observe poor perfor-mance on Arabic and Hindi, consistent with the lack of support for these languages by the model. On ER, Qwen2-Audio raises WA by 4.2 points, producing better overall emotion predictions and approaching SFT performance, while gains are more modest on Phi-4-Multimodal. Inspecting the error reductions, combining steering with prompting improves ASR, ER and AC in several ways. We observe improved wording and syntax in the generated output, while also reducing cases where the instruct model simply refuses or fails to understand the required task, particularly on CommonVoice. It also prevents the model from transcribing or captioning past the end of the audio, a failure mode observed with task steering alone. Without any prompt, steering outperforms LoRA-SFT on Lib-riSpeech for both SpeechLLMs, making CAA a viable alternative to fine-tuning when labeled data is scarce. On the more challenging CommonVoice, however, SFT remains the stronger option. 
+
+Table 3. Script-Normalization direction combined with Prompt and Task Steering for CommonVoice on non-Latin scripts (Arabic, Hindi and Russian). CER is reported. 
+
+Qwen2-Audio Phi-4-MM Method ar hi ru ar hi ru Prompt & Task Steering 45.9 46.6 21.3 100.6 37.9 91.4 + Script Steering 40.5 44.1 21.2 102.4 36.7 62.2 
+
+Given the limitations of steering on non-Latin-script languages, Table 3 applies the SN direction, in an attempt to steer the model towards a targeted alphabet. Results show clear improvements for some languages: on Phi-4-Multimodal, CER drops by 29.2 points on Russian, largely by correcting the script, and by 1.2 points on Hindi, while Arabic stagnates; on Qwen2-Audio, CER drops by 5.4 points on Arabic and 2.5 points on Hindi. 
+
+4.3. Cross-domain transfer and steering robustness 
+
+From the 300-utterance ASR training set used to extract the tran-scription direction, we isolate utterances from each dataset (Lib-riSpeech and CommonVoice). We evaluate each direction both across domains (e.g., CommonVoice → LibriSpeech) and within the same domain (e.g., LibriSpeech → LibriSpeech). All experiments use the same (ℓ, α ) pairs as in Table 1. 
+
+Table 4. Out-of-domain transfer on Qwen2-Audio for ASR (re-ported on the same sets as in Table 2). The ± values in the Prompt 
+
+columns give the standard deviation over the three prompts. Random 
+
+replaces the task vector with a random one of equal norm at the same site. 
+
+Task vector w/o Prompt Prompt 
+
+extracted from LS WER ↓ CV CER ↓ LS WER ↓ CV CER ↓
+
+LS + CV 8.35 39.5 3.75 ±0.19 25.7 ±1.4
+
+LS 8.31 38.5 3.75 ±0.18 25.6 ±1.3
+
+CV 8.58 38.7 3.76 ±0.17 25.5 ±1.2
+
+No Steering 239.9 159.7 4.18 ±0.49 28.6 ±2.1
+
+Random 196.7 178.1 4.31 ±0.54 29.7 ±3.0
+
+Table 4 shows a negligible performance drop when a direction extracted from LibriSpeech (LS) is applied to CommonVoice (CV), and vice versa, indicating that the transcription direction transfers across domains and is largely dataset-agnostic. Because the differ-ences in observed WER/CER between directions are small, we in-clude two negative controls to confirm that the gains come from the steering direction itself: no steering, and a random vector of equal norm injected at the same site. Without a prompt, both controls fail (WER/CER above 150%), because the model receives no task spec-ification and the random vector does not supply one. With a prompt, task steering consistently improves over prompting alone (LS WER 
+
+4.18 → 3.75 , CV CER 28 .6 → 25 .7), whereas a random direction degrades performance below the prompt-only baseline, confirming that the gains are specific to the task direction. Task steering also reduces the standard deviation across prompts by roughly a factor of two. This suggests that steering makes transcription quality less sensitive to the choice of prompt. 
+
+5. CONCLUSION 
+
+We presented a training-free and low-resource procedure for extract-ing and inducing task-specific behaviors in SpeechLLMs via CAA, showing that speech tasks are linearly encoded in their representation space. Despite a limited-data regime, our protocol improves over prompting alone on nearly all ASR, ER and AC benchmarks for two distinct SpeechLLMs, while reducing sensitivity to prompt wording, and offers an alternative to low-resource SFT when no textual in-struction is used. We further demonstrate that task steering vectors are localized and transferable to out-of-domain datasets, with a neg-ligible impact on WER/CER for ASR. Similarly to textual LLMs, we discover that CAA applied to input audio embeddings does not affect the semantic of the given input when the right steering vector is applied, yielding to better overall steering performance. Finally, a script-normalization direction extracted from text alone, requiring no speech data, can be used to enforce a target alphabet on non-Latin-script languages, reducing CER (in the case of ASR on non-latin languages) while preserving the semantic content of the transcrip-tion. 6. ACKNOWLEDGMENTS 
+
+Severin Baroudi and Ricard Marxer were supported by the Agence de l’Innovation de Défense (grant 2022 65 0079), the French Na-tional Research Agency (ANR-20-CE23-0012-01, MIM), and com-putational resources from GENCI-IDRIS (grants AD011014044R2 and AD011016519), while Idiap employees were funded by the European Union’s Horizon 2020 project ELOQUENCE (grant 101070558). This work has also been carried out while Pier-francesco Melucci was enrolled in the Italian National Doctorate on Artificial Intelligence run by Sapienza University of Rome in collaboration with Universita di Roma Tre, and Severin Baroudi was researcher at the Mila – Quebec AI Institue. 
+
+7. COMPLIANCE WITH ETHICAL STANDARDS 
+
+This research was conducted retrospectively using human subject speech data made available in open access or under institutional li-cense (LibriSpeech, CommonVoice, IEMOCAP, AudioCaps). Ethi-cal approval was not required, as confirmed by the licenses of these corpora. No new data were collected from human subjects. 
+
+8. REFERENCES 
+
+[1] Kevin Meng, David Bau, Alex Andonian, and Yonatan Belinkov, “Locating and editing factual associations in gpt,” in Advances in Neural Information Processing Systems ,S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh, Eds. 2022, vol. 35, pp. 17359–17372, Curran As-sociates, Inc. [2] Robert Huben, Hoagy Cunningham, Logan Smith, Aidan Ewart, and Lee Sharkey, “Sparse autoencoders find highly interpretable features in language models,” in International Conference on Learning Representations , B. Kim, Y. Yue, S. Chaudhuri, K. Fragkiadaki, M. Khan, and Y. Sun, Eds., 2024, vol. 2024, pp. 7827–7845. [3] Nina Rimsky, Nick Gabrieli, Julian Schulz, Meg Tong, Evan Hubinger, and Alexander Turner, “Steering llama 2 via con-trastive activation addition,” in Proceedings of the 62nd An-nual Meeting of the Association for Computational Linguistics ,2024, pp. 15504–15522. [4] Kiho Park, Yo Joong Choe, and Victor Veitch, “The linear representation hypothesis and the geometry of large language models,” in Proceedings of the 41st International Conference on Machine Learning . 2024, ICML’24, JMLR.org. [5] Tianxin Xie, Shan Yang, Chenxing Li, Dong Yu, and Li Liu, “Emosteer-tts: Fine-grained and training-free emotion-controllable text-to-speech via activation steering,” arXiv preprint arXiv:2508.03543 , 2025. [6] Kyowoon Lee, Artyom Stitsyuk, Gunu Jho, Inchul Hwang, and Jaesik Choi, “Counterfactual Activation Editing for Post-hoc Prosody and Mispronunciation Correction in TTS Models,” in 
+
+Interspeech 2025 , 2025, pp. 434–438. [7] Yekaterina Yegorova, Argyrios Gerogiannis, Haolong Zheng, Julia Hockenmaier, Chang D. Yoo, and Mark A. Hasegawa-Johnson, “Salsa: Speech aware llm adaptation via learned steering activation vectors,” arXiv preprint arXiv:2606.00460 ,2026. [8] Jinuo Sun et al., “Activation steering for accent adaptation in large audio language models,” 2026. [9] Lok-Lam Ieong, Chia-Chien Chen, Chih-Kai Yang, Yu-Han Huang, An-Yu Cheng, and Hung yi Lee, “Nudging hidden states: Training-free model steering for chain-of-thought rea-soning in large audio-language models,” 2026. [10] Melanie Sclar, Yejin Choi, Yulia Tsvetkov, and Alane Suhr, “Quantifying language models'sensitivity to spurious features in prompt design or: How i learned to start worrying about prompt formatting,” in International Conference on Learn-ing Representations , B. Kim, Y. Yue, S. Chaudhuri, K. Fragki-adaki, M. Khan, and Y. Sun, Eds., 2024, vol. 2024, pp. 25055– 25083. [11] Andy Arditi, Oscar Obeso, Aaquib Syed, Daniel Paleka, Nina Panickssery, Wes Gurnee, and Neel Nanda, “Refusal in lan-guage models is mediated by a single direction,” in Proc. NeurIPS , 2024. [12] Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman, Christine Mcleavey, and Ilya Sutskever, “Robust speech recog-nition via large-scale weak supervision,” in Proceedings of the 40th International Conference on Machine Learning . 2023, pp. 28492–28518, PMLR. [13] Yunfei Chu, Jin Xu, Qian Yang, Haojie Wei, Xipin Wei, Zhi-fang Guo, Yichong Leng, Yuanjun Lv, Jinzheng He, Junyang Lin, Chang Zhou, and Jingren Zhou, “Qwen2-audio technical report,” 2024. [14] Microsoft et al., “Phi-4-mini technical report: Compact yet powerful multimodal language models via mixture-of-loras,” 2025. [15] Vassil Panayotov, Guoguo Chen, Daniel Povey, and Sanjeev Khudanpur, “LibriSpeech: An ASR corpus based on public domain audio books,” in Proc. ICASSP , 2015. [16] Rosana Ardila et al., “Common voice: A massively-multilingual speech corpus,” in Proceedings of the Twelfth Language Resources and Evaluation Conference , Marseille, France, May 2020, pp. 4218–4222, European Language Re-sources Association. [17] Carlos Busso et al., “Iemocap: Interactive emotional dyadic motion capture database,” Language Resources and Evalua-tion , vol. 42, no. 4, pp. 335–359, 2008. [18] Ziyang Ma et al., “emotion2vec: Self-supervised pre-training for speech emotion representation,” in Findings of the Asso-ciation for Computational Linguistics: ACL 2024 , Bangkok, Thailand, Aug. 2024, pp. 15747–15760, Association for Com-putational Linguistics. [19] Chris Dongjoo Kim, Byeongchang Kim, Hyunmin Lee, and Gunhee Kim, “Audiocaps: Generating captions for audios in the wild,” in Proceedings of NAACL-HLT , 2019, pp. 119–132. [20] Ramakrishna Vedantam, C. Lawrence Zitnick, and Devi Parikh, “Cider: Consensus-based image description evalua-tion,” in 2015 IEEE Conference on Computer Vision and Pat-tern Recognition (CVPR) , 2015, pp. 4566–4575. [21] Chin-Yew Lin, “ROUGE: A package for automatic evalu-ation of summaries,” in Text Summarization Branches Out ,Barcelona, Spain, July 2004, pp. 74–81, Association for Com-putational Linguistics. [22] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen, “LoRA: Low-rank adaptation of large language models,” in Interna-tional Conference on Learning Representations , 2022.
