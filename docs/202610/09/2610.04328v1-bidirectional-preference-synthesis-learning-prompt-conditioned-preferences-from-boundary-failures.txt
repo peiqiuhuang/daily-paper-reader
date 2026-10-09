@@ -1,0 +1,626 @@
+Title: Bidirectional Preference Synthesis: Learning Prompt-Conditioned Preferences from Boundary Failures
+
+URL Source: https://arxiv.org/pdf/2610.04328v1
+
+Published Time: Tue, 06 Oct 2026 00:39:32 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Bidirectional Preference Synthesis: Learning Prompt-Conditioned Preferences from Boundary Failures 
+
+# Junbo Wang 1,2 , Lidong Lu 2, Zhuoqun Li 1, Guiping Jiang 1, Xiangyu Wu 1, Tinghai Zhang 1, Tong Lu 2
+
+> 1
+
+Kuaishou Technology 
+
+> 2
+
+Nanjing University 
+
+Abstract 
+
+Correction-based offline preference pipelines commonly treat model failures only as rejected responses under the original prompt. This supervision is incomplete for boundary failures :responses that violate the given instruction yet coherently sat-isfy a nearby intent or constraint setting. We introduce Bidi-rectional Preference Synthesis (BPS), a data-construction method for standard DPO that makes this missing prompt de-pendence explicit. For each validated boundary failure, BPS keeps the conventional forward pair under the original prompt and adds a reverse pair under a synthesized achieved prompt ,so the same response is rejected where it is wrong and chosen where it is right, without changing the DPO objective, training a reward model, or requiring online sampling. On Qwen3-4B-Instruct-2507, BPS preserves original-side pairwise ranking while raising achieved-side ranking accuracy from 6.8% to 62.3% on held-out crossed anchors, with a similar shift under a Kimi-K2.6 cross-teacher probe. A blind human audit supports the intended reverse preference direction, and downstream evaluations show the clearest separation from Forward-DPO in multilingual multi-turn instruction following, with consis-tent capability-retention patterns on agentic/tool-use and code checks. 
+
+# Introduction 
+
+A rejected response in preference data is not always bad in itself. Consider a prompt asking for a Chinese answer in exactly two bullet points, with a required keyword and separator. A model may produce a fluent, factually correct Chinese answer, but use three bullets or omit the separator. Under the original prompt, this response should lose to a correction. Yet the same response could be better under a prompt whose constraints match what the model produced. We call such near misses boundary failures : outputs that violate the given prompt but coherently satisfy a related in-tent or constraint setting. They arise naturally in instruction-following tasks with verifiable constraints (Zhou et al. 2023; Pyatkin et al. 2025; Jiang et al. 2024), where a response can solve the task while missing a format, lexical, language, or structural requirement. The same structure appears beyond surface constraints: a tool argument can be wrong for one request but correct for a related request, and a multilingual pattern can be inappropriate in one turn but useful in an-other (He et al. 2024; Qin et al. 2023; Yao et al. 2024). Boundary failures are therefore not merely negative exam-ples; they expose where preference should change with the prompt. Offline preference optimization methods such as DPO (Rafailov et al. 2023) and its variants (Azar et al. 2024; Ethayarajh et al. 2024; Meng, Xia, and Chen 2024; Hong, Lee, and Thorne 2024) are widely used because they avoid reward-model RLHF pipelines (Christiano et al. 2017; Sti-ennon et al. 2020; Ouyang et al. 2022) and online PPO-style rollouts. Their effect, however, is determined by the pref-erence pairs they receive. A typical pipeline samples failed rollouts, obtains corrected responses through rejection sam-pling (Touvron et al. 2023) or self-correction (Zelikman et al. 2022; Madaan et al. 2023), and trains on pairs where the correction is preferred under the original prompt. We call this forward-only supervision because each failure is used only as rejected under its original prompt. This is the right signal when the rejected response is incoherent, unsafe, or factually wrong. For a boundary failure, it records only that the response lost under Porig , not whether the rejection is prompt-specific. This missing context can matter even though DPO scores responses conditionally on the prompt. Because prompts share model parameters, repeatedly observing a coherent re-sponse mode only as rejected may influence its relative score in other contexts where that mode remains useful. We there-fore study boundary failures as a data-construction problem: preference data can encode not only which response is wrong, but also where it would be right. We propose Bidirectional Preference Synthesis (BPS), an offline construction method for standard DPO. For each validated boundary failure, BPS keeps the conventional for-ward pair under the original prompt, Porig : τperfect ≻ τfail ,and adds a reverse pair under a synthesized achieved prompt ,
+
+Pachieved : τfail ≻ τperfect . The achieved prompt describes what the failed response satisfies. Together, the pairs form a crossed anchor: τfail is rejected where it is wrong and chosen where it is right. Figure 1 contrasts this with forward-only data. BPS changes only the preference data; it introduces no new loss, trained reward model, or online sampling. We evaluate BPS on Qwen3-4B-Instruct-2507. Held-out crossed-anchor probes show that BPS preserves original-side rankings while substantially improving achieved-side rankings under both Gemini and Kimi-K2.6 construction arXiv:2610.04328v1 [cs.AI] 3 Oct 2026 Forward -only       
+
+> Porig
+> τperfect τfail
+> τperfect τfail ＞
+> Porig
+> Pachieved
+> same
+> pair
+> τperfect τfail
+> τfail τperfect
+> τperfect τfail ＞
+> τfail τperfect ＞
+> BPS
+> one -sided rejection prompt -conditioned boundary
+
+Figure 1: Forward-only DPO data rejects τfail only under 
+
+Porig . BPS adds an achieved-prompt reverse pair, so the same response pair teaches a prompt-conditioned preference boundary. pipelines. A blind human audit supports the intended re-verse preference direction and finds little response leakage. Downstream evaluations show the clearest separation in mul-tilingual multi-turn instruction following, together with fa-vorable capability-retention patterns on agentic/tool-use and code checks. A separate function-calling instantiation ex-tends the same construction to structured action spaces. Our contributions are: 1. We identify boundary failures as a preference-data con-struction problem: a rejected response may be useful un-der a related intent, so forward-only supervision can con-flate prompt-specific rejection with response-intrinsic un-desirability. 2. We introduce Bidirectional Preference Synthesis, which augments validated boundary failures with achieved-prompt reverse pairs while leaving the DPO objective unchanged. 3. We provide evidence that semantically matched re-verse anchors counteract cross-prompt rejection patterns and improve cross-context capability retention, including multilingual interaction and function calling. 
+
+# Related Work 
+
+Preference optimization and DPO failure modes. Online RLHF methods train reward models from preference com-parisons and optimize policies with RL-style updates (Chris-tiano et al. 2017; Stiennon et al. 2020; Ouyang et al. 2022), but require rollouts, reward queries, and stability tuning. Di-rect or offline objectives such as SLiC-HF, RRHF, DPO, IPO-style objectives, KTO, SimPO, and ORPO (Zhao et al. 2023; Yuan et al. 2023; Rafailov et al. 2023; Azar et al. 2024; Ethayarajh et al. 2024; Meng, Xia, and Chen 2024; Hong, Lee, and Thorne 2024) avoid online RL, making data construction central: behavior depends on which responses are rejected under which prompts. Prior work shows that DPO can reduce loss by displacing likelihood away from rejected responses rather than learning calibrated prefer-ences (Razin et al. 2025); DPO-positive/Smaug addresses related objective-level issues (Pal et al. 2024). BPS is com-plementary: it keeps standard DPO but changes the data se-mantics by asking when a rejected response should also be positive. 
+
+Reverse and input-side preference construction. RPO constructs reverse preference pairs by modifying instruction constraints so that an imperfect response becomes preferred on a related task (Huang et al. 2025). IOPO evaluates the same output under different inputs to make preference learn-ing more input-conditioned (Zhang et al. 2025b). BPS is closest to this line, but ties each reverse pair to an observed boundary failure: it starts from a student response that failed 
+
+Porig , synthesizes a standalone prompt for what the response achieved, and keeps the reverse label only after validation. Unlike mechanical constraint reversal, BPS keeps the forward and achieved-prompt reverse pairs as a crossed anchor over the same responses. We use an RPO-style construction as a strong baseline to isolate the value of semantically matched achieved prompts. 
+
+Data construction, self-correction, and hindsight relabel-ing. Offline pipelines use filtering, teacher feedback, re-jection sampling (Touvron et al. 2023), STaR (Zelikman et al. 2022), Self-Refine (Madaan et al. 2023), AI feed-back (Lee et al. 2024), or self-rewarding methods to pro-duce improved responses. BPS uses this correction signal but also asks whether a failure reveals a nearby instruction it already satisfies. This connects to hindsight experience re-play (Andrychowicz et al. 2017) and HIR (Zhang et al. 2023), but BPS does not replace failure with success: it preserves re-jection under the original prompt and preference only under a validated achieved prompt. 
+
+Instruction following and tool use. Instruction tuning and synthetic instruction generation show that task spec-ifications shape model behavior (Wei et al. 2022; Wang et al. 2022, 2023). Fine-grained instruction-following bench-marks (Zhou et al. 2023; Pyatkin et al. 2025; Jiang et al. 2024) expose partial success over language, format, lexi-cal, and task-content constraints, while multilingual multi-turn benchmarks (He et al. 2024) test cross-turn stability. Tool-use and agentic methods and benchmarks (Schick et al. 2023; Patil et al. 2024; Yao et al. 2024; Qin et al. 2023; Patil et al. 2025) expose the same structure in action spaces, where an argument can be wrong for one request but correct for a nearby request. These settings naturally test prompt-conditioned preference learning. 
+
+# Method 
+
+Problem Formulation 
+
+BPS constructs preference pairs from model-generated near misses. Figure 2 summarizes the construction pipeline. It uses the student πθ0 to generate failures and self-corrections, and a teacher πT only for offline diagnosis, correction hints, achieved-prompt synthesis, and validation. Given seed prompts D = {Pi}Ni=1 with verifiable atomic constraints 
+
+C(Pi) = {c1, . . . , c m}, we sample K rollouts per prompt Input & Filtering  BPS: Bidirectional Preference Synthesis  Training(Unchanged) 
+
+Boundary Failure 
+
+# 𝜏 fail 
+
+Near Misses 
+
+(optional) 
+
+Filter Rules 
+
+> Content overlap
+> Format match
+> Constraint satisfy
+
+Boundary Failure 
+
+# 𝜏 fail 
+
+1 Forward anchor 
+
+Teacher Hint 
+
+h
+
+Student 
+
+Self -Correct 
+
+# 𝜏 perfect 
+
+(corrected) 
+
+2 Reverse anchor 
+
+Outcome Summary 
+
+(analyze  𝜏 fail )
+
+Achieved -Prompt 
+
+Pachieved 
+
+Validation / Filtering 
+
+(same rules) 
+
+Porig  : 𝜏 perfect ＞𝜏 fail 
+
+(Forward Pair) 
+
+Pachieved  :𝜏 fail ＞𝜏 perfect 
+
+(Reverse Pair) 
+
+Mixed Preference Dataset 
+
+(Forward + Reverse) 
+
+Mixed Preference Data 
+
+Forward 
+
+pair 
+
+Reverse 
+
+pair 
+
+Standard DPO 
+
+unchanged Figure 2: BPS pipeline. Each validated boundary failure yields a forward correction pair under Porig and, when validation succeeds, a reverse pair under Pachieved .and define the constraint pass ratio 
+
+r(P, τ ) = |{ ck ∈ C(P ) : τ satisfies ck}| |C(P )| . (1) Responses with r = 1 need no correction, and responses with 
+
+r = 0 provide little evidence of a nearby achieved intent. BPS focuses on partial successes, 0 < r < 1, especially near misses with r ≥ 0.5. A candidate receives a reverse anchor only after passing the eligibility and validation filters below. 
+
+Forward Execution Anchor 
+
+The forward anchor records the ordinary correction signal while keeping the corrected response student-generated. For each candidate boundary failure (Porig , τ fail ), the teacher pro-duces a structured correction hint h rather than a replacement answer, and the student generates a correction conditioned on the original prompt, the failed response, and the hint: 
+
+τperfect ∼ πθ0 (· | Porig , τ fail , h ) (2) During this retry, τfail is evidence for repair, not an instruction source. A correction is accepted only if it is non-degenerate and achieves r(Porig , τ perfect ) = 1 . The resulting forward pair is 
+
+Porig : τperfect ≻ τfail .
+
+In our main instantiation, this process yields 1,443 forward pairs. 
+
+Reverse Intent Anchor 
+
+The reverse anchor is added only when the failure can safely be interpreted as a correct response to another truthful in-tent. We use a conservative pipeline: outcome-summary el-igibility, achieved-prompt synthesis, and cycle-consistency validation. Failures that do not pass remain forward-only. 
+
+Outcome-summary eligibility. Before generating any achieved prompt, the teacher summarizes what τfail accom-plishes and labels it eligible , forward-only , or reject-all . El-igible failures must be coherent, substantially complete, and mainly attributable to instruction mismatch (e.g., language, format, length, structure, or keyword constraints). We ex-clude factual, mathematical, or logical errors; hallucinations; unsafe content; degeneration; incoherence; and incomplete task content. 
+
+Achieved prompt synthesis. For each eligible failure, the teacher synthesizes a standalone achieved prompt Pachieved 
+
+under which τfail should be correct. This prompt cannot make the failure correct by merely deleting constraints; it must re-place violated constraints with the content, language, format, tone, length, and structure actually exhibited by τfail , while avoiding leakage, false content, meta-evaluation wording, or copy requests. We audit naturalness and leakage in the sup-plementary material. 
+
+Cycle-consistency validation. A separate teacher judge validates the completed crossed anchor under Pachieved . A reverse pair is accepted only if the achieved prompt is non-leaky, τfail is coherent, truthful, safe, and complete, τperfect is less appropriate under Pachieved , and the preference is clear. Accepted examples form the reverse pair 
+
+Pachieved : τfail ≻ τperfect .
+
+We prefer precision over coverage: 282 of 316 candidates pass validation (89.2%). Prompt-template summaries and the validation rubric are provided in the supplementary material. 
+
+DPO Training on Mixed BPS Dataset 
+
+BPS does not modify the DPO objective. After constructing forward and reverse anchors, we form the mixed preference dataset 
+
+DBPS = Dforward ∪ D reverse , (3) where forward pairs have the form (Porig , τ perfect , τ fail ) and validated reverse pairs have the form (Pachieved , τ fail , τ perfect ).We then optimize the standard DPO objective over this mixed dataset, using a frozen reference policy πref (instantiated as 
+
+πθ0 in our experiments): 
+
+LBPS = E(x,y w ,y l)∼D BPS 
+
+h
+
+−log σ
+
+
+
+β
+
+h
+
+log πθ (yw|x)
+
+πref (yw|x)
+
+− log πθ (yl|x)
+
+πref (yl|x)
+
+ii 
+
+. (4) Each preference pair receives the same per-sample weight. The aggregate strength of the reverse signal is therefore con-trolled by the reverse density ρ = |D reverse |/|D forward |. Our final density, ρ ≈ 0.195 (1,443 forward + 282 reverse = 1,725 total pairs), is determined by retaining all reverse pairs that pass validation; sensitivity checks around this naturally resulting density are reported in the supplementary material. Thus, BPS changes the preference supervision available to DPO, but not the optimization objective itself. 
+
+# Experiments and Analysis 
+
+Setup 
+
+Model. We use Qwen3-4B-Instruct-2507 (Yang et al. 2025) as the student and a frozen copy as the DPO reference policy. Gemini-3.1-pro-preview is used only for offline hint generation, achieved-prompt synthesis, and validation. 
+
+Data. Seed prompts are drawn from IFBench-train (Py-atkin et al. 2025); evaluation prompts are excluded, and our n-gram overlap checks find no exact or near-duplicate gen-erated Pachieved prompts in the evaluated prompt sets. After dual-temperature rollouts and filtering, we obtain 1,443 for-ward pairs and 282 reverse pairs (1,725 total, ρ ≈ 0.195 ). About 71% of initial failures have r ≥ 0.5.
+
+Teacher usage and quality control. The teacher is not used for downstream scoring. The main construction run uses about 2,500 teacher calls / 5M tokens. Strict valida-tion accepts 282 of 316 pre-filtered reverse candidates and discards ambiguous cases. The Gemini held-out crossed-anchor probe is therefore treated as a reward-geometry di-agnostic rather than teacher-independent generalization; we add a Kimi-K2.6 synthesized-and-validated probe as a cross-teacher check. 
+
+Training. All models follow the same standard-DPO train-ing configuration ( β = 0 .1) and three-epoch schedule; the main comparison uses the common step-100 checkpoint, matching the number of optimizer updates. Full hyperpa-rameters are in the supplementary material. 
+
+Baselines. Base : Qwen3-4B-Instruct-2507 without further training. Forward-DPO (Step 60 / Step 100): Trained on 
+
+Dforward only. Fwd-100 is the checkpoint matched to the main BPS comparison; Fwd-60 is an earlier checkpoint evalu-ated in the supplementary material. BPS (BPS-100): Trained on Dforward ∪ D reverse , with additional checkpoints used for training-dynamics analysis (Section ). Shuffled-Rev (Shuf): An ablation that keeps each reverse response pair and label direction but randomly permutes achieved prompts across examples, used only in analysis (Section ). Constraint-Rev 
+
+(C-Rev): A strong RPO-inspired construction baseline that uses the same boundary-failure pool and reverse-pair budget as BPS, but creates reverse prompts by mechanically modi-fying violated constraints in the original prompt rather than synthesizing the achieved intent. 
+
+Benchmarks. We evaluate instruction following (IF-Bench (Pyatkin et al. 2025), IFEval (Zhou et al. 2023), FollowBench (Jiang et al. 2024), Multi-IF (He et al. 2024)), reasoning and math (GPQA-Diamond (Rein et al. 2023), MATH-500 (Hendrycks et al. 2021)), code (Hu-manEval+ (Chen et al. 2021; Liu et al. 2023a), MBPP (Austin et al. 2021)), Chinese language (C-Eval (Huang et al. 2023)), agent/tool use (tau-bench (Yao et al. 2024), tau2-bench (Bar-res et al. 2025), ToolBench (Qin et al. 2023)), and broad rea-soning (MMLU-Pro (Wang et al. 2024), BBH (Suzgun et al. 2023)). FollowBench reports CSL/HSR/SSR in English and Chinese; Multi-IF averages eight languages over three turns. Full metrics and evaluation details are in the supplementary material. All models use the same decoding configuration and official/default evaluators. We focus on both downstream behavior and learned prefer-ence geometry. Section reports a separate function-calling instantiation of the BPS pipeline; because it uses different boundary data and checkpoint selection, its numbers are not mixed with the main IFBench-trained comparisons. 
+
+Main Results 
+
+Table 1 reports the main instruction-following results at the matched step-100 checkpoint. Table 1 shows the main capability-retention trade-off. BPS scores above Base on all listed IFBench and IFEval vari-ants, attains the strongest listed FollowBench scores, and scores above both comparison models at every Multi-IF turn. Forward-DPO improves some shallow instruction-following metrics but is below Base on most FollowBench metrics and later Multi-IF turns. A separate three-seed check also shows a consistent IFEval gain for BPS (87.79 ±0.23 for Forward-DPO vs. 88.83 ±0.59 for BPS; see the supplemen-tary material). We compare BPS and Forward-DPO after the same number of optimizer updates at step 100. An ear-lier Forward-DPO checkpoint exhibits a different narrow-performance/capability-retention trade-off and is reported as IFBench / IFEval FollowBench / Multi-IF Metric Base Fwd-100 BPS-100 Metric Base Fwd-100 BPS-100                                                                       
+
+> IFBench-P Strict 31.00 31.97 32.31 FollowBench CSL (EN) 3.00 2.96 3.00
+> IFBench-I Strict 33.67 36.05 35.71 FollowBench CSL (ZH) 2.92 2.90 2.98
+> IFBench-P Loose 33.33 32.65 35.03 FollowBench HSR (EN) 66.04 64.44 66.37
+> IFBench-I Loose 36.50 36.90 38.78 FollowBench HSR (ZH) 64.46 64.36 65.47
+> IFEval-P Strict 82.81 83.36 86.69 FollowBench SSR (EN) 74.88 74.62 75.24
+> IFEval-I Strict 88.88 90.36 91.87 FollowBench SSR (ZH) 72.36 72.99 74.58
+> IFEval-P Loose 86.14 84.66 89.28 Multi-IF Turn 1 Avg. 85.72 87.21 87.93
+> IFEval-I Loose 90.88 91.04 93.25 Multi-IF Turn 2 Avg. 78.07 75.78 79.15
+> IFBench Avg. 33.63 34.39 35.46 Multi-IF Turn 3 Avg. 69.45 66.14 70.48
+> IFEval Avg. 87.18 87.36 90.27 Multi-IF Overall Avg. 77.75 76.38 79.19
+
+Table 1: Instruction-following results at Step 100. IFBench/IFEval averages are means over listed metrics; Multi-IF scores are macro-averaged across eight languages. BPS-100 scores above both comparisons at every Multi-IF turn, while the BPS-100– Fwd-100 gap grows monotonically with turn depth (+0.72, +3.37, +4.34); per-language analysis is in the supplementary material. a checkpoint-sensitivity comparison in the supplementary material. 
+
+Multi-turn multilingual robustness. Multi-IF makes the depth effect clear. Relative to Base, Fwd-100 changes from 
+
++1.49 on turn 1 to −2.29 and −3.31 on turns 2–3, while BPS improves all turns ( +2.21, +1.08, +1.03). The BPS–Fwd gap therefore grows with turn depth ( +0.72, +3.37, +4.34), and the per-language breakdown in the supplementary material shows the same pattern in 23/24 language-turn averages. 
+
+General and out-of-distribution checks. Table 2 reports selected general-capability, agentic, tool-use, and broad-reasoning checks that probe whether preference training pre-serves capabilities outside the seed instruction-following dis-tribution. Complete benchmark metrics are reported in the supplementary material. In this run, BPS is above Base on the listed GPQA-Diamond (Rein et al. 2023), MATH-500 (Hendrycks et al. 2021), HumanEval+, MBPP, and BBH scores and matches Base on C-Eval. On the shown agentic and tool-use set-tings, Forward-DPO is below Base on several metrics and has a higher ToolBench OOD hallucination rate; BPS recov-ers these metrics toward Base, nearly matches Base Tool-Bench Act.EM, matches its hallucination rate, and attains the strongest ToolBench OOD Plan EM. Together with the instruction-following results, these checks support the prac-tical goal of improving correction behavior while retaining useful capabilities for multilingual interaction, tool use, cod-ing, and general reasoning. 
+
+Additional model checks. Additional Qwen-family checks using IFEval prompts as seeds show the same IF-Bench pattern and improved code metrics in those settings, while leaving MMLU stable (see the supplementary mate-rial). 
+
+Function-calling pipeline instantiation. We further test whether BPS transfers beyond surface instruction constraints by rebuilding the complete pipeline in a function-calling set-ting, where an argument value can be wrong for one re-quest but correct for a nearby request. This run uses separate xLAM-style single-call data (Zhang et al. 2025a), achieved prompts, validation filters, and DPO pairs; it is therefore a domain-transfer test of the data-construction method rather than an evaluation of the IFBench-trained checkpoint. Candidates are parseable, schema-valid calls to the gold function that differ only in argument values. A teacher vali-dates both directions: 
+
+Porig : ygold ≻ ymodel , Pachieved : ymodel ≻ ygold .
+
+The validated pool contains 342 forward examples and 231 reverse candidates; we train with ρ = 0 .15 reverse density and use the final checkpoint (step 60) for both function-calling Forward-DPO and BPS. Table 3 shows a consistent directional advantage for BPS across full-call accuracy, achieved-side preference ranking, achieved-prompt exact match, and joint boundary success. This separate instantiation provides evidence that crossed-anchor construction can be applied to structured action spaces, not only natural-language formatting constraints. Full function-calling, agentic, and code results for this separate instantiation are in the supplementary material. 
+
+Diagnostic Analysis 
+
+Training dynamics. Figure 3 shows that Forward-DPO reduces loss largely by driving rejected rewards downward: by step 60 the rejected reward is −8.83 , and by step 100 the chosen reward is also negative. BPS keeps chosen rewards positive and rejected suppression more moderate. Because aggregate dynamics can reflect data composition, length, and optimization differences, we treat them only as diagnostic and next test held-out crossed anchors directly. 
+
+Conditional reward geometry. On 146 Gemini pipeline-held-out crossed anchors, we report token-normalized DPO implicit-reward margins Morig (τperfect over τfail under Porig )and Machieved (the reverse ordering under Pachieved ), plus the fraction with the intended sign. Here accuracy denotes pair-wise ranking, not generation accuracy. Table 4 shows that both models preserve the original-side ranking. The difference is under Pachieved : Forward-DPO as-signs the intended achieved-side ordering on 6.8% of Gemini General Capabilities Agent, Tool Use, and Broad Reasoning Metric Base Fwd BPS Metric Base Fwd BPS 
+
+GPQA-Diamond 42.93 45.96 46.46 tau-bench airline 36.00 30.00 36.00 
+
+MATH-500 94.80 94.00 95.00 tau2-bench airline 27.91 25.58 27.91 
+
+HumanEval+ 71.34 71.34 72.56 tau2-bench retail 43.75 36.61 43.75 
+
+MBPP 72.00 72.00 72.80 ToolBench Act.EM (ov.) 35.50 33.10 35.46 C-Eval Overall 80.39 78.75 80.39 ToolBench Plan EM (OOD) 78.50 77.98 81.06 
+
+BBH Overall 86.74 84.27 86.96 ToolBench HalluRate (OOD) ↓ 0.53 0.66 0.53 
+
+Table 2: Selected capability-retention and out-of-distribution checks at Step 100. BPS scores at or above Base on the listed general-capability metrics, recovers Base-level scores on the shown agentic tasks where Fwd-100 is lower, and matches the Base hallucination rate on ToolBench OOD. Complete ToolBench and additional benchmark metrics are in the supplementary material. 
+
+Metric Fwd-DPO BPS 
+
+FC Full Acc. 0.860 0.869 
+
+Acc achieved 0.759 0.824 
+
+Boundary Ach EM 0.721 0.768 
+
+Boundary Both EM 0.443 0.489 
+
+Table 3: Function-calling pipeline instantiation (ckpt-60). BPS has a consistent directional advantage on held-out full-call accuracy and achieved-side boundary switching when the full pipeline is rebuilt for structured function calls. anchors, whereas BPS raises this pairwise ranking accuracy to 62.3%, with a paired achieved-margin gain of +0 .360 
+
+(95% CI [0 .293 , 0.435] ). The absolute BPS achieved mar-gin remains small, so we treat this as a clear shift in reward geometry rather than claiming complete preference reversal. This pattern is stable across three training seeds: on the Gem-ini crossed-anchor probe, BPS raises achieved-side pairwise ranking accuracy from 8.0 ± 0.6% to 65 .5 ± 2.6%, with pooled ∆Machieved = +0 .360 (95% CI [0 .320 , 0.401] ; see the supplementary material). 
+
+Cross-teacher Kimi probe. The Kimi-K2.6 cross-teacher probe shows the same pattern: BPS raises achieved-side pairwise ranking accuracy from 9.3% to 61.6%, with paired achieved-margin improvement +0 .369 (95% CI 
+
+[0 .267 , 0.487] ). This provides a construction-model robust-ness check complementary to the blind human audit below. 
+
+Human audit of achieved prompts. Because automatic LLM judgments can be biased (Zheng et al. 2023; Liu et al. 2023b), we conduct a blind human audit of 200 held-out an-chors (100 Gemini-source and 100 Kimi-source; three anno-tators per anchor) to check whether labels are only a teacher self-consistency artifact. Annotators see only Pachieved and two shuffled responses. Majority vote finds 91.0% natural achieved prompts, 99.0% agreement with the reverse prefer-ence direction, and 0.5% leakage. Full audit results are in the supplementary material. 
+
+Ablation Studies 
+
+Reverse-data ablations. A possible alternative is that reverse pairs merely regularize DPO. We test this with 40 80 120 160     
+
+> Step
+> −12 −8 −4 0
+> Reward
+> BPS chosen BPS rejected Fwd chosen Fwd rejected
+> (a) Training reward trajectories
+> Gemini Kimi 020 40 60 80
+> Acc. (%)
+> 6.8 9.3 62.3 61.6
+> (b) Achieved-prompt preference accuracy
+> Forward-DPO BPS
+
+Figure 3: Diagnostic view of BPS. (a) Forward-DPO expands DPO margins mainly by lowering rejected rewards, while BPS keeps chosen rewards positive and rejected suppression more moderate. (b) BPS substantially raises achieved-side pairwise ranking accuracy on both held-out probes. Shuffled-Rev, which preserves reverse-pair count and labels but destroys semantic prompt-response alignment: 
+
+(P π(i)
+
+> achieved
+
+, τ i 
+
+> fail
+
+≻ τ i
+
+> perfect
+
+), π(i)̸ = i. 
+
+Constraint-Rev is a strong RPO-inspired baseline that uses the same boundary-failure pool and reverse-pair budget as BPS, but mechanically modifies violated constraints in Porig 
+
+without summarizing the intent actually achieved by the fail-ure. Table 5 shows that shuffled reverse partly reduces Forward-DPO’s later-turn degradation but weakens IFBench, while Constraint-Rev helps later Multi-IF turns but drops IFBench below Base. Among the tested constructions, BPS gives the strongest observed balance across IFBench, IFEval, and Multi-IF. 
+
+Budget-matched reward controls. Budget-matched con-trols further isolate the role of crossed achieved-intent an-chors (see the supplementary material). Duplicating 282 for-ward pairs leaves achieved-side ranking accuracy unchanged Probe Model Mo Acc o Ma Acc a                  
+
+> Gemini Forward-DPO 0.540 99.3 −0.349 6.8 BPS 0.292 100.0 0.011 62.3 Kimi Forward-DPO 0.854 99.3 −0.374 9.3 BPS 0.663 99.3 −0.005 61.6
+
+Table 4: Conditional reward geometry on held-out crossed anchors. Gemini denotes the original pipeline-held-out probe with 146 anchors; Kimi denotes a cross-teacher probe with 151 anchors synthesized and validated by Kimi-K2.6. BPS preserves original-side pairwise ranking while substantially improving achieved-side pairwise ranking accuracy under both construction pipelines. On the Kimi probe, the paired achieved-margin improvement over Forward-DPO is +0 .369 (95% bootstrap CI 
+
+[0 .267 , 0.487] ).                                    
+
+> Metric Base Fwd Shuf C-Rev BPS
+> IFBench Avg. 33.63 34.39 33.16 32.61 35.46
+> IFEval Avg. 87.18 87.36 88.28 88.62 90.27
+> M-IF Turn 1 85.72 87.21 87.57 86.89 87.93
+> M-IF Turn 2 78.07 75.78 77.44 77.94 79.15
+> M-IF Turn 3 69.45 66.14 68.32 69.26 70.48
+> Reward Margin –10.71 6.71 2.81 4.33
+
+Table 5: Reverse-data ablations at step 100. Shuf permutes achieved prompts across reverse pairs. C-Rev is a strong RPO-style construction baseline that mechanically reverses violated constraints without achieved-intent synthesis. Both reverse-style baselines mitigate Forward-DPO’s multi-turn degradation, while BPS gives the strongest balance across IFBench, IFEval, and Multi-IF in this comparison. at 6.8%, ruling out extra optimizer exposure as an expla-nation for the observed shift. Adding 282 mechanically re-versed constraint pairs raises achieved-side ranking accu-racy to 32.9%, but remains well below BPS at 62.3% and weakens original-side accuracy (95.9% vs. 100.0%). Thus, reverse supervision helps only partially without achieved-intent matching; neither extra pair count nor reverse labels alone reproduces the BPS result. The Kimi-heldout reward-geometry ablation agrees: Constraint-Rev raises achieved-side ranking accuracy over Forward-DPO but remains below BPS, and BPS gives a positive paired achieved-margin gain over Constraint-Rev (+0 .066 , 95% CI [0 .043 , 0.095] ; see the supplementary ma-terial). 
+
+Interpreting the crossed-anchor effect. Forward pairs lower τfail relative to τperfect under Porig , and shared parame-ters allow this update to affect other prompts. Forward-DPO’s low achieved-side rankings are consistent with such cross-prompt rejection. BPS supplies the complementary signal 
+
+Pachieved : τfail ≻ τperfect , retaining the original-side ordering while learning a different achieved-side ordering. Density sensitivity shows the expected trade-off: ρ = 0 .10 gives a smaller correction, whereas ρ = 0 .30 reduces IFBench; the validation-determined ρ ≈ 0.195 lies between them (supple-mentary material). This interpretation aligns with the ablations: reverse la-bels work best when the prompt captures the response mode expressed by the failure. BPS therefore records correction and preservation as prompt-dependent facts about the same response pair. 
+
+No label contradiction. Preferences are over prompt-response pairs: τperfect ≻ τfail under Porig , while τfail ≻ τperfect 
+
+under Pachieved . BPS therefore teaches a prompt-conditioned boundary, not contradictory labels. 
+
+Boundary failure selection. Near misses ( r ≥ 0.5) are suitable reverse candidates because they often remain co-herent despite localized constraint mismatches; 71% of our boundary failures satisfy this criterion. Most validated an-chors involve format/structure or lexical mismatches, and BPS raises achieved-side ranking accuracy across all ob-served types (supplementary material). 
+
+Verbosity. Forward-DPO is also associated with substan-tially longer outputs: IFBench average length rises from 1,584 tokens (Base) to 5,920, while BPS is 2,565; on Tool-Bench, BPS stays closer to Base. This pattern is consis-tent with length being used as a constraint-coverage strat-egy (Dubois et al. 2025); full statistics are in the supplemen-tary material. 
+
+# Conclusion 
+
+Forward-only preference data can treat coherent boundary failures as intrinsically negative. BPS instead adds validated achieved-prompt reverse anchors, encoding where the same response is wrong and where it is right without changing the DPO objective. Across held-out reward probes and downstream evalua-tions, BPS counteracts cross-prompt rejection patterns while preserving the original preference boundary. Its clearest downstream separation appears in multilingual multi-turn in-struction following, with consistent capability-retention ev-idence from tool-use, agentic, and code checks. The results support encoding not only which responses are wrong, but also the prompts under which they are useful. 
+
+# Supplementary Material Limitations 
+
+Achieved-intent representation. BPS represents the achieved intent as a natural-language prompt so that the re-sulting data can be used by standard preference-optimization pipelines without changing the model architecture or DPO objective. In domains with formal action spaces, such as function calling or tool use, implementations may also store schemas or constraint lists alongside the achieved prompt for easier inspection. 
+
+Offline construction. BPS shifts effort from online rein-forcement learning to offline data construction. Our imple-mentation uses teacher calls for correction hints, achieved-prompt synthesis, and validation, plus an optional human audit. These steps are independent of DPO training and can be batched, cached, or replaced with cheaper verifier models in larger runs. 
+
+Domain adaptation. The same BPS recipe applies to both instruction following and function calling in our experi-ments, but each domain benefits from validation criteria that match its output structure. Instruction-following data uses constraint satisfaction and leakage checks, while function-calling data also checks parseability, schema validity, func-tion identity, and argument values. 
+
+Objective scope. We study BPS with standard DPO to iso-late the effect of crossed boundary-failure pairs. The same data construction could be combined with objective-level im-provements such as DPO-positive/Smaug, RPO/IOPO-style variants, or other preference-optimization losses. 
+
+# Ethical Statement 
+
+This work studies an offline data-construction method for preference optimization. We do not use private user conver-sations or data from deployed systems. The only newly col-lected human judgments are task-focused annotations used for the achieved-prompt audit; the annotation task contains no personal or sensitive user content. The seed prompts, evaluation benchmarks, and model checkpoints used in this study are public research artifacts, and we use them only for research purposes under their respective licenses and terms of use. We do not redistribute third-party benchmark test sets or model weights. BPS constructs additional preference pairs by synthesiz-ing achieved prompts for boundary failures. Our pipeline keeps reverse pairs only after eligibility, safety, truthfulness, and non-leakage validation, and discards ambiguous cases. These filters are intended to prevent private, unsafe, hateful, deceptive, hallucinated, or factually incorrect outputs from being preserved as positives. Achieved-prompt synthesis uses an offline teacher model, so applications should document the teacher, validation rubric, and data provenance. For multilingual, culturally sen-sitive, or safety-relevant data, additional audit can be applied using the same blind-review protocol used in our experi-ments. Our experiments involve offline teacher-model inference and GPU fine-tuning. We report teacher-call and compute estimates to support reproducibility and to make the con-struction cost transparent. 
+
+# AI Assistance Statement 
+
+We used ChatGPT for language polishing only. The scien-tific claims, experimental design, data construction pipeline, analysis, and reported results were produced and verified by the authors. As described in Sections 3 and 4, Gemini-3.1-pro-preview was used as an offline teacher for correction hints, achieved-prompt synthesis, and validation; it was not used for downstream benchmark scoring. 
+
+# Artifacts, Licenses, and Intended Use 
+
+We use several third-party artifacts, including Qwen model checkpoints (Yang et al. 2025; Qwen et al. 2025), IFBench-train seed prompts (Pyatkin et al. 2025), public evaluation benchmarks, xLAM-style function-calling data (Zhang et al. 2025a), official benchmark evaluators, and the DeepSpeed training framework (Rasley et al. 2020). We cite the creators of these artifacts in the main text or supplementary material. We reviewed the licenses and terms of use from the official model cards, dataset repositories, benchmark websites, or associated papers. All artifacts are used for research purposes only. We do not redistribute original benchmark test sets or third-party model weights. Any released code, metadata, or derived BPS data will be distributed only when permitted by the corresponding upstream license or terms, and users will be instructed to comply with the original artifact licenses. Our use is consistent with the intended research use of the artifacts. IFBench-train is used only as a seed source for research data construction, public benchmarks are used only for evaluation under their official protocols, and Qwen checkpoints are used as research baselines and fine-tuning targets under their released terms. BPS-derived artifacts are intended for research on preference learning and instruction-following alignment, not for safety-critical or high-stakes deployment without further validation. Because BPS can derive new preference pairs from exist-ing prompts and model outputs, any redistribution of such de-rived data should preserve the access conditions of the source artifacts. If an upstream artifact permits research use but re-stricts redistribution or commercial use, the corresponding derived examples should be used only under compatible con-ditions. 
+
+# Full Results for Function-Calling Agentic Generalization 
+
+Table 6 reports the complete per-split results for the function-calling instantiation described in the main paper. This instan-tiation rebuilds the full BPS data-construction pipeline in the function-calling domain using Gemini as the teacher, two-stage validation, 342 forward pairs, and a reverse density of 
+
+ρ = 0 .15 (51 reverse pairs). 
+
+# Training Details 
+
+All models are trained with standard DPO (sigmoid loss, 
+
+β = 0.1) using full fine-tuning via DeepSpeed ZeRO-2 (Rasley et al. 2020), learning rate 1 × 10 −6 with co-sine schedule, per-device batch size 4, global batch size 32, bf16 precision, and a maximum sequence length of Benchmark Metric / Split Base FC-Fwd FC-BPS                                                            
+
+> General-FC Tool-call F1 52.9 53.7 54.2
+> General-FC Schema Acc. 67.8 68.2 68.8
+> General-FC Successful Calls 396 401 411
+> τ-bench Airline Acc. 36.0 26.0 42.0
+> τ-bench Retail Acc. 55.7 46.1 50.4
+> τ-bench Overall Acc. 49.7 40.0 47.9
+> τ2-bench Airline Acc. 27.9 27.9 37.2
+> τ2-bench Retail Acc. 32.1 43.8 39.3
+> τ2-bench Telecom Acc. 35.1 30.7 35.1
+> τ2-bench Overall Acc. 34.2 35.7 37.2
+> HumanEval+ Pass@1 71.3 72.6 72.6
+> MBPP+ Pass@1 82.0 82.0 82.3
+> MBPP Pass@1 72.0 70.6 72.4
+
+Table 6: Full results for the separate function-calling instantiation (Base = Qwen3-4B without further training). Scores are percentages except successful-call counts. BPS improves function-calling accuracy, τ 2-bench overall, and MBPP+ over both Base and FC-Fwd. On τ -bench, BPS outperforms FC-Fwd on airline and overall but falls below Base on retail, yielding a slightly lower overall score than Base. The main exception across benchmarks is τ 2-retail, where FC-Fwd scores higher. 1,536 tokens. The sequence length limit applies only to DPO training; evaluation uses each benchmark’s decoding bud-get, allowing longer generations. Training runs for 3 epochs (≈160 optimizer steps on the BPS-sized dataset). Main re-sults use a fixed step-100 comparison rather than validation-selected best checkpoints; Fwd-60 is reported separately for checkpoint-sensitivity analysis. 
+
+Compute and teacher calls. All DPO experiments were run on 8 × NVIDIA A800 GPUs with 80GB memory each. A main DPO run took approximately 0.2 hours, corresponding to 1.6 GPU-hours. Including Forward-DPO, BPS, reverse-density ablations, shuffled-reverse ablation, and function-calling runs, the total fine-tuning budget was approximately 15 GPU-hours. Teacher-model inference for data construc-tion required approximately 2,500 calls / 5M tokens and is not included in the GPU-hour estimate. Thus, BPS is lightweight on the training side but shifts cost to offline data construc-tion; reducing teacher cost is an implementation question for larger-scale use. 
+
+# Evaluation Implementation Details 
+
+We use the official evaluation scripts or released benchmark evaluators whenever available. All models are evaluated with the same decoding configuration: temperature 0.7, top-p 0.9, and maximum generation length 8192 tokens. For bench-marks with official default settings, we follow the default ag-gregate metric and reporting protocol. For IFBench, IFEval, FollowBench, Multi-IF, ToolBench, tau-bench, tau2-bench, HumanEval+, MBPP+, GPQA-Diamond (Rein et al. 2023), MATH-500 (Hendrycks et al. 2021), C-Eval, MMLU-Pro, and BBH, we use the corresponding official or commonly adopted evaluation implementations. Exact-match, pass@1, F1, hallucination-rate, and instruction-satisfaction metrics are computed according to each benchmark’s official defini-tion.                       
+
+> Stage Count Retention
+> Seed prompts (IFBench-train) 2,000 —Student rollouts (dual-temperature) 6,000 —Boundary failures ( 0< r < 1)3,420 57.0% Near-miss failures ( r≥0.5)2,428 71.0% Accepted forward pairs 1,443 59.4% Reverse candidates (pre-filtered) 316 13.0% Valid reverse pairs 282 89.2%
+> Total DPO pairs 1,725 —
+
+Table 7: Data construction funnel. Retention rates are rel-ative to the immediately preceding stage, except “Reverse candidates” (relative to near-miss failures) and “Valid reverse pairs” (relative to reverse candidates). Dual-temperature de-coding samples K = 3 rollouts per prompt. 
+
+# Data Construction Funnel 
+
+Table 7 summarizes the retention rates at each stage of the BPS data construction pipeline. 
+
+# Full ToolBench Results 
+
+Table 8 presents the full ToolBench results across all splits and metrics. 
+
+# Reverse Density Ablation 
+
+Table 9 shows how the reverse anchor density ρ affects down-stream performance. 
+
+# Budget-Matched Reward Controls 
+
+Table 10 isolates the role of crossed achieved-intent anchors on the Gemini held-out probe. Fwd-Dup adds 282 duplicated forward pairs, matching BPS in total pair count. RPO-style adds 282 mechanically reversed constraint pairs, matching BPS in reverse-pair count but not using achieved-intent syn-thesis. Benchmark Base Fwd-100 BPS-100                         
+
+> ToolBench Act.EM (overall) 35.50 33.10 35.46 ToolBench Act.EM (in) 35.89 34.06 36.04
+> ToolBench Act.EM (OOD) 34.70 31.17 34.30 ToolBench F1 (in) 30.86 29.53 30.97
+> ToolBench F1 (OOD) 29.38 26.75 28.98 ToolBench Plan EM (in) 80.94 81.39 83.22
+> ToolBench Plan EM (OOD) 78.50 77.98 81.06
+> ToolBench HalluRate (OOD) ↓0.53 0.66 0.53
+
+Table 8: Full ToolBench results (Step 100). BPS recovers nearly all ToolBench Act.EM and F1 scores, matches Base hallucination rate, and achieves the highest Plan EM on both splits.                     
+
+> ρIFB Avg M-IF Ov. LCB TB OOD
+> 0 (Fwd-100) 34.39 76.38 45.40 26.75 0.10 35.33 78.61 46.54 28.41
+> 0.195 (BPS) 35.46 79.19 48.53 28.98 0.30 32.82 78.44 47.30 29.75
+
+Table 9: Reverse-density sensitivity at Step 100. IFBench Avg = mean of four metrics; M-IF = macro-avg across 8 lan-guages/3 turns; LCB = LiveCodeBench; TB OOD = Tool-Bench OOD. The main density ρ = 0 .195 results from re-taining all validated reverse pairs. Lower density provides a smaller correction, while ρ = 0 .30 reduces IFBench be-low Fwd-DPO (32.82 vs. 34.39), illustrating the correction– retention trade-off.                     
+
+> Model MoAcc oMaAcc a
+> Forward-DPO 0.541 99.3 −0.349 6.8 Fwd-Dup (+282 fwd) 0.517 99.3 −0.334 6.8 RPO-style (+282 rev) 0.213 95.9 −0.057 32.9 BPS (+282 rev) 0.293 100.0 0.011 62.3
+
+Table 10: Budget-matched reward-geometry controls on the Gemini held-out crossed-anchor probe. Duplicating for-ward pairs leaves achieved-side ranking accuracy unchanged. RPO-style mechanical reverse pairs partially raise achieved-side ranking accuracy but remain below BPS and weaken original-side ranking accuracy. 
+
+# Constraint-Rev Kimi Reward Geometry 
+
+Table 11 gives the Kimi-heldout conditional reward geometry for the Constraint-Rev comparison discussed in the main text. 
+
+# A Challenging BPS Example 
+
+Table 12 provides a translated and lightly abbreviated content-intent boundary example. We select this relatively challenging case to illustrate that the construction can han-dle a coherent semantic deviation in addition to the for-mat/structure and lexical mismatches that constitute most validated anchors (Table 17).                 
+
+> Model Morig Acc orig Machieved Acc achieved
+> Forward-DPO 0.854 99.3 −0.374 9.9 Constraint-Rev 0.485 97.4 −0.072 37.1 BPS 0.667 99.3 −0.006 59.6
+
+Table 11: Kimi-heldout conditional reward geometry for Constraint-Rev, evaluated on the subset used for the Constraint-Rev comparison. Constraint-Rev raises achieved-side ranking accuracy over Forward-DPO but remains be-low BPS; BPS also preserves stronger original-side mar-gins. Because this subset differs slightly from the main-paper conditional reward table, the Forward-DPO and BPS num-bers differ slightly. Paired bootstrap gives ∆Machieved (BPS −
+
+C-Rev ) = +0 .066 (95% CI [0 .043 , 0.095] ). 
+
+# Multi-IF Full Results 
+
+Table 13 reports the full turn-level Multi-IF metrics with the early Fwd-60 checkpoint. 
+
+# Per-Language Multi-IF Analysis: Depth-Dependent Degradation and BPS Recovery 
+
+Table 14 decomposes the Multi-IF deltas by language and turn depth. 
+
+# Output Length Analysis 
+
+Table 15 compares average output token lengths across mod-els and datasets. 
+
+# Additional Model and Seed-Data Checks 
+
+Table 16 reports additional checks on Qwen3-4B (base check-point) and Qwen2.5-7B-Instruct using IFEval prompts as seeds. 
+
+# Failure Type Breakdown 
+
+We classify validated reverse anchors by the primary type of boundary failure. Because IFBench-style prompts often combine surface constraints with task content, this analysis is descriptive rather than a claim about the full distribution of all possible boundary failures. Tables 17 and 18 show that BPS does not require content-level semantic swaps to be effective. Most validated reverse Field Text 
+
+Original prompt Porig Which country contains the largest clock in the world? At the end of your response, please explicitly add a postscript starting with Postscript: The first word of your response should be the word grandfather. Your ENTIRE response should be in Ukrainian language, no other language is allowed. Include keyword emotion in your response. 
+
+Forward chosen τperfect “grandfather [Ukrainian: The world’s largest clock is in Mecca, Saudi Arabia. This clock reflects the grandeur and traditions, evoking a strong emotion in people who see it. . . ] Postscript: emotion” 
+
+Forward rejected τfail “Grandfather, [Ukrainian: The largest country in the world by area is Russia. It has about 17.1 million square kilometers. . . This evokes a strong emotion. . . ] Postscript: emotion” 
+
+Achieved prompt 
+
+Pachieved 
+
+Please tell me what the largest country in the world is by area and its approximate size in square kilometers. Your response must start exactly with the English greeting “Grandfather,”. Write the main explanation in Ukrainian. Explain how such a vast territory reflects history, culture, and nature, and mention that it evokes a strong emotion. End your response with the exact English phrase “Postscript: emotion”. 
+
+Reverse chosen Same as forward rejected ( τfail ). Reverse rejected Same as forward chosen ( τperfect ). 
+
+Table 12: A challenging content-intent BPS example from an IFBench-style prompt. The original prompt asks about the world’s largest clock with strict multilingual and formatting constraints. The student instead gives a coherent answer about the largest country by area. The achieved prompt makes this semantic distinction explicit and is retained only after the same standalone-prompt, response-quality, and reverse-preference validation used throughout the pipeline. 
+
+Turn Metric Base Fwd-60 Fwd-100 BPS-100 ∆BPS-F60 ∆BPS-F100 
+
+1Prompt Strict 81.81 83.85 84.47 84.71 +0.86 +0.24 Inst Strict 86.30 88.66 88.72 88.66 +0.00 −0.05 Prompt Loose 85.63 85.47 85.90 87.64 +2.17 +1.74 Inst Loose 89.13 89.76 89.76 90.70 +0.94 +0.94 2Prompt Strict 67.00 65.45 65.38 68.87 +3.42 +3.49 Inst Strict 84.42 83.52 83.58 85.45 +1.93 +1.87 Prompt Loose 73.35 69.61 68.85 74.29 +4.68 +5.43 Inst Loose 87.52 85.66 85.33 88.01 +2.35 +2.68 3Prompt Strict 51.31 49.01 48.40 53.20 +4.19 +4.80 Inst Strict 81.80 80.83 80.79 82.93 +2.10 +2.14 Prompt Loose 59.27 53.88 52.59 59.93 +6.05 +7.33 Inst Loose 85.44 83.23 82.76 85.87 +2.64 +3.11 Turn 1 Average 85.72 86.94 87.21 87.93 +0.99 +0.72 Turn 2 Average 78.07 76.06 75.78 79.15 +3.09 +3.37 Turn 3 Average 69.45 66.74 66.14 70.48 +3.74 +4.34 Overall Average 77.75 76.58 76.38 79.19 +2.61 +2.81 
+
+Table 13: Full Multi-IF results with an early Forward-DPO checkpoint. All scores are macro-averaged across eight languages (Chinese, English, Italian, Spanish, Hindi, Portuguese, French, Russian). Fwd-60 is only marginally above Fwd-100 on Multi-IF overall (+0.20) and remains below both Base and BPS. BPS is above Fwd-60 on 11 of 12 individual metrics, and the gap widens with turn depth, showing that the later-turn separation persists at the tested earlier checkpoint. anchors are surface-form boundary failures, where the failed response is coherent but violates constraints such as struc-ture, casing, required terms, or separators. Forward-DPO rarely assigns the intended achieved-side ordering in the main categories, while BPS substantially raises the corre-sponding pairwise ranking accuracy. This supports the view that BPS retains response modes associated with constrained instruction following, not only alternative factual intents. 
+
+# Three-Seed Reward-Geometry Stability 
+
+To test whether the crossed-anchor reward-geometry result depends on a single training seed, we train Forward-DPO and BPS with three seeds under the same data, hyperparam-eters, and fixed step-100 checkpoint rule. Table 19 reports the Gemini held-out crossed-anchor probe. The achieved-side gap is stable across seeds: Forward-DPO remains near 8% pairwise ranking accuracy, while BPS Language ∆ Fwd −Base ∆ BPS −Base ∆ BPS −Fwd                                                                                          
+
+> T1 T2 T3 T1 T2 T3 T1 T2 T3 Chinese +1.00 −1.86 −1.69 +1.20 −0.04 +1.30 +0.20 +1.82 +2.99 English +0.92 −2.21 −4.28 +1.89 +0.04 +0.29 +0.97 +2.25 +4.58 Italian +1.87 +0.02 −2.25 +2.40 +1.28 +0.63 +0.53 +1.26 +2.89 Spanish +1.67 −3.17 −3.85 +3.09 +0.77 +0.49 +1.43 +3.94 +4.34 Hindi +2.68 −1.62 −0.83 +2.07 +1.72 +2.91 −0.61 +3.33 +3.74 Portuguese +0.58 −2.37 −4.11 +1.14 +1.76 +0.94 +0.56 +4.13 +5.05 French +1.91 −0.99 −4.20 +2.08 +1.74 +0.15 +0.17 +2.74 +4.35 Russian +1.31 −6.07 −5.33 +3.80 +1.40 +1.49 +2.49 +7.47 +6.82
+> Macro Avg. +1.49 −2.29 −3.32 +2.21 +1.08 +1.03 +0.72 +3.37 +4.34
+
+Table 14: Per-language Multi-IF turn-level deltas in percentage points. For each language and turn, the score averages the four Multi-IF metrics (Prompt Strict, Inst Strict, Prompt Loose, Inst Loose); deltas compare against this per-language turn average. Fwd denotes Fwd-100; Macro Avg. averages languages uniformly. Forward-DPO improves turn-1 in all 8 languages but falls below Base in turn-2 for 7/8 languages and in turn-3 for 8/8 languages. BPS exceeds Fwd-100 in 23/24 language-turn averages. At the finer language ×metric level, BPS beats Fwd-100 in all 64 cells from turns 2–3 and in 85/96 cells overall, with 2 additional ties.         
+
+> Dataset Model Avg. Output Tokens
+> IFBench Base 1,584.03 Forward-DPO (S100) 5,919.98 BPS (S100) 2,564.96 ToolBench Base 165.58 Forward-DPO (S100) 205.17 BPS (S100) 157.30
+
+Table 15: Average output tokens per response. Forward-DPO outputs are 3.7 × longer than Base on IFBench and are also longer on ToolBench, alongside lower performance on several reported metrics. BPS maintains generation lengths much closer to Base. remains above 63% for all three runs. Original-side ranking remains saturated for both methods, so the achieved-side shift is obtained without sacrificing the forward preference boundary. 
+
+# Three-Seed IFEval Stability 
+
+Table 20 reports IFEval results over three training seeds. The gains are smaller than the crossed-anchor and Multi-IF effects, but the average IFEval score is consistently higher for BPS. 
+
+# Human Audit of Achieved Prompts 
+
+We conduct a blind audit of 200 held-out crossed anchors, split evenly between the Gemini-source and Kimi-source probes. Each anchor is judged by three annotators (600 to-tal judgments). For each anchor, annotators are shown the achieved prompt and two randomly ordered responses, with-out seeing the teacher label or whether a response is τfail 
+
+or τperfect . They judge whether the achieved prompt is fully natural, whether τfail satisfies it, which response is preferred under the achieved prompt, and whether the prompt leaks response content. Table 21 reports per-anchor majority-vote results. Table 21 shows that the central supervision signal—the achieved-prompt preference direction—is highly reliable un-der blind audit: annotators prefer τfail under Pachieved in 99.0% of audited anchors, leakage is rare (0.5%), and 91.0% of achieved prompts are judged natural user requests by majority vote. At the annotator-judgment level, naturalness is 87.2% overall (523/600), with 95.7% for Gemini-source prompts and 78.7% for Kimi-source prompts. The stricter joint ac-ceptance measure is necessarily lower because it requires all four criteria simultaneously; importantly, reverse-preference agreement remains 100% for Gemini-source and 98% for Kimi-source anchors. Prompts judged less natural typically inherit explicit surface constraints such as exact paragraph counts, required keywords, forbidden words, fixed capitaliza-tion, or prescribed separators, rather than leaking response content. Thus, the audit strongly supports the reverse pref-erence direction and indicates that most achieved prompts remain plausible standalone requests. 
+
+# Teacher Prompts and Validation Rubric 
+
+All teacher calls use Gemini-3.1-pro-preview. Below are sim-plified descriptions of the three prompt templates used in BPS. 
+
+Correction hint prompt. The teacher receives the original prompt, the failed response, and the list of unsatisfied con-straints. It is asked to produce a structured hint identifying: (1) which constraints were violated and why; (2) what spe-cific changes are needed; (3) which factual content from the failed response can be retained. The student then produces 
+
+τperfect conditioned on this hint. 
+
+Achieved prompt generation prompt. For reverse-eligible failures, the teacher receives the original prompt, the failed response, the outcome summary, and an eligibil-ity judgment. If eligible, it is asked to generate a standalone user-facing achieved prompt Pachieved satisfying: (1) phrased Benchmark Qwen2.5-7B-Instruct (Qwen et al. 2025) Qwen3-4B 
+
+Base Fwd BPS Base Fwd BPS 
+
+Instruction Following (IFBench) 
+
+Strict-P 25.33 31.67 33.00 24.00 25.00 27.30 
+
+Strict-I 27.03 32.85 35.17 25.90 27.60 29.10 
+
+Loose-P 29.33 34.33 37.67 28.00 28.30 30.70 
+
+Loose-I 31.69 36.63 40.70 29.40 31.70 33.10 
+
+Code Generation 
+
+HumanEval 68.90 68.90 71.34 71.95 68.90 74.39 
+
+HumanEval+ — — — 64.02 65.85 68.29 
+
+General Capability 
+
+MMLU 74.31 74.26 74.13 70.05 70.00 70.07 
+
+TruthfulQA — — — 40.76 48.84 50.55 
+
+Table 16: Additional model and seed-data checks on Qwen3-4B (the base checkpoint, distinct from the main Qwen3-4B-Instruct-2507) and Qwen2.5-7B-Instruct using IFEval prompts as seeds. BPS outperforms Forward-DPO on all IFBench metrics in these two settings (+1.40 to +4.07 points), and improves HumanEval while Forward-DPO stagnates or degrades. MMLU remains stable across all settings. 
+
+Type Gemini Kimi Total Held-out Total % 
+
+Format/structure mismatch 153 82 235 91 54.3 Multi-constraint mixed 53 36 89 53 20.6 Lexical-constraint mismatch 63 23 86 37 19.9 Content-intent mismatch 8 9 17 10 3.9 Language mismatch 5 1 6 4 1.4 
+
+Total 282 151 433 195 100.0 
+
+Table 17: Failure-type distribution among validated reverse anchors. Format/structure and lexical categories are common because IFBench prompts contain explicit surface constraints such as paragraph counts, capitalization, start/end phrases, required keywords, and separators. as a user request without quoting the failed response; (2) explicitly encodes the language, format, and structural prop-erties of τfail as requirements; (3) does not request false or hallucinated content; (4) does not implicitly ask the model to reproduce τfail .
+
+Reverse pair validation rubric. A judge accepts the re-verse pair (Pachieved , τ fail ≻ τperfect ) only if all of the following hold: 1. Pachieved reads as a standalone user prompt. 2. τfail genuinely and completely satisfies Pachieved .3. τfail is coherent, truthful, and safe. 4. τperfect is clearly worse under Pachieved (e.g., wrong lan-guage, incompatible format). 5. Pachieved does not implicitly ask to reproduce or copy τfail .Pairs where both responses satisfy Pachieved , or where the preference direction is ambiguous, are discarded. 
+
+# Checkpoint Sensitivity of Forward-DPO 
+
+Table 22 compares the early Fwd-60 checkpoint against the matched Fwd-100 and BPS-100 checkpoints across instruction-following, code, and agentic/tool-use metrics. 
+
+# Training-Anchor Reward Probe 
+
+A probe on the 282 training reverse anchors shows the same pattern: BPS raises achieved-side pairwise ranking accuracy from 7.1% to 75.9% and paired achieved margins by +0.44 (95% CI [0 .36 , 0.54] ). Type N Fwd Mach BPS Mach ∆M Fwd Acc. BPS Acc. ∆ Acc. Content-intent mismatch 10 0.115 0.144 +0.030 60.0 100.0 +40.0 Language mismatch 4 −0.100 0.022 +0.122 0.0 50.0 +50.0 Format/structure mismatch 91 −0.411 0.033 +0.444 2.2 71.4 +69.2 Lexical-constraint mismatch 37 −0.362 −0.005 +0.357 5.4 67.6 +62.2 Multi-constraint mixed 53 −0.217 0.049 +0.267 11.3 62.3 +50.9 
+
+Table 18: Held-out achieved-prompt reward geometry by failure type. BPS raises achieved-side pairwise ranking accuracy for ev-ery observed type. The largest gains occur on format/structure and lexical-constraint mismatches, the dominant IFBench-derived boundary-failure categories. Small categories such as content-intent and language mismatch are included for completeness. 
+
+Model / Seed Morig Acc orig Machieved Acc achieved 
+
+Fwd 42 0.542 99.3 −0.351 7.5 Fwd 43 0.512 99.3 −0.338 8.9 Fwd 44 0.527 99.3 −0.337 7.5 Fwd mean ±std 0.527 ±0.013 99.3 ±0.0 −0.342 ±0.007 8.0 ±0.6 BPS 42 0.299 100.0 0.007 63.7 BPS 43 0.293 100.0 0.015 63.7 BPS 44 0.284 99.3 0.031 69.2 BPS mean ±std 0.292 ±0.006 99.8 ±0.3 0.018 ±0.010 65.5 ±2.6 
+
+Table 19: Three-seed stability on the Gemini held-out crossed-anchor reward probe. BPS consistently preserves original-side pairwise ranking and raises achieved-side ranking accuracy across seeds. The pooled paired achieved-margin improvement is 
+
++0 .360 (95% bootstrap CI [0 .320 , 0.401] ). 
+
+Model / Seed P Strict P Loose I Strict I Loose Avg. 
+
+Fwd 42 83.55 85.21 90.36 91.34 87.62 Fwd 43 83.92 85.21 90.42 91.13 87.67 Fwd 44 84.10 85.77 90.76 91.71 88.09 Fwd mean ±std 83.86 ±0.23 85.40 ±0.26 90.51 ±0.18 91.39 ±0.24 87.79 ±0.23 BPS 42 83.73 87.25 89.49 91.74 88.05 BPS 43 84.84 88.35 90.33 92.30 88.96 BPS 44 85.40 88.72 90.88 92.88 89.47 BPS mean ±std 84.66 ±0.69 88.11 ±0.62 90.23 ±0.57 92.31 ±0.47 88.83 ±0.59 
+
+Table 20: Three-seed IFEval stability at the fixed step-100 comparison. Scores are percentages. BPS improves prompt-level strict, prompt-level loose, and instruction-level loose metrics on average, while instruction-level strict is slightly lower. The overall IFEval average improves from 87.79 ±0.23 to 88.83 ±0.59. 
+
+Source N Natural Fail sat. Rev. pref. Leakage ↓ Accepted 
+
+Gemini 100 99.0 100.0 100.0 0.0 99.0 Kimi 100 83.0 87.0 98.0 1.0 67.0 All 200 91.0 93.5 99.0 0.5 83.0 
+
+Table 21: Blind human audit of achieved prompts and reverse preferences. Values are per-anchor majority-vote percentages over three annotators per anchor. Accepted means that the achieved prompt is natural, τfail satisfies it, the reverse preference is correct, and no leakage is flagged. Metric Base Fwd-60 Fwd-100 BPS-100 ∆BPS-F60 
+
+IFBench Avg. 33.63 36.22 34.39 35.46 −0.76 IFEval Avg. 87.18 88.46 87.36 90.27 +1.81 Multi-IF Turn 1 Avg. 85.72 86.94 87.21 87.93 +0.99 Multi-IF Turn 2 Avg. 78.07 76.06 75.78 79.15 +3.09 Multi-IF Turn 3 Avg. 69.45 66.74 66.14 70.48 +3.74 Multi-IF Overall Avg. 77.75 76.58 76.38 79.19 +2.61 LiveCodeBench 48.91 45.40 45.40 48.53 +3.13 MBPP 72.00 70.60 72.00 72.80 +2.20 tau-bench airline 36.00 28.00 30.00 36.00 +8.00 tau2-bench airline 27.91 25.58 25.58 27.91 +2.33 tau2-bench retail 43.75 38.89 36.61 43.75 +4.86 ToolBench Act.EM (ov.) 35.50 33.58 33.10 35.46 +1.88 ToolBench OOD F1 29.38 25.99 26.75 28.98 +2.99 ToolBench HalluRate (OOD) ↓ 0.53 0.79 0.66 0.53 −0.26 
+
+Table 22: Forward-DPO checkpoint sensitivity. Fwd-60 has a higher narrow correction-oriented IFBench average than Fwd-100, but remains below BPS on the listed multilingual multi-turn, code, agentic, and tool-use checks. The main paper uses the common step-100 checkpoint to match optimizer updates across methods; this earlier checkpoint confirms that the broader capability-retention pattern is not specific to the step-100 Forward-DPO checkpoint. For HalluRate, lower is better and the last column reports BPS −Fwd-60. References 
+
+Andrychowicz, M.; Wolski, F.; Ray, A.; Schneider, J.; Fong, R.; Welinder, P.; McGrew, B.; Tobin, J.; Pieter Abbeel, O.; and Zaremba, W. 2017. Hindsight experience replay. Ad-vances in neural information processing systems , 30. Austin, J.; Odena, A.; Nye, M.; Bosma, M.; Michalewski, H.; Dohan, D.; Jiang, E.; Cai, C.; Terry, M.; Le, Q.; and Sutton, C. 2021. Program Synthesis with Large Language Models. arXiv:2108.07732. Azar, M. G.; Guo, Z. D.; Piot, B.; Munos, R.; Rowland, M.; Valko, M.; and Calandriello, D. 2024. A general theoretical paradigm to understand learning from human preferences. In International Conference on Artificial Intelligence and Statistics , 4447–4455. PMLR. Barres, V.; Dong, H.; Ray, S.; Si, X.; and Narasimhan, K. 2025. τ 2-Bench: Evaluating Conversational Agents in a Dual-Control Environment. arXiv:2506.07982. Chen, M.; Tworek, J.; Jun, H.; Yuan, Q.; de Oliveira Pinto, H. P.; Kaplan, J.; Edwards, H.; Burda, Y.; Joseph, N.; Brock-man, G.; Ray, A.; Puri, R.; Krueger, G.; Petrov, M.; Khlaaf, H.; Sastry, G.; Mishkin, P.; Chan, B.; Gray, S.; Ryder, N.; Pavlov, M.; Power, A.; Kaiser, L.; Bavarian, M.; Winter, C.; Tillet, P.; Such, F. P.; Cummings, D.; Plappert, M.; Chantzis, F.; Barnes, E.; Herbert-Voss, A.; Guss, W. H.; Nichol, A.; Paino, A.; Tezak, N.; Tang, J.; Babuschkin, I.; Balaji, S.; Jain, S.; Saunders, W.; Hesse, C.; Carr, A. N.; Leike, J.; Achiam, J.; Misra, V.; Morikawa, E.; Radford, A.; Knight, M.; Brundage, M.; Murati, M.; Mayer, K.; Welinder, P.; Mc-Grew, B.; Amodei, D.; McCandlish, S.; Sutskever, I.; and Zaremba, W. 2021. Evaluating Large Language Models Trained on Code. arXiv:2107.03374. Christiano, P. F.; Leike, J.; Brown, T.; Martic, M.; Legg, S.; and Amodei, D. 2017. Deep reinforcement learning from hu-man preferences. Advances in neural information processing systems , 30. Dubois, Y.; Galambosi, B.; Liang, P.; and Hashimoto, T. B. 2025. Length-Controlled AlpacaEval: A Simple Way to De-bias Automatic Evaluators. arXiv:2404.04475. Ethayarajh, K.; Xu, W.; Muennighoff, N.; Jurafsky, D.; and Kiela, D. 2024. KTO: Model Alignment as Prospect Theo-retic Optimization. arXiv:2402.01306. He, Y.; Jin, D.; Wang, C.; Bi, C.; Mandyam, K.; Zhang, H.; Zhu, C.; Li, N.; Xu, T.; Lv, H.; Bhosale, S.; Zhu, C.; Sankararaman, K. A.; Helenowski, E.; Kambadur, M.; Tayade, A.; Ma, H.; Fang, H.; and Wang, S. 2024. Multi-IF: Benchmarking LLMs on Multi-Turn and Multilingual Instructions Following. arXiv:2410.15553. Hendrycks, D.; Burns, C.; Kadavath, S.; Arora, A.; Basart, S.; Tang, E.; Song, D.; and Steinhardt, J. 2021. Measuring Mathematical Problem Solving With the MATH Dataset. arXiv:2103.03874. Hong, J.; Lee, N.; and Thorne, J. 2024. Orpo: Monolithic preference optimization without reference model. In Pro-ceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , 11170–11189. Huang, X.; Lin, T.-E.; Fang, F.; Wu, Y.; Li, H.; Qu, Y.; Huang, F.; and Li, Y. 2025. Reverse preference optimization for complex instruction following. In Findings of the Association for Computational Linguistics: ACL 2025 , 20700–20723. Huang, Y.; Bai, Y.; Zhu, Z.; Zhang, J.; Zhang, J.; Su, T.; Liu, J.; Lv, C.; Zhang, Y.; Fu, Y.; et al. 2023. C-eval: A multi-level multi-discipline chinese evaluation suite for foundation models. Advances in neural information processing systems ,36: 62991–63010. Jiang, Y.; Wang, Y.; Zeng, X.; Zhong, W.; Li, L.; Mi, F.; Shang, L.; Jiang, X.; Liu, Q.; and Wang, W. 2024. Fol-lowbench: A multi-level fine-grained constraints following benchmark for large language models. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 4667–4688. Lee, H.; Phatale, S.; Mansoor, H.; Mesnard, T.; Ferret, J.; Lu, K.; Bishop, C.; Hall, E.; Carbune, V.; Rastogi, A.; and Prakash, S. 2024. RLAIF vs. RLHF: Scaling Reinforce-ment Learning from Human Feedback with AI Feedback. arXiv:2309.00267. Liu, J.; Xia, C. S.; Wang, Y.; and Zhang, L. 2023a. Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation. Advances in neural information processing systems , 36: 21558–21572. Liu, Y.; Iter, D.; Xu, Y.; Wang, S.; Xu, R.; and Zhu, C. 2023b. G-eval: NLG evaluation using gpt-4 with better human align-ment. In Proceedings of the 2023 conference on empirical methods in natural language processing , 2511–2522. Madaan, A.; Tandon, N.; Gupta, P.; Hallinan, S.; Gao, L.; Wiegreffe, S.; Alon, U.; Dziri, N.; Prabhumoye, S.; Yang, Y.; et al. 2023. Self-refine: Iterative refinement with self-feedback. Advances in neural information processing sys-tems , 36: 46534–46594. Meng, Y.; Xia, M.; and Chen, D. 2024. Simpo: Simple pref-erence optimization with a reference-free reward. Advances in Neural Information Processing Systems , 37: 124198– 124235. Ouyang, L.; Wu, J.; Jiang, X.; Almeida, D.; Wainwright, C.; Mishkin, P.; Zhang, C.; Agarwal, S.; Slama, K.; Ray, A.; et al. 2022. Training language models to follow instructions with human feedback. Advances in neural information processing systems , 35: 27730–27744. Pal, A.; Karkhanis, D.; Dooley, S.; Roberts, M.; Naidu, S.; and White, C. 2024. Smaug: Fixing Failure Modes of Pref-erence Optimisation with DPO-Positive. arXiv:2402.13228. Patil, S. G.; Mao, H.; Yan, F.; Ji, C. C.-J.; Suresh, V.; Stoica, I.; and Gonzalez, J. E. 2025. The berkeley function calling leaderboard (bfcl): From tool use to agentic evaluation of large language models. In Forty-second International Con-ference on Machine Learning .Patil, S. G.; Zhang, T.; Wang, X.; and Gonzalez, J. E. 2024. Gorilla: Large language model connected with massive apis. 
+
+Advances in Neural Information Processing Systems , 37: 126544–126565. Pyatkin, V.; Malik, S.; Graf, V.; Ivison, H.; Huang, S.; Dasigi, P.; Lambert, N.; and Hajishirzi, H. 2025. Generalizing Veri-fiable Instruction Following. arXiv:2507.02833. Qin, Y.; Liang, S.; Ye, Y.; Zhu, K.; Yan, L.; Lu, Y.; Lin, Y.; Cong, X.; Tang, X.; Qian, B.; Zhao, S.; Hong, L.; Tian, R.; Xie, R.; Zhou, J.; Gerstein, M.; Li, D.; Liu, Z.; and Sun, M. 2023. ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs. arXiv:2307.16789. Qwen; :; Yang, A.; Yang, B.; Zhang, B.; Hui, B.; Zheng, B.; Yu, B.; Li, C.; Liu, D.; Huang, F.; Wei, H.; Lin, H.; Yang, J.; Tu, J.; Zhang, J.; Yang, J.; Yang, J.; Zhou, J.; Lin, J.; Dang, K.; Lu, K.; Bao, K.; Yang, K.; Yu, L.; Li, M.; Xue, M.; Zhang, P.; Zhu, Q.; Men, R.; Lin, R.; Li, T.; Tang, T.; Xia, T.; Ren, X.; Ren, X.; Fan, Y.; Su, Y.; Zhang, Y.; Wan, Y.; Liu, Y.; Cui, Z.; Zhang, Z.; and Qiu, Z. 2025. Qwen2.5 Technical Report. arXiv:2412.15115. Rafailov, R.; Sharma, A.; Mitchell, E.; Manning, C. D.; Er-mon, S.; and Finn, C. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in neural information processing systems , 36: 53728–53741. Rasley, J.; Rajbhandari, S.; Ruwase, O.; and He, Y. 2020. Deepspeed: System optimizations enable training deep learn-ing models with over 100 billion parameters. In Proceed-ings of the 26th ACM SIGKDD international conference on knowledge discovery & data mining , 3505–3506. Razin, N.; Malladi, S.; Bhaskar, A.; Chen, D.; Arora, S.; and Hanin, B. 2025. Unintentional unalignment: Likelihood displacement in direct preference optimization. In Inter-national Conference on Learning Representations , volume 2025, 24791–24834. Rein, D.; Hou, B. L.; Stickland, A. C.; Petty, J.; Pang, R. Y.; Dirani, J.; Michael, J.; and Bowman, S. R. 2023. GPQA: A Graduate-Level Google-Proof Q&A Benchmark. arXiv:2311.12022. Schick, T.; Dwivedi-Yu, J.; Dessì, R.; Raileanu, R.; Lomeli, M.; Hambro, E.; Zettlemoyer, L.; Cancedda, N.; and Scialom, T. 2023. Toolformer: Language models can teach themselves to use tools. Advances in neural information processing systems , 36: 68539–68551. Stiennon, N.; Ouyang, L.; Wu, J.; Ziegler, D.; Lowe, R.; Voss, C.; Radford, A.; Amodei, D.; and Christiano, P. F. 2020. Learning to summarize with human feedback. Advances in neural information processing systems , 33: 3008–3021. Suzgun, M.; Scales, N.; Schärli, N.; Gehrmann, S.; Tay, Y.; Chung, H. W.; Chowdhery, A.; Le, Q.; Chi, E. H.; Zhou, D.; et al. 2023. Challenging big-bench tasks and whether chain-of-thought can solve them. In Findings of the Association for Computational Linguistics: ACL 2023 , 13003–13051. Touvron, H.; Martin, L.; Stone, K.; Albert, P.; Almahairi, A.; Babaei, Y.; Bashlykov, N.; Batra, S.; Bhargava, P.; Bhosale, S.; Bikel, D.; Blecher, L.; Ferrer, C. C.; Chen, M.; Cucu-rull, G.; Esiobu, D.; Fernandes, J.; Fu, J.; Fu, W.; Fuller, B.; Gao, C.; Goswami, V.; Goyal, N.; Hartshorn, A.; Hosseini, S.; Hou, R.; Inan, H.; Kardas, M.; Kerkez, V.; Khabsa, M.; Kloumann, I.; Korenev, A.; Koura, P. S.; Lachaux, M.-A.; Lavril, T.; Lee, J.; Liskovich, D.; Lu, Y.; Mao, Y.; Martinet, X.; Mihaylov, T.; Mishra, P.; Molybog, I.; Nie, Y.; Poul-ton, A.; Reizenstein, J.; Rungta, R.; Saladi, K.; Schelten, A.; Silva, R.; Smith, E. M.; Subramanian, R.; Tan, X. E.; Tang, B.; Taylor, R.; Williams, A.; Kuan, J. X.; Xu, P.; Yan, Z.; Zarov, I.; Zhang, Y.; Fan, A.; Kambadur, M.; Narang, S.; Ro-driguez, A.; Stojnic, R.; Edunov, S.; and Scialom, T. 2023. Llama 2: Open Foundation and Fine-Tuned Chat Models. arXiv:2307.09288. Wang, Y.; Kordi, Y.; Mishra, S.; Liu, A.; Smith, N. A.; Khashabi, D.; and Hajishirzi, H. 2023. Self-instruct: Align-ing language models with self-generated instructions. In 
+
+Proceedings of the 61st annual meeting of the association for computational linguistics (volume 1: long papers) , 13484– 13508. Wang, Y.; Ma, X.; Zhang, G.; Ni, Y.; Chandra, A.; Guo, S.; Ren, W.; Arulraj, A.; He, X.; Jiang, Z.; et al. 2024. Mmlu-pro: A more robust and challenging multi-task language un-derstanding benchmark. Advances in Neural Information Processing Systems , 37: 95266–95290. Wang, Y.; Mishra, S.; Alipoormolabashi, P.; Kordi, Y.; Mirzaei, A.; Naik, A.; Ashok, A.; Dhanasekaran, A. S.; Arunkumar, A.; Stap, D.; et al. 2022. Super-naturalinstructions: Generalization via declarative instruc-tions on 1600+ nlp tasks. In Proceedings of the 2022 confer-ence on empirical methods in natural language processing ,5085–5109. Wei, J.; Bosma, M.; Zhao, V. Y.; Guu, K.; Yu, A. W.; Lester, B.; Du, N.; Dai, A. M.; and Le, Q. V. 2022. Finetuned Lan-guage Models Are Zero-Shot Learners. arXiv:2109.01652. Yang, A.; Li, A.; Yang, B.; Zhang, B.; Hui, B.; Zheng, B.; Yu, B.; Gao, C.; Huang, C.; Lv, C.; Zheng, C.; Liu, D.; Zhou, F.; Huang, F.; Hu, F.; Ge, H.; Wei, H.; Lin, H.; Tang, J.; Yang, J.; Tu, J.; Zhang, J.; Yang, J.; Yang, J.; Zhou, J.; Zhou, J.; Lin, J.; Dang, K.; Bao, K.; Yang, K.; Yu, L.; Deng, L.; Li, M.; Xue, M.; Li, M.; Zhang, P.; Wang, P.; Zhu, Q.; Men, R.; Gao, R.; Liu, S.; Luo, S.; Li, T.; Tang, T.; Yin, W.; Ren, X.; Wang, X.; Zhang, X.; Ren, X.; Fan, Y.; Su, Y.; Zhang, Y.; Zhang, Y.; Wan, Y.; Liu, Y.; Wang, Z.; Cui, Z.; Zhang, Z.; Zhou, Z.; and Qiu, Z. 2025. Qwen3 Technical Report. arXiv:2505.09388. Yao, S.; Shinn, N.; Razavi, P.; and Narasimhan, K. 2024. 
+
+τ -bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains. arXiv:2406.12045. Yuan, Z.; Yuan, H.; Tan, C.; Wang, W.; Huang, S.; and Huang, F. 2023. RRHF: Rank Responses to Align Language Models with Human Feedback without tears. arXiv:2304.05302. Zelikman, E.; Wu, Y.; Mu, J.; and Goodman, N. 2022. Star: Bootstrapping reasoning with reasoning. Advances in Neural Information Processing Systems , 35: 15476–15488. Zhang, J.; Lan, T.; Zhu, M.; Liu, Z.; Hoang, T. Q.; Kokane, S.; Yao, W.; Tan, J.; Prabhakar, A.; Chen, H.; et al. 2025a. xlam: A family of large action models to empower ai agent systems. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , 11583–11597. Zhang, T.; Liu, F.; Wong, J.; Abbeel, P.; and Gonzalez, J. E. 2023. The wisdom of hindsight makes language models better instruction followers. In International Conference on Machine Learning , 41414–41428. PMLR. Zhang, X.; Yu, H.; Fu, C.; Huang, F.; and Li, Y. 2025b. Iopo: Empowering llms with complex instruction following via input-output preference optimization. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 22185–22200. Zhao, Y.; Joshi, R.; Liu, T.; Khalman, M.; Saleh, M.; and Liu, P. J. 2023. SLiC-HF: Sequence Likelihood Calibration with Human Feedback. arXiv:2305.10425. Zheng, L.; Chiang, W.-L.; Sheng, Y.; Zhuang, S.; Wu, Z.; Zhuang, Y.; Lin, Z.; Li, Z.; Li, D.; Xing, E.; et al. 2023. Judging llm-as-a-judge with mt-bench and chatbot arena. Ad-vances in neural information processing systems , 36: 46595– 46623. Zhou, J.; Lu, T.; Mishra, S.; Brahma, S.; Basu, S.; Luan, Y.; Zhou, D.; and Hou, L. 2023. Instruction-Following Evalua-tion for Large Language Models. arXiv:2311.07911.
