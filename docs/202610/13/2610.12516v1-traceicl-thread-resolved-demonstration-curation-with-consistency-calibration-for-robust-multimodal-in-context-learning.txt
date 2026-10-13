@@ -1,0 +1,263 @@
+Title: TraceICL: Thread-Resolved Demonstration Curation with Consistency Calibration for Robust Multimodal In-Context Learning
+
+URL Source: https://arxiv.org/pdf/2610.12516v1
+
+Published Time: Mon, 12 Oct 2026 00:05:50 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# TraceICL: Thread-Resolved Demonstration Curation with Consistency Calibration for Robust Multimodal In-Context Learning 
+
+Yigit Yilmaz, Elena Petrova, Mehmet Kaya, Lucia Rossi, Amir Rahman 
+
+Bandirma Onyedi Eylul University 
+
+amir.rahman@bandirma.edu.tr 
+
+# Abstract 
+
+Interleaved multimodal in-context learning (ICL) lets frozen large vision– language models (LVLMs) acquire new tasks from a handful of image– text–answer demonstrations, yet it remains fragile: demonstrations bind to the wrong images, redundant exemplars crowd out informative ones, and noisy answers are copied verbatim into predictions. We present TraceICL ,a training-free framework that organizes the demonstration pipeline of multimodal ICL into three composable stages. A Thread-Resolved Decom-poser (TRD) segments the interleaved context into per-sample threads and re-stitches them with explicit boundaries, restoring image–text binding. An Influence-scored Demonstration Selector (IDS) estimates each candidate’s marginal influence with one extra forward pass, removes redundancy, and orders the survivors by descending value. A Weak-to-Strong Consistency Calibration (WSC) module scores each demonstration by a weak sibling model’s reconstruction confidence and softly reweights its contribution during decoding. On five vision–language benchmarks with interleaved 4-shot prompts, TraceICL improves the strongest same-setting baseline by 
+
++1.7 points on average (up to +2.4 on VizWiz), shrinks the require-visual performance gap on ScienceQA-IMG, and retains most of its gain under 30% noisy demonstrations, at a 26% latency overhead that an offline cache amortizes. No gradients are ever computed; the LVLM stays frozen. 
+
+# 1 Introduction 
+
+In-context learning (ICL) has become the dominant paradigm for adapting large vision– language models (LVLMs) to new tasks without any parameter update: the prompt inter-leaves a handful of image–text–answer demonstrations followed by a query, and the model imitates the pattern (Zhou et al., 2024; Alayrac et al., 2022). The paradigm is attractive precisely because demonstrations act as a soft, editable task specification. Yet the same mechanism makes ICL fragile in ways that parameter-efficient fine-tuning is not: every property of the demonstration sequence—its length, order, image–text pairing, and anno-tation quality—leaks directly into the prediction. Empirical studies of prompting regimes show that seemingly innocuous changes in how context is staged can flip model reliability and even induce hallucinated content (Zhao et al., 2026). The problem is amplified in safety-critical multimodal applications: driving world models and video simulators consume interleaved image–text trajectories where a single mis-bound demonstration propagates into an unsafe prediction (Li et al., 2025a), and perceptual localization stacks likewise couple multiple visual sources that must be attributed correctly (Li et al., 2025b). Existing remedies fall into two families, and each leaves a gap. Model-side approaches retrain or restructure the LVLM so that multi-image prompts are handled more gracefully, at the cost of a full instruction-tuning pipeline (Zhao et al., 2024; Li et al., 2023). Data-side approaches curate better demonstrations, but selection criteria are usually borrowed from training-time alignment, where influence is measured with gradients and token-level supervision (Si et al., 2025), or from plain query–demonstration similarity, which ignores interactions among 1arXiv:2610.12516v1 [cs.CV] 7 Oct 2026 demonstrations. None of these methods treats the demonstration sequence as a first-class object: they do not model how interleaved demonstrations bind to each other, how much marginal information each adds, or how much a noisy demonstration should be trusted. We address these gaps with TraceICL , a training-free framework that organizes the entire demonstration pipeline of multimodal ICL into three composable stages. First, a Thread-Resolved Decomposer (TRD) segments the interleaved context into per-sample threads and re-stitches them with explicit boundaries, turning a chaotic shared stream into locally bound units; the design transfers a thread-decomposition insight originally developed for chaotic long-text reasoning. Second, an Influence-scored Demonstration Selector (IDS) estimates the marginal influence of each candidate demonstration with a single extra forward pass, removes redundancy, and orders the survivors by descending value. Third, a Weak-to-Strong Consistency Calibration (WSC) module asks a weak sibling model to reconstruct each demonstration’s answer and uses the reconstruction confidence to softly reweight the demonstration’s contribution during decoding. TraceICL touches only the prompt and the decoding logits; the LVLM stays frozen. Our contributions are: • We identify cross-demonstration binding , demonstration redundancy , and unweighted noise injection as three compounding failure modes of interleaved multimodal ICL, and trace each to a measurable deficiency of current prompting pipelines. • We propose TraceICL, the first training-free framework that jointly performs thread-resolved context decomposition, influence-scored demonstration selection, and weak-to-strong consistency calibration for frozen LVLMs. • On five vision–language benchmarks with interleaved 4-shot prompts, TraceICL improves the strongest same-setting baseline by +1.7 points on average (up to +2.4 on VizWiz), reduces the require-visual performance gap on ScienceQA-IMG, and retains most of its gain under 30% noisy demonstrations. • We provide a detailed ablation, hyperparameter, robustness, and cost analysis showing that the three modules are complementary and that the overhead is a single extra forward pass plus an offline calibration cache. The rest of this paper reviews related work in Section 2 on multimodal ICL (§2.1), demonstra-tion selection (§2.2), and supervision reliability (§2.3); formalizes the problem in Section 3 (§3.1) and details TRD (§3.2), IDS (§3.3), and WSC (§3.4) with complexity (§3.5); reports experiments in Section 4 from setup (§4.1) through main results (§4.2), ablations (§4.3), hyperparameters (§4.4), robustness (§4.5), cost (§4.6), and limitations (§4.7); and concludes in §5. 
+
+# 2 Related Work 
+
+2.1 Multimodal In-Context Learning for LVLMs 
+
+Flamingo established few-shot multimodal ICL with interleaved image–text prompts (Alayrac et al., 2022), and OpenFlamingo made the recipe reproducible (Awadalla et al., 2023). Follow-up models improve the backbone: BLIP-2 bridges frozen image encoders and LLMs with a lightweight querying transformer (Li et al., 2023), InstructBLIP adds instruction tuning (Dai et al., 2023), Otter extends multi-modal instruction following (Li et al., 2023), and Shikra handles referential dialogue (Chen et al., 2023). MMICL shows that the context scheme —declarations, templates, and stage-wise formatting—matters as much as the backbone (Zhao et al., 2024). Recent 2026 work continues along this axis: MCD distills multimodal ICL causally (Li et al., 2026), inductive–deductive reasoning is injected into demonstrations (Wang et al., 2026), parallel ICL reorganizes prompts to shorten effective context (Yamaguchi et al., 2026), and “in-context collapse” is identified as a characteristic failure of VLMs (Rostami, 2026). Our work is orthogonal to all of these: we do not change the model, the instruction format, or the reasoning style, but organize which demonstrations enter the prompt and how they are structured and weighted. 22.2 Demonstration Selection and Curation 
+
+In text-only ICL, retrieval-based selection improves over fixed exemplars (Li et al., 2023), active example selection reduces labeling cost while lifting accuracy (Zhang et al., 2022), and information-compression views unify selection and ordering (Wu et al., 2023). For LVLMs, GATEAU selects influential samples for long-context alignment, but its influence measure requires gradients and token-level annotations (Si et al., 2025); counterfactual retrieval (Xiong et al., 2026) and geometry-aware uncertainty coresets (Erick et al., 2026) improve visual ICL in specific domains, and confusion-aware ICL targets demonstration ambiguity in robotic manipulation (He et al., 2026). These methods optimize either selection or context structure; TraceICL couples the two, and additionally weights the selected demonstrations by trustworthiness at decoding time rather than treating them as equally reliable. 
+
+2.3 Reliability and Alignment of Supervision Signals 
+
+Weak-to-strong generalization studies how weak supervision can elicit strong capabilities (Burns et al., 2023), and multi-capability analyses extend the picture to LVLMs (Zhou et al., 2025). Synthetic tasks with reinforcement learning teach faithfulness to context (Si et al., 2026), yet reward design itself can fail in sparse structured settings and requires diagnostic refinement (Wang et al., 2026), and global planner training shows the value of planning structure over long horizons (Si et al., 2026). On the reliability side, object hallucination remains pervasive in LVLMs (Li et al., 2023), evaluation benchmarks such as MME expose both perception and cognition gaps (Fu et al., 2023), and even a single poisoned image can jailbreak a VLM, underlining that demonstration-level trust signals are a security concern (Tao et al., 2025). Fair-comparison studies caution that few-shot fine-tuning and ICL are often conflated (Mosbach et al., 2023). TraceICL imports the weak-to-strong idea into the ICL prompt: the weak model’s reconstruction consistency acts as a per-demonstration trust score, avoiding hard filtering that would amplify selection bias. 
+
+# 3 Method 
+
+3.1 Problem Formulation 
+
+Given a frozen LVLM θ, a query sample (vq, qq), and a candidate pool D of demonstrations 
+
+(v, q, a), multimodal ICL constructs an interleaved prompt P of k demonstrations and decodes the answer: 
+
+P = (v1, q1, a1), . . . , (vk, qk, ak), (vq, qq), (1) ˆy = arg max  
+
+> y
+
+pθ (y | P) . (2) The goal of TraceICL is to choose the subset Dk ⊆ D , its thread structure, and a per-demonstration trust weight, so that pθ (y | P′) in (2) is maximized without updating θ. The full pipeline is shown in Figure 1. 
+
+3.2 Thread-Resolved Decomposer (TRD) 
+
+Interleaved prompts concatenate image–text segments from different demonstrations into one stream. Attention has no explicit signal for which image belongs to which demon-stration, so binding errors grow with sequence length. Zhou et al. (2023) showed for long text that splitting a chaotic context into “threads” and reasoning thread-by-thread restores coherence; we transplant this idea to multimodal prompts. 
+
+Segmentation and representation. Let s1, . . . , sm be the contiguous image/text segments of the raw prompt of (1), each encoded as 
+
+hi = g(si), i = 1, . . . , m, (3) where g is the frozen encoder (text segments through the LLM embedding, image segments through the vision encoder, with CLIP-style alignment for cross-modal similarity (Radford 3Figure 1: Overview of TraceICL. A candidate demonstration pool is filtered by the Influence-scored Demonstration Selector (IDS), organized into per-sample threads by the Thread-Resolved Decomposer (TRD), and softly reweighted at decoding time by the Weak-to-Strong Consistency Calibration (WSC). The LVLM remains frozen throughout. et al., 2021)). Two segments belong to the same thread if they are semantically adjacent: 
+
+σ(i, j) = α · cos  hi, hj
+
+ + ( 1 − α) · 1[ |i − j| ≤ 1 ] , (4) with α in (4) the semantic–position trade-off. Threads are grown greedily by attaching each segment to its best-scoring open thread under the assignment rule (5): 
+
+t∗(i) = arg max 
+
+> t∈T
+
+1
+
+|t| ∑
+
+> j∈t
+
+σ(i, j). (5) The binding quality of a thread t is scored as 
+
+B(t) = min    
+
+> i,j∈t,i̸=j
+
+σ(i, j), (6) so that a thread is only as trustworthy as its weakest pairing. Re-stitching per (7) inserts an explicit boundary token and an ordinal declaration before each thread, producing the structured prompt 
+
+P′ =
+
+> kM
+> j=1
+
+⟨demo ⟩j ∥ thread j
+
+ ∥ ⟨ query ⟩, (7) where ⊕ denotes concatenation. Threads whose images and text cannot be confidently matched ( B(t) < τB in (6)) are demoted in the ordering used by IDS (§3.3). 
+
+3.3 Influence-scored Demonstration Selector (IDS) 
+
+Not all demonstrations help: two near-duplicate exemplars add little beyond the first, and a captioning-style demonstration can actively hurt a VQA query (Zhao et al., 2024). We define the marginal influence of a demonstration d by the distribution shift its removal causes: 
+
+I(d) = Eq KL 
+
+
+
+pθ (· | D) pθ (· | D \ { d})
+
+
+
+, (8) 4which we approximate without gradients by scoring each candidate once against the query with a compact prefix prompt: ˜I(d) ≈ KL 
+
+
+
+pθ (· | vq, qq) pθ (· | d ⊕ vq, qq)
+
+
+
+. (9) Selection then maximizes influence while controlling redundancy via a maximal-marginal-relevance objective: MMR (d) = λ ˜I(d) − (1 − λ) max  
+
+> d′∈Dsel
+
+cos  ϕ(d), ϕ(d′) , (10) 
+
+Dk = arg max     
+
+> D′⊆D ,|D′|=k
+
+# ∑
+
+> d∈D′
+
+MMR (d), (11) where ϕ(·) embeds a demonstration into the joint image–text space. The approximation in (9) costs one forward pass per candidate, and the redundancy term in (10) is what separates IDS from pure similarity retrieval. Selected demonstrations are injected in descending MMR order, with similar clusters interleaved so that adjacent demonstrations diversify. 
+
+3.4 Weak-to-Strong Consistency Calibration (WSC) 
+
+Real demonstration pools contain annotation noise—particularly for user-generated corpora such as VizWiz (Gurari et al., 2018). Hard-discarding low-quality demonstrations introduces selection bias; instead we let a weak sibling model θw (a small FLAN-T5 variant sharing the tokenizer) reconstruct each demonstration’s answer: 
+
+cj = 1
+
+|aj| ∑
+
+> u∈aj
+
+log pθw
+
+ u | vj, qj
+
+ , (12) The consistency score (12) is the mean token log-probability the weak model assigns to the gold answer aj given only the j-th demonstration. Inspired by weak-to-strong supervi-sion (Zhou et al., 2025; Burns et al., 2023), the calibration weight is a soft function of this consistency: 
+
+wj = exp  β ˆcj
+
+
+
+∑j′ exp 
+
+
+
+β ˆcj′
+
+ , ˆcj = cj − μc
+
+σc + ϵ , (13) where β is a temperature and ˆ cj is standardized across the selected set, so that calibration is relative and robust to score drift. During decoding, the demonstration region of the context is down-weighted in the contrastive combination: 
+
+ℓcal (y) = ℓθ (y | P′) + γ
+
+> k
+
+# ∑
+
+> j=1
+
+wj ℓθ
+
+ y | thread j ⊕ (vq, qq) , (14) ˆy = arg max  
+
+> y
+
+ℓcal (y), (15) where ℓ denotes the per-token log-likelihood accumulated over the answer, γ in (14) trades imitation of the full prompt against imitation of the per-thread evidence, and the decision rule (15) selects the calibrated maximum. With wj in (13) small, a noisy demonstration barely steers decoding; with wj large, its pattern is followed. The uncertainty-aware, soft-assignment spirit follows association-based localization pipelines that avoid hard commitments (Li et al., 2025b). 
+
+3.5 Properties and Complexity 
+
+All three modules are inference-time components: TRD is a single pass over segment representations, IDS adds one forward pass per candidate, and WSC’s consistency scores 5are computed offline per demonstration and cached. For k selected demonstrations and prompt length T, the total cost is 
+
+CTraceICL = O(|D| · T0) + O(kT ), (16) where T0 ≪ T is the length of the compact scoring prefix. The O(kT ) term in (16) is shared with standard ICL; with the cache warm, the marginal cost of a query is one extra forward pass over thread j (j = 1.. k), which runs in parallel rather than sequentially, preserving the latency profile of standard ICL. 
+
+# 4 Experiments 
+
+4.1 Setup Datasets. We evaluate on five vision–language benchmarks spanning VQA, captioning, and classification: VQAv2 (Goyal et al., 2017), VizWiz-VQA (Gurari et al., 2018), Flickr30K Entities (CIDEr) (Plummer et al., 2015), Hateful Memes (AUC) (Kiela et al., 2020), and WebSRC (Chen et al., 2021); zero-shot generalization uses ScienceQA-IMG (Lu et al., 2022). All evaluations follow the interleaved 4-shot protocol of MMICL (Zhao et al., 2024) unless stated otherwise. 
+
+Baselines. We compare against frozen-ICL and instruction-tuned LVLMs of comparable scale: Flamingo-3B/9B (Alayrac et al., 2022), KOSMOS-1 (Huang et al., 2023), BLIP-2 (FLAN-T5-XL/XXL) (Li et al., 2023), InstructBLIP (FLAN-T5-XL/XXL) (Dai et al., 2023), Otter (Li et al., 2023), Shikra (Chen et al., 2023), and MMICL under three backbones (Zhao et al., 2024). Baseline numbers are taken verbatim from MMICL’s 4-shot and zero-shot tables; our method uses the same backbone (InstructBLIP-FLAN-T5-XXL) and the same demonstrations, so all comparisons are same-setting. 
+
+Implementation. TraceICL uses λ = 0.4, β = 1.0, thread cap 4, α = 0.6, τB = 0.35, and 
+
+γ = 0.5 throughout; the weak model is FLAN-T5-base. Results are averaged over three seeds; prompts are constructed with the OpenFlamingo toolkit (Awadalla et al., 2023). All experiments run on a single A100. 
+
+4.2 Main Results 
+
+Table 1 reports the 4-shot comparison. TraceICL improves the strongest same-setting baseline—MMICL with the InstructBLIP-FLAN-T5-XXL backbone—on every metric: +1.63 CIDEr on Flickr30K, +1.45 on WebSRC, +1.52 on VQAv2, +1.75 on Hateful Memes, and 
+
++2.36 on VizWiz. Two observations stand out. First, the largest gains occur exactly where demonstrations are most binding-sensitive: VizWiz queries contain low-contrast, user-captured images whose demonstrations are easily mis-attributed, so thread-resolved struc-ture pays off most. Second, TraceICL widens the gap to all frozen-ICL systems, not only to the backbone it builds on: Flamingo-9B and KOSMOS-1 trail by 25–31 points on VizWiz despite being trained with billions of interleaved examples. Figures 2(a) and 2(b) visualize the per-task scores and the relative-gain profile. On ScienceQA-IMG (Table 2), TraceICL lifts the average to 83.55 and, more importantly, shrinks the performance gap between questions that do and do not require visual infor-mation from 0.90 to 0.70. Because this setting uses no demonstrations, the gain isolates the contribution of TRD’s thread structuring of the query context and WSC’s calibration, confirming that both modules operate even without IDS. 
+
+4.3 Ablation Study 
+
+Table 3 (with the remaining metrics in Table 4) dissects the three modules on the same 4-shot setting. TRD alone contributes +0.58 on the five-task average; IDS alone, which optimizes the influence–selection pipeline (8)–(11), contributes +0.74; their combination yields +1.33, and adding WSC reaches the full +1.74. Single-module gains sum to +1.32, close to the joint gain of TRD+IDS ( +1.33), and the full model’s extra margin comes from calibration 6Table 1: Multimodal ICL results with 4-shot interleaved prompts. Baseline numbers are from MMICL (Zhao et al., 2024) (their Table 4); all metrics are accuracy except Flickr30K (CIDEr). “Ours (TraceICL)” uses the same backbone and demonstrations as MMICL (Instruct-FLAN-T5-XXL). Best in bold .Model Flickr30K WebSRC VQAv2 Hateful Memes VizWiz Flamingo-3B (w/ 4-shot) (Alayrac et al., 2022) 72.00 – 53.20 53.60 34.00 Flamingo-9B (w/ 4-shot) (Alayrac et al., 2022) 72.60 – 56.30 62.70 34.90 KOSMOS-1 (w/ 4-shot) (Huang et al., 2023) 75.30 – 51.80 – 35.30 BLIP-2 FLAN-T5-XL (w/o ICL) (Li et al., 2023) 64.51 12.25 58.79 60.00 25.52 BLIP-2 FLAN-T5-XXL (w/o ICL) (Li et al., 2023) 60.74 10.10 60.91 62.25 22.50 InstructBLIP FLAN-T5-XL (w/o ICL) (Dai et al., 2023) 77.16 10.80 36.77 58.54 32.08 InstructBLIP FLAN-T5-XXL (w/o ICL) (Dai et al., 2023) 73.13 11.50 63.69 61.70 15.11 MMICL FLAN-T5-XL (w/ 4-shot) (Zhao et al., 2024) 83.84 12.30 62.63 60.80 50.17 MMICL FLAN-T5-XXL (w/ 4-shot) (Zhao et al., 2024) 89.27 18.70 69.83 61.12 33.16 MMICL Instruct-FLAN-T5-XXL (w/ 4-shot) (Zhao et al., 2024) 88.79 19.65 70.56 64.60 50.28      
+
+> Ours (TraceICL) 90.42 21.10 72.08 66.35 52.64
+
+Table 2: Zero-shot results on ScienceQA-IMG (Lu et al., 2022), with baseline numbers from MMICL (Zhao et al., 2024) (their Table 5). “Gap” is the difference between the require-visual and don’t-require-visual splits. No demonstrations are used, so TraceICL enables only TRD and WSC. Model Size Avg. Don’t req. Req. Gap Random Guess – 35.50 35.80 34.90 –InstructBLIP (Dai et al., 2023) 12.1B 71.30 82.00 60.70 21.30 Otter (Li et al., 2023) 9B 63.10 70.90 55.70 15.20 Shikra (Chen et al., 2023) 7.2B 45.80 52.90 39.30 13.60 MMICL (Zhao et al., 2024) 12.1B 82.10 82.60 81.70 0.90 
+
+Ours (TraceICL) 12.1B 83.55 83.90 83.20 0.70 
+
+(a) Per-task 4-shot scores. (b) Relative gain profile (%). 
+
+Figure 2: Main comparison between the strongest baseline and TraceICL. rather than from double-counting selection effects. Figure 3(a) breaks the gains down per task: TRD’s contribution concentrates on VizWiz and Hateful Memes, the two tasks with the most heterogeneous demonstration pairs, while IDS contributes most on VQAv2, whose candidate pool is large and redundant. Two design variants validate the mechanisms. Replacing TRD’s learned-style thread as-signment with random segmentation of equal segment count drops the average from 60.52 to 59.06—below the TRD-only ablation—showing that the improvement comes from the 7Table 3: Module ablation under the 4-shot setting of Table 1. “w/ random” uses random thread segmentation; “w/ hard drop” replaces WSC’s soft weighting with threshold-based discarding. Best in bold .Configuration TRD IDS WSC Flickr30K WebSRC VQAv2 Baseline (MMICL scheme) ✗ ✗ ✗ 88.79 19.65 70.56 +TRD ✓ ✗ ✗ 89.31 20.02 71.24 +IDS ✗ ✓ ✗ 89.47 20.15 71.39 +TRD+IDS ✓ ✓ ✗ 89.86 20.51 71.62 
+
+Full (TraceICL) ✓ ✓ ✓ 90.42 21.10 72.08 
+
+w/ random threads – – – 89.02 19.88 70.85 w/ hard drop – – – 89.71 20.33 71.40 Table 4: Module ablation (continued): Hateful Memes, VizWiz, and the five-task average. Configuration Memes VizWiz Avg. Baseline (MMICL scheme) 64.60 50.28 58.78 +TRD 65.18 51.04 59.36 +IDS 65.32 51.26 59.52 +TRD+IDS 65.77 51.79 60.11 
+
+Full (TraceICL) 66.35 52.64 60.52 
+
+w/ random threads 64.92 50.61 59.06 w/ hard drop 65.51 51.36 59.66  
+
+> (a) Per-module, per-task gain ( ∆). (b) Accuracy under noisy demonstrations.
+
+Figure 3: (a) Heatmap of each module’s contribution per task. (b) Robustness on VizWiz as the noisy-demonstration ratio grows. binding-aware structure, not merely from having boundaries. Replacing WSC’s soft weight-ing with hard discarding of demonstrations below the confidence threshold yields 59.66: better than no calibration, but 0.86 below soft weighting, because hard filtering systemati-cally removes the hard-but-informative demonstrations that VizWiz-style queries need. 
+
+4.4 Hyperparameter Analysis 
+
+Figure 4(a) varies the IDS diversity weight λ: pure influence ranking ( λ = 0) leaves 0.8 points on the table because near-duplicate demonstrations waste slots, while over-diversifying (λ = 0.8) pulls in weakly relevant exemplars. Figure 4(b) varies the WSC temperature β:
+
+β = 0 reduces calibration to uniform weighting, and β = 2 effectively degenerates to hard filtering, both worse than the moderate β = 1.0. Figure 5(a) varies the thread-cap limit; capping threads at 4 matches the 4-shot protocol, and larger caps only fragment thread 8(a) IDS diversity weight λ. (b) WSC temperature β.
+
+Figure 4: Hyperparameter sweeps on the five-task average; the circled point is the default.  
+
+> (a) Thread-cap limit. (b) Per-query latency by configuration.
+
+Figure 5: (a) Thread-cap sweep. (b) End-to-end latency; the offline WSC cache keeps the full model within one forward pass of the selector. statistics without adding binding information. All three curves peak at or near the default configuration. 
+
+4.5 Robustness to Noisy Demonstrations 
+
+We inject noisy demonstrations by replacing a fraction (0%, 10%, 30%) of gold answers with incorrect ones sampled from other questions—a proxy for the annotation noise found in user-generated corpora and for prompt-injection threats (Tao et al., 2025). Figure 3(b) shows the result on VizWiz: the baseline degrades steeply (50.28 → 44.62, −5.66), while TraceICL degrades gently (52.64 → 50.31, −2.33). The relative gain over the baseline grows from 
+
++2.36 at 0% noise to +5.69 at 30% noise, exactly the regime WSC was designed for: incon-sistent demonstrations receive low trust weights and stop steering the decoder, while the thread structure prevents a noisy answer from bleeding into a neighboring demonstration’s context. 
+
+4.6 Computational Cost 
+
+Figure 5(b) reports per-query latency. TRD and WSC are nearly free ( +9 and +18 ms over the 862 ms baseline); IDS dominates the overhead because it scores every candidate with one extra forward pass, bringing the total to 1076 ms with a cold cache. With the offline consistency cache warm, the full model runs in 1085 ms—a 26% overhead for a +1.74 average gain. Computing WSC confidence online instead of offline would raise latency to 91304 ms, which is why the cache is the default. No backward passes are ever performed, and the overhead is independent of the model scale, so the relative cost shrinks for larger backbones. 
+
+4.7 Failure Modes and Limitations 
+
+TraceICL inherits three limitations. First, when the candidate pool itself is impoverished— e.g., cross-domain queries whose pool contains only out-of-domain demonstrations—IDS can only pick the least-bad exemplars; synthesizing demonstrations with controllable quality, as multimodal world models do for driving video (Li et al., 2024), is a natural complement. Second, WSC’s trust signal is only as good as the weak model: on tasks where the weak model’s failure modes correlate strongly with the strong model’s (rather than complementing them), calibration gain shrinks, mirroring the frontier emphasized by weak-to-strong studies (Zhou et al., 2025; Burns et al., 2023). Third, our thread model assumes a one-image-per-demonstration granularity; documents with deeply nested image– table–caption structures, as in WebSRC, occasionally produce threads that mix segments from two demonstrations, which our binding score flags but does not repair. 
+
+# 5 Conclusion 
+
+We presented TraceICL, a training-free framework that treats the interleaved demonstra-tion sequence of multimodal ICL as a structured object rather than a raw string. TRD restores image–text binding with thread-resolved decomposition, IDS selects and orders demonstrations by marginal influence with redundancy control, and WSC calibrates each demonstration’s trust at decoding time through weak-model consistency. Together the mod-ules deliver a consistent +1.7-point average improvement over the strongest same-setting baseline on five benchmarks, shrink the visual-dependence gap in zero-shot ScienceQA-IMG, and halve the degradation under 30% demonstration noise at a modest, cache-amortizable latency cost. Beyond the specific setting, our results suggest that the context-organization insights of text-era ICL—threads, influence, and calibrated trust—transfer to multimodal prompts, and that prompt-side curation can keep pace with model-side scaling for frozen LVLMs. 
+
+# References 
+
+Yucheng Zhou, Xiang Li, Qianning Wang, and Jianbing Shen. Visual in-context learning for large vision-language models. In Findings of the Association for Computational Linguistics, ACL 2024 , pp. 15890–15902. Association for Computational Linguistics, 2024. Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine Miech, Iain Barr, Yana Hasson, Karel Lenc, Arthur Mensch, Katherine Millican, Malcolm Reynolds, David Ring, Eliza Rutherford, Serkan Cabi, Tingyang Han, Zongzhou Gong, Sam Karimov, Laura Amat, Myles Mathieu, Maxim Sandler, and Andrew Zisserman. Flamingo: A visual language model for few-shot learning. In Advances in Neural Information Processing Systems , 2022. Chen Zhao, Yuan Tang, and Yitian Qian. Do deployment constraints make llms hallucinate citations? an empirical study across four models and five prompting regimes. arXiv preprint arXiv:2603.07287 , 2026. Xiaofan Li, Chenming Wu, Zhao Yang, Zhihao Xu, Yumeng Zhang, Dingkang Liang, Ji Wan, and Jun Wang. Driverse: Navigation world model for driving simulation via multimodal trajectory prompting and motion alignment. In Proceedings of the 33rd ACM International Conference on Multimedia , pp. 9753–9762, 2025a. Xiaofan Li, Zhihao Xu, Chenming Wu, Zhao Yang, Yumeng Zhang, Jiang-Jiang Liu, Haibao Yu, Xiaoqing Ye, Yuan Wang, Shirui Li, et al. U-vilar: Uncertainty-aware visual localization for autonomous driving via differentiable association and registration. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pp. 24889–24898, 2025b. 10 Haozhe Zhao, Zefan Cai, Shuzheng Si, Xiaojian Ma, Kaikai An, Liang Chen, Zixuan Liu, Sheng Wang, Wenjuan Han, and Baobao Chang. MMICL: Empowering vision-language model with multi-modal in-context learning. In The Twelfth International Conference on Learning Representations , 2024. Bozhou Li, Yifan Zhang, Xin Guo, Renrui Zhang, Feng Li, Hao Liu, and Chunyuan Li. Otter: A multi-modal model with in-context instruction tuning. arXiv preprint arXiv:2305.03726 ,2023. Shuzheng Si, Haozhe Zhao, Gang Chen, Yunshui Li, Kangyang Luo, Chuancheng Lv, Kaikai An, Fanchao Qi, Baobao Chang, and Maosong Sun. Gateau: Selecting influential samples for long context alignment. In Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pp. 7391–7422, 2025. Anas Awadalla, Irena Gao, Josh Gardner, Jack Hessel, Yusuf Hanafy, Wanrong Zhu, Kalyani Marathe, Yifei Moritz, Ahmed Awadallah, Jaesung Koh, et al. OpenFlamingo: An open-source framework for training large autoregressive vision-language models. arXiv preprint arXiv:2308.01390 , 2023. Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi. BLIP-2: Bootstrapping language-image pre-training with frozen image encoders and large language models. In Proceedings of the 40th International Conference on Machine Learning , 2023. Wenliang Dai, Junnan Li, Dongxu Li, Anthony Meng Huat Tiong, Junqi Zhao, Weisheng Wang, Boyang Li, Pascale Fung, and Steven Hoi. Instructblip: Towards general-purpose vision-language models with instruction tuning. In Advances in Neural Information Process-ing Systems , 2023. Keqin Chen, Dejian Zhang, Jun Li, Ruochong Zhou, Xingtai Cui, Xudong Ji, Yilin Wang, Yutao Zhan, and Peiyi Zhan. Shikra: Unleashing multimodal LLM’s referential dialogue magic. arXiv preprint arXiv:2306.15195 , 2023. Yanshu Li, Jiaqian Li, Canran Xiao, Xi Xiao, Tianyang Wang, and Yongtai Liu. MCD: Causal distillation of multimodal in-context learning in large vision-language models, 2026. Haoyu Wang, Haonan Wang, Yuyan Chen, Jun Chen, Gang Liu, Qian Wang, Jiahong Yan, and Yanghua Xiao. Enhancing multimodal in-context learning via inductive-deductive reasoning, 2026. Shin’ya Yamaguchi, Daiki Chijiwa, Tamao Sakao, and Taku Hasegawa. Parallel in-context learning for large vision language models, 2026. Mohammad Rostami. In-context collapse in vision-language models and how to mitigate it?, 2026. Xiaonan Li, Kai Lv, Hang Yan, Tianyang Lin, Wei Zhu, Yuan Ni, Guotong Xie, Xiaoling Wang, and Xipeng Qiu. Unified demonstration retriever for in-context learning. In 
+
+Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 4644–4668, Toronto, Canada, 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.acl-long.256. URL https://aclanthology.org/2023. acl-long.256/ .Yiming Zhang, Shi Feng, and Chenhao Tan. Active example selection for in-context learning. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing ,pp. 9134–9148, Abu Dhabi, United Arab Emirates, 2022. Association for Computational Linguistics. doi: 10.18653/v1/2022.emnlp-main.622. URL https://aclanthology.org/ 2022.emnlp-main.622/ .Zhiyong Wu, Yaoxiang Wang, Jiacheng Ye, and Lingpeng Kong. Self-adaptive in-context learning: An information compression perspective for in-context example selection and ordering. In Proceedings of the 61st Annual Meeting of the Association for Computa-tional Linguistics (Volume 1: Long Papers) , pp. 1423–1436, Toronto, Canada, 2023. As-sociation for Computational Linguistics. doi: 10.18653/v1/2023.acl-long.79. URL 
+
+https://aclanthology.org/2023.acl-long.79/ .11 Guangzhi Xiong, Sanchit Sinha, Zhenghao He, and Aidong Zhang. Retrieving counterfactu-als improves visual in-context learning, 2026. Franciskus Xaverius Erick, Johanna Paula M ¨ uller, and Bernhard Kainz. Geometry-aware uncertainty coresets for robust visual in-context learning in histopathology, 2026. Yayun He, Zuheng Kang, Botao Zhao, Zhouyin Wu, Junqing Peng, and Jianzong Wang. Confusion-aware in-context-learning for vision-language models in robotic manipulation, 2026. Collin Burns, Pavel Izmailov, Jan Hendrik Kirchner, Bowen Baker, Leo Gao, Leopold Aschen-brenner, Yining Chen, Adrien Ecoffet, Manas Joglekar, Jan Leike, Ilya Sutskever, and Jeff Wu. Weak-to-strong generalization: Eliciting strong capabilities with weak supervision. 
+
+arXiv preprint arXiv:2312.09390 , 2023. Yucheng Zhou, Jianbing Shen, and Yu Cheng. Weak to strong generalization for large language models with multi-capabilities. In The Thirteenth International Conference on Learning Representations , 2025. Shuzheng Si, Haozhe Zhao, Cheng Gao, Yuzhuo Bai, Zhitong Wang, Bofei Gao, Kangyang Luo, Wenhao Li, Yufei Huang, Gang Chen, Fanchao Qi, Minjia Zhang, Baobao Chang, and Maosong Sun. Teaching large language models to maintain contextual faithfulness via synthetic tasks and reinforcement learning. In Fortieth AAAI Conference on Artificial Intelligence, AAAI 2026, Singapore , pp. 33001–33009. AAAI Press, 2026. Youting Wang, Yuan Tang, Bowen Liu, Xuan Liu, and Dingyan Shang. When llm re-ward design fails: Diagnostic-driven refinement for sparse structured rl. arXiv preprint arXiv:2605.28918 , 2026. Shuzheng Si, Haozhe Zhao, Kangyang Luo, Gang Chen, Fanchao Qi, Minjia Zhang, Baobao Chang, and Maosong Sun. A goal without a plan is just a wish: Efficient and effective global planner training for long-horizon agent task. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 13086– 13113, 2026. Yifan Li, Yifan Du, Kun Zhou, Jinpeng Wang, Xin Zhao, and Ji-Rong Wen. Evaluating object hallucination in large vision-language models. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing , pp. 292–305, Singapore, 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.emnlp-main.20. URL https: //aclanthology.org/2023.emnlp-main.20/ .Chaoyou Fu, Peixian Chen, Yunhang Shen, Yulei Qin, Mengdan Zhang, Xu Lin, Jinrui Yang, Xiawu Zheng, Ke Li, Xing Sun, Yunsheng Wu, and Rongrong Ji. MME: A com-prehensive evaluation benchmark for multimodal large language models. arXiv preprint arXiv:2306.13333 , 2023. Xijia Tao, Shuai Zhong, Lei Li, Qi Liu, and Lingpeng Kong. ImgTrojan: Jailbreaking vision-language models with ONE image. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , pp. 7048–7063, Albuquerque, New Mexico, 2025. Association for Computational Linguistics. doi: 10.18653/v1/2025.naacl-long.360. URL 
+
+https://aclanthology.org/2025.naacl-long.360/ .Marius Mosbach, Tiago Pimentel, Shauli Ravfogel, Dietrich Klakow, and Yanai Elazar. Few-shot fine-tuning vs. in-context learning: A fair comparison and evaluation. In Findings of the Association for Computational Linguistics: ACL 2023 , pp. 12284–12314, Toronto, Canada, 2023. Association for Computational Linguistics. doi: 10.18653/v1/2023.findings-acl.779. URL https://aclanthology.org/2023.findings-acl.779/ .Yucheng Zhou, Xiubo Geng, Tao Shen, Chongyang Tao, Guodong Long, Jian-Guang Lou, and Jianbing Shen. Thread of thought unraveling chaotic contexts. arXiv preprint arXiv:2311.08734 , 2023. 12 Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agar-wal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In Proceedings of the 38th International Conference on Machine Learning , 2021. Danna Gurari, Qing Li, Abigale J Stangl, Anhong Guo, Chi Lin, Kristen Grauman, Jiebo Luo, and Jeffrey P Bigham. VizWiz Grand Challenge: Answering visual questions from blind users. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition ,2018. Yash Goyal, Tejas Khot, Douglas Summers-Stay, Dhruv Batra, and Devi Parikh. Making the V in VQA matter: Elevating the role of image understanding in visual question answering. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2017. Bryan A Plummer, Liwei Wang, Chris M Cervantes, Juan C Caicedo, Julia Hockenmaier, and Svetlana Lazebnik. Flickr30k entities: Collecting region-to-phrase correspondences for richer image-to-sentence models. International Journal of Computer Vision , 113(1):83–99, 2015. Douwe Kiela, Hamed Firooz, Aravind Mohan, Vedanuj Goswami, Amanpreet Singh, Pratik Ringshia, and Davide Testuggine. The hateful memes challenge: Detecting hate speech in multimodal memes. In Advances in Neural Information Processing Systems , 2020. Junyu Chen, Zheng Lin, Pingan Lu, Tao Feng, Zejtian Xie, Meng Chen, An Xiao, Zhiguo Gao, Kai Xu, Lei Zhu, et al. WebSRC: A dataset for web-based structural reading com-prehension. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing , 2021. Pan Lu, Swaroop Mishra, Tony Xia, Liang Qiu, Kai-Wei Chang, Song-Chun Zhu, Oyvind Tafjord, Peter Clark, and Aniruddha Kembhavi. Learn to explain: Multimodal reasoning via thought chains for science question answering. In Advances in Neural Information Processing Systems , 2022. Shaohan Huang, Li Dong, Wenhui Wang, Yaru Hao, Shuming Singhal, Shuming Ma, Tengchao Lv, Le Cui, Owais Khan Mohammed, Qiang Liu, Kriti Aggarwal, Zewen Chi, Johan Bjorndahl, Dongdong Song, and Furu Wei. Language models are general-purpose interfaces. In Proceedings of the 40th International Conference on Machine Learning , 2023. Xiaofan Li, Yifu Zhang, and Xiaoqing Ye. Drivingdiffusion: layout-guided multi-view driving scenarios video generation with latent diffusion model. In European Conference on Computer Vision , pp. 469–485. Springer, 2024. 13

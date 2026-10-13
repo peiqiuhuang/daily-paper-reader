@@ -6,46 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-11
-- 运行时间：2026-10-11 23:06:30 UTC
+- 最新运行日期：2026-10-13
+- 运行时间：2026-10-13 01:49:17 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：1
-- 速读区：7
+- 本次总论文数：7
+- 精读区：3
+- 速读区：4
 
 ### 今日简报（AI）
-今日精选 8 篇前沿论文，重点解析非线性双层博弈中的快速有限时间滑模算法。
-核心关注非线性博弈的纳什均衡求解效率，以及基于智能体驱动的 RAG 流程优化方案。
-建议优先研读双层博弈算法以提升复杂系统控制能力，并关注 RAG 智能体优化以改善检索质量。
-- 详情：[/202610/11/README](/202610/11/README)
+今日精选 7 篇前沿论文，重点聚焦大模型提示词优化与微调策略的深度演进。
+MoPrO-SD 提出的模块化提示优化方案在立场检测任务中表现卓越，值得深入研读。
+建议优先关注提示词工程的自动化与模块化趋势，以提升模型在特定任务中的鲁棒性。
+- 详情：[/202610/13/README](/202610/13/README)
 
 ### 精读区论文标签
-1. [A Fast and High-Accuracy Finite-Time Sliding-Mode Algorithm for Computing Local Stackelberg Equilibria in Nonlinear Bilevel Games](/202610/11/2610.11718v1-a-fast-and-high-accuracy-finite-time-sliding-mode-algorithm-for-computing-local-stackelberg-equilibria-in-nonlinear-bilevel-games)  
+1. [MoPrO-SD: Modular Prompt Optimization for Stance Detection](/202610/13/2610.13386v1-mopro-sd-modular-prompt-optimization-for-stance-detection)  
+   标签：评分：9.0/10、query:bopl
+   evidence：模块化提示词优化框架
+2. [Reflective Prompt Optimization of a Deep-Research Agent: A Topic-Disjoint, Multi-Seed Protocol for Measuring Transferable Gains and Prompt-Level Overfitting](/202610/13/2610.12601v1-reflective-prompt-optimization-of-a-deep-research-agent-a-topic-disjoint-multi-seed-protocol-for-measuring-transferable-gains-and-prompt-level-overfitting)  
    标签：评分：8.0/10、query:bopl
-   evidence：计算双层博弈中的局部 Stackelberg 均衡
+   evidence：针对多智能体深度研究代理的反射式提示词演化 (GEPA)
+3. [Partially Informed Stochastic Optimization via Zeroth-Order Residual Tracking](/202610/13/2610.13871v1-partially-informed-stochastic-optimization-via-zeroth-order-residual-tracking)  
+   标签：评分：8.0/10、query:bopl
+   evidence：具有黑盒下层问题的双层优化
 
 ### 速读区论文标签
-1. [Agentic AutoRAG: RAG Pipeline Optimization through Reasoning-Driven Agents](/202610/11/2610.08452v1-agentic-autorag-rag-pipeline-optimization-through-reasoning-driven-agents)  
+1. [TraceICL: Thread-Resolved Demonstration Curation with Consistency Calibration for Robust Multimodal In-Context Learning](/202610/13/2610.12516v1-traceicl-thread-resolved-demonstration-curation-with-consistency-calibration-for-robust-multimodal-in-context-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：将RAG流水线优化视为超参数优化问题
-2. [Noise Your Prompt: Noising Conditioning Tokens in Continuous Diffusion Language Models](/202610/11/2610.09145v1-noise-your-prompt-noising-conditioning-tokens-in-continuous-diffusion-language-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：在训练期间对条件提示词进行加噪
-3. [The Optimization Landscape of Learning Compacted Context Models](/202610/11/2610.05885v1-the-optimization-landscape-of-learning-compacted-context-models)  
+   evidence：自动化的上下文学习示例策划
+2. [Where to Adapt Matters: Layer-Selective Fine-Tuning for Capability Retention](/202610/13/2610.11620v1-where-to-adapt-matters-layer-selective-fine-tuning-for-capability-retention)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过冻结的基础模型将KV压缩建模为优化问题
-4. [Collaborative Personalized Preference Alignment for LLMs under Data Deficiency](/202610/11/2610.05898v1-collaborative-personalized-preference-alignment-for-llms-under-data-deficiency)  
+   evidence：用于高效参数适配的分层选择性微调
+3. [SharP: Soft and Hard Prompt-Guided Augmentation with LLM for Low Resource Fake News Detection](/202610/13/2610.13207v1-sharp-soft-and-hard-prompt-guided-augmentation-with-llm-for-low-resource-fake-news-detection)  
    标签：评分：6.0/10、query:bopl
-   evidence：针对用户偏好少样本自适应的元学习
-5. [Which and When to Admit: Gradient Admission for Data-Centric Small Language Model Finetuning](/202610/11/2610.07553v1-which-and-when-to-admit-gradient-admission-for-data-centric-small-language-model-finetuning)  
+   evidence：结合软硬提示的大语言模型引导数据增强
+4. [Inject a Turn, Not a Token: Learning Where to Redirect LLM Reasoning for Self-Correction](/202610/13/2610.13672v1-inject-a-turn-not-a-token-learning-where-to-redirect-llm-reasoning-for-self-correction)  
    标签：评分：6.0/10、query:bopl
-   evidence：以数据为中心的小语言模型微调
-6. [ASPIRE: Agentic Safety & Prompt Injection Red-teaming Engine](/202610/11/2610.08951v1-aspire-agentic-safety--prompt-injection-red-teaming-engine)  
-   标签：评分：6.0/10、query:bopl
-   evidence：自动化红队测试优化提示词注入负载
-7. [A Closer Look at Agentic BBO: Benchmarking LLM Agents for Black-Box Optimization](/202610/11/2610.12183v1-a-closer-look-at-agentic-bbo-benchmarking-llm-agents-for-black-box-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：LLM智能体超参数优化基准测试
+   evidence：学习在何处注入用户提示以进行大模型自我纠错
 
 
 <div class="dpr-home-promo-card">
