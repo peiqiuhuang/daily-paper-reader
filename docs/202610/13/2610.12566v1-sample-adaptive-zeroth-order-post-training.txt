@@ -1,0 +1,2259 @@
+Title: Sample-Adaptive Zeroth-Order Post-Training
+
+URL Source: https://arxiv.org/pdf/2610.12566v1
+
+Published Time: Mon, 12 Oct 2026 00:04:41 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# SAMPLE -A DAPTIVE ZEROTH -O RDER POST -T RAINING 
+
+A P REPRINT 
+
+Haiyuan Wan 1 Yanyi Li 2 Weicheng Lin 2 Cong Fang 2*
+
+> 1
+
+School of Physics, Peking University 
+
+> 2
+
+School of Intelligence Science and Technology, Peking University 
+
+## ABSTRACT 
+
+Zeroth-order (ZO) optimization offers a memory-efficient alternative to backpropagation for fine-tuning large language models. However, existing ZO methods typically sample training examples uniformly, overlooking their evolving importance and leaving avoidable estimation variance. To address this limitation, we propose Sample-Adaptive Zeroth-Order Optimization (SAZO), which learns sample importance online and adaptively allocates queries to accelerate convergence. SAZO ex-tracts gradient-norm information from existing directional differences to estimate sample importance without access to true gradients. Furthermore, to track evolving importance from sparse minibatch feedback, SAZO maintains per-example exponential moving averages that aggregate observations across updates. The method requires no additional model evaluations and only O(N ) additional scalar state compared with MeZO. We prove that SAZO asymptotically matches the leading conver-gence term of the minimum-variance sampling oracle, and achieves a strictly faster convergence rate than standard methods. Extensive experiments across four model families demonstrate improved average downstream performance and up to 6× faster convergence to the same training loss in terms of query count. 
+
+## 1 Introduction 
+
+Fine-tuning adapts pre-trained large language models (LLMs) to diverse downstream tasks, including sentiment analysis, natural language inference, and question answering (Devlin et al., 2019). However, standard fine-tuning incurs substantial memory overhead from stored activations, gradients, and optimizer states (Li et al., 2026), requiring up to 12 × the inference memory in the settings evaluated by Malladi et al. (2023). Parameter-efficient fine-tuning (PEFT), including prefix tuning (Li and Liang, 2021) and low-rank adaptation (LoRA) (Hu et al., 2021), reduces trainable parameters but still stores activations for backpropagation. To overcome this remaining activation-memory bottleneck, zeroth-order (ZO) methods such as MeZO bypass backpropagation and estimate updates from two forward evaluations, achieving a memory footprint close to inference (Malladi et al., 2023). This memory advantage comes with an optimization challenge: the resulting gradient estimates remain noisy, limiting the convergence speed of ZO fine-tuning (Nesterov and Spokoiny, 2017). Inspired by first-order adaptive optimizers such as Adam (Kingma and Ba, 2015), mainstream approaches to accelerating ZO optimization focus on adaptation in parameter space. HiZOO (Zhao et al., 2025c) and PaZO (Zhao et al., 2025b) use Hessian-informed preconditioning, ZO-AdaMM (Chen et al., 2019) and R-AdaZO (Shu et al., 2025) adapt coordinate-wise update scales using historical moment estimates, and LOZO (Chen et al., 2025) exploits low-rank perturbation subspaces. However, ZO methods face a fundamental information bottleneck: each directional query reveals only a scalar projection rather than a full gradient. Identifying an unrestricted d-dimensional adaptation vector requires Ω( d)
+
+such observations, so the cost of learning reliable parameter-wise adaptation can offset its intended acceleration. We therefore ask: 
+
+> ∗
+
+Corresponding author: fangcong@pku.edu.cn .arXiv:2610.12566v1 [cs.LG] 8 Oct 2026 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 0 512 1024                 
+
+> Samples (ordered by initial norm)
+> 02468
+> Gradient norm / initial median
+> Initial median = 1
+> (a) SST-2 gradient norms
+> Initial 10K 30K
+> 010 20 30
+> ZO updates (thousands)
+> 01234
+> Relative cumulative regret  (b) Cumulative regret
+> SAZO ( β= 0.025) SAZO ( β= 0.05) SAZO ( β= 0.075) Fixed p*0
+> Uniform
+> 010 20 30
+> ZO updates (thousands)
+> 00.1 0.2 0.3 0.4 0.5
+> Mean training loss
+> (c) Optimization
+> SAZO ( β= 0.025) SAZO ( β= 0.05) SAZO ( β= 0.075) Fixed p*0
+> Uniform
+
+Figure 1: From sample heterogeneity to allocation regret and optimization. (a) Per-example gradient norms on SST-2 at initialization, 10K, and 30K updates, normalized by the initial median. Points retain the sample order induced by the initial norms, showing both cross-sample heterogeneity and temporal changes. (b) Sampling regret is the excess gradient-estimator variance over the variance-minimizing allocation (see Appendix E.5 for definitions and detailed settings); SAZO reduces this quantity versus uniform and fixed initial-oracle sampling. (c) The improved allocation accelerates loss reduction. 
+
+A. Is there additional information in ZO queries that current optimizers leave untapped? 
+
+B. If so, how can we adaptively exploit this information to accelerate ZO convergence? 
+
+Since each update uses only a small subset of the training data, its effectiveness depends in part on which examples are selected. Our empirical analysis identifies an untapped source of information: the evolving importance of individual training examples. Their gradient norms differ substantially and change during training (Figure 1(a); Appendix E.5), suggesting that queries need not be equally valuable across examples. Uniform sampling overlooks this heterogeneity, leaving avoidable estimation variance. To use this information for query allocation, a natural approach is importance sampling, inspired by first-order methods (Katharopoulos and Fleuret, 2018; Borsos et al., 2018; El Hanchi and Stephens, 2020): allocate more queries to examples with larger gradient norms. Although sampling heterogeneity also exists in first-order methods, we argue that zeroth-order algorithms are more sensitive to it, since the estimated gradient variance of zeroth-order methods using only function-value access is much larger than that of first-order methods 2.However, applying importance sampling principle to ZO fine-tuning presents two challenges. First, sample importance is not directly observable. The variance-minimizing allocation depends on per-example gradient norms, p⋆i,t ∝∥∇ fi(xt)∥, whereas ZO queries reveal only random directional measurements. We therefore use the scaled magnitudes of existing directional differences to estimate these norms; their expectations approach the corresponding gradient norms as the perturbation radius vanishes, requiring no additional queries. Second, evolving importance must be tracked from sparse minibatch feedback. Each update reveals importance information only for examples in the sampled minibatch, while the importance of all examples may change as the model evolves. We therefore maintain per-example exponential moving averages to combine newly observed information with historical estimates, allowing importance tracking across intermittent observations. Uniform exploration provides opportunities to refresh infrequently sampled examples. Together, these designs yield Sample-Adaptive Zeroth-Order Optimization (SAZO) . The learned scores guide sampling, while inverse-probability weighting preserves the expected full-data finite-difference update. SAZO requires no additional model evaluations and only O(N ) scalar state for N training examples. The benefit of tracking rather than fixing this allocation is visible in Figure 1(b): SAZO incurs lower relative cumulative sampling regret than uniform sampling and an oracle allocation fixed at initialization. This improved allocation also translates into faster training-loss reduction in Figure 1(c), connecting the recovered sample information to optimization progress. Our main contributions are: • We propose SAZO, which estimates sample importance from existing directional differences without extra model evaluations and tracks its evolution from sparse minibatch feedback using per-example exponential moving averages, requiring only O(N ) scalar state. 
+
+> 2
+
+The variance is actually Ω( d) times larger in the worst case. 
+
+2Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+• We prove that SAZO asymptotically matches the leading convergence term of the minimum-variance sampling oracle, and achieves a strictly faster convergence rate than standard methods. • We conduct extensive experiments across four model families, demonstrating improved average downstream performance at MeZO-like memory and per-update cost. SAZO achieves up to 6× query-count speedup over MeZO at the same training loss. 
+
+## 2 Related work 
+
+Sample-adaptive first-order optimization. Online variance minimization learns importance distributions from sampled feedback (Bouchard et al., 2016; Namkoong et al., 2017; Salehi et al., 2017). Static-regret analyses treat feedback as general loss sequences (Borsos et al., 2018, 2019); subsequent work connects sampling to Adam (Liu et al., 2020), federated convergence (Zeng et al., 2024; Zhao et al., 2025a), and joint convex optimization (Aolaritei et al., 2025). Avare exploits gradient continuity for dynamic-regret guarantees (El Hanchi and Stephens, 2020). SAZO addresses the ZO setting, where gradients are unavailable and directional feedback remains noisy, while accounting for the coupling between sampling and optimization. 
+
+Accelerating ZO post-training. MeZO establishes memory-efficient language-model fine-tuning using forward evaluations (Malladi et al., 2023). Subsequent approaches accelerate optimization through curvature-based precondi-tioning (Zhao et al., 2025c,b), low-rank perturbations (Chen et al., 2025), variance reduction (Gautam et al., 2024), and directional alignment (Ma and Huang, 2025). Other methods improve update normalization (Dang et al., 2026), memory-efficient optimizer adaptivity (Dbouk et al., 2026), or adaptive layer selection (Wang et al., 2026). These studies focus on constructing parameter updates and allocating perturbations within the model, where learning reli-able parameter-wise adaptation is intrinsically difficult in high dimensions; SAZO instead adapts query allocation across examples. 
+
+## 3 Sample-adaptive zeroth-order optimization 
+
+Consider the finite-sum problem min x∈Rd F (x) = N −1 PNi=1 fi(x), where fi denotes the loss of training example i.Given a uniformly sampled index It and an independent Gaussian direction zt ∼ N (0 , I d), ZO optimization uses the finite difference 
+
+si,t = fi(xt + μtzt) − fi(xt − μtzt)2μt
+
+. (1) to update xt+1 = xt − ηs It,t zt, with perturbation radius μt > 0 and step size η > 0. Since E[ztz⊤ 
+
+> t
+
+] = Id, the estimator satisfies E[sIt,t zt | xt] = ∇F (xt) + O(μ2 
+
+> t
+
+) and is unbiased up to finite-difference error. Let gi,t = ∇fi(xt) and 
+
+ai,t = ∥gi,t ∥, and let Et denote expectation conditional on the history before the current draws. The estimator’s second moment is 
+
+Et∥sIt,t zt∥2 = d + 2 
+
+N
+
+> N
+
+X
+
+> i=1
+
+a2 
+
+> i,t
+
++ O(μ2 
+
+> t
+
+). (2) The O(μ2 
+
+> t
+
+) terms account for finite-difference error under the Hessian regularity conditions in Assumption 1; their coefficients may depend on the sampling probabilities and gradient norms (Appendix C). The maximum perturbation radius is denoted by μ = max t≤T μt.
+
+3.1 Sample-adaptive updates 
+
+The update above assigns equal query weight to every example, as does standard first-order SGD (Katharopoulos and Fleuret, 2018). Yet empirical evidence reveals pronounced sample heterogeneity in post-training: gradient norms vary substantially across examples and evolve during optimization (Figures 1(a) and 8). This heterogeneity exhibits interpretable sample-level structure that cannot be explained simply by label class, sequence length, or vocabulary (Appendices E.5 and E.6). These observations motivate SAZO (Algorithm 1), which uses importance sampling to assign different query weights across examples to reduce update variance and accelerate optimization. Let pi,t > 0 denote the sampling probability of example i, with P 
+
+> i
+
+pi,t = 1 . For It ∼ pt drawn independently of zt,the importance-weighted update is 
+
+bgt = sIt,t 
+
+N p It,t 
+
+zt, xt+1 = xt − ηbgt. (3) 3Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+Algorithm 1 Sample-Adaptive Zeroth-Order Optimization 
+
+Require: x1, mi, 1 > 0, step budget T , radii μt > 0, learning rate η > 0
+
+Require: Exploration ε ∈ (0 , 12 ] and smoothing coefficient β ∈ (0 , 1) 
+
+1: for t = 1 , . . . , T do 
+
+2: pi,t ← (1 − ε) mi,t 
+
+P 
+
+> j
+
+mj,t 
+
++ εN , for i = 1 , . . . , N . ▷ Importance sampling 
+
+3: Draw It ∼ pt and fresh zt ∼ N (0 , I d).
+
+4: sIt,t ← fIt (xt + μtzt) − fIt (xt − μtzt)2μt
+
+.
+
+5: xt+1 ← xt − η sIt,t 
+
+N p It,t 
+
+zt. ▷ Unbiased gradient estimator 
+
+6: Copy mt+1 ← mt.
+
+7: mIt,t +1 ← (1 − β)mIt,t + β
+
+r π
+
+2 |sIt,t |. ▷ Sparse update with EMA smoothing 
+
+8: end for 
+
+Importance weighting preserves the expected full-data ZO update, with Etbgt = ∇F (xt) + O(μ2 
+
+> t
+
+). Its second moment is 
+
+Et∥bgt∥2 = d + 2 
+
+N 2
+
+> N
+
+X
+
+> i=1
+
+a2
+
+> i,t
+
+pi,t 
+
++ O(μ2 
+
+> t
+
+). (4) Under uniform sampling, pi,t = 1 /N , this second moment reduces to Eq. (2). For positive gradient norms, the distribution that minimizes the leading term and the resulting second moment are 
+
+p⋆i,t = ai,t 
+
+P 
+
+> j
+
+aj,t 
+
+, Et∥bgt∥2
+
+> pt=p⋆t
+
+= d + 2 
+
+N 2
+
+> N
+
+X
+
+> i=1
+
+ai,t 
+
+!2
+
++ O(μ2 
+
+> t
+
+). (5) 
+
+3.2 Estimating sample importance from directional differences 
+
+The ideal allocation in Eq. (5) requires the current per-example gradient norms. As identified in the Introduction, SAZO addresses two obstacles to learning them in ZO optimization. 
+
+Unobserved gradients. ZO optimization cannot access ai,t = ∥∇ fi(xt)∥, but the directional difference si,t al-ready computed for the model update is approximately a one-dimensional Gaussian projection of the gradient. Its scaled absolute value therefore gives a gradient-norm estimator that is unbiased up to finite-difference error, without additional queries: 
+
+Yi,t =
+
+r π
+
+2 |si,t |, EtYi,t = ai,t + O(μ2 
+
+> t
+
+). (6) 
+
+Sparse feedback. Each update reveals Yi,t only for the sampled example, even though the importance of every example may evolve as optimization proceeds. SAZO therefore maintains a separate exponential moving average for every example, carrying historical estimates across the intervals between observations: 
+
+mi,t +1 =
+
+(1 − β)mi,t + βY i,t , i = It,mi,t , i̸ = It. (7) A larger β responds faster to changing importance, while a smaller β places more weight on accumulated observations and suppresses directional noise. Finally, SAZO normalizes these smoothed estimates and adds uniform exploration, following the exploration– exploitation principle in EXP3 (Auer et al., 2002): 
+
+pi,t = (1 − ε) mi,t 
+
+P 
+
+> j
+
+mj,t 
+
++ εN . (8) Exploration refreshes stale scores, while the learned distribution guides the next queries. This creates a coupled estimation–optimization loop, analyzed under Assumption 1 in Section 3.3. 
+
+Query and storage cost. SAZO reuses the directional differences already computed for the model update and therefore requires no additional ZO queries. It stores only one scalar importance estimate per example, for O(N ) additional 4Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+space; with 1,000 training examples and FP64 scores, this is 8,000 bytes, or less than 8 KiB, and is negligible relative to the inference-memory footprint measured in Section 4.3. 
+
+Initialization and minibatch implementation. We initialize each mi by averaging its directional-magnitude observa-tions over four complete, stable-order burn-in passes without replacement, using ordinary MeZO updates; these updates and queries count toward the training budget. We then switch to adaptive sampling with replacement and EMA tracking. Each minibatch shares one perturbation direction, as in MeZO (Malladi et al., 2023); repeated draws are evaluated once, with their multiplicities retained in the weighted update (Appendix D). 
+
+Recommended hyperparameters. We recommend β = 0 .05 and ε = 0 .1, which are used for all main SAZO results. This single setting performs robustly across tasks and datasets and across masked and autoregressive models of different scales; the controlled sweeps in Section 4.4 further show low sensitivity over broad ranges of both parameters. 
+
+3.3 Convergence analysis 
+
+This section analyzes convergence under the following continuity assumptions. Smoothness conditions of this type are standard in zeroth-order optimization and are routinely used to analyze ZO fine-tuning of language models (Nesterov and Spokoiny, 2017; Malladi et al., 2023). They are also well matched to our setting: Lipschitz gradients enable descent and stable tracking as the parameters evolve, while Lipschitz Hessians control the error of SAZO’s symmetric finite differences. 
+
+Assumption 1. Each ∇fi is globally Li-Lipschitz, and F is LF -smooth and bounded below by F∗. Each Hessian is globally Hi-Lipschitz. The positive radii μt are deterministic, and the initialization and finite-time moments appearing below are finite. Let L22 = N −1 P 
+
+> i
+
+L2 
+
+> i
+
+.
+
+At the step-t parameters, ignoring finite-difference error, the optimal allocation has second moment V ⋆t = 
+
+> d+2
+> N2
+
+PNi=1 ai,t 
+
+2
+
+. Under the sampling distribution pt in Algorithm 1, the corresponding second moment is 
+
+Vt(pt) = d+2  
+
+> N2
+
+PNi=1  
+
+> a2
+> i,t
+> pi,t
+
+. Their cumulative difference, 
+
+Regret T =
+
+> T
+
+X
+
+> t=1
+
+E [Vt(pt) − V ⋆t ] ≥ 0, (9) satisfies the following bound. 
+
+Theorem 1 (Sampling regret) . Under Assumption 1, run Algorithm 1 with fixed x1 and constant η, ε, β within the horizon. Let μ = max t≤T μt ≤ 1, σ2 
+
+> G
+
+= π/ 2 − 1, E0 = E∥m1 − a1∥2, r = βε/N , Λd = ( d + 2) L22, and 
+
+AT = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+X
+
+> i
+
+Ea2
+
+> i,t
+
+, DT = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+EV ⋆t . (10) 
+
+If κ = 192Λ dη2/(εr 2) < 1, then 
+
+Regret T
+
+T ≤ 11 − κ
+
+ 16( d + 2) E0
+
+T N εr + 24( d + 2) σ2
+
+> G
+
+β2
+
+N εr AT + ( κ + 4 ε) DT
+
+
+
++ O(μ4). (11) The bound separates initialization, observation noise, target drift, and exploration, with finite differences contributing an additive remainder. The condition κ < 1 requires the feedback amplification of tracking error through sampling and parameter updates to be weaker than the error contraction induced by the EMA. Theorem 1 shows that our importance tracking method can asymptotically achieve the minimum sampling variance. Substituting this result into the descent lemma (Nesterov, 2004, Lemma 1.2.3) yields the following convergence bound. 
+
+Theorem 2 (Convergence) . Under Assumption 1, fix N, d, L i and positive schedule coefficients; use 
+
+η = cη T −1/2, ε = cεT −1/10 , β = cβ T −3/10 .
+
+Let ∆F = F (x1) − F∗ and define KT = (d+2) σ2
+
+> Gcβ
+> c2
+> ε
+
+AT +
+
+ N 2Λdc2 
+
+> η
+> c3
+> εc2
+> β
+
++ cε
+
+
+
+DT . For ∆F , DT > 0, take cη =
+
+p2∆ F /(LF DT ), which minimizes the leading expression for fixed DT . If the parameters are feasible and κ ≤ 1/2, then 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+E∥∇ F (xt)∥2 ≤
+
+r 2LF ∆F DT
+
+T + O
+
+ LF cη KT
+
+T 3/5 + LF cη (d + 2) E0
+
+c2
+
+> ε
+
+cβ T
+
+
+
++ O(μ2). (12) 
+
+The first O(·) hides only universal numerical constants; finite-difference coefficients are detailed in Appendix C. 
+
+5Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+Table 1: Leading convergence terms on a common trajectory. The SAZO bound additionally includes the adaptation and finite-difference terms in Theorem 2; hindsight allocation is a comparator.               
+
+> Sampling allocation Average second moment Leading term Uniform (MeZO) UT
+> p2LF∆FUT/T
+> Best fixed in hindsight HT
+> p2LF∆FHT/T
+> Optimal at each step (SAZO leading term) DT
+> p2LF∆FDT/T
+
+The first term is the leading optimization term; under fixed problem and schedule coefficients and uniformly bounded trajectory moments, the adaptation correction is o(T −1/2). Here DT is the expected horizon average of V ⋆t defined above. The choice of cη is conditional on this trajectory-dependent quantity; proofs and parameter qualifications appear in Appendices A and B. Table 1 compares the leading convergence terms for uniform sampling (MeZO), the best fixed allocation in hindsight, and the optimal allocation at each step, which governs the SAZO bound. With punif = (1 /N, . . . , 1/N ) and ∆N the probability simplex, define 
+
+UT = 1
+
+T
+
+X
+
+> t
+
+EVt(punif ) = d + 2 
+
+N AT , HT = E
+
+"
+
+inf 
+
+> p∈∆N
+
+1
+
+T
+
+X
+
+> t
+
+Vt(p)
+
+#
+
+.
+
+Cauchy–Schwarz and minimization over the allocations give UT ≥ H T ≥ D T , and hence 
+
+r 2LF ∆F UT
+
+T ≥
+
+r 2LF ∆F HT
+
+T ≥
+
+r 2LF ∆F DT
+
+T . (13) In particular, the gap between the uniform and optimal horizon-averaged second moments is 
+
+UT − D T = d + 2 
+
+T
+
+> T
+
+X
+
+> t=1
+
+E
+
+ 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ai,t − 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+aj,t 
+
+
+
+> 2
+
+ ≥ 0. (14) Equality holds if and only if all examples have the same gradient norm at every step, almost surely. This comparison uses a common parameter trajectory and does not rank the separate trajectories generated by different samplers. 
+
+## 4 Experiments 
+
+We evaluate SAZO from five complementary perspectives: downstream performance on masked and generative language models, convergence across model scales, scaling with the training-population size, computational effi-ciency, and robustness to its sampling hyperparameters. Appendix E provides the detailed experimental settings and additional diagnostics. 
+
+4.1 Performance and convergence across model families 4.1.1 Masked language models 
+
+We first examine whether SAZO’s optimization strategy translates into downstream accuracy. Using RoBERTa-large (350M) (Liu et al., 2019) with k = 512 examples per class, we consider six tasks spanning sentiment classification, natural language inference, and question classification. Table 2 compares zero-shot learning, LP, and full-parameter and parameter-efficient FT, MeZO, HiZOO, and SAZO; across tasks, SAZO outperforms zero-shot and LP and approaches FT. 
+
+SAZO improves both full-parameter and parameter-efficient ZO tuning. Relative to the stronger of MeZO and HiZOO, SAZO raises the average accuracy by 1.6 percentage points under full-parameter tuning and by 1.1 points under PEFT. The same pattern appears on individual tasks: the gains on TREC are 1.5 and 1.6 points for full-parameter tuning and PEFT, respectively, while those on MNLI are 1.3 and 1.8 points. 
+
+4.1.2 Generative language models 
+
+We then test whether the benefits extend to generative language models (GLMs). Table 3 compares full-parameter SAZO, MeZO, and HiZOO on OPT-1.3B (Zhang et al., 2022), Phi-2 (2.7B), and Llama3-8B across eight classification, multiple-choice, and question-answering tasks. 6Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+Table 2: Experiments on RoBERTa-large (350M parameters) with k = 512 examples per class. LP: linear probing; FT: fine-tuning with Adam; PEFT: the better result between LoRA and prefix tuning for each task. MeZO and HiZOO results are reproduced. All tuning results report mean test accuracy, with standard deviations in subscripts. Bold: best ZO result. 
+
+Method Sentiment Natural language inference Question type Avg. SST-2 SST-5 SNLI MNLI RTE TREC Zero-shot 79 .0 35 .5 50 .2 48 .8 51 .4 32 .0 49 .5
+
+LP 91 .3±0.5 51 .7±0.5 80 .9±1.0 71 .5±1.1 73 .1±1.5 89 .4±0.5 76 .3
+
+FT 93 .9±0.7 55 .9±0.9 88 .7±0.8 84 .4±0.8 82 .7±1.4 97 .3±0.2 83 .8
+
+FT (PEFT) 94 .2±0.2 55 .3±0.7 88 .3±0.5 83 .9±0.6 83 .2±1.3 97 .4±0.2 83 .7
+
+MeZO 93 .3±0.7 53 .2±1.4 83 .0±1.0 78 .3±0.5 78 .6±2.0 94 .3±1.3 80 .1
+
+MeZO (PEFT) 93 .4±0.4 53 .6±0.5 84 .8±1.1 79 .8±1.2 77 .6±1.3 95 .0±0.7 80 .7
+
+HiZOO 93 .5±0.4 53 .5±1.2 83 .3±1.4 77 .2±1.5 79 .1±1.2 94 .9±1.7 80 .3
+
+HiZOO (PEFT) 94 .3±0.5 54 .2±0.4 85 .7±0.7 79 .7±1.0 80 .9±1.6 93 .1±0.5 81 .3
+
+SAZO 94 .3±0.5 53 .6±0.8 85 .3±0.4 79 .6±0.3 82 .3±2.4 96 .4±0.6 81 .9
+
+SAZO (PEFT) 94 .0±0.8 54 .5±0.5 86 .5±0.4 81 .6±1.4 80 .9±1.7 96 .6±0.5 82 .4
+
+SAZO achieves SOTA average performance compared with other ZO optimizers. On OPT-1.3B, Phi-2, and Llama3-8B, SAZO improves the average over the stronger of MeZO and HiZOO by 1.2, 1.7, and 3.9 percentage points, respectively. The gains are especially large on Llama3-8B CB and DROP, where SAZO exceeds the stronger baseline by 10.8 and 8.4 points. Table 3: Full-parameter generative-LM results. MeZO and HiZOO results are reproduced. 
+
+Model Method Classification Multiple choice Question answering Avg. SST-2 BoolQ CB WiC COPA MultiRC SQuAD DROP OPT-1.3B MeZO 88.3 64.0 69.6 57.4 76.0 61.9 73.1 23.7 64.2 HiZOO 90.7 64.0 71.4 58.2 75.0 60.1 76.6 21.3 64.7 SAZO 90.8 65.0 71.4 60.8 77.0 61.9 76.6 23.3 65.9 
+
+Phi-2 MeZO 86.6 72.4 75.0 54.4 86.0 78.2 85.7 37.8 72.0 HiZOO 88.9 72.0 75.2 59.2 86.0 79.2 85.7 36.2 72.8 SAZO 88.5 78.2 76.8 57.2 89.0 79.2 86.0 41.1 74.5 
+
+Llama3-8B MeZO 92.2 76.7 69.6 57.8 88.0 77.6 86.7 57.1 75.7 HiZOO 94.3 77.1 69.6 57.7 89.0 77.9 87.7 49.4 75.3 SAZO 94.4 80.8 80.4 56.6 91.0 78.8 89.3 65.5 79.6 
+
+4.1.3 Convergence across model scales SAZO accelerates optimization across model scales. Figure 2 compares SST-2 training-loss trajectories on RoBERTa-large, Phi-2, and Llama 3 at a common forward-pass budget of 24K. Each method uses its optimal learning rate from the same search grid for each model; detailed settings are provided in Appendices E.1 and E.2. SAZO reaches MeZO’s endpoint losses in 4K, 6K, and 6K passes, while HiZOO requires 10.5K, 9K, and 6K passes, respectively. 
+
+4.2 Scaling with training-population size SAZO remains effective as the training population grows. Having established gains across model scales, we vary the amount of training data. Figure 3 compares SST-2 test accuracy as the RoBERTa-large training population increases from N = 1 ,024 to 4N . SAZO outperforms MeZO at every scale, with gains of 0.6, 1.1, 1.4, and 1.5 percentage points at N , 2N , 3N , and 4N , respectively. 7Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 0 8 16 24 
+
+> Forward passes (×10 3)
+> 0.02 0.05 0.1 0.2 0.5
+> Mean training loss
+
+(a) RoBERTa-large (350M)    
+
+> MeZO (1×) HiZOO (2.29×) SAZO (6×)
+> 0816 24
+> Forward passes (×10 3)
+> 0.2 0.3 0.5 1
+> Mean training loss
+
+(b) Phi-2 (2.7B)    
+
+> MeZO (1×) HiZOO (2.66×) SAZO (4×)
+> 0816 24
+> Forward passes (×10 3)
+> 0.1 0.2 0.5 1
+> Mean training loss
+
+(c) Llama 3 (8B) 
+
+> MeZO (1×) HiZOO (4×) SAZO (4×)
+
+Figure 2: SAZO substantially accelerates convergence across model scales. At 24K forward passes, SAZO reaches MeZO’s endpoint loss 6×, 4×, and 4× faster in (a)–(c), respectively; HiZOO achieves 2.29 ×, 2.66 ×, and 4×.N 2N 3N 4N   
+
+> Training-population size ( N= 1,024)
+> 91.5 92.0 92.5 93.0 93.5 94.0
+> Test accuracy (%)
+> MeZO SAZO
+
+Figure 3: RoBERTa-large SST-2 test accuracy as the training population scales from N = 1 ,024 to 4N . Curves show mean ± standard deviation over three seeds. See Appendix E.3 for details. 
+
+4.3 Memory and wall-clock efficiency 
+
+We finally examine whether the gains above preserve the computational advantages of ZO optimization. SAZO retains MeZO’s memory footprint. Across the OPT configurations in Figure 4, the measured GB values for SAZO match those of MeZO. Compared with first-order methods, SAZO reduces memory requirements by factors of 6.8–12 .2× for full FT and 3.3–6.1× for prefix FT (26 versus 316 GB at 13B for full FT). Thus, the downstream improvements do not sacrifice the low-memory advantage that makes ZO post-training attractive. 
+
+SAZO also maintains low per-update latency. Table 4 shows that its per-update time remains comparable to MeZO across the evaluated models. Together with faster loss reduction, this yields more effective updates at MeZO-like cost. 1.3B 2.7B 6.7B 13B 30B OPT model size       
+
+> 410 30 100 300 1000
+> Peak GPU memory (GB)
+> 6.8 ×7.9 ×
+> 11.1 ×
+> 12.2 ×
+> 10.9 ×Zero-shot ICL FT FT (prefix) MeZO SAZO
+
+Figure 4: Peak GPU memory on MultiRC (mean length 400 tokens; batch size 1/device), summed across GPUs. Arrows show FT/SAZO ratios. 8Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+Table 4: Wall-clock time per update (seconds). 
+
+Method RoBERTa-large OPT-1.3B Phi-2 Llama3-8B MeZO 0.1153 0.1836 0.4235 0.9490 HiZOO 0.2738 0.4793 1.0519 2.4798 SAZO 0.1128 0.1839 0.4298 0.9805 
+
+4.4 Ablation studies 
+
+We conclude by examining sensitivity to the importance-score update. SAZO is robust to the smoothing coefficient. 
+
+Figure 5 varies this coefficient on SST-2. Across β ∈ { 0.005 , 0.05 , 0.5}, the trajectories remain stable and reach closely clustered endpoint losses, with β = 0 .05 performing best. In contrast, β = 1 discards the accumulated history, relies only on the latest directional observation, and diverges. This contrast highlights the importance of per-example moving averages for tracking evolving importance from intermittent feedback while smoothing directional noise. SAZO is similarly robust to the exploration coefficient ε over a broad range; Appendix E.4 provides the full sweep and experimental details. 0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5           
+
+> ZO updates (×10 3)
+> 00.2 0.4 0.6
+> Mean training loss
+> (a) Smoothing coefficient β
+> β= 0.005
+> β= 0.5
+> β= 0.05
+> β= 1
+> 16.5 17.0 17.5
+> ZO updates (×10 3)
+> 0.036 0.039 0.042 0.045
+> β= 0.005
+> β= 0.05
+> β= 0.5
+> (b) Endpoint zoom
+
+Figure 5: Smoothing coefficient ablation on SST-2. Detailed settings are provided in Appendix E.4. 
+
+## 5 Conclusion 
+
+In this work, we propose SAZO, a sample-adaptive zeroth-order optimizer that reuses existing directional differences to estimate sample importance without additional model evaluations. Per-example exponential moving averages track how this importance evolves from sparse minibatch feedback and require only O(N ) scalar state. Our analysis asymptotically matches the variance-optimal dynamic oracle’s leading convergence term, yielding a smaller convergence coefficient than uniform sampling when sample importance is heterogeneous. Extensive experiments demonstrate improved average downstream performance and up to 6× faster convergence to the same training loss in terms of query counts. 9Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+## AI use statement 
+
+Generative AI assisted with research organization, literature retrieval, mathematical derivation, manuscript drafting, LaTeX preparation, numerical identity checks, and a separate adversarial review of this draft. It did not generate the reported training measurements. 
+
+## References 
+
+Liviu Aolaritei, Bart P. G. Van Parys, Henry Lam, and Michael I. Jordan. Stochastic optimization with optimal importance sampling. arXiv preprint arXiv:2504.03560 , 2025. URL https://arxiv.org/abs/2504.03560 .Peter Auer, Nicolò Cesa-Bianchi, Yoav Freund, and Robert E. Schapire. The nonstochastic multiarmed bandit problem. SIAM Journal on Computing , 32(1):48–77, 2002. doi: 10.1137/S0097539701398375. URL https: //doi.org/10.1137/S0097539701398375 .Zalan Borsos, Andreas Krause, and Kfir Y. Levy. Online variance reduction for stochastic optimization. In Conference On Learning Theory , volume 75, pages 324–357. PMLR, 2018. URL https://proceedings.mlr.press/v75/ borsos18a.html .Zalán Borsos, Sebastian Curi, Kfir Yehuda Levy, and Andreas Krause. Online variance reduction with mixtures. In International Conference on Machine Learning , volume 97, pages 705–714. PMLR, 2019. URL https:// proceedings.mlr.press/v97/borsos19a.html .Guillaume Bouchard, Théo Trouillon, Julien Perez, and Adrien Gaidon. Online learning to sample. arXiv preprint arXiv:1506.09016 , 2016. URL https://arxiv.org/abs/1506.09016v2 .Xiangyi Chen, Sijia Liu, Kaidi Xu, Xingguo Li, Xue Lin, Mingyi Hong, and David Cox. ZO-AdaMM: Zeroth-order adaptive momentum method for black-box optimization. In Advances in Neural Information Processing Systems ,2019. Yiming Chen, Yuan Zhang, Liyuan Cao, Kun Yuan, and Zaiwen Wen. Enhancing zeroth-order fine-tuning for language models with low-rank structures. In International Conference on Learning Representations , volume 2025, pages 62581–62607, 2025. Sizhe Dang, Yangyang Guo, Yanjun Zhao, Xiaodong Zheng, Guang Dai, Ivor Tsang, and Haishan Ye. FZOO: Fast zeroth-order optimizer for fine-tuning large language models towards adam-scale speed. In International Conference on Learning Representations , 2026. URL https://arxiv.org/abs/2506.09034 .Hassan Dbouk, Nidham Gazagnadou, Matthias Reisser, and Christos Louizos. On adaptivity in zeroth-order optimization. 
+
+arXiv preprint arXiv:2605.03869 , 2026. URL https://arxiv.org/abs/2605.03869 .Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of the 2019 conference of the North American chapter of the association for computational linguistics: human language technologies, volume 1 (long and short papers) ,pages 4171–4186, 2019. Ayoub El Hanchi and David A. Stephens. Adaptive importance sampling for finite-sum optimization and sampling with decreasing step-sizes. In Advances in Neural Information Processing Systems , volume 33, 2020. URL https: //proceedings.neurips.cc/paper/2020/hash/b58f7d184743106a8a66028b7a28937c-Abstract.html .Tanmay Gautam, Youngsuk Park, Hao Zhou, Parameswaran Raman, and Wooseok Ha. Variance-reduced zeroth-order methods for fine-tuning language models. arXiv preprint arXiv:2404.08080 , 2024. Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. Lora: Low-rank adaptation of large language models. arXiv preprint arXiv:2106.09685 , 2021. Angelos Katharopoulos and François Fleuret. Not all samples are created equal: Deep learning with importance sampling. In International Conference on Machine Learning , volume 80, pages 2525–2534. PMLR, 2018. URL 
+
+https://proceedings.mlr.press/v80/katharopoulos18a.html .Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International Conference on Learning Representations , 2015. URL https://arxiv.org/abs/1412.6980 .Xiang Lisa Li and Percy Liang. Prefix-tuning: Optimizing continuous prompts for generation. In Proceedings of the 59th annual meeting of the association for computational linguistics and the 11th international joint conference on natural language processing (volume 1: Long papers) , pages 4582–4597, 2021. Yanyi Li, Yimu Zhang, and Cong Fang. Prac: Principal-random subspace for llm activation compression and memory-efficient training. arXiv preprint arXiv:2602.23111 , 2026. 10 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+Rui Liu, Tianyi Wu, and Barzan Mozafari. Adam with bandit sampling for deep learning. In Advances in Neural Information Processing Systems , volume 33, 2020. URL https://arxiv.org/abs/2010.12986 .Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. RoBERTa: A robustly optimized BERT pretraining approach. arXiv preprint arXiv:1907.11692 ,2019. URL https://arxiv.org/abs/1907.11692 .Shaocong Ma and Heng Huang. Revisiting zeroth-order optimization: Minimum-variance two-point estimators and directionally aligned perturbations. In International Conference on Learning Representations , volume 2025, pages 13267–13293, 2025. Sadhika Malladi, Tianyu Gao, Eshaan Nichani, Alex Damian, Jason D. Lee, Danqi Chen, and Sanjeev Arora. Fine-tuning language models with just forward passes. In Advances in Neural Information Processing Systems , 2023. URL https://arxiv.org/abs/2305.17333 .Hongseok Namkoong, Aman Sinha, Steve Yadlowsky, and John C. Duchi. Adaptive sampling probabilities for non-smooth optimization. In International Conference on Machine Learning , volume 70, pages 2574–2583. PMLR, 2017. URL https://proceedings.mlr.press/v70/namkoong17a.html .Yurii Nesterov. Introductory Lectures on Convex Optimization: A Basic Course , volume 87 of Applied Optimization .Kluwer Academic Publishers, 2004. doi: 10.1007/978-1-4419-8853-9. URL https://doi.org/10.1007/ 978-1-4419-8853-9 .Yurii Nesterov and Vladimir Spokoiny. Random gradient-free minimization of convex functions. Foundations of Computational Mathematics , 17(2):527–566, 2017. Farnood Salehi, L. Elisa Celis, and Patrick Thiran. Stochastic optimization with bandit sampling. arXiv preprint arXiv:1708.02544 , 2017. URL https://arxiv.org/abs/1708.02544 .Yao Shu, Qixin Zhang, Kun He, and Zhongxiang Dai. Refining adaptive zeroth-order optimization at ease. In 
+
+Proceedings of the International Conference on Machine Learning , 2025. Fei Wang, Li Shen, Liang Ding, Chao Xue, Ye Liu, and Changxing Ding. Universally empowering zeroth-order optimization via adaptive layer-wise sampling. In Findings of the Association for Computational Linguistics: ACL 2026 , pages 40218–40239. Association for Computational Linguistics, 2026. URL https://aclanthology.org/ 2026.findings-acl.1999/ .Dun Zeng, Zenglin Xu, Yu Pan, Xu Luo, Qifan Wang, and Xiaoying Tang. Enhanced federated optimization: Adaptive unbiased client sampling with reduced variance. arXiv preprint arXiv:2310.02698 , 2024. URL https: //arxiv.org/abs/2310.02698v3 .Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, Todor Mihaylov, Myle Ott, Sam Shleifer, Kurt Shuster, Daniel Simig, Punit Singh Koura, Anjali Sridhar, Tianlu Wang, and Luke Zettlemoyer. OPT: Open pre-trained transformer language models. 
+
+arXiv preprint arXiv:2205.01068 , 2022. URL https://arxiv.org/abs/2205.01068 .Boxin Zhao, Lingxiao Wang, Ziqi Liu, Zhiqiang Zhang, Jun Zhou, Chaochao Chen, and Mladen Kolar. Adaptive client sampling in federated learning via online learning with bandit feedback. Journal of Machine Learning Research , 26 (8):1–67, 2025a. URL https://jmlr.org/papers/v26/24-0385.html .Hanzhen Zhao, Ding Shihong, Cong Fang, and Zhouchen Lin. Pazo: Preconditioned accelerated zeroth-order optimization for fine-tuning llms. Advances in Neural Information Processing Systems , 38:111163–111195, 2025b. Yanjun Zhao, Sizhe Dang, Haishan Ye, Guang Dai, Yi Qian, and Ivor W. Tsang. Second-order fine-tuning without pain for LLMs: A hessian informed zeroth-order optimizer. In International Conference on Learning Representations ,2025c. URL https://arxiv.org/abs/2402.15173 .11 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+## A Proofs of the main results 
+
+Let Ft denote the history before the current draws, so xt, m t, p t are Ft-measurable and Et is conditional expectation. For the proofs, it is convenient to remove the common Gaussian factor from the second moments in Section 3.3. Throughout the appendices, define 
+
+eVt(p) = Vt(p)
+
+d + 2 = 1
+
+N 2
+
+X
+
+> i
+
+a2
+
+> i,t
+
+pi
+
+, ¯at = 1
+
+N
+
+X
+
+> i
+
+ai,t , eV ⋆t = V ⋆t
+
+d + 2 = ¯ a2 
+
+> t
+
+,
+
+Writing ρt = Vt(pt) − V ⋆t , use eρt = ρt/(d + 2) , ^Regret T = Regret T /(d + 2) , eDT = DT /(d + 2) , eUT = UT /(d + 2) ,
+
+eHT = HT /(d + 2) , and eKT = KT /(d + 2) . Also set Cd = LF (d + 2) . These are exact rescalings of the main-text quantities. For the explicit radius calculations below, set D6 = d(d + 2)( d + 4) , D8 = d(d + 2)( d + 4)( d + 6) , H22 = N −1 P 
+
+> i
+
+H2 
+
+> i
+
+,
+
+Ji,t = πH 2 
+
+> i
+
+D6μ4 
+
+> t
+
+/72 , and Wt = H22 D8μ4 
+
+> t
+
+/36 . Write W T = T −1 P 
+
+> t
+
+Wt and BT = T −1 P 
+
+> t,i
+
+E[β2pi,t Ji,t ]. With 
+
+r = βε/N , define 
+
+Rμ,T = BT + N L 22η2W T /ε N εr 2 , Ωμ,T =
+
+qeDT W T + LF ηε
+
+s
+
+(d + 2) AT W T
+
+N + LF ηε W T .
+
+These quantities expand the compact radius errors used in the main text. At a fixed horizon and fixed algorithm parameters, Rμ,T = O(μ4) and Ωμ,T = O(μ2) for μ = max t μt ≤ 1, with moment dependencies retained here. For local observation variance statements, the hidden coefficient also contains ai,t through ai,t 
+
+pJi,t .
+
+A.1 Supporting moment and descent bounds 
+
+The following results use the normalized quantities defined above. Multiplying the normalized regret bound by d + 2 
+
+gives Theorem 1; substituting Cd = LF (d + 2) and eDT = DT /(d + 2) gives Theorem 2. 
+
+Proposition 1 (Feedback and update moments) . For σ2 
+
+> G
+
+= π/ 2 − 1, the finite-difference observations satisfy 
+
+EtYi,t = ai,t + O(μ2),
+
+Var t(Yi,t ) = σ2
+
+> G
+
+a2 
+
+> i,t
+
++ O(μ2). (15) 
+
+The corresponding update satisfies 
+
+∥Etbgt − ∇ F (xt)∥ = O(μ2),
+
+Et∥bgt∥2 ≤ 2( d + 2) eVt(pt) + O(μ4).
+
+(16) 
+
+Lemma 1 (Descent decomposition) . Under Assumption 1, let ΨT = T −1 P 
+
+> t
+
+E∥∇ F (xt)∥2. Then 
+
+ΨT ≤ ∆F
+
+ηT + Cdη
+
+2 eDT + Cdη
+
+2
+
+^Regret T
+
+T + O(μ2), (17) 
+
+where Cd = LF (d + 2) and ∆F = F (x1) − F∗.
+
+Schedules and finite-difference accuracy. The schedules in Theorem 2 are constant within each run and indexed by the horizon. The leading-term choice of cη requires DT and ∆F ; since DT depends on the resulting trajectory, this is a conditional tuning result. The finite-time bounds retain the trajectory moments without imposing a global gradient bound, convexity, or a strong-growth condition. For fixed problem and schedule coefficients and uniformly bounded trajectory moments, the O(μ2) constant can be taken uniformly over feasible horizons. A run-wise radius μ = μ0T −α
+
+with α > 3/10 makes this correction o(T −3/5); a fixed radius retains an additive error floor. Appendix C gives the explicit bounds. 
+
+A.2 Gaussian identities and the sampling oracle 
+
+In this appendix only, write sμt 
+
+> i,t
+
+= si,t for the actual difference used in the main text and introduce s0 
+
+> i,t
+
+= z⊤ 
+
+> t
+
+gi,t as a Taylor expansion term at the same current parameter vector. There is no auxiliary optimization trajectory. Condition on 
+
+Ft and suppress t. For any fixed g, z⊤g has distribution ∥g∥Z with Z ∼ N (0 , 1) . Since E|Z| = p2/π and EZ2 = 1 ,12 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+the Gaussian moments of Y 0 
+
+> i
+
+= pπ/ 2|s0 
+
+> i
+
+| follow. Adding the Taylor remainder bounded in Appendix C gives Eq. (15). To compute the update moment, rotate g onto the first coordinate: 
+
+Ez ∥zz ⊤g∥2 = ∥g∥2E
+
+z21
+
+> d
+
+X
+
+> j=1
+
+z2
+
+> j
+
+ = (3 + d − 1) ∥g∥2.
+
+Also Ezz ⊤ = Id. Averaging over the selected index gives the leading moment (d + 2) eVt(pt). Adding the Taylor remainder gives Eq. (16). Finally, 
+
+X
+
+> i
+
+ai
+
+!2
+
+= X
+
+> i
+
+ai
+
+√pi
+
+√pi
+
+!2
+
+≤ X
+
+> i
+
+a2
+
+> i
+
+pi
+
+.
+
+Equality holds for pi ∝ ai on the positive-norm support. Infima on the boundary are understood by limits, with zero-norm terms contributing zero. 
+
+A.3 Stationary variance of the EMA 
+
+Fix the parameter vector and index i, and enumerate its visits by k. At a fixed radius, with fresh independent Gaussian directions, let aμi = EY (k) 
+
+> i
+
+and vμi = Var( Y (k) 
+
+> i
+
+). The central-difference estimates obey aμi = ai + O(μ2) with the explicit coefficients in Proposition 1. For deterministic initial score m(0)  
+
+> i
+
+, the recursion m(k) 
+
+> i
+
+= (1 − β)m(k−1)  
+
+> i
+
++
+
+βY (k) 
+
+> i
+
+gives 
+
+E(m(k) 
+
+> i
+
+− aμi )2 = (1 − β)2k(m(0)  
+
+> i
+
+− aμi )2 + β
+
+2 − β
+
+1 − (1 − β)2kvμi .
+
+This follows by centering the recursion and summing a geometric series. At visit times, the variance converges to 
+
+βv μi /(2 − β). Averaging reduces variance but retains the finite-difference bias in aμi . The result concerns a fixed target; it does not remove the drift term on an evolving optimization trajectory. 
+
+A.4 A global normalization bound Lemma 2. For a ≥ 0, m > 0, 0 < ε ≤ 1/2, and p = (1 − ε)m/ (P 
+
+> i
+
+mi) + ε1/N , let G = N −1 P 
+
+> i
+
+ai and 
+
+e = m − a. Then 
+
+eV (p) − G2 ≤ 8
+
+N ε ∥e∥2 + 4 εG 2. (18) 
+
+Proof. Let S = P 
+
+> i
+
+ai, M = P 
+
+> i
+
+mi, q = m/M , and u = 1/N . To retain the normalization by N 2, work directly with the weighted squared norm ∥v∥2 
+
+> p−1
+
+= P 
+
+> i
+
+v2 
+
+> i
+
+/p i. Expanding the square gives 
+
+N 2 eV (p) − G2 = ∥a − Sp ∥2 
+
+> p−1
+
+.
+
+Write δ = a − Sq = −e + ( M − S)q. Since pi ≥ ε/N , pi ≥ (1 − ε)qi, and (M − S)2 ≤ N ∥e∥2,
+
+∥δ∥2 
+
+> p−1
+
+≤ 2 X
+
+> i
+
+e2
+
+> i
+
+pi
+
++ 2( M − S)2 X
+
+> i
+
+q2
+
+> i
+
+pi
+
+≤
+
+ 2Nε + 2N
+
+1 − ε
+
+
+
+∥e∥2 = 2Nε(1 − ε) ∥e∥2.
+
+The exploration contribution also admits a weighted bound: 
+
+ε2∥q − u∥2 
+
+> p−1
+
+= ∥q − p∥2 
+
+> p−1
+
+= X
+
+> i
+
+q2
+
+> i
+
+pi
+
+− 1 ≤ ε
+
+1 − ε .
+
+Using a − Sp = δ + Sε (q − u) therefore yields 
+
+eV (p) − G2 ≤ 4
+
+N ε (1 − ε) ∥e∥2 + 2ε
+
+1 − ε G2
+
+≤ 8
+
+N ε ∥e∥2 + 4 εG 2.
+
+The argument includes S = 0 and requires no closeness condition between M and S.13 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+A.5 Sparse EMA with correlated target drift 
+
+The following lemma allows dependent inclusions and shared directional observations. Given the current history, let Oi
+
+be an inclusion indicator independent of the fresh Gaussian direction, with πi = EtOi. The indicators for different coordinates may be dependent. For this local lemma, let Yi = Y 0 
+
+> i
+
+denote the leading Gaussian observation and update 
+
+m+ 
+
+> i
+
+= mi + βO i(Yi − mi), and suppose βπ i ≥ r > 0 for all steps and coordinates. Define δa i,t = ai,t +1 − ai,t .
+
+Lemma 3 (Visited-coordinate tracking) . With E0 = E∥m1 − a1∥2 and QT = P 
+
+> t<T
+
+E∥at+1 − at∥2,
+
+X
+
+> t
+
+E∥mt − at∥2 ≤ 2E0
+
+r + 3σ2
+
+> G
+
+β2
+
+r
+
+X
+
+> t,i
+
+E[πi,t a2
+
+> i,t
+
+] + 12 QT
+
+r2 . (19) 
+
+Proof. For ei = mi − ai and νi = Yi − ai, write 
+
+Xi = (1 − βO i)ei + βO iνi, ei,t +1 = Xi − δa i,t .
+
+Conditional centering and independence of Oi and the new direction imply 
+
+EtX2 
+
+> i
+
+= [1 − (2 β − β2)πi]e2 
+
+> i
+
++ β2πiσ2
+
+> G
+
+a2 
+
+> i
+
+≤ (1 − r)e2 
+
+> i
+
++ β2πiσ2
+
+> G
+
+a2 
+
+> i
+
+.
+
+Young’s inequality with parameter r/ 2 gives 
+
+Ete2 
+
+> i,t +1
+
+≤ (1 − r/ 2) e2 
+
+> i
+
++ 32 β2πiσ2
+
+> G
+
+a2 
+
+> i
+
++ 3
+
+r Et(δa i,t )2,
+
+because (1 + r/ 2)(1 − r) ≤ 1 − r/ 2 and 1 + 2 /r ≤ 3/r . Summing for t < T and over i, including the terminal contribution using r/ 2 ≤ 1, gives Eq. (19), in fact with 6 instead of 12 for the drift constant. We retain 12 to use common constants with the finite-difference extension. The argument never assumes that Xi and δa i,t are independent. For Algorithm 1, πi = pi and r = βε/N . Use T −1 P 
+
+> t,i
+
+E[pi,t a2
+
+> i,t
+
+] ≤ AT . Adding the finite-difference observation remainder as in Appendix C gives, with et = mt − at,
+
+X
+
+> t
+
+E∥et∥2 ≤ 2E0
+
+r + 3σ2
+
+> G
+
+β2
+
+r T A T + 12 QT
+
+r2 + O(T μ 4). (20) 
+
+A.6 Closing the drift and proving stationarity 
+
+All quantities are evaluated on the actual finite-difference trajectory. The perturbed sparse-EMA inequality and normalization give 
+
+^Regret T ≤ 16 E0
+
+N εr + 24 σ2
+
+> G
+
+β2
+
+N εr T A T + 96 
+
+N εr 2 (QT + T BT ) + 4 εT eDT .
+
+Gradient continuity and the second-moment bound imply 
+
+QT ≤ N L 22
+
+X
+
+> t<T
+
+E∥xt+1 − xt∥2 ≤ 2N Λdη2(T eDT + ^Regret T ) + 2 N L 22η2T W T /ε. 
+
+Substitution and absorption prove Theorem 1 after multiplication by d + 2 , with additive remainder at most 192( d +2) Rμ,T /(1 − κ).For descent, write bgt = bg0 
+
+> t
+
++ ht at the same parameters, selected index, and direction, and let Mt = ( d + 2) eVt(pt). The Taylor bounds give 
+
+∥Etht∥2 ≤ Wt, Et∥bgt∥2 ≤ Mt + 2 pMtWt/ε + Wt/ε. 
+
+Smoothness implies 
+
+EtF (xt+1 ) ≤ F (xt) − η∥∇ F (xt)∥2 + η∥∇ F (xt)∥pWt + LF η2
+
+2
+
+
+
+Mt + 2 pMtWt/ε + Wt/ε 
+
+
+
+.
+
+Using ΨT ≤ eDT and T −1 P 
+
+> t
+
+EMt ≤ (d + 2) AT /(N ε ), Cauchy–Schwarz over time and randomness bounds the additional terms by Ωμ,T . Summation proves Lemma 1 without multiplying its leading term by the coarse moment bound’s factor two. 14 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+For Theorem 2, substitution of the schedules and r = βε/N gives, when κ ≤ 1/2,
+
+^Regret T /T ≤ 32 E0
+
+c2
+
+> ε
+
+cβ T 1/2 + 384 eKT
+
+T 1/10 + 384 Rμ,T .
+
+Insert this into the descent lemma. Holding eDT fixed, the leading expression is minimized at cη =
+
+q
+
+2∆ F /(Cd eDT ).Before collecting radius terms, the result is 
+
+ΨT ≤
+
+s
+
+2Cd∆F eDT
+
+T + 192 Cdcη eKT
+
+T 3/5 + Cdcη E0
+
+c2
+
+> ε
+
+cβ T + Cdcη Rμ,T 
+
+√T + Ω μ,T 
+
+!
+
+.
+
+This gives Eq. (12) after rescaling, with the radius-error convention stated in the main text. The general descent lemma covers undefined or infeasible oracle coefficients; the choice is conditional on the resulting trajectory quantity. 
+
+## B Parameter balance and comparator qualifications 
+
+The radius-independent noise, drift, and exploration contributions have scales 
+
+βA T
+
+ε2 , N 2Λdη2 eDT
+
+ε3β2 , ε eDT .
+
+For positive moments and smoothness, their formal balance is 
+
+ε ≍ N 1/5Λ1/10  
+
+> d
+
+η1/5(AT / eDT )1/5, (21) 
+
+β ≍ N 3/5Λ3/10  
+
+> d
+
+η3/5( eDT /A T )2/5. (22) If these choices and the resulting trajectory satisfy feasibility and κ ≤ 1/2, then 
+
+^Regret T /T ≲ N 1/5Λ1/10  
+
+> d
+
+η1/5A1/5 
+
+> T
+
+eD4/5 
+
+> T
+
++ E0
+
+T N √Λdη + O(Rμ,T ). (23) Only universal constants are suppressed. These choices require AT , eDT , which depend on the parameters and resulting trajectory; this is a conditional balance, not an online tuning rule or an existence theorem for self-consistent parameters. The initialization term follows from ε2β ≍ N √Λdη. The finite-difference correction remains additive. Balancing noise and drift alone gives βε 1/3/η 2/3 ≍ (N 2Λd eDT /A T )1/3. A common numerical value across tasks is an empirical tuning constraint; the right side is problem-dependent. 
+
+B.1 Three fixed and dynamic costs 
+
+In addition to eHT and eUT , define 
+
+eGT = inf 
+
+> p∈∆N
+
+1
+
+T
+
+X
+
+> t
+
+E eVt(p) = 1
+
+N
+
+X
+
+> i
+
+s 1
+
+T
+
+X
+
+> t
+
+Ea2
+
+> i,t
+
+!2
+
+.
+
+For each realized trajectory, 
+
+inf 
+
+> p
+
+1
+
+T
+
+X
+
+> t
+
+eVt(p) = 1
+
+N
+
+X
+
+> i
+
+s 1
+
+T
+
+X
+
+> t
+
+a2
+
+> i,t
+
+!2
+
+.
+
+Pointwise minimization, E inf ≤ inf E, and evaluation at the uniform distribution establish 
+
+eDT ≤ eHT ≤ eGT ≤ eUT . (24) 
+
+eHT is the expected hindsight cost, while eGT chooses a fixed distribution before taking the trajectory expectation. Interchanging them would change the comparator. For at = ctv with fixed v ≥ 0, the dynamic and hindsight fixed costs coincide. For the deterministic two-step example a1 = (1 , 0) , a2 = (0 , 1) , eDT = 1 /4 while eHT = eGT = eUT = 1 /2.This example illustrates a cost hierarchy and is not asserted to be a realized training trajectory. Equation (14) follows by expanding the squared deviations around ¯at and multiplying by d+2 . Consequently, eDT < eUT
+
+whenever the example norms differ at some step with positive probability. The balanced expressions in Table 1 follow by minimizing ∆F /c + CdcX/ 2 over c > 0 for each fixed positive normalized comparator quantity X. This is an algebraic comparison on the same trajectory; it does not require treating a hindsight-selected distribution as an implementable sampler. 15 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+## C Finite-difference error 
+
+This appendix retains the original, unsmoothed gradients as the reference quantities. It covers Algorithm 1 and the with-replacement minibatch update in Appendix D. The Hessian regularity is included in Assumption 1; set H22 = N −1 P 
+
+> i
+
+H2 
+
+> i
+
+. Let D6 = d(d + 2)( d + 4) and 
+
+D8 = d(d + 2)( d + 4)( d + 6) . Taylor’s integral remainder gives 
+
+bi,t = sμt 
+
+> i,t
+
+− z⊤ 
+
+> t
+
+gi,t , |bi,t | ≤ Hiμ2
+
+> t
+
+6 ∥zt∥3.
+
+For δi,t = pπ/ 2( |sμt
+
+> i,t
+
+| − | z⊤ 
+
+> t
+
+gi,t |), define 
+
+Ji,t = πH 2 
+
+> i
+
+D6
+
+72 μ4 
+
+> t
+
+, Wt = H22 D8
+
+36 μ4 
+
+> t
+
+, W T = T −1 X
+
+> t
+
+Wt.
+
+The reverse triangle inequality and Gaussian radial moments imply 
+
+Etδ2 
+
+> i,t
+
+≤ Ji,t , Et∥bi,t zt∥2 ≤ H2 
+
+> i
+
+D8μ4 
+
+> t
+
+/36 . (25) In this appendix take B = 1 for Algorithm 1, or B > 1 for the experimental implementation. Let πi,t denote the corresponding inclusion probability and let r > 0 lower-bound βπ i,t uniformly. Define 
+
+χB = 1
+
+Bε + 1 − 1
+
+B , Aπ,T = 1
+
+T
+
+X
+
+> t,i
+
+E[πi,t a2
+
+> i,t
+
+], BT = 1
+
+T
+
+X
+
+> t,i
+
+E[β2πi,t Ji,t ].
+
+For the main algorithm, take r = βε/N and πi = pi. For the batch extension, πi,t = 1 − (1 − pi,t )B and r =
+
+β[1 − (1 − ε/N )B ].
+
+Lemma 4 (Outer perturbation) . Let hμt = bgμt − bg0 
+
+> t
+
+, where the two estimators use the same current parameters, indices, and direction, with finite or ideal differences. Then 
+
+∥Ethμt ∥2 ≤ Wt, Et∥hμt ∥2 ≤ χB Wt.
+
+Proof. Conditional on z, the with-replacement sample average has expectation N −1 P 
+
+> i
+
+biz. Jensen’s inequality and 
+
+(N −1 P 
+
+> i
+
+Hi)2 ≤ H22 prove the first bound. For B independent with-replacement indices, the conditional second moment consists of B−1N −2 P
+
+> i
+
+∥biz∥2/p i plus (1 − 1/B )∥N −1 P 
+
+> i
+
+biz∥2. Use pi ≥ ε/N and Eq. (25). 
+
+Theorem 3 (Explicit finite-radius bound) . Under Assumption 1, use the with-replacement update in Eq. (28) and the once-per-included-example EMA in Eq. (29) , with 0 < ε ≤ 1/2 and 0 < β < 1. Let 
+
+κμ = 192Λ dη2
+
+Bεr 2 < 1.
+
+Along the actual finite-difference trajectory, define ^Regret T , eDT using the original gradient norms using the normaliza-tion above and Eq. (10) . Then 
+
+^Regret T
+
+T ≤ 11 − κμ
+
+ 16 E0
+
+T N εr + 24 σ2
+
+> G
+
+β2
+
+N εr Aπ,T + 96 BT
+
+N εr 2
+
++
+
+ 192Λ dη2
+
+εr 2 + 4 ε
+
+eDT + 192 L22η2χB
+
+εr 2 W T
+
+
+
+.
+
+(26) 
+
+If Cdη(1 − 1/B ) ≤ 1/4, then 
+
+ΨT ≤ 4∆ F
+
+ηT + 4CdηB ( eDT + ^Regret T /T ) + (2 + 4 LF ηχ B )W T . (27) 
+
+Proof. In Lemma 3, the new error is Xi + βO iδi − δa i. Apply Young’s inequality with parameter r/ 2, then bound the square of the last two terms by twice the sum of their squares. This gives 
+
+X
+
+> t
+
+E∥mt − at∥2 ≤ 2E0
+
+r + 3σ2
+
+> G
+
+β2
+
+r T A π,T + 12 
+
+r2 (T BT + QT ).
+
+16 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+No centering of δi is assumed. By the ideal batch second moment, Lemma 4, and the two-term square inequality, 
+
+Et∥bgμt ∥2 ≤ 2( d + 2) 
+
+h eVt(pt)/B + (1 − 1/B )∥∇ F (xt)∥2i
+
++ 2 χB Wt.
+
+Consequently, QT ≤ 2N Λdη2(T eDT + ^Regret T /B ) + 2 N L 22η2χB T W T .
+
+Substitute into Lemma 2 and absorb the regret coefficient to prove Eq. (26). For descent, use Etbgμt = ∇F (xt) + bt
+
+with ∥bt∥2 ≤ Wt, and −⟨∇ F, b t⟩ ≤ ∥∇ F ∥2/2 + Wt/2. The coefficient of ΨT is at least 1/2 − Cdη(1 − 1/B ) ≥ 1/4,giving Eq. (27). 
+
+Radius dependence in the main theorem. For M4,T = T −1 P 
+
+> t
+
+μ4 
+
+> t
+
+, the explicit bounds are 
+
+BT ≤ πN β 2H22 D6
+
+72 M4,T , W T = H22 D8
+
+36 M4,T .
+
+For the main algorithm, with fixed problem and schedule coefficients, bounded trajectory moments, and the horizon schedules in Theorem 2, one has r = Θ( T −2/5), χB = O(T 1/10 ), and 
+
+Rμ,T = O(T 3/10 M4,T + M4,T ), Ωμ,T = O(pM4,T + T −2/5M4,T ).
+
+The constants in these two order summaries depend on the fixed coefficients explicitly displayed above and in the main definitions. The radius-independent remainder in the main theorem hides only universal constants. Its separate 
+
+O(μ2) hides the radius coefficients displayed here. Under the stated fixed-parameter and bounded-moment conditions, 
+
+ηR μ,T = O(T −1/5μ4 + T −1/2μ4) and Ωμ,T = O(μ2) uniformly in feasible T ; thus the collected O(μ2) is uniform in those horizons. Choosing μt = μ0T −α for every step of a run gives M4,T = μ40T −4α. For α > 3/10 , both Ωμ,T and 
+
+ηR μ,T are o(T −3/5). This condition applies to a horizon-dependent radius and does not assert the same conclusion for 
+
+μt = μ0t−α with a fixed initial radius. The earlier coarse outer bound remains useful if one prefers squared-radius errors at the price of larger leading constants. Evaluation randomness and numerical rounding are not represented by these Taylor bounds. 
+
+## D With-replacement minibatches and shared directions 
+
+All experiments use with-replacement minibatch sampling. This appendix specifies the implementation and derives the effect of sharing one Gaussian direction within a batch. Algorithm 1 and the main convergence results are its 
+
+B = 1 case. 
+
+D.1 Minibatch update and reused evaluations 
+
+At step t, form pt from the stored scores and draw B indices independently with replacement, It, 1, . . . , I t,B ∼ pt,independently of zt ∼ N (0 , I d). Let 
+
+Ki,t =
+
+> B
+
+X
+
+> b=1
+
+1{It,b = i}, St = {i : Ki,t > 0}.
+
+For each i ∈ St, evaluate the two-sided difference only once, using the common perturbations xt ± μtzt. If an example is drawn repeatedly, its stored difference is reused: it does not trigger another forward evaluation or a replacement draw. The model update is 
+
+bgt = zt
+
+B
+
+> B
+
+X
+
+> b=1
+
+sIt,b ,t 
+
+N p It,b ,t 
+
+= zt
+
+BN 
+
+X
+
+> i∈St
+
+Ki,t si,t 
+
+pi,t 
+
+, xt+1 = xt − ηbgt. (28) Thus evaluation reuse preserves the multiplicities of the original B draws. Each included example updates its score once: 
+
+mi,t +1 =
+
+
+
+(1 − β)mi,t + β
+
+r π
+
+2 |si,t |, i ∈ St,mi,t , i / ∈ St.
+
+(29) The distribution remains fixed within a batch; the new scores determine pt+1 . No inverse-probability factor is applied to the EMA. The two perturbed batches contain |St| examples each, requiring 2|St| ≤ 2B example-level function evaluations. The expected number of distinct examples is P
+
+> i
+
+[1 − (1 − pi,t )B ].17 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+D.2 Effect of the shared direction on variance 
+
+For fixed xt, p t, z t, let ¯st = N −1 P 
+
+> i
+
+si,t . Independence of the index draws gives the exact finite-difference identities 
+
+EI|zt bgt = ¯ stzt, (30) 
+
+EI|zt ∥bgt∥2 = ∥zt∥2
+
+"
+
+1
+
+BN 2
+
+X
+
+> i
+
+s2
+
+> i,t
+
+pi,t 
+
++
+
+
+
+1 − 1
+
+B
+
+
+
+¯s2
+
+> t
+
+#
+
+. (31) Hence sharing a direction and reusing duplicate evaluations preserve the expected full-data finite-difference update. The differences for different examples need not be independent. Write ¯gt = ∇F (xt). Under Assumption 1, integrating over the shared Gaussian direction yields 
+
+Proposition 2 (Shared-direction minibatch moments) . For the update in Eq. (28) ,
+
+Etbgt = ¯ gt + O(μ2),
+
+Et∥bgt∥2 = ( d + 2) 
+
+" eVt(pt)
+
+B +
+
+
+
+1 − 1
+
+B
+
+
+
+∥¯gt∥2
+
+#
+
++ O(μ2). (32) 
+
+Its total variance is 
+
+Et∥bgt − Etbgt∥2 = ( d + 1) ∥¯gt∥2 + d + 2 
+
+B
+
+h eVt(pt) − ∥ ¯gt∥2i
+
++ O(μ2). (33) 
+
+The radius terms follow the convention in Appendix C; the displayed leading terms are exact for directional derivatives. Proof. The central-difference remainder satisfies si,t = z⊤ 
+
+> t
+
+gi,t + bi,t with |bi,t | ≤ Hiμ2 
+
+> t
+
+∥zt∥3/6. Applying this expansion directly to Eqs. (30)–(31), the Gaussian identities 
+
+E[zz ⊤] = Id, E[∥z∥2(z⊤v)2] = ( d + 2) ∥v∥2
+
+give the displayed leading terms. Cross terms involving bi,t are O(μ2) by Cauchy–Schwarz and the finite-radius moment bounds; squared remainders are O(μ4). Subtracting ∥Etbgt∥2 = ∥¯gt∥2 + O(μ2) gives Eq. (33). 
+
+Advantage over MeZO under the same shared direction. MeZO also shares one Gaussian direction across a minibatch. Its leading directional variance is therefore the same (d + 1) ∥¯gt∥2 as SAZO’s; the allocation controls the remaining term. At the same parameter vector and batch size, write punif = 1/N . The variance reduction relative to MeZO is 
+
+Var t(bgMeZO  
+
+> t
+
+) − Var t(bgSAZO  
+
+> t
+
+) = d + 2 
+
+B
+
+h eVt(punif ) − eVt(pt)
+
+i
+
++ O(μ2), (34) where Var t(X) = Et∥X − EtX∥2. For the norm-proportional oracle, the leading gain is 
+
+d + 2 
+
+B
+
+h eVt(punif ) − ¯a2
+
+> t
+
+i
+
+= d + 2 
+
+BN 
+
+X
+
+> i
+
+(ai,t − ¯at)2. (35) Thus unequal gradient norms give a strictly positive leading variance reduction. The common direction term cancels from the comparison: sharing a direction does not introduce an additional variance penalty for SAZO relative to MeZO. For the learned allocation, the leading gain equals the oracle gain minus (d + 2) eρt/B , directly connecting the benefit to the tracking analysis. Larger batches reduce both methods’ sampling variance by 1/B , while norm-proportional allocation minimizes this term for every batch size. SAZO exploits sample heterogeneity within the same two perturbed model states used by MeZO, and duplicate evaluation reuse reduces the work needed for its B draws. 
+
+D.3 Consequences for tracking and convergence 
+
+Because an included example updates its EMA once, its refresh event is Oi,t = 1{Ki,t > 0}. Conditional on the history, the probability that all B independent draws miss example i is (1 − pi,t )B . Thus its inclusion probability and the resulting uniform refresh bound are 
+
+πi,t = 1 − (1 − pi,t )B , rB = β
+
+
+
+1 −
+
+
+
+1 − εN
+
+B 
+
+. (36) 18 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+The floor pi,t ≥ ε/N gives βπ i,t ≥ rB . Relative to the B = 1 rate r = βε/N , one has r ≤ rB ≤ min {Br, β } and 
+
+rB = Br [1 + O(Bε/N )] when Bε/N is small. To connect inclusion to tracking contraction, set ei,t = mi,t − ai,t and use the leading Gaussian observation Y 0 
+
+> i,t
+
+from Appendix A. Independence of the index draws and the fresh direction gives 
+
+Et
+
+h ei,t + βO i,t (Y 0 
+
+> i,t
+
+− mi,t )2i
+
+≤ (1 − rB )e2 
+
+> i,t
+
++ β2πi,t σ2
+
+> G
+
+a2
+
+> i,t
+
+,
+
+since (2 β − β2)πi,t ≥ βπ i,t ≥ rB . Sharing zt correlates the observations across examples, but Lemma 3 controls a sum of coordinatewise squared errors and does not require independence across examples. Its argument therefore applies with r = rB ; the moving target and finite-difference remainder are included in Theorem 3. Each included example receives only one directional observation, and updating its EMA once avoids treating duplicate draws as fresh evidence. To see how the shared-direction term enters optimization, average Eq. (32) in the smoothness descent inequality. With 
+
+Cd = LF (d + 2) and ΨT = T −1 P 
+
+> t
+
+E∥∇ F (xt)∥2, this gives 
+
+
+
+1 − Cdη
+
+2
+
+
+
+1 − 1
+
+B
+
+ 
+
+ΨT ≤ ∆F
+
+ηT + Cdη
+
+2B eDT + ^Regret T
+
+T
+
+!
+
++ O(μ2). (37) For Cdη(1 − 1/B ) < 2, the coefficient on the left is positive. This coefficient is common to SAZO and a uniform shared-direction update. Along a given parameter trajectory, uniform sampling contributes eUT /B to the right-hand sampling term, whereas SAZO contributes ( eDT + ^Regret T /T )/B . The same dynamic-oracle improvement established in the main analysis therefore persists in the minibatch bound. Setting B = 1 recovers the main descent lemma. The same distinction matters for target drift. The coarse moment bound with an O(μ4) remainder gives 
+
+QT ≤ 2N Λdη2 T eDT + ^Regret T
+
+B
+
+!
+
++ O(T μ 4),
+
+using ∥¯gt∥2 ≤ ¯a2 
+
+> t
+
+. Combining this inequality with the 12 QT /r 2 
+
+> B
+
+term in Lemma 3 and the factor 8/(N ε ) in Lemma 2, the coefficient of regret on the right-hand side is 
+
+κB = 192Λ dη2
+
+Bεr 2
+
+> B
+
+, κB
+
+κ = 1
+
+B
+
+ ε/N 
+
+1 − (1 − ε/N )B
+
+2
+
+. (38) Here κ is the B = 1 coefficient at the same η, ε, β . Thus κB /κ = B−3[1 + O(Bε/N )] when Bε/N is small: sampling reduces the regret-dependent update moment by 1/B , and the increased refresh rate reduces its tracking contribution by a further factor of approximately B2. Theorem 3, with r = rB and κμ = κB , combines these effects with the remaining noise, exploration, and finite-difference terms. Its B = 1 specialization recovers the main convergence analysis. 
+
+## E Experimental settings 
+
+E.1 Detailed experiments on RoBERTa-large 
+
+We use the hyperparameters in Table 5 for SAZO experiments on RoBERTa-large. Regarding learning-rate scheduling and early stopping, we use a constant learning rate for all SAZO experiments. All SAZO experiments use β = 0 .05 ,
+
+ε = 0 .1, and four burn-in passes. For Figure 2(a), we select the optimal constant learning rate for each method from 
+
+{1, 5} × { 10 −7, 10 −6, 10 −5}; all other settings match the corresponding full-parameter experiments in Table 2. 
+
+E.2 Detailed results on various LLMs 
+
+We use the hyperparameters in Table 6 for SAZO experiments on GLMs. For Figure 2(b,c), we select the optimal constant learning rate for each method and model from {1, 5} × { 10 −7, 10 −6, 10 −5}; all other settings match the corresponding experiments in Table 3. 19 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+Table 5: Hyperparameter grids used for SAZO experiments on RoBERTa-large.                               
+
+> Experiment Hyperparameter Values SAZO Batch size 64 Learning rate {10 −7,10 −6,10 −5}
+> Perturbation radius μ10 −3
+> Weight decay 0SAZO (prefix) Batch size 64 Learning rate {10 −2,5×10 −3,10 −3}
+> Perturbation radius μ10 −1
+> Weight decay 0Prefix tokens 5SAZO (LoRA) Batch size 64 Learning rate {10 −5,5×10 −5,10 −4}
+> Perturbation radius μ10 −3
+> Weight decay 0.1
+> (r, α )(8 ,16)
+
+Table 6: Hyperparameter grids used for GLM experiments. All weight decay is set to 0. SAZO uses 20K steps and constant learning rates.           
+
+> Experiment Hyperparameter Values SAZO Batch size 16 Learning rate {10 −6,5×10 −7,10 −7}
+> Perturbation radius μ10 −3
+
+E.3 Training-population scaling settings 
+
+Figure 3 uses full-parameter RoBERTa-large on SST-2 with training populations N = 1 ,024 , 2N = 2 ,048 , 3N = 3 ,072 ,and 4N = 4 ,096 . MeZO and SAZO use batch size 16, constant learning rate 10 −6, and 100K optimization steps. All learning-rate and checkpoint choices are fixed or validation-only; the test set is never used for selection. We report test accuracy averaged over seeds 13, 21, and 42, with population standard deviations as error bars. 
+
+E.4 Ablation experiment details 
+
+The ablations use one seed of full-parameter RoBERTa-large on SST-2 with k = 512 , a fixed 1,024-example training population, batch size 64, constant learning rate 3×10 −6, perturbation radius 10 −3, and zero weight decay. We initialize the importance scores by averaging directional magnitudes over four passes, then use sampling with replacement and inverse-probability-weighted parameter updates. The β sweep in Figure 5 uses β ∈ { 0.005 , 0.05 , 0.5, 1} at fixed 
+
+ε = 0 .1. The exploration sweep uses ε ∈ { 0.05 , 0.1, 0.5, 1} at fixed β = 0 .05 . Each plotted point is a forward-only mean-loss audit over the complete training population; audit queries are excluded from the update count. We retain every measured audit and apply neither curve smoothing nor extrapolation. Figure 6 shows stable optimization across ε ∈ { 0.05 , 0.1, 0.5}, indicating that SAZO is robust to substantial changes in the exploration rate. At the extreme ε = 1 , the adaptive component vanishes and sampling becomes uniform; this trajectory eventually diverges under the same learning rate. 20 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 0 5 10 15 20 25 30      
+
+> ZO updates (×10 3)
+> 00.2 0.4 0.6
+> Mean training loss
+> Exploration coefficient ε
+> ε= 0.05
+> ε= 0.5
+> ε= 0.1
+> ε= 1
+
+Figure 6: Exploration-coefficient ablation on SST-2. SAZO remains stable over ε ∈ { 0.05 , 0.1, 0.5}, whereas ε = 1 ,which reduces to uniform sampling, becomes unstable. 
+
+E.5 Sample-importance diagnostics 
+
+The heterogeneity experiments use full-parameter RoBERTa-large under uniform MeZO training, with k = 512 , batch size 64, learning rate 10 −6, perturbation radius 10 −3, and zero weight decay. At frozen checkpoints, we compute exact per-example gradient norms over the trainable parameters. These gradients are used only for diagnostics. The oracle allocation is p⋆i,t = ai,t / P 
+
+> j
+
+aj,t , and relative importance is N p ⋆i,t . Top-10% sets are recomputed at each checkpoint; temporal changes are measured using Spearman rank correlation. For the SST-2 examples, the prompt appends It was <mask>. , with great and terrible as the positive and negative verbalizers. Figure 1(a) reports the exact audits at initialization, 10K, and 30K updates. We divide all three checkpoints by the median initial norm and fix the horizontal order using the initial norms, so a given position refers to the same training example at every checkpoint. Every example is shown as a point, without smoothing or aggregation. 0 5 10 15 20 
+
+> ZO updates (thousands)
+> 020 40 60 80
+> Top-10% grad norm share (%)
+> Uniform reference
+> SST-2 SST-5 SNLI MNLI RTE TREC
+
+Figure 7: Gradient-norm concentration across tasks. The top 10% of examples account for an increasing share of the total gradient norm across six tasks. The top set is recomputed at each checkpoint; the dashed line marks the approximately 10% uniform reference. Exact gradients are measured at frozen RoBERTa-large MeZO checkpoints. 
+
+Length and label controls. We group examples by label or by the joint pair of prompt token count and label, and optimize the allocation subject to equal probabilities within each group. For a partition G, the optimal group-restricted 21 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+distribution is 
+
+bG,t = 1
+
+|G|
+
+X
+
+> i∈G
+
+a2
+
+> i,t
+
+!1/2
+
+, pG 
+
+> i,t
+
+= bG(i),t 
+
+P 
+
+> G∈G
+
+|G|bG,t 
+
+.
+
+The fraction of the uniform-to-oracle variance gap remaining is [ eVt(pG 
+
+> t
+
+) − eVt(p⋆t )] /[ eVt(1/N ) − eVt(p⋆t )] , evaluated at 20K updates. 
+
+Online versus fixed sampling. The SST-2 comparison uses a common initial model, batch size 64, perturbation radius 
+
+10 −3, and 30K updates. We scan constant learning rates in {10 −6, 3×10 −6}. SAZO uses β ∈ { 0.025 , 0.05 , 0.075 } and 
+
+ε = 0 .1. The fixed sampler retains the initial exact gradient-norm-proportional distribution p⋆ 
+
+> 0
+
+without an exploration mixture; uniform sampling uses 1/N . At each audit, the normalized instantaneous regret is 
+
+rt = eVt(pt) − eVt(p⋆t )
+
+eVt(p⋆t ) . (39) Figure 1(b) reports relative cumulative regret, 
+
+R T 
+
+> 0
+
+[ eVt(pt) − eVt(p⋆t )] dt 
+
+R T 
+
+> 0
+
+eVt(p⋆t ) dt . (40) We integrate the numerator and denominator separately using the trapezoidal rule on all 61 recorded audits, spaced 500 updates apart from 0 to 30K, and then take their ratio. This differs from integrating rt. The undefined ratio at T = 0 is omitted from the plot. Exact gradients at each method’s current parameters define its reference oracle. Loss is evaluated over the complete training population. 
+
+E.6 Interpretable sample-level structure 
+
+Figures 8 and 9 connect population-level changes in sample importance to the model’s predictions on individual inputs. Importance is measured by the normalized exact gradient norm N ∥∇ fi(xt)∥/ P 
+
+> j
+
+∥∇ fj (xt)∥ at frozen RoBERTa-large MeZO checkpoints; a value of 1 corresponds to uniform allocation. These are diagnostic oracle quantities, rather than SAZO’s estimated scores. Detailed audit settings are given in Appendix E.5. 
+
+Sample rankings change during training. Figure 8 compares each example’s importance at initialization and after 20K updates on SST-2 and TREC. Points above the diagonal gain relative importance, while those below lose it. The initial-to-20K Spearman correlations are 0.52 and 0.12, respectively, showing that the initial ranking does not reliably preserve subsequent allocation priorities. 10 −4 10 −2 10 0 10 2     
+
+> Initial normalized grad norm
+> 10 −4
+> 10 −2
+> 10 0
+> 10 2
+> 20K normalized grad norm
+> ρs= 0.52
+> (a) SST-2: importance shifts
+> ABCD
+> 10 −4 10 −2 10 010 2
+> Initial normalized grad norm
+> 10 −4
+> 10 −2
+> 10 0
+> 10 2
+> 20K normalized grad norm
+> ρs= 0.12
+> (b) TREC: importance shifts
+
+Figure 8: Sample-importance rankings evolve during training. Initial versus 20K normalized gradient norms 
+
+N ∥∇ fi(xt)∥/ P 
+
+> j
+
+∥∇ fj (xt)∥ on SST-2 and TREC, with one point per example and shared logarithmic axes. The diagonal marks unchanged importance, and ρs is the Spearman correlation. A–D identify the SST-2 examples examined in Figure 9. All gradient norms are exact audits at frozen MeZO checkpoints. 
+
+Importance changes have interpretable sample-level structure. The four SST-2 cases A–D in Figure 9 link the scatter plot to predictions at initialization, 5K, and 20K updates. A (“a great cast”) stays correct and has low importance throughout. B (“over-dramatic at times”) becomes correct as its normalized importance falls from 3.113 to 0.230. C (“smug grin”) remains incorrect, while its importance rises from 2.863 to 11.170. D, containing both “amateurish” and 22 Sample-Adaptive Zeroth-Order Post-Training A P REPRINT 
+
+“a minor treat,” becomes incorrect and rises from 0.805 to 10.930. For D, the absolute gradient norm also increases, so the rise is not solely due to other examples’ shrinking gradients. A Always correct 
+
+a great cast  
+
+> Initial
+> positive
+> CORRECT
+> 0.980
+> 0.065
+> 5K updates
+> positive
+> CORRECT
+> 0.997
+> 0.021
+> 20K updates
+> positive
+> CORRECT
+> 0.998
+> 0.018
+> Probability Training-set importance
+> B
+
+Learns over time 
+
+over-dramatic at times 
+
+> Initial
+
+? 
+
+> positive
+> WRONG
+> 0.076
+> 3.113
+> 5K updates
+> negative
+> CORRECT
+> 0.904
+> 0.781
+> 20K updates
+> negative
+> CORRECT
+> 0.978
+> 0.230
+> C
+
+Persistently wrong 
+
+smug grin 
+
+> Initial
+
+?
+
+> positive
+> WRONG
+> 0.074
+> 2.863
+> 5K updates
+
+?
+
+> positive
+> WRONG
+> 0.044
+> 6.485
+> 20K updates
+
+? 
+
+> positive
+> WRONG
+> 0.072
+> 11.170
+> D
+
+Becomes incorrect 
+
+> the movie is amateurish , but it 's a minor treat . Initial
+> positive
+> CORRECT
+> 0.724
+> 0.805
+> 5K updates
+
+?
+
+> negative
+> WRONG
+> 0.171
+> 6.200
+> 20K updates
+
+?
+
+> negative
+> WRONG
+> 0.077
+> 10.930
+
+Figure 9: Representative examples reveal interpretable importance changes. A–D correspond to the SST-2 points marked in Figure 8. Robot lights and status labels indicate correctness at each checkpoint. Numbers above the blue bars give the correct-class probability exp( −fi(xt)) ; numbers below give normalized gradient norms. Bars share a linear scale from 0 to 12, with 1 corresponding to uniform allocation. All gradient norms are exact audits at frozen MeZO checkpoints. The input template appends It was <mask>. Appendix E.5 provides detailed settings and sample identities. Together, the population shifts and these illustrative cases show that sample importance reflects the model’s evolving response to an input. Words, length, and labels remain fixed, yet predictions and gradient contributions change. An allo-cation based only on initial importance can therefore become stale, motivating continued tracking during optimization. 23

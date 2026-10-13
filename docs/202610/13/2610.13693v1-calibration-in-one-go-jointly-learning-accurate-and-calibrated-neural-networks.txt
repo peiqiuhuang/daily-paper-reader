@@ -1,0 +1,902 @@
+Title: Calibration in One Go: Jointly Learning Accurate and Calibrated Neural Networks
+
+URL Source: https://arxiv.org/pdf/2610.13693v1
+
+Published Time: Mon, 12 Oct 2026 01:42:06 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+Preprint. Under review. 
+
+# CALIBRATION IN ONE GO: J OINTLY LEARNING 
+
+# ACCURATE AND CALIBRATED NEURAL NETWORKS 
+
+Nektarios Kalampalikis ∗
+
+Dept. of Computer Science Saarland University, Germany 
+
+Pablo M. Olmos 
+
+Dept. of Signal Theory and Communications Universidad Carlos III de Madrid, Spain 
+
+Isabel Valera 
+
+Dept. of Computer Science Saarland University, Germany 
+
+ABSTRACT 
+
+Neural networks (NNs), while highly flexible and versatile, are often poorly cal-ibrated. Post-hoc calibration methods adjust the outputs of an already trained model using a separate calibration dataset and additional calibration parameters. This process adds overhead that requires separate optimization of the calibrator and subsequent model selection. In this paper, we show that standard (post-hoc) calibrators can be trained end-to-end with the backbone via a bilevel Stackelberg formulation. This formulation eliminates the need for a separate calibration set or a dedicated calibration loss by jointly optimizing accuracy and calibration using cross-entropy, introducing only one additional hyperparameter: the calibrator learn-ing rate. Although our framework supports calibrators ranging from temperature and matrix scaling to NN layers, our results show that using the final classifica-tion layer itself as the calibrator yields accurate, well-calibrated models with no additional parameters. Our approach outperforms SOTA calibrators with minimal added complexity, while also avoiding the multiplicative overhead of separate calibration components in settings such as multi-task learning. 
+
+1 INTRODUCTION 
+
+Machine learning, and neural networks in particular, have become an important part of modern society, with their predictions increasingly informing downstream decision making. In many classification settings, however, the predicted class alone is insufficient: downstream systems may instead rely on the predicted probability of each outcome as a measure of uncertainty. Such probabilities play an important role in high-stakes applications, including healthcare (Ricci Lara et al., 2023), fair decision-making (Gupta et al., 2026), and machine learning-based risk assessment (Brito et al., 2023), among others (Wang, 2023; He et al., 2026). Beyond supporting decision making, predictive probabilities can also provide insight into what a model is unsure about, thus offering an additional layer of model understanding and human-AI collaboration (Tomsett et al., 2020). However, for the predicted class probabilities to be useful in these settings, they must accurately reflect the model’s predictive uncertainty. In practice, machine learning models, and neural networks in particular, are often miscalibrated (Guo et al., 2017). Classifier calibration aims to address this issue by aligning a classifier’s predicted probabilities with the observed likelihood of the corresponding outcomes (Platt, 2000; Guo et al., 2017; Murphy, 2023). For instance, among predictions assigned 90% probability to class C, class C should be correct 90% of the time. For example, as illustrated by the reliability diagram in Fig. 1a, a perfectly calibrated classifier lies along the diagonal, whereas deviations from the diagonal indicate calibration error (Guo et al., 2017). Various approaches have been proposed to calibrate models, including train-time methods and post-hoc methods (Wang, 2023). Train-time approaches often incorporate additional calibration-related terms into the training objective, whereas post-hoc approaches train a separate model on the output of a trained model (Guo et al., 2017), as illustrated in Fig. 1b. 
+
+> ∗
+
+kalampalikis@cs.uni-saarland.de 
+
+1arXiv:2610.13693v1 [cs.LG] 9 Oct 2026 Preprint. Under review. 0.0 0.2 0.4 0.6 0.8 1.0   
+
+> Confidence
+> 0.00.20.40.60.81.0
+> Accuracy
+> Perfect COG Temp. Scaling Baseline
+> (a) (b) Follower Leader
+> Neural Network
+> COG (c)
+
+Figure 1: (a) Reliability diagrams on CIFAR-100 for the baseline, COG, and temperature scaling, with COG achieving the best calibration. (b) Post-hoc calibration: the model is trained and frozen before fitting a calibrator. (c) Our framework, COG, integrates the calibrator into the training procedure and constrains its learning rate to be slower than that of the model. Although effective, these approaches introduce additional complexity into the model development pipeline. Train-time methods require the model designer to choose and tune additional terms or use a calibration-specific objective, while post-hoc methods require training an additional model and, typically, a separate held-out calibration set. On top of this, both of these families of methods come with their own complexity. For example, post-hoc calibrators can themselves overfit, motivating their regularization (Berta et al., 2025; 2026a;b) or using simpler calibrators such as Temperature Scaling (Guo et al., 2017). This pipeline complexity is particularly pronounced in settings like Multi-Task Learning (MTL) (Caruana, 1997; Javaloy & Valera, 2022), where a shared model serves multiple tasks, potentially requiring a separate calibrator for each. Moreover, the richer annotation requirements of MTL make reserving additional data exclusively for calibration particularly costly. Despite these challenges, calibration in MTL remains comparatively underexplored. 
+
+Motivation. In this paper, we aim to obtain neural networks that are simultaneously accurate and well calibrated in a single training procedure , while retaining the efficiency of standard training and avoiding a separate post-hoc calibration stage or additional calibration data. To this end, we formulate calibration as a bilevel optimization (BLO) problem (Dempe, 2002; Beck et al., 2027), where standard model training is the follower and the calibrator acts as the leader, as shown in Fig. 1c. We efficiently solve the resulting Stackelberg problem with a single forward and backward pass per iteration, jointly updating model and calibrator parameters within the same training step using separate learning rates. This introduces one additional hyperparameter beyond standard training: the calibrator learning rate. The resulting framework integrates calibration directly into end-to-end training while retaining the efficiency of standard training: (i) it requires neither a calibration-specific loss nor a separate calibration dataset; (ii) it imposes no additional architectural constraints and accommodates calibrators ranging from temperature and matrix scaling to neural layers, adding at most the trainable parameters of the corresponding post-hoc calibrator; and (iii) it introduces only one additional hyperparameter, namely the calibrator learning rate. Empirically, our approach achieves accuracy and calibration competitive with substantially more complex state-of-the-art methods while limiting the additional calibration overhead to a single hyperparameter. Remarkably, additional calibration parameters are unnecessary: using the final classification layer itself as the calibrator yields accurate, well-calibrated models , as demonstrated by the example in Fig. 1a. We further show that this single-stage, low-overhead formulation extends naturally to more complex settings such as MTL, where conventional calibration is cumbersome. 
+
+2 RELATED WORKS 
+
+Post-hoc calibration. Post-hoc calibration modifies the output probabilities of a trained classifica-tion model by learning a transformation of its outputs on a held-out calibration set. Given an input 
+
+x, a classifier f is typically trained with cross-entropy (CE), after which a calibrator c is fitted to a held-out calibration set, resulting in the calibrated model c ◦ f (x) = c(f (x)) . Parametric post-hoc calibrators include Platt Scaling (Platt, 2000), designed for binary classification, which applies a learned sigmoid transformation to the logits z, i.e., σ(az + b). Multi-class extensions include Vector 2Preprint. Under review. Scaling and Matrix Scaling (MS) (Guo et al., 2017), which learn more flexible transformations of the logits. Temperature Scaling (TS) (Guo et al., 2017) uses a single learned scalar T to rescale the logits, σ(z/T ). Despite their simplicity, these models can still overfit the calibration set, motivating recent work on regularizing calibrators (Berta et al., 2025; 2026a;b). Nonparametric approaches include histogram binning (Zadrozny & Elkan, 2001) and isotonic regression (Zadrozny & Elkan, 2002), which directly estimate calibration mappings from empirical frequencies. However, their flexibility can make them prone to overfitting, particularly with limited calibration data (Menon et al., 2012). Moreover, multiclass extensions typically rely on one-vs-rest schemes (Zadrozny & Elkan, 2002; Murphy, 2023), substantially increasing pipeline complexity. Overviews of post-hoc calibration methods can be found in (Guo et al., 2017; Murphy, 2023; Berta et al., 2026a). 
+
+Progressive training approaches. More recently, multi-stage neural network training procedures have been proposed to improve calibration. In particular, Two-Stage Training (TST) (Jordahn & Olmos, 2024; Khodaverdian et al., 2025) first trains the network and then retrains only some of the final fully connected layers while freezing earlier representations. This can be extended to impose a probabilistic prior on the final hidden layer, turning the model in a last-layer Bayesian Neural Network, that further enhances calibration (V-TST) (Jordahn & Olmos, 2024). Other works connect poor calibration to over-compression (Tao et al., 2024; Wang & Zhang, 2024), especially in later layers through the information bottleneck principle, with Wang & Zhang (2024) proposing progressively freezing earlier layers during training. The aforementioned methods can be cast as bilevel (or multi-level) optimization problems, which we convert into train-time calibration approaches. 
+
+Train-time calibration. Train-time calibration methods modify the learning objective or training procedure to encourage calibrated outputs. Examples include adding Lp regularization (Joo & Chung, 2020), incorporating sliced Wasserstein distance penalties (Joo & Chung, 2020), or including differ-entiable bin membership terms in the loss (Karandikar et al., 2021). Other approaches include label smoothing (Szegedy et al., 2016; Müller et al., 2019) or replacing CE with focal loss (Mukhoti et al., 2020), both of which can be interpreted as CE with an additional maximum-entropy regularizer (Meis-ter et al., 2020; Mukhoti et al., 2020). Finally, several works propose specialized loss functions designed to produce calibrated models (Bohdal et al., 2021; Popordanoska et al., 2022). Our approach provides a complementary train-time mechanism: rather than requiring a particular calibration loss, it modifies the optimization structure and can therefore be used with standard training objectives, such as CE, or combined with existing calibration-aware losses, as seen in our experiments. 
+
+Bilevel Optimization and Calibration. Our work leverages BLO to turn post-hoc calibration into a train-time procedure. Related work has also explored calibration through the lens of BLO. In (Bohdal et al., 2021), meta-learning alternates between CE updates for model training and optimization of the hyperparameters of calibration regularizers. Similarly, BLO has been used to learn validation sample weights to improve calibration (Sanguin et al., 2025). This approach is computationally demanding, requiring multiple optimization steps to approximate the bilevel problem (Franceschi et al., 2018), with a follower minimizing CE on Dtrain and a leader optimizing validation-sample weights. These approaches are orthogonal to ours, as they either enhance existing calibration methods via BLO or formulate a different bilevel objective. Our approach instead addresses calibration within standard backpropagation-based training, avoiding expensive optimization and held-out calibration data. 
+
+3 TOWARDS CALIBRATION IN ONE GO
+
+(Post-hoc) Calibration as a Bilevel Optimization Problem. Bilevel optimization problems are hierarchical optimization problems involving two decision makers, a leader and a follower. The leader makes a decision while anticipating the follower’s best response to that decision, thus inducing a hierarchical dependency between the two levels (Dempe, 2002; Beck et al., 2027). Learning a neural network that is both accurate and well calibrated can be formulated as a BLO problem, in which predictive accuracy is optimized at the follower level and calibration at the leader level: 
+
+min 
+
+> θcal
+
+E(x,y )∼D [Lcal (cθcal (fθ∗ 
+
+> train
+
+(x)) , y )] (Leader) s.t. θ∗ 
+
+> train
+
+= arg min 
+
+> θtrain
+
+E(x,y )∼D [Ltrain (fθtrain (x), y )] (Follower) (1) where θtrain and θcal denote the parameters of the neural network fθtrain and calibrator cθcal ,respectively, and Ltrain and Lcal their corresponding objectives. Thus, the term cθcal (fθtrain (x)) 
+
+denotes the resulting calibrated classifier. (x, y ) denotes a sample drawn from the data distribution D.3Preprint. Under review. Standard post-hoc calibration first trains the predictive model on a training set and then, keeping the resulting model parameters θ∗ 
+
+> train
+
+fixed, learns the calibration parameters on a separate calibration set. That is, calibration is performed only after model training, so the calibration objective does not influence which predictive-model solution is learned, thus skipping their interaction. From a BLO perspective, post-hoc calibration can therefore be interpreted as a decoupled approximation of the BLO problem in Eq. (1), in which the follower is solved first and its solution is subsequently treated as fixed when optimizing the leader. However, since decoupling is optimal only when the follower problem admits a unique solu-tion (Dempe, 2002; Beck et al., 2027), it is generally not justified for neural network training, where multiple equivalent local optima typically exist (Breiman, 2001; Goodfellow et al., 2016; Rudin et al., 2024). This motivates our approach to jointly optimize model training and calibration: rather than fixing an arbitrary follower solution before calibration, we allow the calibrator to influence which neural network parameters are learned . Our goal is therefore to solve the bilevel problem above in a way that jointly learns accurate and well-calibrated neural networks while retaining the efficiency of standard neural network training. 
+
+Calibration in One Go (COG). The bilevel formulation of Eq. (1) naturally admits a Stackelberg-game interpretation (Von Stackelberg, 2010): the calibrator acts as the leader, updating the calibration parameters θcal , while anticipating the response of the classifier (the follower), which in turn adapts the neural network parameters θtrain to minimize the training loss. This joint problem can be addressed efficiently using gradient-based bilevel optimization methods (Liu et al., 2021). Specifically, we employ a first-order, Stackelberg-inspired scheme in which the leader and follower parameters are 
+
+simultaneously updated iteratively using gradients of their respective objectives, with distinct learning rates for the two levels, in the spirit of Gradient Descent-Ascent (GDA) (Fiez et al., 2020; Javaloy & Valera, 2022). Further details on BLO and GDA are provided in App A. For computational efficiency, we further make two simplifying choices. First, we use the same loss function for both levels, e.g., cross-entropy loss, such that Lcal := Ltrain . Second, we approximate both expectations in Eq. (1) using the same minibatch B t from the training data, i.e., Dcal = Dtrain .Consequently, both objectives can be evaluated on the same forward pass and their gradients computed with a single backpropagation pass , as in standard neural network training. Thus, the resulting procedure differs from standard training only in that the neural network and calibration parameters are updated with distinct learning rates as: 
+
+θt+1  
+
+> cal
+
+= θtcal − λc
+
+X
+
+> i∈Bt
+
+∇θcal Ltrain (cθcal (fθtrain (xi)) , y i)
+
+θt+1  
+
+> train
+
+= θttrain − λf
+
+X
+
+> i∈Bt
+
+∇θtrain Ltrain (cθcal (fθtrain (xi)) , y i), s.t. λc < λ f
+
+(2) where λc and λf denote the learning rates of the leader and follower, respectively. The condition 
+
+λc < λ f preserves the Stackelberg hierarchy by ensuring that the follower adapts on a faster timescale than the leader, which under standard assumptions guarantees asymptotic convergence of the joint dynamics to a local Stackelberg solution (Fiez et al., 2020; Javaloy & Valera, 2022). We remark that, while these joint gradient updates do not guarantee convergence to an optimal Stackelberg solution, they provide a simple and efficient approximation that performs well in practice (Fiez et al., 2020; Javaloy & Valera, 2022). 
+
+From Post-hoc Calibration to COG. Implementing standard post-hoc calibration methods within COG is straightforward and independent of the neural network’s architecture. For example, Tempera-ture Scaling can be implemented by introducing a single additional parameter (COG-TS), Matrix Scaling by an additional weight matrix and an additional bias vector (COG-MS), and TST by in-troducing multiple calibration layers (COG-TST). COG can also be applied without introducing additional trainable parameters (COG-FC). Recent work has shown that the internal representations of a neural network can be as effective for prediction as its final classification layer (Wang & Zhang, 2024); thus, the final classification layer can be treated as the calibrator within COG, allowing the method to be applied to arbitrary neural network architectures. Finally, COG is not only restricted to post-hoc CE-based calibration. For example, by replacing the objectives at both levels with the Label Smoothing objective, we obtain COG+LS. Together, these variants demonstrate the flexibility of the COG framework across different calibration methods. 4Preprint. Under review. Table 1: Complexity of different calibration methods in Single-Task settings, where K denotes the number of classes. Tab. 7 extends this comparison to MTL settings.                                                           
+
+> # Extra End Calibration Extra
+> Method Trainable Params. To End Data Burden
+> Single-Task
+> Baseline 0✓✗-COG-FC 0✓✗1 Learning Rate Label Smoothing 0✓✗1 Smoothing Level COG+LS 0✓✗(a) 1 Smoothing Level (b) 1 Learning Rate Temp. Scaling 1✗✓Calibrator Training COG-TS 1✓✗1 Learning Rate Matrix Scaling K×K+K✓✓Calibrator Training COG-MS K×K+K✓✗1 Learning Rate TST NN ✗✗NN Training, Architecture COG-TST NN ✓✗1 Learning Rate V-TST 2 NNs ✗✗
+> (a) ELBO training of 2 NNs (b) NN architecture (c) MC Sampling
+
+A summary of the different calibration options and COG variants is provided in Tab. 1. The COG variants provide more lightweight, end-to-end, alternatives to their corresponding post-hoc calibration approaches in both single-task and multi-task settings (Tab. 7). In the single-task setting, COG-FC has a complexity comparable to Label Smoothing, while in the multi-task setting, COG-FC is the simplest calibration approach among all evaluated methods. 
+
+4 EXPERIMENTS 
+
+We structure our empirical evaluation in three stages. First, we compare standard post-hoc calibration methods with their COG counterparts to isolate the effect of replacing post-hoc calibration with joint training. Second, we benchmark COG against calibrators from different methodological families under increasingly challenging conditions, including in-distribution data, out-of-distribution data, and covariate shift. Finally, we evaluate COG in the more complex setting of multi-task learning, where calibration must be achieved jointly across multiple prediction tasks. 
+
+Experimental Setup and Metrics We focus on multiclass image classification and train ResNet101 models (He et al., 2016) from scratch on SVHN (Netzer et al., 2011), CIFAR-10, and CIFAR-100 (Krizhevsky et al., 2009), following the setup of (Jordahn & Olmos, 2024). Full experimental details are provided in App. B, extended results in App. C, and experiments with additional CNN backbones in App. D. We report accuracy together with two scoring rules, negative log-likelihood (NLL) and the Brier score (Glenn et al., 1950), following recent recommendations for calibra-tion evaluation (Minderer et al., 2021; Silva Filho et al., 2023; Berta et al., 2025; Khodaverdian et al., 2025; Chidambaram & Ge, 2025). App. C additionally reports ECE (Naeini et al., 2015), RMSCE (Hendrycks et al., 2018) and MCE (Naeini et al., 2015) across multiple binning choices. 4.1 COMPARING POST -HOC METHODS AND THEIR COG C OUNTERPARTS 
+
+We compare each post-hoc calibrator with its corresponding COG variant in a pairwise manner, as shown in Tab. 1, matching the number of calibration parameters within each pair. For all COG variants and (V-)TST, calibration is learned jointly on the training set, whereas post-hoc calibrators are fitted on the validation set. 
+
+Results As shown in Fig. 2, the COG variants generally match or outperform their post-hoc counterparts across datasets and metrics, with differences otherwise largely within the observed variance. One notable exception is Matrix Scaling on CIFAR-10, where the post-hoc variant appears to benefit from direct access to calibration data. On CIFAR-100, however, the post-hoc Matrix 5Preprint. Under review. 92 94 96 98 
+
+> ACC (%) ( ↑) SVHN
+> 85 90
+> CIFAR-10
+> 60 80
+> CIFAR-100
+
+
+
+> 0.0 0.2
+> NLL ( ↓)
+> 0.00 0.25 0.50 02
+
+
+
+> Baseline Temp. Scaling Matrix Scaling TST
+> 0.00 0.05
+> Brier ( ↓)
+> Baseline Temp. Scaling Matrix Scaling TST
+> 0.0 0.1
+> Baseline Temp. Scaling Matrix Scaling TST
+> 0.00 0.25 0.50
+
+ 
+
+> Reference COG variant
+
+Figure 2: Pairwise comparison of different calibrators and their corresponding COG variants. The warning symbol indicates failure to converge. Scaling optimization fails to converge, whereas COG-MS remains stable and trains successfully within our joint optimization framework. We further observe that the different COG variants perform very similarly across all three metrics and datasets, suggesting that additional calibrator complexity provides limited benefit. In particular, COG-FC, which is our approach without additional trainable parameters, performs on par with the more expressive calibration approaches. Overall, these results demonstrate that COG-FC provides a simple yet effective way to obtain models that are both accurate and well calibrated, without requiring a separate calibration stage, additional calibration parameters, or calibration data . In App. C.1, we additionally report calibration error metrics (Tables 9-11), and reliability diagrams (Fig. 5). 4.2 COMPARISON ACROSS CALIBRATION FAMILIES 
+
+We compare representative methods from four families of calibrators: train-time calibration via Label Smoothing, post-hoc calibration via Temperature Scaling, a Bayesian calibration method via V-TST (with 10 Monte Carlo samples) (Jordahn & Olmos, 2024; Khodaverdian et al., 2025), and our (also train-time) calibration approach COG-FC and its Label Smoothing variant COG+LS. We select COG-FC as the representative COG variant because it achieves strong performance while introducing no additional calibration parameters; COG+LS additionally replaces the standard cross-entropy loss with the calibration-regularized objective used by Label Smoothing. Moreover, since no single metric fully captures the trade-off between predictive accuracy and calibration quality, several works recommend considering the Pareto front between these objectives, allowing their relative importance to be determined by the application (Minderer et al., 2021; Silva Filho et al., 2023; Chidambaram & Ge, 2025; Sharifdeen et al., 2026). For a compact summary, we compute, for each dataset, the unweighted average rank of each method across Accuracy, NLL, and Brier score (Javaloy et al., 2025). We denote the method with the best average rank as Top-ranked . App. C.2 and C.3, report results for all considered calibration methods and calibration errors. 
+
+In-distribution (ID) results. As shown in Tab. 2, COG-FC still remains competitive across all methods and is the top ranked method in CIFAR-100. We also observe that COG+LS is highly competitive, generally outperforming the Label Smoothing variant especially in accuracy. More broadly, COG variants remain highly competitive, with a COG variant being the top-ranked method in two of the three evaluated cases. In Fig. 3, we compare the reliability diagrams of COG-FC and the top-ranked model. For CIFAR-100, we compare COG-FC with COG+LS. Overall, the differences are small, with COG-FC closely matching the top-ranked models, with a deviation for CIFAR-10 around 25% confidence. These results further demonstrate that effective in-distribution calibration of 
+
+6Preprint. Under review. Table 2: Comparison of calibration metrics across datasets, and methods. The best value in each column among the subset of models is bolded. The Top Ranked ∗ row reports the best-performing model per dataset based on average rank across metrics as determined from the full results in Tab. 12: COG-MS on SVHN, Matrix Scaling on CIFAR-10, and COG-FC on CIFAR-100.                                                                                        
+
+> SVHN CIFAR-10 CIFAR-100 Method ACC (↑)NLL (↓)Brier (↓)ACC (↑)NLL (↓)Brier (↓)ACC (↑)NLL (↓)Brier (↓)
+> Baseline 95 .77 0.18 0.32 0.01 0.07 0.00 90 .50 0.21 0.64 0.02 0.17 0.00 65 .04 1.33 2.98 0.06 0.60 0.02
+> COG-FC 95 .84 0.20 0.16 0.00 0.06 0.00 89 .94 0.25 0.38 0.01 0.16 0.00 70 .46 0.30 1.08 0.01 0.41 0.00
+> COG+LS 96 .25 0.15 0.21 0.00 0.07 0.00 89 .92 0.21 0.38 0.00 0.16 0.00 72 .67 0.78 1.31 0.04 0.41 0.01
+> Label Smoothing 95 .97 0.12 0.23 0.00 0.07 0.00 90 .05 0.31 0.43 0.01 0.16 0.00 65 .76 0.88 1.58 0.04 0.48 0.01
+> Temp. Scaling 95 .77 0.18 0.19 0.01 0.07 0.00 90 .50 0.21 0.38 0.01 0.15 0.00 65 .04 1.33 1.78 0.03 0.53 0.02
+> V-TST 94 .66 0.03 0.21 0.00 0.08 0.00 90 .31 0.16 0.34 0.01 0.15 0.00 52 .71 0.25 1.81 0.01 0.61 0.00
+> Top Ranked ∗96 .02 0.11 0.16 0.00 0.06 0.00 90 .74 0.17 0.28 0.00 0.14 0.00 70 .46 0.30 1.08 0.01 0.41 0.00 0.00 0.25 0.50 0.75 1.00
+
+Confidence 
+
+> 0.00 0.25 0.50 0.75 1.00
+> Accuracy
+
+SVHN     
+
+> Ideal COG-FC COG-MS
+> 0.00 0.25 0.50 0.75 1.00
+
+Confidence 
+
+CIFAR-10     
+
+> Ideal COG-FC Matrix Scaling
+> 0.00 0.25 0.50 0.75 1.00
+
+Confidence 
+
+CIFAR-100 
+
+> Ideal COG-FC COG+LS
+
+Figure 3: Reliability diagrams for COG-FC and the top-ranked methods using 15 bins. For CIFAR-100, where COG-FC is the top-ranked method, we compare it with COG+LS. 
+
+neural networks can be achieved without increasing the model’s parameter count or substantially increasing the complexity of the overall pipeline .
+
+Out of distribution (OOD) & covariate shift. Lastly, we assess whether ID calibration transfers to OOD detection and covariate shifts, following (Ovadia et al., 2019; Jordahn & Olmos, 2024). For covariate shifts, we use CIFAR-10-C, CIFAR-100-C (Hendrycks & Dietterich, 2019), and rotated SVHN (Jordahn & Olmos, 2024). OOD samples come from different datasets and lack valid labels in the original label space, whereas covariate shifts preserve the original labels under input corruption. For OOD detection, we use maximum softmax probability as the confidence score and treat ID samples as positive and OOD samples as negative. We report AUROC (Bradley, 1997) and FPR@95TPR, where higher AUROC and lower FPR95 indicate better OOD detection. As shown in Tab. 3, COG-FC performs particularly well for OOD detection, with COG+LS also achieving strong results. Across the three datasets, a COG variant achieves the best performance in each case. Under covariate shift (Tab. 4), we observe trends consistent with prior work (Ovadia et al., 2019): regularization-based approaches such as Label Smoothing are often more robust, and COG+LS generally improves over COG-FC. At the same time, performance varies across datasets and shift types, highlighting that robustness to distribution shift is distinct from in-distribution calibration (Ovadia et al., 2019). We leave further improvements in covariate-shifts to future work. Table 5: Performance with a ViT back-bone on CIFAR-10. Bold indicates the best value per metric 
+
+Method ACC (↑) NLL (↓) Brier (↓)
+
+Baseline 73 .51 0.57 0.81 0.02 0.38 0.01 
+
+COG-FC 74 .97 0.47 0.76 0.02 0.36 0.01 
+
+Temp. Scaling 73 .51 0.57 0.76 0.01 0.37 0.01 
+
+COG-TS 73 .73 0.43 0.81 0.02 0.38 0.00 
+
+Matrix Scaling 74 .04 0.35 0.74 0.01 0.36 0.00 
+
+COG-MS 73 .14 0.71 0.81 0.02 0.38 0.01 
+
+ViT ablation. Our experiments so far focus on CNN architectures. While App. D confirms consistent results with a WRN-28-10 backbone (Zagoruyko & Komodakis, 2016), we further assess COG across architectural fami-lies using Vision Transformers (ViTs) (Dosovitskiy et al., 2021). Applying a subset of post-hoc methods and their corresponding COG variants, Tab. 5, shows that COG-FC again achieves the best overall performance, suggesting that BLO is not specific to convolutional ar-chitectures. Additional calibration metrics are reported in App. C.4. 7Preprint. Under review. Table 3: Performance on out-of-distribution detection. The best value in each column among the subset of models is bolded. The Top Ranked ∗ row represents the best model per dataset based on average rank across metrics as determined from the full results in Tab. 16: COG-MS on SVHN, and COG-TST on CIFAR-10 and CIFAR-100.                                                         
+
+> SVHN CIFAR-10 CIFAR-100 Method AUROC (↑)FPR95 (↓)AUROC (↑)FPR95 (↓)AUROC (↑)FPR95 (↓)
+> Baseline 94 .78 0.24 34 .43 1.27 83 .97 2.70 76 .39 3.20 71 .92 1.33 87 .67 1.34
+> COG-FC 96 .60 0.41 21 .60 2.59 87 .00 1.32 73 .98 4.03 68 .50 2.22 85 .83 1.43
+> COG+LS 93 .80 0.61 22 .58 2.45 81 .93 3.10 73 .43 3.18 65 .48 7.85 83 .71 3.42
+> Label Smoothing 80 .58 1.66 42 .84 2.40 72 .17 6.88 78 .88 3.09 74 .35 2.98 84 .06 1.86
+> Temp. Scaling 95 .33 0.25 31 .14 1.85 85 .09 2.43 75 .04 4.22 73 .23 1.53 85 .46 2.00
+> V-TST 94 .66 0.47 35 .35 2.40 79 .23 2.27 78 .61 1.96 70 .75 0.85 85 .78 0.64
+> Top Ranked ∗96 .70 0.28 20 .36 2.18 87 .41 0.70 71 .37 2.34 73 .92 2.72 79 .96 2.31
+
+Table 4: Performance under covariate shifts. The best value in each column among the subset of models is bolded. The Top Ranked ∗ row reports the best-performing model per dataset based on average rank across metrics as determined from the full results in Tab. 17: Matrix Scaling on SVHN and CIFAR-10, Label Smoothing on CIFAR-100. 
+
+SVHN CIFAR-10 CIFAR-100 Method ACC (↑) NLL (↓) Brier (↓) ACC (↑) NLL (↓) Brier (↓) ACC (↑) NLL (↓) Brier (↓)
+
+Baseline 47 .01 1.06 5.29 0.23 0.94 0.02 74 .28 0.59 2.03 0.11 0.45 0.01 45 .85 1.36 5.70 0.21 0.92 0.02 
+
+COG-FC 45 .82 1.32 2.43 0.12 0.80 0.02 68 .80 0.68 1.57 0.09 0.50 0.01 44 .09 0.42 2.88 0.04 0.77 0.01 
+
+COG+LS 46 .05 0.57 1.91 0.02 0.77 0.00 69 .31 0.42 1.11 0.02 0.46 0.01 44 .92 0.69 2.90 0.11 0.81 0.03 
+
+Label Smoothing 46 .19 0.59 2.19 0.04 0.86 0.01 74 .22 0.42 1.03 0.02 0.42 0.01 47 .14 0.91 2.54 0.10 0.71 0.03 
+
+Temp. Scaling 47 .01 1.06 3.05 0.12 0.85 0.02 74 .28 0.59 1.19 0.05 0.41 0.01 45 .85 1.36 3.32 0.10 0.81 0.02 
+
+V-TST 41 .66 0.26 2.06 0.07 0.77 0.01 73 .91 0.22 0.91 0.03 0.38 0.01 38 .44 0.24 2.66 0.02 0.77 0.00 
+
+Top Ranked ∗ 47 .27 0.72 2.14 0.02 0.75 0.01 74 .35 0.66 0.84 0.03 0.36 0.01 47 .14 0.91 2.54 0.10 0.71 0.03 
+
+4.3 USE CASE : M ULTI -T ASK LEARNING 
+
+Prerequisite Questions. Calibration in Multi-Task Learning remains relatively under-explored, raising two fundamental questions: how should calibration be applied in MTL, and how should calibration be quantified across heterogeneous tasks? For the former, should each task be calibrated independently, requiring separate K post-hoc calibrators or regularizers, or should a single approach be applied across tasks? This is particularly challenging when tasks differ in type, e.g., binary classification, multiclass classification, and regression, which may require different calibration methods. Even tasks of the same type may have different calibration requirements, further increasing the complexity of the calibration pipeline. In contrast, COG can be applied directly to MTL models using the same training objective as the network, avoiding separate calibration procedures for each task. The second question concerns how to quantify calibration across tasks. Given the aforementioned issues, rather than introducing MTL-specific calibration metrics, we evaluate using the previous metrics. 
+
+Experimental Setup. For this experiment, we use CelebA (Liu et al., 2015), where the model predicts 40 facial attributes, i.e., 40 binary tasks. For non-COG methods each task is calibrated separately, resulting in 40 separate calibrators or regularization terms, as seen in Fig. 4. We train using linear scalarization (Miettinen et al., 1999), with equal task weights, i.e., Ltotal = PKi=1 Li
+
+and, for every metric, report unweighted averages across tasks, e.g., Ltotal /K .
+
+Results. The results in Tab. 6 show broadly comparable performance across methods, particularly in Brier score. All COG variants outperform their corresponding baselines with COG-FC achieving the best overall performance. Both Label Smoothing methods, however, exhibit notably worse NLL. Overall, these results demonstrate that effective end-to-end calibration is achievable in MTL without additional trainable parameters or regularization terms. In App. C.5 we provide evaluation based on calibration errors and per-task metrics. According to Fig. 6, all families exhibit a similar ordering of task difficulty, with Big Lips , for instance, consistently ranking among the most challenging tasks, suggesting that difficulty is primarily task-dependent. In pairwise comparisons, for example, 8Preprint. Under review. Figure 4: MTL pipeline with K task-specific heads, each followed by a separate post-hoc cali-brator or calibration objective. 
+
+Table 6: MTL calibration performance on CelebA, averaged across tasks. Bold indi-cates the best value per metric.                         
+
+> Method ACC (↑)NLL (↓)Brier (↓)
+> Baseline 89 .88 0.04 0.23 0.00 0.16 0.00
+> COG-FC 90 .81 0.04 0.21 0.00 0.14 0.00
+> Label Smoothing 89 .91 0.06 0.35 0.00 0.15 0.00
+> COG+LS 90 .82 0.02 0.34 0.00 0.14 0.00
+> Temp. Scaling 89 .88 0.04 0.24 0.00 0.15 0.00
+> COG-TS 90 .44 0.15 0.22 0.01 0.15 0.00
+
+COG-FC achieves both higher Accuracy and lower Brier score than Temperature Scaling on 32 of 40 tasks (80%), and than Label Smoothing on all 40 tasks (100%). 
+
+5 CONCLUSION 
+
+In this work, we simplify neural network calibration by reframing post-hoc calibration as a bilevel optimization problem and solving it through Stackelberg-inspired joint optimization. Our framework, COG, converts post-hoc calibrators into train-time, end-to-end alternatives that require no held-out calibration data and introduce only minimal additional complexity: a single additional learning rate. Across a broad range of experiments, architectures, and calibration approaches, COG achieves strong and consistent performance, matching or outperforming existing methods in most settings. In particular, COG-FC achieves state-of-the-art calibration performance while introducing no additional trainable parameters . We further find that COG is stable to optimize and performs well for OOD detection, demonstrating its flexibility across architectures, post-hoc methods, and regularization-based approaches. We further study calibration in MTL settings, where task heterogeneity requires conventional calibration methods to be selected and applied separately for each task. In contrast, COG works out of the box for MTL, providing a unified calibration approach with strong overall and task-specific performance without additional trainable parameters or separate calibration procedures. Overall, we recommend COG-FC as a simple, stable, and lightweight default for calibration, given its strong performance across diverse settings and lack of additional trainable parameters. 
+
+Future Work and Limitations. Several directions remain for future work. First, our evaluation could be extended to alternative definitions of calibration and emerging calibration metrics, partic-ularly those addressing limitations of standard metrics such as ECE. Second, we do not explicitly explore optimistic and pessimistic bilevel optimization (Dempe, 2002; Beck et al., 2027). In optimistic BLO, the leader assumes that, among multiple optimal solutions of the follower, the follower selects the one that is most favorable to the leader. In contrast, pessimistic BLO considers the worst-case selection among the follower’s optimal solutions, accounting for the least favorable outcome for the leader’s objective (Dempe, 2002; Beck et al., 2027). Pessimistic bilevel optimization, which is closely related to robust optimization (Beck et al., 2022; 2023), could be particularly relevant for calibration under adversarial settings or covariate shifts, while optimistic bilevel optimization may yield even better solutions for the calibrator. Further theoretical analysis of calibration from a bilevel optimization perspective could also provide additional insight. For MTL, future work could consider more challenging and heterogeneous settings, including tasks with different output spaces or objectives, alongside state-of-the-art MTL training methods and designing calibration metrics specifically for multi-task problems. Finally, although our experiments focus on computer vision, COG is not inherently tied to a particular architecture or modality and could be extended to other differentiable models and domains. AI USE STATEMENT 
+
+In this work, we used generative AI tools for research execution, specifically for code assistance, including but not limited to writing comments in code and preparing documentation. Additionally, we used generative AI tools to polish and improve the readability of the text. We did not use generative AI tools for the other required-disclosure tasks. We have reviewed all AI-assisted work, verified the 9Preprint. Under review. correctness of the code and documentation, and reviewed the polished text to ensure that it accurately reflects the authors’ intended content. We take responsibility for the final content of this work, including text, claims, code, and other artifacts produced with the aid of generative AI. REPRODUCIBILITY STATEMENT 
+
+Implementation and training details, including optimization procedures, learning-rate schedules, checkpoint selection, calibration procedures, and experimental settings, are provided in App. B. The hyperparameter configurations used for the different datasets, backbones, and COG variants are reported in Tab. 8. Dataset splits, preprocessing, augmentation, and validation procedures are described in the dataset details in App. B. Additional information on the experimental hardware and computational requirements is also provided in App. B. All experiments use fixed random seeds as described in the appendix, and the code and configuration files required to reproduce the reported results are provided in the supplementary materials. ACKNOWLEDGMENTS 
+
+We would like to thank every member of the Probabilistic Machine Learning lab and especially Elina Rojin Celik for their invaluable feedback. This work was funded in part by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) – GRK 2853/1 “Neuroexplicit Models of Language, Vision, and Action” - project number 471607914. Pablo M. Olmos has been supported by the Ministerio de Ciencia, Innovación y Universidades, Spain, under Grant PID2024-157856NB-I00 (CARTESIAN), funded by MCIN/AEI/10.13039/501100011033 and, as appropriate, by “ERDF A way of making Europe”; by the ELLIS Unit Madrid (European Laboratory for Learning and Intelligent Systems); and by the Comunidad de Madrid under grant IND2024/TIC-34728 and the IDEA-CM project (TEC-2024/COM-89). Views and opinions expressed are, however, those of the author(s) only and do not necessarily reflect those of the aforementioned funding agencies. None of the aforementioned parties can be held responsible for them. 
+
+REFERENCES 
+
+Arsenii Ashukha, Alexander Lyzhov, Dmitry Molchanov, and Dmitry Vetrov. Pitfalls of in-domain uncertainty estimation and ensembling in deep learning. In International Conference on Learning Representations , 2020. URL https://openreview.net/forum?id=BJxI5gHKDr .Tamer Ba¸ sar and Geert Jan Olsder. Dynamic noncooperative game theory . SIAM, 1998. Yasmine Beck, Ivana Ljubi´ c, and Martin Schmidt. A brief introduction to robust bilevel optimization. 
+
+arXiv preprint arXiv:2211.16072 , 2022. Yasmine Beck, Ivana Ljubi´ c, and Martin Schmidt. A survey on bilevel optimization under uncertainty. 
+
+European Journal of Operational Research , 311(2):401–426, 2023. Yasmine Beck, Ivana Ljubi´ c, and Martin Schmidt. Linear and Mixed-Integer Bilevel Optimization: Theory and Algorithms . Cambridge University Press, 2027. Eugène Berta, David Holzmüller, Michael I Jordan, and Francis Bach. Rethinking early stopping: Refine, then calibrate. arXiv preprint arXiv:2501.19195 , 2025. Eugène Berta, David Holzmüller, Francis Bach, and Michael I Jordan. Calarena: A large-scale post-hoc calibration benchmark. arXiv preprint arXiv:2605.30188 , 2026a. Eugène Berta, David Holzmüller, Michael I. Jordan, and Francis Bach. Structured matrix scaling for multi-class calibration. In Emtiyaz Khan, Yingzhen Li, Arno Solin, and Aaditya Ramdas (eds.), 
+
+Proceedings of The 29th International Conference on Artificial Intelligence and Statistics , volume 300 of Proceedings of Machine Learning Research , pp. 1342–1350. PMLR, 02–05 May 2026b. URL https://proceedings.mlr.press/v300/berta26a.html .Ondrej Bohdal, Yongxin Yang, and Timothy Hospedales. Meta-calibration: Learning of model calibration using differentiable expected calibration error. arXiv preprint arXiv:2106.09613 , 2021. 10 Preprint. Under review. Andrew P Bradley. The use of the area under the roc curve in the evaluation of machine learning algorithms. Pattern recognition , 30(7):1145–1159, 1997. Leo Breiman. Statistical modeling: The two cultures (with comments and a rejoinder by the author). 
+
+Statistical science , 16(3):199–231, 2001. Mario P Brito, Matthew Stevenson, and Cristián Bravo. Subjective machines: Probabilistic risk assessment based on deep learning of soft information. Risk Analysis , 43(3):516–529, 2023. Rich Caruana. Multitask learning. Machine learning , 28(1):41–75, 1997. Muthu Chidambaram and Rong Ge. Reassessing how to compare and improve the calibration of machine learning models. In International Conference on Learning Representations , volume 2025, pp. 61542–61570, 2025. Stephan Dempe. Foundations of bilevel programming . Springer, 2002. Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at scale. In International Conference on Learning Representations , 2021. URL https://openreview. net/forum?id=YicbFdNTTy .Tanner Fiez, Benjamin Chasnov, and Lillian Ratliff. Implicit learning dynamics in stackelberg games: Equilibria characterization, convergence analysis, and empirical study. In Hal Daumé III and Aarti Singh (eds.), Proceedings of the 37th International Conference on Machine Learning , volume 119 of Proceedings of Machine Learning Research , pp. 3133–3144. PMLR, 13–18 Jul 2020. URL 
+
+https://proceedings.mlr.press/v119/fiez20a.html .Luca Franceschi, Paolo Frasconi, Saverio Salzo, Riccardo Grazzi, and Massimiliano Pontil. Bilevel programming for hyperparameter optimization and meta-learning. In Jennifer Dy and Andreas Krause (eds.), Proceedings of the 35th International Conference on Machine Learning , volume 80 of Proceedings of Machine Learning Research , pp. 1568–1577. PMLR, 10–15 Jul 2018. URL 
+
+https://proceedings.mlr.press/v80/franceschi18a.html .W Brier Glenn et al. Verification of forecasts expressed in terms of probability. Monthly weather review , 78(1):1–3, 1950. Ian Goodfellow, Yoshua Bengio, and Aaron Courville. Deep Learning . MIT Press, 2016. http: //www.deeplearningbook.org .Chuan Guo, Geoff Pleiss, Yu Sun, and Kilian Q Weinberger. On calibration of modern neural networks. In International conference on machine learning , pp. 1321–1330. PMLR, 2017. Kavya Gupta and Sagar Verma. Shrink & cert: Bi-level optimization for certified robustness. In New Frontiers in Adversarial Machine Learning, ICML , 2023. Kavya Gupta, Nektarios Kalampalikis, Christoph Heitz, and Isabel Valera. First-see-then-design: A multi-stakeholder view for optimal performance-fairness trade-offs. In Proceedings of the 2026 ACM Conference on Fairness, Accountability, and Transparency , FAccT ’26, pp. 218–248, New York, NY, USA, 2026. Association for Computing Machinery. ISBN 9798400725968. doi: 10.1145/3805689.3806541. URL https://doi.org/10.1145/3805689.3806541 .Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition ,pp. 770–778, 2016. Wenchong He, Zhe Jiang, Tingsong Xiao, Zelin Xu, and Yukun Li. A survey on uncertainty quantification methods for deep learning. ACM Computing Surveys , 58(7):1–35, 2026. Dan Hendrycks and Thomas Dietterich. Benchmarking neural network robustness to common corruptions and perturbations. arXiv preprint arXiv:1903.12261 , 2019. 11 Preprint. Under review. Dan Hendrycks, Mantas Mazeika, and Thomas Dietterich. Deep anomaly detection with outlier exposure. arXiv preprint arXiv:1812.04606 , 2018. Adrián Javaloy and Isabel Valera. Rotograd: Gradient homogenization in multitask learning. In 
+
+International Conference on Learning Representations , 2022. URL https://openreview. net/forum?id=T8wHz4rnuGL .Adrián Javaloy, Antonio Vergari, and Isabel Valera. Copa: Comparing the incomparable in multi-objective model evaluation. arXiv preprint arXiv:2503.14321 , 2025. Simon Jenni and Paolo Favaro. Deep bilevel learning. In Proceedings of the European conference on computer vision (ECCV) , pp. 618–633, 2018. Taejong Joo and Uijung Chung. Revisiting explicit regularization in neural networks for well-calibrated predictive uncertainty. arXiv preprint arXiv:2006.06399 , 2020. Mikkel Jordahn and Pablo M. Olmos. Decoupling feature extraction and classification layers for calibrated neural networks. In Ruslan Salakhutdinov, Zico Kolter, Katherine Heller, Adrian Weller, Nuria Oliver, Jonathan Scarlett, and Felix Berkenkamp (eds.), Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pp. 22530–22550. PMLR, 21–27 Jul 2024. URL https://proceedings.mlr.press/v235/ jordahn24a.html .Archit Karandikar, Nicholas Cain, Dustin Tran, Balaji Lakshminarayanan, Jonathon Shlens, Michael C Mozer, and Becca Roelofs. Soft calibration objectives for neural networks. Advances in Neural Information Processing Systems , 34:29768–29779, 2021. Johanna D’Ciofalo Khodaverdian, Eric Banzuzi, and Katharina Deckenbach. A reproducibil-ity study of decoupling feature extraction and classification layers for calibrated neural net-works. Transactions on Machine Learning Research , 2025. ISSN 2835-8856. URL https: //openreview.net/forum?id=5Hwzd48ILf .Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 , 2014. Alex Krizhevsky, Geoffrey Hinton, et al. Learning multiple layers of features from tiny images. 2009. Jeongyeol Kwon, Dohyun Kwon, Stephen Wright, and Robert D Nowak. A fully first-order method for stochastic bilevel optimization. In International Conference on Machine Learning , pp. 18083– 18113. PMLR, 2023. Tianyi Lin, Chi Jin, and Michael Jordan. On gradient descent ascent for nonconvex-concave minimax problems. In International conference on machine learning , pp. 6083–6093. PMLR, 2020. Hanxiao Liu, Karen Simonyan, and Yiming Yang. DARTS: Differentiable architecture search. In 
+
+International Conference on Learning Representations , 2019. URL https://openreview. net/forum?id=S1eYHoC5FX .Risheng Liu, Jiaxin Gao, Jin Zhang, Deyu Meng, and Zhouchen Lin. Investigating bi-level optimiza-tion for learning and vision from a unified perspective: A survey and beyond. IEEE Transactions on Pattern Analysis and Machine Intelligence , 44(12):10045–10067, 2021. Ziwei Liu, Ping Luo, Xiaogang Wang, and Xiaoou Tang. Deep learning face attributes in the wild. In 
+
+Proceedings of International Conference on Computer Vision (ICCV) , December 2015. Clara Meister, Elizabeth Salesky, and Ryan Cotterell. Generalized entropy regularization or: There’s nothing special about label smoothing. In Proceedings of the 58th Annual Meeting of the Associa-tion for Computational Linguistics , pp. 6870–6886, 2020. Aditya Krishna Menon, Xiaoqian J Jiang, Shankar Vembu, Charles Elkan, and Lucila Ohno-Machado. Predicting accurate probabilities with a ranking loss. In Proceedings of the International Conference on Machine Learning. International Conference on Machine Learning , volume 2012, pp. 703, 2012. 12 Preprint. Under review. Kaisa Miettinen et al. Nonlinear multiobjective optimization , volume 12. Kluwer Academic Publishers Boston, 1999. Matthias Minderer, Josip Djolonga, Rob Romijnders, Frances Hubis, Xiaohua Zhai, Neil Houlsby, Dustin Tran, and Mario Lucic. Revisiting the calibration of modern neural networks. Advances in neural information processing systems , 34:15682–15694, 2021. Jishnu Mukhoti, Viveka Kulharia, Amartya Sanyal, Stuart Golodetz, Philip Torr, and Puneet Dokania. Calibrating deep neural networks using focal loss. Advances in neural information processing systems , 33:15288–15299, 2020. Rafael Müller, Simon Kornblith, and Geoffrey E Hinton. When does label smoothing help? Advances in neural information processing systems , 32, 2019. Kevin P. Murphy. Probabilistic Machine Learning: Advanced Topics . MIT Press, 2023. URL 
+
+http://probml.github.io/book2 .Mahdi Pakdaman Naeini, Gregory Cooper, and Milos Hauskrecht. Obtaining well calibrated proba-bilities using bayesian binning. In Proceedings of the AAAI conference on artificial intelligence ,volume 29, 2015. Yuval Netzer, Tao Wang, Adam Coates, Alessandro Bissacco, Baolin Wu, Andrew Y Ng, et al. Reading digits in natural images with unsupervised feature learning. In NIPS workshop on deep learning and unsupervised feature learning , volume 2011, pp. 4. Granada, 2011. Yaniv Ovadia, Emily Fertig, Jie Ren, Zachary Nado, David Sculley, Sebastian Nowozin, Joshua Dillon, Balaji Lakshminarayanan, and Jasper Snoek. Can you trust your model’s uncertainty? evaluating predictive uncertainty under dataset shift. Advances in neural information processing systems , 32, 2019. Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban Desmaison, Andreas Kopf, Edward Yang, Zachary DeVito, Martin Raison, Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and Soumith Chintala. Pytorch: An imperative style, high-performance deep learning library. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d'Alché-Buc, E. Fox, and R. Garnett (eds.), Advances in Neural Information Processing Systems 32 , pp. 8024–8035. Curran Associates, Inc., 2019. John Platt. Probabilistic outputs for support vector machines and comparisons to regularized likeli-hood methods. Adv. Large Margin Classif. , 10, 06 2000. Teodora Popordanoska, Raphael Sayer, and Matthew Blaschko. A consistent and differentiable lp canonical calibration error estimator. Advances in Neural Information Processing Systems , 35: 7933–7946, 2022. María Agustina Ricci Lara, Candelaria Mosquera, Enzo Ferrante, and Rodrigo Echeveste. Towards unraveling calibration biases in medical image analysis. In Workshop on Clinical Image-Based Procedures , pp. 132–141. Springer, 2023. Cynthia Rudin, Chudi Zhong, Lesia Semenova, Margo Seltzer, Ronald Parr, Jiachang Liu, Srikar Katta, Jon Donnelly, Harry Chen, and Zachery Boner. Amazing things come from having many good models. arXiv preprint arXiv:2407.04846 , 2024. Gabriele Sanguin, Arjun Pakrashi, Marco Viola, and Francesco Rinaldi. Exploring the potential of bilevel optimization for calibrating neural networks. arXiv preprint arXiv:2503.13113 , 2025. Ashshak Sharifdeen, Shihab Aaqil Ahamed, Ufaq Khan, Muhammad Akhtar Munir Sujair Ibrahim, Mohamed Rafeek Mareer Ahamed, Yutong Xie, Imran Razzak, and Muhammad Haris Khan. Mvc-bench: Benchmarking calibration of medical vision-language models. arXiv preprint arXiv:2608.27004 , 2026. Telmo Silva Filho, Hao Song, Miquel Perello-Nieto, Raul Santos-Rodriguez, Meelis Kull, and Peter Flach. Classifier calibration: a survey on how to assess and improve predicted class probabilities. 
+
+Machine Learning , 112(9):3211–3260, 2023. 13 Preprint. Under review. Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jon Shlens, and Zbigniew Wojna. Rethinking the inception architecture for computer vision. In Proceedings of the IEEE conference on computer vision and pattern recognition , pp. 2818–2826, 2016. Linwei Tao, Younan Zhu, Haolan Guo, Minjing Dong, and Chang Xu. A benchmark study on calibration. In The Twelfth International Conference on Learning Representations , 2024. URL 
+
+https://openreview.net/forum?id=GzNhzX9kVa .Richard Tomsett, Alun Preece, Dave Braines, Federico Cerutti, Supriyo Chakraborty, Mani Srivastava, Gavin Pearson, and Lance Kaplan. Rapid trust calibration through interpretable and uncertainty-aware ai. Patterns , 1(4):100049, 2020. ISSN 2666-3899. doi: https://doi.org/10.1016/j.patter. 2020.100049. URL https://www.sciencedirect.com/science/article/pii/ S266638992030060X .Emile van Krieken, Pasquale Minervini, Edoardo Maria Ponti, and Antonio Vergari. Neurosymbolic diffusion models. Advances in neural information processing systems , 38:135889–135931, 2026. Moritz Vandenhirtz, Sonia Laguna, Riˇ cards Marcinkeviˇ cs, and Julia E Vogt. Stochastic concept bottleneck models. Advances in Neural Information Processing Systems , 37:51787–51810, 2024. Heinrich Von Stackelberg. Market structure and equilibrium . Springer Science & Business Media, 2010. Cheng Wang. Calibration in deep learning: A survey of the state-of-the-art. arXiv preprint arXiv:2308.01222 , 2023. Deng-Bao Wang and Min-Ling Zhang. Calibration bottleneck: Over-compressed representations are less calibratable. In Forty-first International Conference on Machine Learning , 2024. Bianca Zadrozny and Charles Elkan. Obtaining calibrated probability estimates from decision trees and naive bayesian classifiers. In Icml , volume 1, pp. 2001, 2001. Bianca Zadrozny and Charles Elkan. Transforming classifier scores into accurate multiclass probabil-ity estimates. In Proceedings of the eighth ACM SIGKDD international conference on Knowledge discovery and data mining , pp. 694–699, 2002. Sergey Zagoruyko and Nikos Komodakis. Wide residual networks. arXiv preprint arXiv:1605.07146 ,2016. Yihua Zhang, Prashant Khanduri, Ioannis Tsaknakis, Yuguang Yao, Mingyi Hong, and Sijia Liu. An introduction to bilevel optimization: Foundations and applications in signal processing and machine learning. IEEE Signal Processing Magazine , 41(1):38–59, 2024. 
+
+A STACKELBERG AND GRADIENT -D ESCENT ASCENT 
+
+In this section, we provide more details about topics mentioned Section 3. We strongly encourage readers to refer to the original works (Fiez et al., 2020; Lin et al., 2020; Beck et al., 2027). 
+
+Bilevel Optimization Applications. BLO has been applied to a wide range of tasks in machine learning (Zhang et al., 2024), including hyperparameter optimization (Franceschi et al., 2018), multi-task learning (Javaloy & Valera, 2022), neural architecture search (Liu et al., 2019; Tao et al., 2024), robustness (Gupta & Verma, 2023), generalization (Jenni & Favaro, 2018), and more recently calibration (Bohdal et al., 2021; Sanguin et al., 2025). Gradient-based approaches to solve the BLO problem usually require calculating the Jacobian of the best-response. Thus, most methods fall back to approximating it via: T gradient updates of the dynamical system, using implicit-differentiation and calculating the Hessian. For more details and methods on gradient-based BLO we direct the reader to (Liu et al., 2021). 14 Preprint. Under review. A.1 DEFINITION OF EQUILIBRIA 
+
+Following the main text, the formulation of a Stackelberg game (or bilevel optimization problem) is: 
+
+min  
+
+> θcal ∈Y,θ train ∈S(θcal )
+
+Fcal (θtrain , θ cal ) (Leader) where S(θcal ) = arg min 
+
+> θtrain ∈X
+
+Ftrain (θtrain , θ cal ) (Follower) (3) 
+
+S(θcal ) is the solution set of the follower’s problem, accounting for the possibility of multiple optimal solutions. It depends on the leader’s variables θcal , since the leader’s choice determines the follower’s optimization problem and, consequently, its optimal solution set. An equilibrium can be viewed as a joint solution satisfying the relevant optimality conditions of all players. A Nash equilibrium is a joint strategy profile in which each player’s strategy is an optimal response to the others, while a Stackelberg equilibrium is the solution of the corresponding bilevel problem, with the leader accounting for the follower’s optimal response. Following (Fiez et al., 2020), a solution θ∗ = ( θ∗
+
+> cal
+
+, θ ∗
+
+> train
+
+) is considered a differential Nash equilib-rium (NSE) when for both players j:
+
+∂Fj (θ∗)
+
+∂θ j
+
+= 0 and ∂2Fj (θ∗)
+
+∂θ j 2 > 0 (4) Note that for DNE we require only the diagonal blocks of each player’s Hessian to be positive definite, i.e., each player has a local optimum along their own coordinate axis, with no consideration of cross-player effects. Meanwhile a solution is considered a differential Stackelberg equilibrium (DSE) if for the leader: 
+
+dFcal (θ∗) = 0 and d2Fcal (θ∗) > 0 (5) and for the follower: 
+
+∂Ftrain (θ∗)
+
+∂θ ∗
+
+> train
+
+= 0 and ∂2Ftrain (θ∗)
+
+∂θ ∗ 
+
+> train
+> 2
+
+> 0 (6) Note that in DSE the leader’s total derivative is used, capturing the fact that the leader operates under the assumption that the follower plays a (local) best response to θcal , due to the hierarchical nature of the game. This is the key difference between the two equilibrium concepts . Specifically, the total derivative accounts for the implicit dependence of the follower’s response: 
+
+dFcal (θ) = ∂Fcal (θ)
+
+∂θ cal 
+
++ ∂Fcal (θ)
+
+∂θ train 
+
+∂r (θcal )
+
+∂θ cal 
+
+(7) where r(θcal ) is the implicit best-response function of the follower, via the implicit function theorem. 
+
+Subset relationship of DSE and DNE. In zero-sum games, every Nash equilibrium is also a Stackelberg equilibrium, but the converse does not hold (Ba¸ sar & Olsder, 1998; Fiez et al., 2020). In the continuous setting, Fiez et al. (2020) show that this inclusion follows from a second-order relationship revealed by the Schur complement of the Stackelberg Jacobian. In particular, the second-order conditions for a DNE ( ∂2Fj (θ∗)  
+
+> ∂θ j2
+
+> 0) imply those for a DSE ( d2Fcal (θ∗)  
+
+> dθ j2
+
+> 0) via the Schur complement. 
+
+Implications for COG Gradient Descent–Ascent iteratively and jointly updates the strategies of both players via gradient descent. GDA is designed to target Nash equilibria and can therefore yield valid but restrictive solutions for Stackelberg games. Moreover, GDA does not reliably converge to Nash equilibria due to its characteristic rotational dynamics and may instead converge to spurious stable points, making it theoretically less principled than bilevel optimization (BLO) methods (Fiez et al., 2020). Nevertheless, GDA remains a practical approach for approximating Stackelberg prob-lems because of its simplicity and computational efficiency, as demonstrated in prior work (Javaloy & Valera, 2022) and in our experiments. 15 Preprint. Under review. Table 7: Complexity of different calibration methods in Single-Task and Multi-Task learning settings, where K denotes the number of classes.                                                                                     
+
+> # Extra End Calibration Extra
+> Method Trainable Params. To End Data Burden
+> Single-Task
+> Baseline 0✓✗-COG-FC 0✓✗1 Learning Rate Label Smoothing 0✓✗1 Smoothing Level COG+LS 0✓✗(a) 1 Smoothing Level (b) 1 Learning Rate Temp. Scaling 1✗✓Calibrator Training COG-TS 1✓✗1 Learning Rate Matrix Scaling K×K+K✓✓Calibrator Training COG-MS K×K+K✓✗1 Learning Rate TST NN ✗✗NN Training, Architecture COG-TST NN ✓✗1 Learning Rate V-TST 2 NNs ✗✗
+> (a) ELBO training of 2 NNs (b) NN architecture (c) MC Sampling
+> Multi-Task
+> Baseline 0✓✗-COG-FC 0✓✗1 Learning Rate Label Smoothing 0✓✗KSmoothing Levels COG+LS 0✓✗(a) K Smoothing Levels (b) 1 Learning Rate Temp. Scaling K✗✓KModels Trained COG-TS K✓✗1 Learning Rate
+
+B IMPLEMENTATION DETAILS 
+
+B.1 TRAINING DETAILS 
+
+For the backbone considered in our experiments, ResNet-101 (He et al., 2016), we trained the models for 300 epochs in the single-task setting and 100 epochs in the multitask setting. All experiments used the Adam optimizer (Kingma & Ba, 2014) with a batch size of 256. Unless otherwise stated, we used five random seeds for every experiment reported in the main paper. All experiments used PyTorch (Paszke et al., 2019) version 2.11. For the COG experiments, we used a step learning-rate scheduler (as recommended in (Fiez et al., 2020; Kwon et al., 2023)) that reduced the learning rate by a factor of 10 every 10 epochs for both tasks. For CelebA, the learning rate was reduced by a factor of 10 every 3 epochs. For both single and multi task settings we trained with cross-entropy loss. Specifically, for the MTL setting, we used equal weights across all tasks. All post-hoc calibrators and evaluation metrics are implemented using the Probmetrics library (version 1.2.0) (Berta et al., 2025), except for Temperature Scaling, for which we use the original implementation (Guo et al., 2017). All post-hoc calibrators were fitted on the validation set. During training, for all models considered in the experiments, we selected the best model checkpoint based on the validation Brier score, as this criterion leads to better-calibrated models (Berta et al., 2025). For label smoothing, in all cases, we used a smoothing value of 0.1.
+
+ViT Experiments. For the ViT ablation we use the ViT architecture seen in (Jordahn & Olmos, 2024). We train for a maximum of 400 epochs, with a early stopping patience of 50 validation checks. The learning rate for the calibrator ( λc) is set to 1e − 5 and for the backbone’s learning rate ( λf ) is set to 1e − 4.16 Preprint. Under review. Table 8: Hyperparameter configurations selected based on validation performance for the different COG variants. λf and λc denote the learning rates used for model training and calibration, respectively. A dash indicates that the corresponding component was not used for that method. 
+
+CIFAR-10 CIFAR-100 SVHN CelebA Method λf λc λf λc λf λc λf λc
+
+> ResNet
+
+COG-FC 1e-3 5e-5 1e-3 1e-5 1e-3 1e-5 1e-3 1e-5 COG-TS 1e-3 1e-4 1e-3 1e-5 1e-3 1e-4 1e-2 5e-5 COG-MS 1e-3 5e-5 5e-4 1e-5 5e-4 1e-5 - -COG-TST 1e-3 5e-5 5e-4 1e-5 5e-4 1e-4 - -
+
+> WRN
+
+COG-FC 1e-3 1e-5 1e-2 1e-5 1e-3 5e-5 - -COG-TS 1e-3 1e-5 1e-2 1e-5 1e-3 1e-4 - -COG-MS 1e-2 5e-5 1e-2 1e-3 5e-4 1e-4 - -COG-TST 1e-2 1e-3 1e-3 1e-5 1e-3 5e-4 - -
+
+MTL Experiments. For the MTL experiment, we trained with a maximum of 100 epochs, and again we picked the best model based on Brier score. For the baselines we used a learning rate of 
+
+1e − 4.B.2 MODEL SELECTION 
+
+We performed hyperparameter tuning primarily over the learning rates for the two problems in COG. Hyperparameters were selected based on validation CE loss. Unless otherwise stated, all subsequent experiments used the best configurations identified during this tuning procedure (seen in Table 8). For example, the COG-Label Smoothing experiment on CIFAR-100 with ResNet-101 used the corresponding configuration selected during this procedure. For the baseline models, we used a learning rate of 10 −4. For TST, we used the default hyperparameter settings reported in (Jordahn & Olmos, 2024). B.3 DATASET DETAILS 
+
+For CIFAR-10 (Krizhevsky et al., 2009), CIFAR-100 (Krizhevsky et al., 2009), and SVHN (Netzer et al., 2011), the original training sets were randomly partitioned into training and validation subsets using a fixed random seed. The validation fractions were 20%, 5%, and 20% for CIFAR-10, CIFAR-100, and SVHN, respectively. Training images were augmented using a random 32 × 32 crop with 4-pixel padding, followed by random horizontal flipping. Validation and test images were evaluated without stochastic data augmentation. For CelebA (Liu et al., 2015), we used the predefined training, validation, and test splits. Images were resized and center-cropped to 32 × 32 , with random horizontal flipping applied only during training. All datasets were normalized using dataset-specific channel-wise means and standard deviations. The held-out validation set was used both for model checkpoint selection and for fitting the post-hoc calibration methods. In the multitask setting, all 40 tasks were used. B.4 HARDWARE REQUIREMENTS 
+
+All experiments were conducted on a high-performance computing cluster with automatic job scheduling, ensuring efficient resource allocation. We list the hardware requirements we used. For all datasets and backbones we utilized 6 CPU cores, 16GB of RAM, and a GPU with at least 8GB of VRAM. 
+
+C EXTENDED RESULTS 
+
+In this section, we provide extended versions of the experiments presented in the main text. For all experiments, we additionally report Expected Calibration Error (ECE) (Naeini et al., 2015), Root 17 Preprint. Under review. 0.00 0.25 0.50 0.75 1.00 0.00.20.40.60.81.0            
+
+> Accuracy
+> Ideal Baseline COG-FC
+> 0.00 0.25 0.50 0.75 1.00
+> Ideal Temp. Scaling COG-TS
+> 0.00 0.25 0.50 0.75 1.00
+> Ideal Matrix Scaling COG-MS
+> 0.00 0.25 0.50 0.75 1.00
+> Ideal Label Smoothing COG+LS
+
+SVHN                 
+
+> 0.00 0.25 0.50 0.75 1.00 0.00.20.40.60.81.0
+> Accuracy
+> Ideal Baseline COG-FC
+> 0.00 0.25 0.50 0.75 1.00
+> Ideal Temp. Scaling COG-TS
+> 0.00 0.25 0.50 0.75 1.00
+> Ideal Matrix Scaling COG-MS
+> 0.00 0.25 0.50 0.75 1.00
+> Ideal Label Smoothing COG+LS
+
+CIFAR-10     
+
+> 0.00 0.25 0.50 0.75 1.00
+
+Confidence     
+
+> 0.00 0.25 0.50 0.75 1.00
+> Accuracy  Ideal Baseline COG-FC
+> 0.00 0.25 0.50 0.75 1.00
+
+Confidence     
+
+> Ideal Temp. Scaling COG-TS
+> 0.00 0.25 0.50 0.75 1.00
+
+Confidence     
+
+> Ideal Matrix Scaling COG-MS
+> 0.00 0.25 0.50 0.75 1.00
+
+Confidence 
+
+> Ideal Label Smoothing COG+LS
+
+CIFAR-100 
+
+Figure 5: Reliability Diagrams for all COG variants and their corresponding calibration methods using 15 bins. Mean Square Calibration Error (RMSCE) (Hendrycks et al., 2018) and maximum calibration error (MCE) (Naeini et al., 2015). These calibration metrics are reported as percentages. In cases where NLL is not reported in the main text, we additionally include it here to provide a more comprehensive evaluation. Standard calibration metrics such as ECE have several well-documented limitations, particularly in the multiclass setting (Minderer et al., 2021; Chidambaram & Ge, 2025). The limitations discussed below represent only a subset of those identified in the literature. First, ECE is a biased estimator, whose magnitude of the positive bias increases with model accuracy (Minderer et al., 2021). Fur-thermore, its reported value can vary substantially with the choice of the number of bins, making comparisons between models sensitive on the binning scheme (Minderer et al., 2021; Silva Filho et al., 2023; Tao et al., 2024). Moreover, the relationship between ECE and Accuracy appears to hold primarily for highly performant models (Tao et al., 2024) and may depend on the architecture considered (Sharifdeen et al., 2026). Comparisons between in-hoc and post-hoc calibration methods can also be problematic when relying solely on standard calibration metrics (Ashukha et al., 2020; Tao et al., 2024). Lastly, ECE evaluates calibration only with respect to the top-1 predicted class, and recently it has been shown that even a trivial predictor that always outputs the mean confidence can outperform post-hoc calibration methods according to standard calibration metrics (Chidambaram & Ge, 2025). C.1 COMPARISON OF COG AND POST -HOC APPROACHES 
+
+Here we provide a more detailed version of the results found in Section 4.1. Following standard practice (Minderer et al., 2021; Silva Filho et al., 2023; Tao et al., 2024), we report calibration errors under different norms and across multiple choices of the number of bins. This provides a more comprehensive evaluation and reduces the dependence of our conclusions on any particular choice of calibration metric or binning scheme. In Tab. 9, we notice that, in almost all 18 Preprint. Under review. pairwise comparisons, the COG variants outperform the corresponding post-hoc methods in terms of ECE. A notable exception is Matrix Scaling, which, as also observed in Fig. 2, substantially worsens the performance of the Baseline on CIFAR-100. Among all COG variants, COG-TST performs the best in ECE overall. We observe the same qualitative trends for RMSCE, in Tab. 10, with COG generally outperforming the post-hoc calibration methods across these standard calibration metrics. Finally, we report MCE results in Tab. 11. For all calibration metrics, we notice that the relative ranking of methods can change with the number of bins, with the effect being more dramatic for MCE. Furthermore, the reported MCE values can increase dramatically as the number of bins increases. This provides a further illustration of the sensitivity of MCE to the binning scheme and highlights the importance of evaluating calibration across multiple metric configurations rather than relying on a single choice of bins. Table 9: Comparison of ECE across different COG variants and their corresponding post-hoc counterparts for varying numbers of bins. We report mean std [Rank]. 
+
+SVHN CIFAR-10 CIFAR-100 Method ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 Baseline 3.26 0.11 [8] 3.25 0.11 [8] 3.29 0.10 [8] 3.45 0.10 [8] 7.38 0.25 [8] 7.39 0.23 [8] 7.47 0.23 [8] 7.89 0.22 [8] 26 .56 0.79 [7] 26 .56 0.78 [7] 26 .60 0.79 [7] 26 .76 0.83 [7] COG-FC 1.14 0.30 [2] 1.16 0.29 [2] 1.32 0.17 [2] 1.86 0.07 [2] 5.32 0.16 [4] 5.32 0.14 [4] 5.49 0.11 [4] 6.22 0.12 [5] 8.00 0.35 [2] 8.00 0.36 [2] 8.13 0.37 [2] 9.20 0.28 [2] Temp Scaling 2.19 0.09 [7] 2.20 0.09 [7] 2.26 0.08 [7] 2.57 0.05 [7] 5.40 0.29 [5] 5.41 0.28 [5] 5.57 0.26 [5] 6.21 0.14 [4] 18 .88 0.41 [6] 18 .88 0.41 [6] 18 .91 0.42 [6] 19 .26 0.43 [6] COG-TS 1.23 0.14 [4] 1.24 0.14 [4] 1.41 0.11 [4] 1.95 0.11 [4] 5.52 0.40 [6] 5.52 0.40 [6] 5.66 0.40 [6] 6.40 0.40 [6] 11 .14 2.05 [3] 11 .14 2.05 [3] 11 .21 2.03 [3] 11 .96 1.77 [3] Matrix Scaling 0.71 0.16 [1] 0.73 0.15 [1] 1.05 0.07 [1] 1.84 0.09 [1] 0.73 0.12 [1] 0.89 0.10 [1] 1.76 0.07 [1] 3.74 0.22 [1] 50 .18 1.79 [8] 50 .18 1.79 [8] 50 .19 1.79 [8] 50 .25 1.79 [8] COG-MS 1.37 0.08 [5] 1.38 0.08 [5] 1.51 0.06 [5] 1.97 0.10 [5] 5.67 0.24 [7] 5.68 0.24 [7] 5.84 0.25 [7] 6.61 0.15 [7] 11 .46 2.24 [4] 11 .46 2.24 [4] 11 .55 2.19 [4] 12 .43 1.82 [4] TST 1.47 0.03 [6] 1.48 0.02 [6] 1.69 0.05 [6] 2.32 0.07 [6] 4.90 0.07 [2] 4.91 0.05 [2] 5.10 0.05 [2] 6.01 0.07 [2] 15 .78 1.46 [5] 15 .80 1.45 [5] 15 .82 1.41 [5] 16 .22 1.40 [5] COG-TST 1.21 0.11 [3] 1.21 0.11 [3] 1.39 0.09 [3] 1.91 0.07 [3] 4.96 0.32 [3] 4.96 0.32 [3] 5.14 0.30 [3] 6.13 0.17 [3] 4.04 0.55 [1] 4.07 0.57 [1] 4.70 0.50 [1] 7.18 0.35 [1] Table 10: Comparison of RMSCE across different COG variants and their corresponding post-hoc counterparts for varying numbers of bins. We report mean std [Rank]. 
+
+SVHN CIFAR-10 CIFAR-100 Method RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 Baseline 5.03 0.44 [8] 5.57 0.28 [8] 7.22 0.22 [8] 8.85 0.22 [8] 8.98 0.43 [8] 9.65 0.41 [8] 11 .89 0.54 [8] 14 .58 0.46 [8] 27 .69 0.86 [7] 28 .27 0.84 [7] 30 .69 0.83 [7] 32 .47 0.84 [7] COG-FC 1.96 0.66 [2] 2.16 0.67 [2] 3.17 0.33 [2] 5.59 0.17 [2] 6.98 0.36 [4] 7.27 0.29 [4] 9.08 0.36 [4] 11 .87 0.34 [4] 9.18 0.46 [2] 9.39 0.47 [2] 10 .27 0.51 [2] 12 .98 0.46 [2] Temp Scaling 3.62 0.27 [7] 3.89 0.30 [7] 4.93 0.30 [7] 6.72 0.29 [7] 7.03 0.40 [6] 7.58 0.41 [6] 9.46 0.46 [7] 12 .18 0.33 [6] 20 .57 0.39 [6] 21 .07 0.44 [6] 22 .51 0.55 [6] 24 .14 0.50 [6] COG-TS 2.03 0.35 [3] 2.23 0.39 [4] 3.33 0.25 [5] 5.83 0.35 [6] 6.99 0.51 [5] 7.49 0.56 [5] 9.20 0.65 [5] 11 .97 0.78 [5] 12 .34 2.19 [3] 12 .56 2.28 [3] 13 .51 2.42 [3] 15 .85 2.03 [3] Matrix Scaling 1.26 0.25 [1] 1.40 0.23 [1] 2.63 0.16 [1] 5.34 0.14 [1] 1.46 0.25 [1] 1.90 0.34 [1] 4.15 0.28 [1] 8.52 0.37 [1] 50 .30 1.79 [8] 50 .38 1.79 [8] 50 .91 1.73 [8] 51 .63 1.64 [8] COG-MS 2.31 0.14 [6] 2.53 0.21 [6] 3.56 0.13 [6] 5.80 0.19 [3] 7.17 0.49 [7] 7.61 0.60 [7] 9.33 0.53 [6] 12 .19 0.41 [7] 12 .75 2.35 [4] 13 .06 2.48 [4] 14 .00 2.52 [4] 16 .35 2.28 [4] TST 2.11 0.07 [5] 2.18 0.07 [3] 3.29 0.16 [3] 5.83 0.19 [5] 6.52 0.12 [2] 6.79 0.10 [2] 8.54 0.14 [3] 11 .65 0.21 [3] 17 .07 1.57 [5] 17 .25 1.63 [5] 17 .90 1.60 [5] 19 .61 1.44 [5] COG-TST 2.05 0.28 [4] 2.25 0.29 [5] 3.33 0.23 [4] 5.80 0.18 [4] 6.54 0.49 [3] 6.81 0.63 [3] 8.34 0.54 [2] 11 .50 0.34 [2] 4.59 0.68 [1] 4.70 0.63 [1] 6.22 0.74 [1] 10 .20 0.50 [1] Table 11: Comparison of MCE across different COG variants and their corresponding post-hoc counterparts for varying numbers of bins. We report mean std [Rank]. The relative ranking of methods changes across binning choices, while the MCE values increase substantially as the number of bins increases, highlighting the sensitivity of MCE to the binning scheme. 
+
+SVHN CIFAR-10 CIFAR-100 Method MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 41 .31 18 .97 [8] 44 .57 16 .42 [8] 67 .18 6.90 [6] 86 .85 2.54 [8] 36 .20 3.99 [8] 38 .15 2.71 [7] 62 .04 7.32 [4] 89 .10 1.47 [8] 48 .99 2.05 [7] 52 .19 1.21 [7] 68 .53 10 .04 [7] 83 .80 4.79 [7] COG-FC 17 .27 6.00 [3] 19 .03 6.81 [3] 48 .96 19 .74 [2] 74 .04 1.04 [2] 24 .65 3.82 [7] 28 .05 9.34 [5] 64 .03 12 .07 [6] 74 .84 2.75 [3] 15 .22 1.28 [2] 15 .74 1.50 [2] 40 .79 27 .35 [3] 72 .55 19 .63 [2] Temp Scaling 20 .24 5.18 [4] 33 .59 25 .20 [6] 66 .79 16 .02 [5] 78 .23 3.06 [5] 24 .28 3.67 [6] 25 .01 1.70 [4] 59 .11 13 .25 [3] 78 .52 4.12 [7] 36 .93 1.15 [6] 37 .08 1.10 [6] 53 .48 17 .14 [6] 82 .83 1.14 [4] COG-TS 33 .36 28 .15 [7] 35 .96 26 .44 [7] 80 .52 2.18 [8] 80 .67 1.99 [7] 22 .90 4.49 [2] 23 .01 2.66 [1] 50 .63 17 .00 [1] 74 .07 4.23 [1] 19 .63 3.45 [3] 20 .76 3.28 [3] 42 .74 22 .05 [4] 83 .17 1.57 [6] Matrix Scaling 30 .13 29 .41 [6] 30 .16 29 .38 [5] 68 .95 21 .59 [7] 78 .93 2.55 [6] 13 .89 8.78 [1] 23 .63 30 .26 [2] 70 .17 14 .95 [8] 77 .00 1.27 [5] 59 .68 2.69 [8] 67 .51 3.68 [8] 77 .04 2.03 [8] 92 .62 2.22 [8] COG-MS 20 .63 8.74 [5] 26 .11 4.82 [4] 43 .57 16 .80 [1] 73 .42 6.72 [1] 23 .96 3.41 [4] 24 .99 3.38 [3] 52 .36 16 .96 [2] 74 .15 4.45 [2] 21 .13 4.24 [4] 22 .67 5.13 [4] 43 .17 22 .18 [5] 83 .00 1.05 [5] TST 10 .61 4.73 [1] 12 .00 4.10 [1] 58 .87 27 .22 [3] 77 .56 2.47 [4] 23 .07 4.78 [3] 38 .30 22 .05 [8] 66 .90 12 .15 [7] 77 .93 2.33 [6] 28 .67 6.88 [5] 26 .84 2.65 [5] 38 .05 2.66 [2] 82 .39 14 .30 [3] COG-TST 11 .24 4.32 [2] 15 .63 3.58 [2] 61 .39 23 .73 [4] 77 .33 2.09 [3] 24 .21 8.73 [5] 33 .00 24 .36 [6] 62 .43 17 .53 [5] 75 .76 4.75 [4] 10 .79 3.30 [1] 9.10 1.74 [1] 32 .23 11 .60 [1] 72 .45 24 .42 [1] 19 Preprint. Under review. C.2 ALL METHODS COMPARED 
+
+Here we provide a more detailed version of the results found in Section 4.2. 
+
+Metrics used in the main text. As shown in Tab. 12, COG-FC achieves the highest overall rank across both backbones. Notably, COG-FC achieves this performance without introducing any additional trainable parameters, while being end to end and without a held out calibration set. Table 12: Comparison of all models and all variants seen in this work. We report mean std . The best value in each column is shown in bold. Rank denotes the mean rank across ACC, NLL, and Brier for a given dataset (1 = best; ties share a rank). 
+
+SVHN CIFAR-10 CIFAR-100 Method ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓)
+
+Baseline 95 .77 0.18 0.32 0.01 0.07 0.00 8.67 90 .50 0.21 0.64 0.02 0.17 0.00 8.00 65 .04 1.33 2.98 0.06 0.60 0.02 8.33 COG-FC 95 .84 0.20 0.16 0.00 0.06 0.00 2.67 89 .94 0.25 0.38 0.01 0.16 0.00 5.67 70 .46 0.30 1.08 0.01 0.41 0.00 1.33 
+
+COG+LS 96 .25 0.15 0.21 0.00 0.07 0.00 4.67 89 .92 0.21 0.38 0.00 0.16 0.00 6.00 72 .67 0.78 1.31 0.04 0.41 0.01 2.00 COG-TS 95 .86 0.05 0.16 0.00 0.06 0.00 2.33 89 .54 0.15 0.40 0.02 0.16 0.00 8.00 67 .55 0.62 1.30 0.06 0.46 0.00 3.33 COG-MS 96 .02 0.11 0.16 0.00 0.06 0.00 1.33 89 .27 0.26 0.41 0.01 0.17 0.00 10.33 67 .74 0.56 1.93 0.95 0.46 0.01 4.67 COG-TST 95 .84 0.10 0.16 0.00 0.06 0.00 2.67 88 .73 0.41 0.37 0.01 0.17 0.00 8.33 64 .77 0.25 1.24 0.01 0.47 0.00 5.00 LabelSmoothing 95 .97 0.12 0.23 0.00 0.07 0.00 6.33 90 .05 0.31 0.43 0.01 0.16 0.00 7.33 65 .76 0.88 1.58 0.04 0.48 0.01 5.33 Temp Scaling 95 .77 0.18 0.19 0.01 0.07 0.00 6.67 90 .50 0.21 0.38 0.01 0.15 0.00 3.00 65 .04 1.33 1.78 0.03 0.53 0.02 6.33 Matrix Scaling 95 .91 0.18 0.16 0.00 0.06 0.00 2.00 90 .74 0.17 0.28 0.00 0.14 0.00 1.00 46 .39 1.68 19 .10 2.15 1.02 0.03 12.00 TST 94 .69 0.04 0.21 0.00 0.08 0.00 9.00 90 .17 0.06 0.37 0.00 0.15 0.00 3.33 52 .69 0.45 1.99 0.03 0.64 0.00 10.33 V-TST (MC=1) 93 .74 0.15 0.25 0.00 0.10 0.00 11.67 89 .62 0.08 0.39 0.02 0.16 0.00 7.33 50 .50 0.39 1.94 0.01 0.63 0.00 10.00 V-TST (MC=10) 94 .66 0.03 0.21 0.00 0.08 0.00 9.33 90 .31 0.16 0.34 0.01 0.15 0.00 2.67 52 .71 0.25 1.81 0.01 0.61 0.00 8.33 
+
+Calibration Errors. Here we report calibration errors under different norms and across multiple choices of the number of bins for all models and variants seen in this work (ECE in Tab. 13, RMSCE in Tab. 14, MCE in Tab. 15). Here, we again notice the switch in rank between different number of bins used to calculate the calibration metrics. Table 13: Comparison of ECE ( ↓ lower is better) for all models and all variants seen in this work for multiple choices of the number of bins. We report mean std . The best value in each column is shown in bold. 
+
+SVHN CIFAR-10 CIFAR-100 Method ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 Baseline 3.26 0.11 3.25 0.11 3.29 0.10 3.45 0.10 7.38 0.25 7.39 0.23 7.47 0.23 7.89 0.22 26 .56 0.79 26 .56 0.78 26 .60 0.79 26 .76 0.83 
+
+COG-FC 1.14 0.30 1.16 0.29 1.32 0.17 1.86 0.07 5.32 0.16 5.32 0.14 5.49 0.11 6.22 0.12 8.00 0.35 8.00 0.36 8.13 0.37 9.20 0.28 
+
+COG+LS 7.44 0.20 7.51 0.19 7.82 0.17 8.32 0.17 4.90 0.18 5.10 0.31 5.65 0.31 7.17 0.26 6.81 2.10 6.94 1.85 7.95 1.59 9.33 1.07 
+
+COG-TS 1.23 0.14 1.24 0.14 1.41 0.11 1.95 0.11 5.52 0.40 5.52 0.40 5.66 0.40 6.40 0.40 11 .14 2.05 11 .14 2.05 11 .21 2.03 11 .96 1.77 
+
+COG-MS 1.37 0.08 1.38 0.08 1.51 0.06 1.97 0.10 5.67 0.24 5.68 0.24 5.84 0.25 6.61 0.15 11 .46 2.24 11 .46 2.24 11 .55 2.19 12 .43 1.82 
+
+COG-TST 1.21 0.11 1.21 0.11 1.39 0.09 1.91 0.07 4.96 0.32 4.96 0.32 5.14 0.30 6.13 0.17 4.04 0.55 4.07 0.57 4.70 0.50 7.18 0.35 
+
+Label Smoothing 6.81 0.29 7.13 0.22 7.33 0.22 7.66 0.22 6.37 0.45 5.32 0.30 6.72 0.27 7.59 0.23 4.06 2.05 4.51 1.90 5.31 1.67 7.90 1.22 
+
+Temp. Scaling 2.19 0.09 2.20 0.09 2.26 0.08 2.57 0.05 5.40 0.29 5.41 0.28 5.57 0.26 6.21 0.14 18 .88 0.41 18 .88 0.41 18 .91 0.42 19 .26 0.43 
+
+Matrix Scaling 0.71 0.16 0.73 0.15 1.05 0.07 1.84 0.09 0.73 0.12 0.89 0.10 1.76 0.07 3.74 0.22 50 .18 1.79 50 .18 1.79 50 .19 1.79 50 .25 1.79 
+
+TST 1.47 0.03 1.48 0.02 1.69 0.05 2.32 0.07 4.90 0.07 4.91 0.05 5.10 0.05 6.01 0.07 15 .78 1.46 15 .80 1.45 15 .82 1.41 16 .22 1.40 
+
+V-TST (MC=1) 1.53 0.86 1.56 0.82 1.85 0.69 2.60 0.55 2.07 0.83 2.14 0.80 2.82 0.67 4.44 0.34 6.60 1.70 6.61 1.70 6.93 1.64 9.00 1.29 
+
+V-TST (MC=10) 3.02 0.99 3.02 0.99 3.07 0.97 3.52 0.80 1.09 0.40 1.14 0.36 1.99 0.23 3.92 0.22 2.28 1.28 2.33 1.24 3.73 0.70 7.19 0.63 
+
+20 Preprint. Under review. Table 14: Comparison of RMSCE ( ↓ lower is better) for all models and all variants seen in this work for multiple choices of the number of bins. We report mean std . The best value in each column is shown in bold. 
+
+SVHN CIFAR-10 CIFAR-100 Method RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 Baseline 5.03 0.44 5.57 0.28 7.22 0.22 8.85 0.22 8.98 0.43 9.65 0.41 11 .89 0.54 14 .58 0.46 27 .69 0.86 28 .27 0.84 30 .69 0.83 32 .47 0.84 
+
+COG-FC 1.96 0.66 2.16 0.67 3.17 0.33 5.59 0.17 6.98 0.36 7.27 0.29 9.08 0.36 11 .87 0.34 9.18 0.46 9.39 0.47 10 .27 0.51 12 .98 0.46 
+
+COG+LS 7.59 0.17 7.70 0.14 8.10 0.13 9.19 0.14 5.28 0.28 5.42 0.42 6.53 0.37 9.73 0.25 9.65 2.03 10 .91 2.71 11 .87 2.54 14 .68 1.98 
+
+COG-TS 2.03 0.35 2.23 0.39 3.33 0.25 5.83 0.35 6.99 0.51 7.49 0.56 9.20 0.65 11 .97 0.78 12 .34 2.19 12 .56 2.28 13 .51 2.42 15 .85 2.03 
+
+COG-MS 2.31 0.14 2.53 0.21 3.56 0.13 5.80 0.19 7.17 0.49 7.61 0.60 9.33 0.53 12 .19 0.41 12 .75 2.35 13 .06 2.48 14 .00 2.52 16 .35 2.28 
+
+COG-TST 2.05 0.28 2.25 0.29 3.33 0.23 5.80 0.18 6.54 0.49 6.81 0.63 8.34 0.54 11 .50 0.34 4.59 0.68 4.70 0.63 6.22 0.74 10 .20 0.50 
+
+Label Smoothing 7.05 0.24 7.33 0.28 7.79 0.35 8.91 0.31 7.30 0.70 7.08 0.42 8.84 0.23 11 .47 0.30 5.24 2.72 5.71 3.02 7.10 2.67 11 .12 2.17 
+
+Temp. Scaling 3.62 0.27 3.89 0.30 4.93 0.30 6.72 0.29 7.03 0.40 7.58 0.41 9.46 0.46 12 .18 0.33 20 .57 0.39 21 .07 0.44 22 .51 0.55 24 .14 0.50 
+
+Matrix Scaling 1.26 0.25 1.40 0.23 2.63 0.16 5.34 0.14 1.46 0.25 1.90 0.34 4.15 0.28 8.52 0.37 50 .30 1.79 50 .38 1.79 50 .91 1.73 51 .63 1.64 
+
+TST 2.11 0.07 2.18 0.07 3.29 0.16 5.83 0.19 6.52 0.12 6.79 0.10 8.54 0.14 11 .65 0.21 17 .07 1.57 17 .25 1.63 17 .90 1.60 19 .61 1.44 
+
+V-TST (MC=1) 2.42 1.15 2.55 1.13 3.50 0.88 5.85 0.60 2.72 1.09 2.99 0.93 4.83 0.79 8.99 0.42 7.43 1.79 7.55 1.86 8.46 1.78 11 .94 1.43 
+
+V-TST (MC=10) 4.37 1.23 4.50 1.27 5.03 1.10 6.75 0.74 2.09 0.32 2.24 0.29 4.27 0.26 8.69 0.26 2.73 1.41 2.82 1.42 4.93 0.95 9.57 0.83 
+
+Table 15: Comparison of MCE ( ↓ lower is better) for all models and all variants seen in this work for multiple choices of the number of bins. We report mean std . The best value in each column is shown in bold. 
+
+SVHN CIFAR-10 CIFAR-100 Method MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 41 .31 18 .97 44 .57 16 .42 67 .18 6.90 86 .85 2.54 36 .20 3.99 38 .15 2.71 62 .04 7.32 89 .10 1.47 48 .99 2.05 52 .19 1.21 68 .53 10 .04 83 .80 4.79 
+
+COG-FC 17 .27 6.00 19 .03 6.81 48 .96 19 .74 74 .04 1.04 24 .65 3.82 28 .05 9.34 64 .03 12 .07 74 .84 2.75 15 .22 1.28 15 .74 1.50 40 .79 27 .35 72 .55 19 .63 
+
+COG+LS 26 .96 36 .96 31 .07 34 .26 64 .62 19 .09 82 .10 10 .28 13 .53 4.93 17 .21 8.08 62 .42 17 .53 74 .22 1.98 25 .15 4.64 25 .52 5.26 42 .97 10 .78 90 .75 7.47 
+
+COG-TS 33 .36 28 .15 35 .96 26 .44 80 .52 2.18 80 .67 1.99 22 .90 4.49 23 .01 2.66 50 .63 17 .00 74 .07 4.23 19 .63 3.45 20 .76 3.28 42 .74 22 .05 83 .17 1.57 
+
+COG-MS 20 .63 8.74 26 .11 4.82 43 .57 16 .80 73 .42 6.72 23 .96 3.41 24 .99 3.38 52 .36 16 .96 74 .15 4.45 21 .13 4.24 22 .67 5.13 43 .17 22 .18 83 .00 1.05 
+
+COG-TST 11 .24 4.32 15 .63 3.58 61 .39 23 .73 77 .33 2.09 24 .21 8.73 33 .00 24 .36 62 .43 17 .53 75 .76 4.75 10 .79 3.30 9.10 1.74 32 .23 11 .60 72 .45 24 .42 
+
+Label Smoothing 27 .25 8.32 24 .46 2.61 64 .13 23 .29 85 .41 13 .43 22 .40 4.72 28 .71 8.38 63 .19 12 .02 76 .08 3.09 12 .23 5.77 11 .66 6.50 27 .22 11 .83 74 .04 28 .90 
+
+Temp. Scaling 20 .24 5.18 33 .59 25 .20 66 .79 16 .02 78 .23 3.06 24 .28 3.67 25 .01 1.70 59 .11 13 .25 78 .52 4.12 36 .93 1.15 37 .08 1.10 53 .48 17 .14 82 .83 1.14 
+
+Matrix Scaling 30 .13 29 .41 30 .16 29 .38 68 .95 21 .59 78 .93 2.55 13 .89 8.78 23 .63 30 .26 70 .17 14 .95 77 .00 1.27 59 .68 2.69 67 .51 3.68 77 .04 2.03 92 .62 2.22 
+
+TST 10 .61 4.73 12 .00 4.10 58 .87 27 .22 77 .56 2.47 23 .07 4.78 38 .30 22 .05 66 .90 12 .15 77 .93 2.33 28 .67 6.88 26 .84 2.65 38 .05 2.66 82 .39 14 .30 
+
+V-TST (MC=1) 25 .93 31 .22 25 .88 31 .24 49 .77 29 .86 78 .80 5.05 30 .78 28 .80 30 .78 28 .80 43 .73 22 .23 79 .42 2.50 12 .48 1.81 16 .95 6.28 40 .86 31 .27 74 .44 25 .93 
+
+V-TST (MC=10) 16 .71 3.28 17 .23 2.46 38 .25 8.40 79 .39 1.69 23 .52 7.01 23 .52 7.01 48 .56 17 .78 78 .79 2.92 5.44 1.98 10 .73 9.18 20 .49 6.35 61 .71 29 .70 
+
+21 Preprint. Under review. C.3 PERFORMANCE UNDER COVARIATE SHIFTS AND OOD 
+
+Metrics used in the main text. Tab. 16 reports the performance of all methods in out-of-distribution detection and Tab. 17 reports their performance under covariate shifts. Table 16: Performance in out-of-distribution detection or all models and all variants seen in this work. 
+
+SVHN CIFAR-10 CIFAR-100 Method AUROC (↑) FPR95 (↓) Rank (↓) AUROC (↑) FPR95 (↓) Rank (↓) AUROC (↑) FPR95 (↓) Rank (↓)
+
+Baseline 94 .78 0.24 34 .43 1.27 8.00 83 .97 2.70 76 .39 3.20 7.00 71 .92 1.33 87 .67 1.34 7.00 COG-FC 96 .60 0.41 21 .60 2.59 2.00 87 .00 1.32 73 .98 4.03 3.00 68 .50 2.22 85 .83 1.43 8.00 COG+LS 93 .80 0.61 22 .58 2.45 6.50 81 .93 3.10 73 .43 3.18 6.00 65 .48 7.85 83 .71 3.42 6.50 COG-TS 96 .21 0.35 24 .71 2.66 4.50 86 .04 0.89 77 .01 2.21 6.00 67 .31 1.22 88 .67 0.81 10.50 COG-MS 96 .70 0.28 20 .36 2.18 1.00 86 .20 0.56 77 .27 1.74 6.00 69 .40 1.55 86 .22 1.06 8.00 COG-TST 96 .60 0.09 22 .66 0.51 3.00 87 .41 0.70 71 .37 2.34 1.50 73 .92 2.72 79 .96 2.31 1.50 
+
+Label Smoothing 80 .58 1.66 42 .84 2.40 11.50 72 .17 6.88 78 .88 3.09 11.50 74 .35 2.98 84 .06 1.86 2.00 Temp. Scaling 95 .33 0.25 31 .14 1.85 6.50 85 .09 2.43 75 .04 4.22 5.50 73 .23 1.53 85 .46 2.00 3.50 Matrix Scaling 96 .04 0.25 25 .31 1.88 5.50 86 .86 2.06 70 .92 7.20 2.00 58 .23 1.55 93 .01 0.33 12.00 TST 94 .85 0.03 35 .96 0.32 8.50 84 .51 0.23 77 .53 0.31 8.00 69 .91 0.41 85 .77 0.84 5.50 V-TST (MC=1) 92 .28 0.91 46 .49 3.14 11.50 77 .36 2.70 80 .33 1.93 11.50 69 .59 0.70 86 .92 0.41 8.00 V-TST (MC=10) 94 .66 0.47 35 .35 2.40 9.00 79 .23 2.27 78 .61 1.96 10.00 70 .75 0.85 85 .78 0.64 5.50 Table 17: Performance under covariate shifts. Shift metrics are averaged across all considered covariate shifts. 
+
+SVHN CIFAR-10 CIFAR-100 Method ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓)
+
+Baseline 47 .01 1.06 5.29 0.23 0.94 0.02 8.67 74 .28 0.59 2.03 0.11 0.45 0.01 6.67 45 .85 1.36 5.70 0.21 0.92 0.02 7.67 COG-FC 45 .82 1.32 2.43 0.12 0.80 0.02 6.00 68 .80 0.68 1.57 0.09 0.50 0.01 9.00 44 .09 0.42 2.88 0.04 0.77 0.01 4.00 COG+LS 46 .05 0.57 1.91 0.02 0.77 0.00 3.00 69 .31 0.42 1.11 0.02 0.46 0.01 7.33 44 .92 0.69 2.90 0.11 0.81 0.03 5.67 COG-TS 45 .59 0.50 3.35 0.12 0.88 0.01 10.33 67 .98 0.22 2.36 0.17 0.55 0.01 11.33 40 .99 0.22 5.23 0.63 0.93 0.02 9.33 COG-MS 46 .38 0.51 2.53 0.10 0.81 0.01 6.00 67 .67 0.63 1.68 0.11 0.52 0.01 10.67 43 .63 0.80 4.10 1.23 0.80 0.02 6.67 COG-TST 45 .68 0.67 2.28 0.04 0.80 0.01 5.67 67 .42 0.42 1.39 0.03 0.51 0.01 10.00 40 .81 0.50 2.71 0.03 0.77 0.00 4.33 Label Smoothing 46 .19 0.59 2.19 0.04 0.86 0.01 6.33 74 .22 0.42 1.03 0.02 0.42 0.01 4.00 47 .14 0.91 2.54 0.10 0.71 0.03 1.00 
+
+Temp. Scaling 47 .01 1.06 3.05 0.12 0.85 0.02 7.00 74 .28 0.59 1.19 0.05 0.41 0.01 4.00 45 .85 1.36 3.32 0.10 0.81 0.02 5.67 Matrix Scaling 47 .27 0.72 2.14 0.02 0.75 0.01 1.67 74 .35 0.66 0.84 0.03 0.36 0.01 1.00 30 .45 1.07 29 .62 3.40 1.33 0.03 12.00 TST 41 .74 0.11 2.66 0.02 0.84 0.00 9.00 72 .85 0.21 1.10 0.02 0.42 0.00 5.67 38 .23 0.33 3.24 0.08 0.84 0.01 8.67 V-TST (MC=1) 40 .31 0.26 2.38 0.16 0.83 0.02 8.33 72 .90 0.24 1.03 0.06 0.41 0.01 4.00 36 .77 0.26 2.83 0.04 0.80 0.01 6.67 V-TST (MC=10) 41 .66 0.26 2.06 0.07 0.77 0.01 5.00 73 .91 0.22 0.91 0.03 0.38 0.01 3.00 38 .44 0.24 2.66 0.02 0.77 0.00 4.33 
+
+Calibration Errors. Here, we additionally report the results for the different calibration error met-rics. In particular, V-TST performs particularly strongly according to the considered calibration errors. COG-FC achieves competitive performance across the different metrics and binning configurations. Table 18: ECE averaged across all considered covariate shifts for all models and all variants seen in this work for multiple choices of the number of bins. 
+
+SVHN CIFAR-10 CIFAR-100 Method ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 Baseline 43 .81 1.01 43 .81 1.01 43 .81 1.01 43 .82 1.01 20 .68 0.56 20 .68 0.56 20 .68 0.56 20 .66 0.56 41 .90 0.89 41 .89 0.89 41 .89 0.89 41 .86 0.89 
+
+COG-FC 29 .55 2.32 29 .55 2.32 29 .55 2.32 29 .56 2.31 20 .46 0.86 20 .45 0.86 20 .45 0.86 20 .43 0.86 22 .93 0.19 22 .93 0.19 22 .93 0.19 22 .93 0.19 
+
+COG+LS 24 .90 0.61 24 .90 0.61 24 .91 0.61 24 .91 0.61 11 .96 1.14 11 .96 1.14 11 .99 1.10 12 .00 1.09 25 .93 3.92 25 .93 3.92 25 .93 3.92 25 .93 3.92 
+
+COG-TS 37 .76 0.75 37 .76 0.75 37 .76 0.75 37 .77 0.76 24 .80 0.63 24 .80 0.63 24 .80 0.63 24 .78 0.63 38 .37 2.30 38 .37 2.30 38 .36 2.29 38 .35 2.29 
+
+COG-MS 30 .83 1.39 30 .83 1.39 30 .83 1.39 30 .83 1.39 21 .30 0.92 21 .29 0.92 21 .29 0.92 21 .27 0.92 26 .76 2.95 26 .76 2.95 26 .76 2.95 26 .75 2.95 
+
+COG-TST 29 .10 0.97 29 .10 0.97 29 .10 0.97 29 .11 0.97 19 .22 0.40 19 .22 0.40 19 .21 0.40 19 .20 0.40 16 .43 0.47 16 .43 0.47 16 .43 0.46 16 .43 0.46 
+
+Label Smoothing 34 .60 0.89 34 .60 0.89 34 .60 0.89 34 .61 0.89 11 .39 0.40 11 .39 0.40 11 .71 0.29 11 .75 0.35 11 .14 5.10 11 .16 5.09 11 .17 5.08 11 .19 5.07 
+
+Temp. Scaling 35 .90 1.13 35 .89 1.13 35 .90 1.13 35 .90 1.13 16 .24 0.65 16 .23 0.65 16 .23 0.65 16 .21 0.65 30 .94 0.89 30 .93 0.89 30 .92 0.89 30 .92 0.89 
+
+Matrix Scaling 23 .93 0.87 23 .93 0.87 23 .94 0.87 23 .95 0.87 7.61 0.98 7.60 0.98 7.59 0.98 7.59 0.99 65 .41 1.37 65 .40 1.37 65 .39 1.37 65 .37 1.37 
+
+TST 31 .22 0.17 31 .22 0.17 31 .22 0.17 31 .23 0.17 15 .62 0.22 15 .62 0.22 15 .61 0.22 15 .60 0.22 25 .33 1.60 25 .33 1.60 25 .33 1.60 25 .33 1.60 
+
+V-TST (MC=1) 27 .01 3.15 27 .01 3.15 27 .01 3.15 27 .01 3.15 11 .11 2.15 11 .10 2.15 11 .08 2.14 11 .08 2.13 14 .11 1.78 14 .11 1.78 14 .10 1.78 14 .11 1.78 
+
+V-TST (MC=10) 20 .52 2.34 20 .52 2.34 20 .52 2.34 20 .54 2.34 8.26 2.01 8.25 2.01 8.24 2.00 8.26 1.98 9.57 1.59 9.57 1.59 9.57 1.59 9.57 1.59 
+
+22 Preprint. Under review. Table 19: RMSCE averaged across all considered covariate shifts for all models and all variants seen in this work for multiple choices of the number of bins. 
+
+SVHN CIFAR-10 CIFAR-100 Method RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 Baseline 44 .25 1.00 44 .43 0.99 45 .42 0.97 46 .12 0.97 21 .71 0.49 22 .21 0.47 24 .29 0.40 25 .44 0.39 42 .51 0.86 42 .80 0.84 44 .18 0.77 44 .98 0.75 
+
+COG-FC 30 .73 2.20 31 .00 2.21 31 .68 2.37 31 .82 2.39 21 .66 0.79 22 .17 0.78 23 .72 0.86 24 .20 0.92 24 .08 0.18 24 .29 0.18 24 .63 0.17 24 .68 0.17 
+
+COG+LS 26 .50 0.73 26 .71 0.64 27 .18 0.66 27 .31 0.66 14 .31 0.88 14 .26 0.71 14 .75 0.80 14 .81 0.81 27 .11 3.86 27 .88 4.18 28 .26 4.31 28 .29 4.32 
+
+COG-TS 38 .64 0.79 38 .92 0.80 40 .05 0.89 40 .58 0.92 25 .64 0.56 26 .09 0.53 27 .94 0.53 28 .86 0.58 39 .19 2.20 39 .48 2.19 40 .50 2.26 40 .87 2.38 
+
+COG-MS 31 .92 1.35 32 .18 1.37 32 .90 1.42 33 .04 1.43 22 .41 0.86 22 .90 0.84 24 .41 0.88 24 .89 0.92 27 .80 2.91 28 .04 2.97 28 .52 3.15 28 .60 3.18 
+
+COG-TST 30 .26 1.02 30 .51 1.05 31 .13 1.12 31 .24 1.13 20 .40 0.37 20 .85 0.37 22 .05 0.35 22 .34 0.37 17 .32 0.53 17 .41 0.53 17 .51 0.54 17 .53 0.54 
+
+Label Smoothing 36 .06 1.09 35 .99 0.77 36 .87 0.93 37 .05 0.96 15 .57 1.06 14 .59 0.19 16 .33 0.68 16 .59 0.65 12 .91 5.21 13 .15 5.35 13 .25 5.40 13 .29 5.39 
+
+Temp. Scaling 36 .74 1.09 37 .00 1.09 37 .90 1.14 38 .22 1.16 17 .72 0.53 18 .28 0.53 19 .90 0.59 20 .38 0.64 32 .07 0.86 32 .43 0.86 33 .49 0.90 33 .77 0.93 
+
+Matrix Scaling 24 .91 0.88 25 .03 0.90 25 .19 0.92 25 .31 0.92 8.67 1.11 8.84 1.15 9.07 1.21 9.13 1.20 65 .64 1.36 65 .65 1.36 65 .79 1.33 65 .93 1.30 
+
+TST 32 .63 0.17 32 .92 0.17 33 .60 0.18 33 .76 0.18 17 .19 0.21 17 .64 0.20 18 .96 0.22 19 .32 0.22 26 .45 1.63 26 .63 1.66 26 .92 1.73 26 .96 1.74 
+
+V-TST (MC=1) 28 .31 3.17 28 .47 3.23 28 .66 3.35 28 .76 3.35 12 .05 2.18 12 .26 2.21 12 .58 2.29 12 .65 2.29 15 .30 1.87 15 .36 1.88 15 .43 1.90 15 .46 1.90 
+
+V-TST (MC=10) 21 .70 2.47 21 .80 2.53 21 .91 2.55 22 .05 2.54 9.25 2.14 9.42 2.19 9.61 2.23 9.68 2.22 10 .39 1.68 10 .41 1.69 10 .45 1.70 10 .49 1.69 
+
+Table 20: MCE averaged across all considered covariate shifts for all models and all variants seen in this work for multiple choices of the number of bins. 
+
+SVHN CIFAR-10 CIFAR-100 Method MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 58 .64 1.18 62 .43 0.81 72 .23 7.88 76 .60 4.84 44 .30 0.51 46 .83 0.37 54 .91 13 .78 65 .07 13 .82 59 .43 0.36 62 .38 0.52 64 .12 0.60 72 .86 10 .41 
+
+COG-FC 45 .33 2.35 46 .36 2.83 47 .61 2.88 58 .79 14 .22 37 .89 1.23 38 .70 1.44 47 .84 18 .37 71 .61 17 .00 33 .81 0.21 34 .23 0.21 40 .17 10 .67 49 .31 24 .20 
+
+COG+LS 39 .56 1.40 58 .27 19 .86 97 .99 1.03 98 .13 1.02 25 .85 1.53 26 .18 1.67 44 .33 24 .12 60 .95 22 .11 41 .05 5.79 46 .22 9.70 77 .67 15 .92 92 .00 16 .61 
+
+COG-TS 54 .80 1.62 57 .11 1.40 59 .03 1.37 74 .21 11 .88 52 .15 16 .14 54 .01 15 .10 61 .46 16 .53 77 .84 2.28 53 .65 2.26 55 .01 2.77 55 .75 3.00 57 .57 2.84 
+
+COG-MS 46 .55 1.60 47 .67 1.92 49 .19 1.52 53 .37 1.47 38 .17 1.23 39 .19 1.23 57 .12 21 .10 72 .99 16 .32 39 .09 4.42 39 .43 4.28 40 .26 4.15 50 .85 21 .98 
+
+COG-TST 44 .42 1.99 45 .04 2.12 62 .32 22 .12 67 .51 17 .97 34 .27 0.97 34 .33 1.02 44 .96 22 .03 64 .10 24 .58 24 .25 0.73 24 .30 0.70 25 .80 1.56 27 .57 0.88 
+
+Label Smoothing 50 .06 1.22 62 .35 9.76 96 .58 2.72 97 .83 0.90 32 .35 0.51 36 .56 2.03 45 .74 19 .46 76 .54 18 .34 22 .37 8.25 22 .65 8.22 27 .67 9.58 39 .98 16 .23 
+
+Temp. Scaling 51 .29 1.05 53 .13 0.83 67 .01 15 .78 73 .50 13 .01 34 .41 0.84 35 .20 1.16 36 .15 1.07 55 .45 22 .68 47 .34 1.16 47 .59 1.47 48 .55 1.63 66 .84 21 .99 
+
+Matrix Scaling 34 .46 1.40 35 .03 1.52 37 .08 0.85 67 .03 23 .03 14 .27 2.12 14 .53 2.17 16 .15 1.67 60 .54 31 .64 69 .92 0.37 74 .36 0.41 81 .05 0.81 81 .73 0.81 
+
+TST 48 .38 0.38 48 .50 0.37 50 .88 0.85 67 .24 15 .34 31 .46 0.21 31 .93 0.21 48 .22 23 .13 74 .67 19 .58 50 .45 27 .73 50 .77 27 .54 51 .76 27 .02 63 .19 30 .27 
+
+V-TST (MC=1) 40 .53 4.82 41 .00 4.68 43 .94 4.53 54 .19 16 .27 20 .08 3.81 20 .61 3.87 25 .79 5.80 52 .55 21 .56 52 .92 42 .98 52 .94 42 .97 53 .62 42 .34 55 .82 40 .36 
+
+V-TST (MC=10) 31 .87 3.70 32 .27 3.89 34 .24 3.97 42 .04 4.61 16 .02 3.71 16 .28 3.82 19 .85 3.89 71 .49 18 .33 31 .53 38 .30 31 .73 38 .19 32 .29 37 .87 40 .41 35 .32 
+
+23 Preprint. Under review. 70 80 90 100 
+
+> Accuracy (%)  (↑)
+> Big Lips Oval Face Pointy Nose Attractive Arched Eyebrows Wavy Hair Straight Hair Big Nose Bags Under Eyes Narrow Eyes Wearing Necklace Wearing Earrings High Cheekbones Young Brown Hair Black Hair Heavy Makeup Bushy Eyebrows Mouth Slightly Open Smiling Wearing Lipstick Receding Hairline 5 o Clock Shadow No Beard Blurry Rosy Cheeks Bangs Chubby Blond Hair Double Chin Wearing Necktie Mustache Pale Skin Goatee Sideburns Male Gray Hair Eyeglasses Wearing Hat Bald
+
+0.00.10.20.30.4
+
+> Brier  (↓)
+
+COG-FC Label Smoothing Temp. Scaling 
+
+Figure 6: Per-task metrics on CelebA. Tasks are ordered by their mean Brier. COG-FC achieves higher accuracy than Temperature Scaling and Label Smoothing on all 40 tasks. In terms of Brier, COG-FC outperforms Temperature Scaling on 32 of 40 tasks and Label Smoothing on all 40 tasks. C.4 VIT ABLATION 
+
+In this subsection, we report calibration metrics for ViT on CIFAR-10. We train the ViT model from scratch using the architecture described in (Jordahn & Olmos, 2024). The results are reported in Tab. 21. Table 21: Comparison of calibration errors for ViT in CIFAR-10 for multiple choices of the number of bins. 
+
+Method ECE-10 ECE-15 ECE-100 ECE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 7.73 0.66 [4] 7.73 0.66 [4] 7.90 0.66 [4] 9.18 0.77 [4] 8.49 0.79 [3] 8.77 0.86 [4] 9.67 0.89 [4] 12 .46 0.87 [3] 15 .84 3.92 [2] 15 .94 3.67 [2] 41 .11 21 .89 [2] 76 .03 1.74 [3] COG-FC 7.70 0.70 [3] 7.70 0.67 [3] 7.87 0.61 [3] 8.99 0.61 [3] 8.61 0.73 [5] 8.88 0.75 [5] 9.75 0.72 [5] 12 .52 0.68 [4] 28 .76 28 .91 [6] 29 .45 28 .51 [6] 59 .26 23 .83 [5] 77 .84 1.67 [5] Temp Scaling 1.65 0.34 [2] 1.72 0.32 [2] 3.11 0.24 [2] 6.19 0.13 [2] 1.96 0.30 [2] 2.16 0.33 [2] 4.28 0.36 [2] 8.85 0.11 [2] 21 .00 5.63 [4] 21 .00 5.63 [4] 40 .90 28 .62 [1] 78 .78 2.61 [6] COG-TS 8.09 1.46 [6] 8.11 1.45 [6] 8.28 1.40 [6] 9.50 1.06 [6] 8.89 1.50 [6] 9.08 1.57 [6] 10 .00 1.56 [6] 12 .85 1.24 [6] 14 .22 2.15 [1] 15 .73 2.69 [1] 58 .58 25 .29 [4] 75 .97 2.26 [2] Matrix Scaling 1.00 0.13 [1] 1.22 0.21 [1] 2.72 0.38 [1] 5.87 0.22 [1] 1.44 0.19 [1] 1.82 0.32 [1] 4.02 0.46 [1] 8.68 0.08 [1] 20 .99 10 .35 [3] 20 .99 10 .35 [3] 61 .38 28 .21 [6] 75 .84 12 .01 [1] COG-MS 7.74 0.54 [5] 7.76 0.53 [5] 7.91 0.54 [5] 9.25 0.40 [5] 8.53 0.54 [4] 8.76 0.62 [3] 9.63 0.59 [3] 12 .53 0.49 [5] 27 .80 29 .72 [5] 28 .35 29 .50 [5] 56 .64 22 .11 [3] 77 .62 2.36 [4] C.5 MULTI -T ASK LEARNING 
+
+Since to the best of our knowledge, there are no MTL-specific calibration error metrics, we fol-low (Vandenhirtz et al., 2024; van Krieken et al., 2026) and measure the overall calibration error as the unweighted average of the calibration errors computed independently for each task, across all norms. As shown in Tab. 22, COG-FC and COG+LS consistently improve upon their counterparts, while COG-TS performs worse than Temperature Scaling. Table 22: Calibration errors for ResNet101 on CelebA, averaged across tasks. Bold indicates the best value within each group. 
+
+CelebA Method ECE-10 ECE-15 ECE-100 ECE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 5.84 0.08 5.85 0.08 6.01 0.08 6.56 0.08 7.52 0.16 7.83 0.14 9.29 0.11 11 .47 0.10 26 .89 0.74 29 .35 0.69 49 .93 0.46 82 .51 1.17 
+
+COG-FC 5.01 0.04 5.03 0.03 5.19 0.04 5.77 0.03 6.50 0.07 6.82 0.06 8.27 0.06 10 .56 0.05 23 .38 0.86 25 .50 0.54 48 .25 0.45 81 .91 0.65 
+
+Label Smoothing 4.88 0.05 4.90 0.06 5.09 0.05 5.76 0.05 6.59 0.11 6.92 0.11 8.26 0.10 10 .45 0.07 23 .80 0.65 25 .46 0.77 46 .98 1.62 80 .59 0.41 
+
+COG+LS 4.09 0.04 4.11 0.05 4.33 0.04 5.03 0.04 5.61 0.04 5.94 0.05 7.27 0.03 9.64 0.05 19 .57 0.32 21 .82 0.42 45 .07 0.51 79 .47 0.56 
+
+Temp. Scaling 3.27 0.09 3.29 0.09 3.53 0.08 4.40 0.06 4.78 0.17 4.98 0.16 6.06 0.13 8.63 0.10 17 .11 0.81 19 .02 0.93 39 .36 0.92 76 .39 1.60 
+
+COG-TS 5.03 0.02 5.05 0.01 5.21 0.01 5.83 0.02 6.35 0.04 6.68 0.05 8.07 0.07 10 .41 0.06 22 .01 1.07 23 .87 0.90 45 .77 0.94 80 .16 0.36 
+
+Per-task ECE-100. In Fig. 7, we plot the ECE-100 for the best-performing models on CelebA. We observe the same overall ordering of task difficulty across methods, with all methods identifying the same tasks as the most challenging, including Big Lips . We also observe substantial variance for some tasks across all models, particularly for Label Smoothing, consistent with the variability observed in the corresponding Brier score results in Fig. 6. 24 Preprint. Under review. Big_Lips Oval_Face Pointy_Nose Narrow_Eyes Wavy_Hair Arched_Eyebrows Attractive Big_Nose Straight_Hair Bags_Under_Eyes Wearing_Necklace Young High_Cheekbones Wearing_Earrings Black_Hair Brown_Hair Heavy_Makeup Mouth_Slightly_Open Bushy_Eyebrows Smiling Receding_Hairline Wearing_Lipstick 5_o_Clock_Shadow No_Beard Blurry Bangs Chubby Rosy_Cheeks Double_Chin Blond_Hair Wearing_Necktie Mustache Pale_Skin Goatee Sideburns Male Gray_Hair Eyeglasses Wearing_Hat Bald 
+
+0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 
+
+> ECE-100 (%)
+
+COG-FC Label Smoothing Temp. Scaling 
+
+Figure 7: Per-task ECE-100 for the best-performing models evaluated in the main text. 
+
+D RESULTS WITH A WRN BACKBONE 
+
+In this section, we provide a brief summary of the results for in-distribution calibration, out-of-distribution detection, and performance under covariate shift using a WRN-28-10 back-bone (Zagoruyko & Komodakis, 2016). The experimental settings are otherwise identical to those used with the ResNet backbone. 
+
+All Experimental Results. In Tab. 23, we compare all model families in terms of calibration performance. On SVHN, we observe that almost all methods achieve similar Brier scores, with the main differences arising in NLL and accuracy, where the COG variants consistently dominate. On CIFAR-10, the (V)-TST models perform particularly well in both Brier score and accuracy. Finally, on CIFAR-100, we find that the COG variants generally achieve strong performance across the considered metrics. We again observe the same optimization issue with Matrix Scaling on CIFAR-100. In Tables 24- 26, we report ECE, RMSCE and MCE values for the same models. Table 23: Comparison of all models and all variants seen in this work. We report mean std . The best value in each column is shown in bold. Rank denotes the mean rank across ACC, NLL, and Brier for a given dataset (1 = best; ties share a rank). 
+
+SVHN CIFAR-10 CIFAR-100 Method ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓)
+
+Baseline 95 .35 0.20 0.35 0.01 0.08 0.00 9.67 91 .33 0.60 0.53 0.02 0.15 0.01 7.67 69 .49 1.15 2.33 0.11 0.52 0.02 7.67 COG-FC 95 .60 0.15 0.17 0.00 0.07 0.00 3.00 88 .88 0.34 0.36 0.01 0.17 0.00 8.00 67 .89 0.55 1.19 0.04 0.44 0.01 3.00 COG+LS 95 .92 0.19 0.22 0.00 0.07 0.00 3.67 89 .41 0.30 0.37 0.01 0.16 0.00 7.67 71 .98 1.04 1.32 0.04 0.40 0.01 2.33 COG-TS 95 .64 0.15 0.16 0.00 0.07 0.00 2.00 88 .55 0.11 0.38 0.01 0.17 0.00 9.00 65 .14 0.57 1.34 0.06 0.48 0.01 5.67 COG-MS 95 .76 0.19 0.16 0.01 0.07 0.00 1.33 87 .74 1.17 0.40 0.02 0.18 0.01 11.00 66 .31 0.86 1.35 0.01 0.47 0.01 5.33 COG-TST 95 .54 0.10 0.17 0.00 0.07 0.00 3.33 88 .07 0.49 0.40 0.02 0.18 0.01 10.67 61 .45 0.90 1.38 0.03 0.50 0.01 8.00 Label Smoothing 95 .74 0.21 0.24 0.01 0.08 0.00 7.67 91 .18 0.36 0.39 0.01 0.15 0.01 7.33 73 .58 0.43 1.26 0.02 0.38 0.01 1.33 
+
+Temp. Scaling 95 .35 0.20 0.21 0.01 0.07 0.00 5.67 91 .33 0.60 0.33 0.02 0.14 0.01 5.00 69 .49 1.15 1.44 0.06 0.46 0.01 5.00 Matrix Scaling 95 .48 0.18 0.17 0.01 0.07 0.00 3.67 91 .46 0.50 0.25 0.02 0.12 0.01 2.00 54 .84 1.33 21 .89 2.93 0.88 0.03 12.00 TST 95 .27 0.02 0.18 0.00 0.07 0.00 5.67 92 .27 0.06 0.26 0.00 0.12 0.00 1.67 62 .70 0.36 1.57 0.03 0.53 0.00 10.00 V-TST (MC=1) 94 .70 0.11 0.23 0.00 0.09 0.00 11.33 91 .76 0.09 0.31 0.01 0.13 0.00 3.67 61 .69 0.46 1.54 0.03 0.52 0.01 9.33 V-TST (MC=10) 95 .24 0.04 0.20 0.00 0.08 0.00 9.00 92 .33 0.05 0.27 0.00 0.12 0.00 1.67 63 .21 0.42 1.41 0.01 0.50 0.00 7.33 25 Preprint. Under review. Table 24: Comparison of ECE ( ↓ lower is better) for all models and all variants seen in this work for multiple choices of the number of bins. We report mean std . The best value in each column is shown in bold. 
+
+SVHN CIFAR-10 CIFAR-100 Method ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 Baseline 3.63 0.15 3.63 0.15 3.67 0.16 3.83 0.15 6.70 0.41 6.70 0.40 6.80 0.37 7.21 0.34 22 .90 0.88 22 .90 0.88 22 .91 0.88 23 .12 0.89 
+
+COG-FC 1.07 0.10 1.08 0.09 1.27 0.08 1.89 0.08 4.25 0.33 4.22 0.34 4.55 0.28 5.62 0.26 7.82 1.49 7.82 1.49 8.01 1.46 9.45 1.19 
+
+COG+LS 7.46 0.14 7.48 0.14 7.70 0.14 8.29 0.14 4.16 0.12 4.37 0.12 5.29 0.12 6.93 0.09 3.69 0.40 4.67 0.41 5.62 0.33 7.90 0.38 
+
+COG-TS 1.00 0.07 1.01 0.08 1.23 0.11 1.88 0.08 4.60 0.17 4.61 0.18 4.89 0.13 5.94 0.14 9.84 1.33 9.84 1.33 9.87 1.33 10 .87 1.17 
+
+COG-MS 1.24 0.12 1.26 0.12 1.42 0.14 1.93 0.11 5.17 0.27 5.19 0.27 5.39 0.32 6.33 0.32 11 .82 1.04 11 .82 1.04 11 .90 1.01 12 .53 0.87 
+
+COG-TST 0.97 0.16 1.00 0.16 1.22 0.16 1.83 0.14 4.69 0.47 4.69 0.46 4.97 0.38 5.95 0.31 1.13 0.40 1.23 0.59 2.95 0.22 6.68 0.26 
+
+Label Smoothing 7.01 0.43 7.00 0.28 7.39 0.25 7.77 0.30 5.40 0.87 5.60 0.27 6.43 0.15 7.30 0.09 3.91 0.59 4.94 0.29 5.73 0.38 7.77 0.27 
+
+Temp. Scaling 2.53 0.12 2.53 0.12 2.59 0.12 2.89 0.11 4.76 0.29 4.82 0.23 4.97 0.21 5.64 0.27 15 .64 0.68 15 .64 0.68 15 .71 0.67 16 .28 0.61 
+
+Matrix Scaling 0.70 0.10 0.75 0.11 1.05 0.13 1.83 0.10 0.98 0.26 1.02 0.27 1.74 0.21 3.53 0.19 43 .27 1.61 43 .27 1.61 43 .29 1.62 43 .40 1.63 
+
+TST 1.48 0.02 1.50 0.02 1.67 0.03 2.19 0.03 3.13 0.05 3.14 0.06 3.40 0.07 4.39 0.08 14 .86 1.07 14 .86 1.07 14 .93 1.09 15 .39 1.03 
+
+V-TST (MC=1) 1.37 0.78 1.38 0.77 1.77 0.57 2.45 0.45 3.27 0.43 3.28 0.41 3.55 0.35 4.54 0.27 9.79 2.61 9.82 2.61 10 .07 2.48 11 .50 2.10 
+
+V-TST (MC=10) 2.37 0.71 2.38 0.70 2.55 0.63 3.17 0.52 2.10 0.33 2.11 0.34 2.57 0.28 3.79 0.21 6.17 2.37 6.21 2.32 6.66 1.95 8.93 1.38 
+
+Table 25: Comparison of RMSCE ( ↓ lower is better) for all models and all variants seen in this work for multiple choices of the number of bins. We report mean std . The best value in each column is shown in bold. 
+
+SVHN CIFAR-10 CIFAR-100 Method RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 Baseline 5.25 0.27 5.89 0.27 7.68 0.18 9.34 0.12 8.35 0.61 8.91 0.55 11 .50 0.42 13 .94 0.43 24 .34 0.91 25 .02 0.98 27 .40 0.90 29 .24 0.84 
+
+COG-FC 1.58 0.18 1.76 0.20 2.87 0.22 5.48 0.34 5.47 0.50 5.93 0.56 7.52 0.44 10 .64 0.48 8.78 1.67 8.99 1.78 9.97 1.71 13 .08 1.42 
+
+COG+LS 7.56 0.14 7.62 0.14 7.97 0.17 9.13 0.18 4.48 0.08 4.76 0.11 6.09 0.21 9.40 0.25 5.01 0.30 5.73 0.45 7.18 0.53 11 .35 0.37 
+
+COG-TS 1.64 0.10 1.82 0.13 2.92 0.28 5.48 0.29 5.79 0.28 6.25 0.31 7.86 0.17 11 .14 0.34 10 .93 1.47 11 .12 1.48 11 .93 1.50 14 .54 1.38 
+
+COG-MS 1.99 0.14 2.27 0.19 3.29 0.24 5.69 0.27 6.48 0.50 6.91 0.34 8.46 0.58 11 .42 0.58 13 .12 1.15 13 .31 1.22 14 .21 1.23 16 .43 0.99 
+
+COG-TST 1.58 0.25 1.77 0.35 2.92 0.36 5.42 0.34 5.83 0.60 6.32 0.63 7.73 0.69 10 .65 0.53 1.48 0.64 1.68 0.78 4.03 0.29 9.25 0.25 
+
+Label Smoothing 7.19 0.34 7.18 0.29 7.84 0.25 9.09 0.30 6.34 0.58 6.89 0.37 8.23 0.26 10 .86 0.23 5.25 0.56 6.09 0.69 7.39 0.58 11 .14 0.42 
+
+Temp. Scaling 4.10 0.16 4.49 0.17 5.50 0.24 7.25 0.23 6.60 0.33 7.10 0.24 8.86 0.32 11 .65 0.28 17 .23 0.75 17 .62 0.75 19 .23 0.55 21 .18 0.54 
+
+Matrix Scaling 1.09 0.09 1.32 0.15 2.47 0.09 5.06 0.12 1.83 0.36 1.93 0.38 4.05 0.50 8.53 0.47 43 .40 1.59 43 .50 1.57 44 .03 1.50 44 .80 1.39 
+
+TST 2.31 0.06 2.57 0.05 3.56 0.13 5.99 0.16 4.61 0.14 4.84 0.18 6.48 0.17 10 .01 0.19 16 .04 1.13 16 .38 1.15 17 .45 1.21 19 .36 1.11 
+
+V-TST (MC=1) 2.22 1.08 2.37 1.01 3.41 0.73 5.65 0.53 4.55 0.68 4.77 0.65 6.26 0.56 9.91 0.34 10 .80 2.84 11 .07 2.93 12 .10 2.88 14 .88 2.41 
+
+V-TST (MC=10) 2.86 0.97 2.99 0.97 3.88 0.77 6.06 0.51 3.32 0.49 3.46 0.58 5.14 0.43 9.24 0.37 6.90 2.31 7.09 2.34 8.29 2.12 12 .08 1.49 
+
+Table 26: Comparison of MCE ( ↓ lower is better) for all models and all variants seen in this work for multiple choices of the number of bins. We report mean std . The best value in each column is shown in bold. 
+
+SVHN CIFAR-10 CIFAR-100 Method MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 40 .91 18 .18 35 .91 3.53 64 .66 5.09 86 .39 5.07 34 .74 1.87 37 .27 4.82 62 .85 4.98 88 .29 1.94 46 .89 1.18 50 .50 2.59 63 .17 12 .17 81 .55 5.53 
+
+COG-FC 29 .45 28 .99 31 .63 27 .43 50 .32 24 .93 76 .26 2.50 15 .82 1.90 19 .94 3.79 64 .66 15 .10 73 .02 2.25 13 .84 3.09 14 .60 3.64 23 .54 2.02 85 .11 2.45 
+
+COG+LS 28 .77 31 .43 30 .17 30 .53 54 .89 25 .22 81 .89 9.10 13 .48 6.73 17 .64 4.10 69 .21 20 .08 77 .80 1.23 11 .97 2.43 12 .48 2.21 40 .61 32 .25 74 .45 20 .82 
+
+COG-TS 46 .93 31 .63 56 .62 34 .70 74 .02 15 .11 80 .11 2.95 20 .19 6.53 32 .24 13 .47 61 .07 22 .01 74 .28 4.21 17 .48 2.92 18 .71 3.04 26 .67 5.20 71 .28 19 .95 
+
+COG-MS 19 .20 8.44 26 .31 13 .57 60 .68 26 .69 78 .79 4.65 16 .12 0.84 36 .00 22 .68 67 .60 17 .03 74 .53 2.90 20 .77 2.37 21 .35 2.66 43 .62 24 .09 83 .56 3.11 
+
+COG-TST 29 .41 29 .53 29 .35 29 .59 62 .56 23 .51 77 .91 2.75 18 .00 5.62 26 .74 4.31 62 .90 14 .30 72 .38 1.93 4.50 2.22 5.46 1.55 13 .96 0.93 62 .05 27 .63 
+
+Label Smoothing 16 .08 1.36 31 .15 24 .57 74 .36 4.73 84 .32 9.63 26 .12 2.19 25 .58 3.26 61 .86 23 .73 87 .29 10 .27 12 .72 2.50 14 .58 1.45 29 .08 10 .96 94 .47 1.24 
+
+Temp. Scaling 22 .74 4.89 24 .41 1.46 60 .12 17 .94 74 .47 7.26 24 .67 6.86 24 .68 1.03 64 .35 9.49 81 .21 1.80 43 .30 27 .09 31 .84 0.59 52 .08 22 .23 85 .07 3.89 
+
+Matrix Scaling 13 .04 7.59 12 .60 8.17 48 .11 24 .22 75 .64 2.90 11 .09 8.83 19 .19 7.38 57 .00 17 .43 72 .69 3.14 61 .14 2.41 65 .99 2.27 80 .29 2.35 95 .26 2.02 
+
+TST 44 .39 34 .12 45 .29 33 .01 79 .53 1.86 79 .74 1.72 18 .69 4.36 20 .84 4.05 44 .86 16 .75 76 .60 3.04 25 .41 2.27 38 .53 27 .14 36 .97 4.46 78 .64 12 .89 
+
+V-TST (MC=1) 17 .31 3.82 17 .48 3.44 39 .69 8.96 77 .45 2.56 16 .51 4.04 19 .32 5.87 53 .67 21 .74 77 .96 2.75 18 .18 4.85 18 .81 5.30 32 .59 6.33 62 .45 18 .01 
+
+V-TST (MC=10) 15 .73 7.78 17 .62 5.65 62 .68 26 .18 80 .77 1.84 13 .76 4.44 14 .18 4.31 45 .09 19 .32 77 .35 1.95 11 .73 2.79 12 .23 3.18 24 .49 11 .50 64 .94 25 .51 
+
+Table 27: Performance in out-of-distribution detection or all models and all variants seen in this work. 
+
+SVHN CIFAR-10 CIFAR-100 Method AUROC (↑) FPR95 (↓) Rank (↓) AUROC (↑) FPR95 (↓) Rank (↓) AUROC (↑) FPR95 (↓) Rank (↓)
+
+Baseline 93 .26 0.75 42 .67 3.11 9.50 87 .00 1.36 71 .21 4.41 4.50 70 .66 2.85 86 .80 1.38 8.50 COG-FC 96 .11 0.34 26 .30 2.79 2.50 85 .11 1.13 77 .61 2.59 9.50 70 .20 3.78 84 .34 2.25 8.50 COG+LS 93 .98 0.27 25 .37 1.76 4.00 82 .40 2.77 74 .75 4.02 9.00 73 .32 2.30 81 .67 1.68 4.00 COG-TS 95 .43 0.48 31 .51 3.42 4.50 85 .53 0.57 76 .66 1.60 8.50 67 .50 2.59 87 .76 1.51 10.50 COG-MS 95 .69 0.31 29 .02 2.13 3.50 84 .58 1.10 78 .71 3.14 11.00 68 .82 4.94 88 .05 1.70 10.50 COG-TST 96 .41 0.38 24 .16 2.84 1.00 86 .42 1.73 75 .03 5.52 7.00 73 .16 2.23 81 .65 2.84 4.50 Label Smoothing 80 .74 1.00 38 .56 1.67 9.50 67 .88 1.51 75 .99 1.67 10.50 75 .69 1.50 80 .67 2.57 1.50 
+
+Temp. Scaling 93 .81 0.77 39 .81 3.38 8.00 87 .63 1.38 69 .27 5.46 2.50 72 .34 2.92 83 .72 1.93 6.50 Matrix Scaling 94 .66 0.66 34 .41 3.05 5.50 89 .11 1.20 64 .47 6.49 1.00 58 .62 1.37 92 .03 0.61 12.00 TST 93 .84 0.04 40 .50 0.37 8.00 88 .34 0.04 69 .75 0.57 2.50 70 .77 0.42 83 .70 0.32 6.50 V-TST (MC=1) 88 .52 0.89 51 .82 0.69 11.50 84 .66 0.63 72 .49 1.24 7.50 73 .21 0.35 80 .86 0.51 3.50 V-TST (MC=10) 91 .70 0.67 43 .13 0.36 10.50 86 .66 0.48 69 .94 0.87 4.50 74 .20 0.42 79 .59 0.18 1.50 
+
+26 Preprint. Under review. Table 28: Performance under covariate shifts. Shift metrics are averaged across all considered covariate shifts. 
+
+SVHN CIFAR-10 CIFAR-100 Method ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓) ACC (↑) NLL (↓) Brier (↓) Rank (↓)
+
+Baseline 44 .53 0.94 5.95 0.19 1.00 0.02 10.67 74 .24 0.54 1.99 0.13 0.45 0.01 8.33 46 .50 1.29 5.16 0.34 0.91 0.02 8.33 COG-FC 45 .34 0.93 2.34 0.06 0.81 0.01 4.00 67 .42 0.31 1.28 0.01 0.50 0.00 9.33 44 .03 1.53 2.71 0.11 0.76 0.02 4.33 COG+LS 45 .48 1.00 1.87 0.03 0.76 0.01 1.00 67 .67 0.35 1.10 0.01 0.47 0.00 7.67 47 .04 1.07 2.59 0.07 0.71 0.02 2.00 COG-TS 44 .78 0.68 3.27 0.09 0.89 0.02 9.00 66 .55 0.39 1.92 0.04 0.55 0.01 11.67 45 .39 2.00 3.73 0.21 0.83 0.03 8.00 COG-MS 44 .79 0.35 2.53 0.09 0.83 0.01 6.00 67 .22 1.29 1.47 0.07 0.51 0.02 10.67 40 .61 1.31 2.87 0.14 0.79 0.02 7.33 COG-TST 44 .79 0.99 2.28 0.05 0.80 0.02 3.67 68 .02 0.73 1.37 0.03 0.49 0.01 8.67 38 .08 0.60 2.77 0.02 0.78 0.00 7.00 Label Smoothing 44 .81 0.82 2.18 0.03 0.87 0.01 4.33 74 .65 1.09 1.02 0.03 0.41 0.01 4.67 50 .78 1.05 2.40 0.05 0.67 0.01 1.00 
+
+Temp. Scaling 44 .53 0.94 3.38 0.09 0.91 0.01 10.00 74 .24 0.54 1.18 0.06 0.41 0.01 6.00 46 .50 1.29 3.10 0.17 0.80 0.02 6.33 Matrix Scaling 44 .82 0.52 2.30 0.07 0.80 0.01 3.33 74 .66 0.96 0.88 0.05 0.37 0.01 2.33 33 .22 1.45 40 .21 3.78 1.30 0.03 12.00 TST 41 .12 0.06 2.60 0.02 0.88 0.00 9.33 75 .56 0.05 0.94 0.01 0.37 0.00 2.33 41 .06 0.22 3.22 0.09 0.83 0.01 8.67 V-TST (MC=1) 40 .36 0.13 2.54 0.12 0.88 0.02 9.33 74 .90 0.05 1.04 0.04 0.39 0.01 4.00 40 .36 0.23 2.86 0.12 0.79 0.02 7.33 V-TST (MC=10) 41 .22 0.15 2.20 0.07 0.82 0.01 6.00 75 .71 0.04 0.89 0.03 0.36 0.01 1.33 41 .61 0.25 2.65 0.07 0.76 0.01 4.33 Table 29: ECE averaged across all considered covariate shifts for all models and all variants seen in this work for multiple choices of the number of bins. 
+
+SVHN CIFAR-10 CIFAR-100 Method ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 ECE-10 ECE-15 ECE-100 ECE-500 Baseline 47 .06 0.83 47 .06 0.83 47 .06 0.83 47 .06 0.83 20 .89 0.53 20 .89 0.53 20 .89 0.53 20 .86 0.53 40 .89 1.24 40 .88 1.24 40 .88 1.24 40 .86 1.24 
+
+COG-FC 30 .31 0.98 30 .31 0.98 30 .30 0.98 30 .31 0.98 17 .97 0.28 17 .97 0.28 17 .96 0.28 17 .94 0.28 20 .91 1.30 20 .91 1.30 20 .90 1.30 20 .90 1.30 
+
+COG+LS 22 .99 0.56 22 .99 0.56 22 .99 0.55 23 .00 0.55 10 .02 0.33 10 .02 0.33 10 .02 0.33 10 .02 0.33 12 .78 2.20 12 .79 2.17 12 .81 2.18 12 .82 2.17 
+
+COG-TS 38 .11 0.94 38 .11 0.94 38 .11 0.94 38 .12 0.94 23 .93 0.32 23 .93 0.32 23 .93 0.32 23 .91 0.32 32 .18 1.10 32 .17 1.10 32 .16 1.10 32 .16 1.10 
+
+COG-MS 32 .44 1.20 32 .44 1.20 32 .44 1.20 32 .45 1.19 19 .02 0.87 19 .02 0.87 19 .01 0.87 19 .00 0.87 20 .49 1.95 20 .49 1.95 20 .49 1.95 20 .49 1.95 
+
+COG-TST 28 .25 1.33 28 .25 1.33 28 .25 1.33 28 .26 1.34 18 .00 0.21 17 .99 0.21 17 .98 0.21 17 .97 0.21 12 .52 0.62 12 .52 0.62 12 .52 0.62 12 .52 0.62 
+
+Label Smoothing 34 .25 0.52 34 .25 0.52 34 .25 0.52 34 .26 0.52 11 .10 0.60 11 .08 0.60 11 .19 0.61 11 .19 0.61 11 .57 1.01 11 .59 0.99 11 .60 1.00 11 .61 0.99 
+
+Temp. Scaling 39 .69 0.83 39 .69 0.83 39 .69 0.83 39 .70 0.83 16 .51 0.58 16 .51 0.58 16 .50 0.58 16 .48 0.58 29 .35 1.25 29 .35 1.25 29 .34 1.25 29 .33 1.25 
+
+Matrix Scaling 28 .09 0.82 28 .09 0.82 28 .09 0.82 28 .10 0.81 9.81 0.81 9.81 0.81 9.79 0.82 9.78 0.81 64 .47 1.72 64 .46 1.72 64 .45 1.72 64 .43 1.72 
+
+TST 34 .83 0.08 34 .83 0.08 34 .83 0.08 34 .83 0.08 12 .75 0.12 12 .75 0.12 12 .74 0.12 12 .72 0.12 27 .52 1.57 27 .52 1.57 27 .51 1.57 27 .51 1.57 
+
+V-TST (MC=1) 32 .29 2.16 32 .29 2.16 32 .29 2.16 32 .29 2.16 13 .28 0.95 13 .27 0.95 13 .25 0.95 13 .22 0.94 19 .75 3.50 19 .75 3.50 19 .75 3.50 19 .75 3.50 
+
+V-TST (MC=10) 27 .39 1.82 27 .39 1.82 27 .39 1.82 27 .39 1.82 10 .56 1.01 10 .56 1.01 10 .52 1.01 10 .50 1.00 15 .57 2.96 15 .57 2.96 15 .57 2.96 15 .57 2.96 
+
+Table 30: RMSCE averaged across all considered covariate shifts for all models and all variants seen in this work for multiple choices of the number of bins. 
+
+SVHN CIFAR-10 CIFAR-100 Method RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 RMSCE-10 RMSCE-15 RMSCE-100 RMSCE-500 Baseline 47 .45 0.83 47 .59 0.83 48 .37 0.83 49 .01 0.86 21 .87 0.62 22 .35 0.65 24 .44 0.81 25 .63 0.90 41 .56 1.20 41 .87 1.18 43 .27 1.11 44 .06 1.09 
+
+COG-FC 31 .40 1.02 31 .66 1.01 32 .16 1.07 32 .25 1.06 19 .19 0.36 19 .65 0.37 20 .75 0.43 20 .93 0.43 22 .07 1.34 22 .26 1.36 22 .59 1.45 22 .63 1.46 
+
+COG+LS 24 .11 0.56 24 .76 0.65 25 .07 0.63 25 .20 0.64 11 .89 0.27 11 .79 0.26 12 .09 0.27 12 .15 0.27 14 .94 2.26 15 .37 2.34 15 .54 2.35 15 .57 2.35 
+
+COG-TS 38 .94 0.92 39 .21 0.94 40 .27 0.98 40 .71 1.02 24 .84 0.35 25 .29 0.37 27 .01 0.44 27 .74 0.44 33 .18 1.06 33 .52 1.05 34 .54 1.02 34 .81 1.03 
+
+COG-MS 33 .51 1.18 33 .79 1.18 34 .39 1.22 34 .49 1.22 20 .18 0.83 20 .63 0.83 21 .74 0.92 22 .03 0.97 21 .67 2.00 21 .85 2.01 22 .16 2.05 22 .19 2.06 
+
+COG-TST 29 .51 1.35 29 .75 1.35 30 .20 1.44 30 .30 1.45 19 .19 0.13 19 .62 0.10 20 .66 0.11 20 .91 0.14 13 .44 0.77 13 .51 0.78 13 .57 0.79 13 .60 0.79 
+
+Label Smoothing 35 .91 0.50 35 .66 0.55 36 .75 0.57 36 .98 0.64 14 .16 1.26 14 .09 0.71 15 .35 0.94 15 .57 0.94 13 .92 0.96 14 .43 0.91 14 .62 0.91 14 .66 0.91 
+
+Temp. Scaling 40 .46 0.84 40 .68 0.85 41 .57 0.94 41 .94 0.99 17 .99 0.75 18 .56 0.80 20 .24 0.94 20 .70 0.97 30 .59 1.21 30 .94 1.20 31 .92 1.21 32 .19 1.23 
+
+Matrix Scaling 29 .23 0.83 29 .39 0.84 29 .56 0.83 29 .65 0.83 11 .20 0.99 11 .47 1.03 11 .86 1.07 11 .93 1.06 64 .57 1.71 64 .58 1.71 64 .70 1.68 64 .82 1.65 
+
+TST 36 .16 0.08 36 .50 0.08 37 .39 0.10 37 .58 0.11 14 .34 0.13 14 .79 0.14 15 .94 0.16 16 .16 0.16 28 .66 1.57 28 .90 1.60 29 .44 1.69 29 .52 1.72 
+
+V-TST (MC=1) 33 .57 2.09 33 .76 2.11 34 .04 2.17 34 .12 2.17 14 .64 0.95 15 .05 0.97 15 .89 1.06 16 .01 1.07 21 .12 3.56 21 .28 3.60 21 .57 3.73 21 .62 3.74 
+
+V-TST (MC=10) 28 .84 1.83 29 .01 1.85 29 .18 1.89 29 .26 1.89 11 .97 1.03 12 .33 1.07 12 .93 1.18 13 .01 1.19 16 .66 3.06 16 .78 3.09 16 .96 3.17 17 .00 3.17 
+
+Table 31: MCE averaged across all considered covariate shifts for all models and all variants seen in this work for multiple choices of the number of bins. 
+
+SVHN CIFAR-10 CIFAR-100 Method MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 MCE-10 MCE-15 MCE-100 MCE-500 Baseline 60 .58 0.79 64 .16 0.72 68 .20 1.46 74 .20 0.61 44 .61 2.00 47 .01 1.82 60 .00 15 .71 76 .09 2.62 59 .26 0.73 61 .89 0.86 68 .29 10 .60 69 .41 9.97 
+
+COG-FC 45 .30 1.81 45 .53 1.47 47 .61 1.88 51 .98 1.85 31 .98 0.97 32 .05 0.80 32 .98 0.97 82 .21 1.30 31 .84 2.22 32 .16 2.21 33 .02 2.18 46 .77 26 .24 
+
+COG+LS 36 .84 1.36 41 .11 2.38 81 .65 18 .07 95 .96 6.08 19 .74 0.50 19 .88 0.61 23 .76 6.11 59 .58 32 .80 27 .12 3.57 27 .44 3.97 49 .32 29 .19 67 .27 30 .02 
+
+COG-TS 54 .03 1.25 56 .26 1.50 58 .00 1.73 69 .84 12 .18 49 .59 17 .78 50 .80 17 .10 66 .09 19 .91 79 .75 1.81 47 .66 1.03 47 .98 1.28 48 .84 1.04 50 .20 1.24 
+
+COG-MS 48 .16 1.48 48 .68 1.56 57 .82 15 .40 72 .49 15 .32 33 .43 1.39 33 .61 1.66 34 .62 1.69 54 .18 23 .89 31 .79 2.98 43 .52 28 .00 34 .01 5.52 48 .23 25 .65 
+
+COG-TST 43 .54 1.81 43 .89 2.15 46 .10 2.06 63 .69 19 .31 32 .06 0.62 32 .02 0.56 33 .26 0.47 53 .98 24 .49 20 .16 1.85 20 .33 1.92 21 .17 2.05 33 .41 11 .28 
+
+Label Smoothing 51 .63 1.04 61 .88 3.98 84 .78 11 .94 96 .78 0.45 31 .25 0.75 36 .42 5.48 51 .99 19 .66 84 .35 6.56 26 .35 1.22 26 .49 1.10 53 .97 28 .16 79 .22 26 .95 
+
+Temp. Scaling 54 .51 1.48 56 .90 1.50 58 .98 2.13 76 .12 8.13 35 .06 2.02 35 .44 1.88 38 .76 5.63 54 .64 23 .93 46 .10 1.24 46 .35 1.52 46 .99 1.36 57 .42 19 .52 
+
+Matrix Scaling 40 .97 1.37 41 .07 1.22 59 .94 22 .55 69 .96 20 .07 19 .13 1.79 19 .40 1.78 23 .68 5.54 67 .91 19 .62 70 .04 0.86 74 .74 0.81 82 .00 1.14 83 .05 1.16 
+
+TST 53 .19 0.15 54 .67 0.24 55 .88 0.40 59 .70 0.77 27 .57 0.30 27 .51 0.33 40 .38 23 .93 55 .90 25 .83 40 .96 2.60 41 .12 2.51 41 .89 2.57 43 .45 2.58 
+
+V-TST (MC=1) 47 .33 2.88 47 .85 2.58 57 .20 16 .63 66 .53 17 .01 27 .68 2.21 27 .77 2.18 33 .13 9.68 62 .66 28 .70 31 .65 5.07 31 .85 5.12 33 .03 4.88 34 .87 4.98 
+
+V-TST (MC=10) 42 .39 2.70 42 .98 2.71 44 .85 2.51 64 .20 19 .17 22 .25 2.36 22 .46 2.09 38 .10 26 .33 61 .53 30 .68 24 .66 4.31 24 .92 4.50 25 .91 4.53 28 .96 3.63 
+
+27

@@ -1,0 +1,419 @@
+Title: Noise Your Prompt: Noising Conditioning Tokens in Continuous Diffusion Language Models
+
+URL Source: https://arxiv.org/pdf/2610.09145v2
+
+Published Time: Fri, 09 Oct 2026 00:50:14 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+Published in Transactions on Machine Learning Research (09/2026) 
+
+# Noise Your Prompt: Noising Conditioning Tokens in Contin-uous Diffusion Language Models 
+
+Justin Jung justin@lateralintelligence.org Lateral Intelligence 
+
+Reviewed on OpenReview: https: // openreview. net/ forum? id= carxDjFbtO 
+
+## Abstract 
+
+We revisit a standard accepted practice in the continuous diffusion language model literature of fixing conditioning prompt tokens clean during training. We make a very simple modification: also noise the conditioning prompt tokens during training. We demonstrate that under this modified training objective, we achieve better generalization in combinatorial reasoning tasks such as Sudoku and N-Queens, with the largest gains on harder variants (3 .73% → 24 .65% solve rate on Sudoku Hard), and increased diversity of generated solutions (50 .60% → 73 .79% coverage on 10×10 N-Queens). We also show measurable improvements to natural language generation quality in modest dataset regimes with Gigaword summarization, but notably demonstrate that gains do not transfer to all natural language tasks (e.g open ended dialogue generation). Our method is a single line change to the training objective, requires no additional inference costs by default, and provides the flexibility of classifier-free guidance inspired guided sampling. Our code is publicly available. 
+
+## 1 Introduction 
+
+Fundamentally, diffusion and flow models learn a score or velocity corresponding to an ODE which can be integrated to transform a base distribution to the target data distribution. Their objective can be parameterized in different ways, including the denoising parametrization ˆ x1(xt), where the goal is to predict a clean target data x1 given a current noisy input xt.Our framework is to view this denoising learning objective from the lens of conditional prediction: given a noisy input, predict a clean target. We then see the varying levels of noise corruption of the input as a spectrum of prediction task difficulties, where the model is trained on harder (more noisy) inputs and easier (less noisy) inputs. In practice for language modelling, conditional generation is the main paradigm: given a conditioning prompt, generate a response. Currently, conditional generation in continuous diffusion language models and flow language models utilize the following learning objective: given un-noised conditioning tokens xc and a noised response yt, predict the target response y1. Likewise in sampling, the conditioning tokens are fixed and not noised. We improve this conditional learning objective by allowing conditional tokens to also be noised, where the model is given a noised conditional input xct along with the current noised response yt. We see this modification as extending the range of prediction tasks difficulties, where the prediction problem ( x, y t) → y
+
+is made more difficult not just by increasing the amount of noise in the current response input yt but also by increasing the amount of noise in the conditioning input. Moreover, by noising the conditioning input, our model has a wider target that it can learn from (also needs to predict the denoised conditioning input), making learning more efficient. Varying the level of noise on the conditioning input can be seen as conditioning augmentation. Empirically, we evaluate on various reasoning and generalization tasks, specifically Sudoku and N-Queens, and natural language generation tasks of summarization and open ended dialogue generation. 1arXiv:2610.09145v2 [cs.LG] 8 Oct 2026 Published in Transactions on Machine Learning Research (09/2026) 
+
+Figure 1: Noising the conditioning tokens improves solution diversity. (a) Five board generations of a single held-out N-Queens (8 × 8) puzzle that admits six distinct valid solutions (distinguished by color and letter). A model trained with noised conditioning tokens ( pcondclean =0 .2, top) spreads its generations across the solution set (4 /6 distinct solutions), whereas the standard “paste-in” model that keeps conditioning tokens clean throughout training ( pcondclean =1 .0, bottom) mode-collapses onto a single completion. (b) Solution coverage as a function of the number of valid solutions admitted by the input board, over 750 held-out 10 × 10 puzzles with k=20 generations each. The noised-prompt model dominates the clean-prompt model at every solution count. We quantify this gap in Section 4.4. 
+
+Scope and contributions. Our experimental results utilize flow language models on two combinatorial constraint satisfaction benchmarks, Sudoku and N-Queens, and on two natural language generation datasets, Gigaword summarization and open ended dialogue generation. We provide evidence for three claims: (i) Noising conditioning information during training yields improved solve rates on unseen puzzles versus the default paste-in setup, with the largest gains on the more difficult puzzle settings (Sections 4.3 and 4.4). (ii) Noised prompt training produces more diverse generated solutions, as measured by solution coverage on N-Queens (Section 4.4). (iii) Noised prompt training improves summarization generation quality in the modest dataset regime. With natural language generation, we demonstrate measurable improvements in Gigaword summarization but find null results in open dialogue generation, highlighting that noised prompt training can lead to improvements in some but not all natural language tasks. The takeaway is that the default setup of keeping conditioning tokens clean during training of diffusion and flow language models should be revisited; a trivial change to also noise conditioning tokens during training improves both accuracy and diversity in our controlled puzzle testbeds and shows measurable improvements to generation quality in certain natural language tasks. 
+
+## 2 Background and Related Work 
+
+Diffusion and flow generative models. Denoising diffusion and score-based models generate data by gradually corrupting samples toward a simple base distribution and learning to reverse this process (Ho et al., 2020; Song et al., 2021). Flow matching and stochastic interpolants (Lipman et al., 2023; Albergo & Vanden-Eijnden, 2023) give a closely related and more general view: a time-dependent interpolation between the base and data distributions defines a velocity field whose ordinary differential equation (ODE) transports noise to data, with diffusion as a special case. The learning target admits several equivalent parameterizations—predicting the injected noise, the velocity, the score, or directly the clean datapoint x1
+
+from a noised input xt (x1-prediction). We work throughout in the flow and x1-prediction setting. 
+
+Diffusion and flow language models. Applying these models to text is complicated by the discrete nature of tokens. One line of work operates directly in discrete state spaces, defining absorbing or uniform corruption 2Published in Transactions on Machine Learning Research (09/2026) processes over tokens: D3PM (Austin et al., 2021), score-entropy discrete diffusion (SEDD) (Lou et al., 2024), masked diffusion language models (MDLM) (Sahoo et al., 2024), and large-scale masked diffusion LMs such as LLaDA (Nie et al., 2025). A second line embeds tokens into a continuous space, running continuous gaussian diffusion over those representations, and converting back to tokens: Diffusion-LM (Li et al., 2022), DiffuSeq (Gong et al., 2023), and CDCD (Dieleman et al., 2022). Recent work operates specifically on one-hot vectors on the probability simplex or on learned / pre-trained embeddings: Flow Map Language Models (Lee et al., 2026), Discrete Flow Maps (Potaptchik et al., 2026), hyperspherical flows (Deschenaux & Gulcehre, 2026), and embedded language flows (ELF) (Hu et al., 2026). Our work builds on this continuous-flow family and adopts its standard denoising ( x1-prediction) objective. By default, these models do conditional generation by holding conditioning tokens clean throughout training and moreover during sampling, where conditioning tokens are re-pasted at every sampling step (Lee et al., 2026; Hu et al., 2026). We term this default method as paste-in conditioning. Diffusion forcing (Chen et al., 2024) and AR-Diffusion (Wu et al., 2023) assign per-token noise levels rather than a single shared noise level for the entire sequence. This framework motivates the notion of multiple noise levels across the sequence, where conditioning tokens may carry a different noise level than response tokens. 
+
+Classifier-free guidance. Classifier-free guidance (Ho & Salimans, 2022) jointly trains a conditional and an unconditional model by randomly dropping the conditioning signal, then combines their predictions at sampling time to trade off fidelity against diversity. The amount of conditioning signal in the sequence is binary: it is either fully injected or fully discarded. We use CFG as inspiration and allow the amount of conditioning signal to be smoothly interpolated by the amount of noise (parametrized by time t ∈ [0 , 1]). Moreover, we can analogously combine the model’s predictions under a unmodified clean prompt and the model’s predictions under a noised prompt during inference for guided sampling. 
+
+Corrupting conditioning tokens. Corrupting the conditioning information during training has appeared in several settings, though rarely for language. In image generation, cascaded diffusion models (Ho et al., 2022) apply conditioning augmentation, adding noise to the low-resolution conditioning image fed to each super-resolution stage; this improves robustness to previously produced artifacts. Classifier-free guidance (Ho & Salimans, 2022) can likewise be seen as the extreme case of corrupting the conditioning by removing it entirely. For language, corrupting the conditioning is far less explored and the evidence is mixed. Blockwise SFT for diffusion language models (Sun et al., 2025) reports that model performance degrades as the amount of noise on noisy prefixes increases, and so explicitly keeps the prefix clean. Most directly related, prompt infilling work for masked diffusion language models (Fujinuma & Sakaguchi, 2026) unlocks prompt infilling by masking the prompt as well as the response during training, rather than masking the response alone. (Fujinuma & Sakaguchi, 2026) generate multiple prompts and select the best one, offering an alternative to prompt engineering. In contrast, our method noises conditioning tokens in continuous diffusion models during training across a continuum of corruption levels, which can be seen as expanding the range of prediction tasks. Moreover, our method does not require additional inference costs and by default requires no changes to inference. 
+
+## 3 Method 
+
+Our method is simple and requires minimal modification from the default training objective of flow language models. Simply put, with some probability pcondclean we keep the conditioning tokens clean; else, we noise the conditioning tokens as well. During sampling, following the default practice in diffusion/flow language model literature (Lee et al., 2026; Hu et al., 2026; Deschenaux & Gulcehre, 2026), we keep the conditioning tokens clean and paste-in clean tokens at each sampling step. To prevent a large training and inference mismatch, with some probability 
+
+pcondclean we choose to keep the conditioning tokens clean to supply as input. The model then predicts using inputs ( xt=1 , y t), where xt=1 are the clean conditioning tokens and yt are the noised response tokens. At the same time, we do not want the model to become too reliant on the conditioning tokens and possibly learn a brittle mapping x → y. Thus, with the remaining probability 1 − pcondclean , we noise our conditioning 3Published in Transactions on Machine Learning Research (09/2026)  
+
+> clean only ( t′=1)
+> clean, w.p. p
+> noised to response level, w.p. 1 −p
+
+Paste-in (default) Ours 
+
+conditioning C
+
+response G     
+
+> noise clean noise level tnoise clean noise level t
+> noise the conditioning identical
+
+Figure 2: Visualization of our training objective. Standard conditional training keeps conditioning tokens at fixed clean noise level ( t′=1). In contrast, we train over a range of conditioning noise levels (blue region), exposing the model to a range of conditioning levels. At generation time we follow standard practice and integrate with the conditioning tokens held clean. tokens, reducing the amount of conditioning signal the model has access to. It receives as input both noised conditioning tokens and noised response tokens ( xt, y t). As visualized in Figure 2, by additionally noising our conditioning tokens, our model is trained under a broader curriculum of conditional prediction tasks, where the model receives both a lot of conditioning signal (making the prediction task easier) and little conditioning signal (making the prediction task harder). Additionally, we make use of the conditioning tokens in the loss and have the model predict denoised versions of the conditioning tokens xt. This utilizes all the tokens in the denoising objective, making the training objective more efficient (Section 4.7). 
+
+3.1 Setup 
+
+We work with an in-place infilling layout. Each example is a single sequence of length L (Sudoku: L = 81; N-Queens: L = n2) over a small vocabulary. The model receives a sequence of per token noise levels; the model receives no formal distinction between conditioning tokens C and response tokens G. We compute the loss over the full sequence. 
+
+3.2 Corruption process and varying conditioning signal 
+
+We adopt a continuous-time flow ( x1-prediction) model with per-token noise levels (as in diffusion forcing (Chen et al., 2024)): each position i carries its own time τi ∈ [0 , 1], with τi = 1 denoting a clean token and τi = 0 full noise, and xi(τi) is the corresponding corrupted input. The denoiser fθ receives the noised sequence together with the per-token times and predicts the clean target ˆ x1.A single scalar p ≡ pcondclean controls the probability of corruption of conditioning tokens. For each example we draw a shared time t ∼ U (0 , 1) and either have all the conditioning tokens match the noise level of the response tokens or have all remain clean: 
+
+c ∼ Bernoulli( p), τi = t (i ∈ G ),τi =
+
+{
+
+1 if c = 1 (clue clean) ,t if c = 0 (clue noised) , (i ∈ C ).
+
+The training objective is the cross-entropy between the prediction and the original sequence over the loss region L (the full sequence): 
+
+L(θ) = Ex1, t, {τi}
+
+[ ∑ 
+
+> i∈L
+
+CE (fθ (x(τ )) i, (x1)i
+
+)]
+
+.
+
+Setting p = 1 recovers the standard “paste-in” conditional objective (conditioning tokens always clean); p = 0 recovers a fully unconditional joint distribution objective. 1 Intermediate p interpolates between the two   
+
+> 1We note that at p= 0, at intermediate noise levels, the prompt therefore retains some signal.
+
+4Published in Transactions on Machine Learning Research (09/2026) 
+
+Figure 3: Puzzle solve rate over the sampling trajectory. Puzzle (exact match) solve rate as a function of sampling time (noisy input solution → clean solution), read from the model’s x1 prediction at each step. Means calculated over 2000 held-out puzzles with a 128-step Euler sampler; shaded bands are single-seed 95% bootstrap intervals over puzzles. Across both difficulties the noised-prompt models ( pcondclean =0 .2, 0.5) reach a substantially higher solve rate than the standard paste-in model ( pcondclean =1 .0) and also saturate their solve rate bound earlier in generation. objectives, allowing the model to train under a range of conditioning strengths while also preventing a large training/inference gap. 
+
+3.3 Sampling 
+
+We present results under two inference strategies. First, we present our main results by following standard practice for conditional flow language models: we keep the conditioning input clean and clamped to their clean one-hot values and moreover re-pasted into the sequence after every solver step. We integrate with a first-order Euler sampler. Since sampling assumes conditioning tokens are kept clean, a small fraction p
+
+of training examples with clean conditioning tokens is necessary to maintain generation performance, as demonstrated in Section 4.7. Second, in Section 4.6 we present results using guided sampling. Since our noised-prompt objective trains our model with both clean and noised prompts, we take inspiration from classifier-free guidance (Ho & Salimans, 2022) and sample using an affine combination of the model’s prediction with a noised and clean prompt. Specifically we combine the log-softmax logits of the model’s ˆ x1 simplex prediction with a guidance weight 
+
+w to get an affine interpolation l = fu + w(fc − fu)—where fu = f (xt, y t) and fc = f (x1, y t) represent the model’s predictions under noised and clean prompts respectively—and softmax our combined logits to get a combined ˆ x1 simplex prediction for sampling. By choosing w we control how much the model relies on the prompt during inference. 
+
+## 4 Experiments 
+
+4.1 Setup 
+
+Across all experiments, we use the Flow Language Model (FLM) from Lee et al. (2026). Unless otherwise specified, the backbone is a DiT-style transformer (Peebles & Xie, 2023) with hidden size 512, 8 blocks, 8 attention heads, conditioning dimension 128, and dropout 0 .1, trained with a flow objective and x1-prediction. We optimize with AdamW (learning rate 3 × 10 −4, ( β1, β 2) = (0 .9, 0.999), no weight decay), a constant schedule with 2 ,500 warmup steps, gradient clipping at 1 .0, bf16-mixed precision, and an EMA of 0 .9999. We follow FLM and use antithetic time sampling and a t-reparametrization technique that adjusts for the 5Published in Transactions on Machine Learning Research (09/2026) vocabulary size (Lee et al., 2026). We sample with a 128-step Euler solver. For each experiment, the single swept variable is pcondclean ; all other settings are held fixed. Full hyperparameters are in Appendix C. All runs train on a single NVIDIA L40S GPU. 
+
+Combinatorial reasoning tasks. For Sudoku, the vocabulary designates token 0 as PAD, token 1 an empty cell, and tokens 2–10 as the digits 1–9; for N-Queens, token 0 is PAD, token 1 is an empty cell, and token 2 is a queen. Following prior work (Deschenaux & Gulcehre, 2026), we train with no data augmentation. 
+
+Natural language tasks. Both language tasks (Section 4.5) use the same bert-base-uncased tokenizer with ( V =30 ,522). They also use the same format ( [CLS] source [SEP] target [EOS] ), padded to a fixed length. Each evaluation is on a held-out set of 1 ,000 prompts. 
+
+Evaluation checkpoint. On Sudoku and N-Queens we on evaluate using the final checkpoint for a matched compute comparison and because the models do not overfit within their training budget. On the other hand, the language models overfit early (Section 4.5.3) and therefore we evaluate using the best validation NLL checkpoint, with validation loss validated every 2 ,000 steps. 
+
+4.2 Metrics 
+
+Combinatorial reasoning. For Sudoku and N-Queens we report two metrics. Accuracy is the fraction of generated boards that are valid solutions to the puzzle (aggregated across all puzzles and samples). Coverage 
+
+(N-Queens) is a per puzzle statistic capturing the fraction of distinct valid solutions recovered across k = 20 generated samples, all conditioned on the same input puzzle. This allows us to measure the diversity of the successful generations. 
+
+Natural language. We report a diversity-quality frontier, as quality metrics can be gamed at the cost of diversity (Pynadath et al. (2026), Yang et al. (2026), Hu et al. (2026)). We empirically find that generative perplexity as scored by GPT-2 (Radford et al. (2019)) rewards degenerate repeating sequences and so use 
+
+MAUVE (Pillutla et al., 2021), which scores how well the distribution of generated text matches the human reference text. We compute MAUVE of the generated responses against the human data responses using 1 ,000 samples. Average unigram entropy measures the diversity of the generated text; we add the reference entropy values (2 .935 bits on Gigaword and 3 .878 on dialogue) as a reference target. 
+
+Confidence Intervals. Unless otherwise stated, we report 95% two-sided t-distribution confidence intervals across n = 5 training seeds (dialogue uses n = 3 training seeds). We note that all training seeds are scored on the same evaluation set and only vary in initialization and batch order. We clip the CI to be non-negative. Bootstrap confidence intervals (95%) are obtained by resampling the evaluation puzzles (10 ,000 resamples for Sudoku). 
+
+4.3 Sudoku 
+
+Sudoku is a constraint-satisfaction puzzle on a 9 × 9 grid and a common benchmark for reasoning and generalization (Jolicoeur-Martineau, 2025; Baek et al., 2026). We use it precisely to measure generalization: to solve unseen puzzles a model cannot simply memorize a mapping from x → y, it must implicitly learn and respect the constraints of the game. We train on Sudoku with the in-place infill layout: a full 9 × 9 board flattened row-wise (length 81), with the loss taken over all board tokens. Puzzles are generated following Deschenaux & Gulcehre (2026), and difficulty is controlled by the number of revealed clues—40 of 81 cells given for easy and 30 of 81 for hard .We sweep pcondclean at two training-set sizes, N = 10 ,000 and N = 1 ,000 puzzles and evaluate accuracy on 2,000 held-out puzzles with a 128-step sampler (Table 1). The default setup of pasting-in clean conditioning tokens during training performs notably worse than our method of noising conditioning tokens. On Sudoku easy, p=0 .3 reaches 91 .18% versus 68 .49% for the standard paste-in setup; on hard with p=0 .1, 24 .65% versus 3 .73%. Under the data-limited regime N = 1 ,000, p=0 .56Published in Transactions on Machine Learning Research (09/2026) Table 1: Sudoku solve rate (%) on 2 ,000 held-out puzzles under the conditioning clean probability pcondclean .Easy (40 /81 clues) Hard (30 /81 clues) 
+
+pcondclean N = 10 ,000 N = 1 ,000 N = 10 ,000 N = 1 ,000 0.0 (uncond.) 1.41 0.00 0.00 0.00        
+
+> [0 .03 ,2.79] [0 .00 ,0.00] [0 .00 ,0.00] [0 .00 ,0.00]
+
+0.1 88 .59 2.42 24 .65 0.02        
+
+> [85 .88 ,91 .30] [0 .00 ,4.99] [18 .56 ,30 .74] [0 .00 ,0.08]
+
+0.2 88 .89 1.39 24 .25 0.01        
+
+> [84 .81 ,92 .97] [0 .11 ,2.67] [20 .04 ,28 .46] [0 .00 ,0.04]
+
+0.3 91 .18 0.71 22 .55 0.07        
+
+> [86 .72 ,95 .64] [0 .00 ,1.92] [17 .72 ,27 .38] [0 .00 ,0.19]
+
+0.5 87 .51 6.92 14 .70 0.21        
+
+> [80 .93 ,94 .09] [0 .86 ,12 .98] [8 .19 ,21 .21] [0 .16 ,0.26]
+
+1.0 (paste-in) 68 .49 1.47 3.73 0.00        
+
+> [57 .44 ,79 .54] [0 .00 ,3.11] [2 .76 ,4.70] [0 .00 ,0.00]
+
+Table 2: N-Queens infill accuracy and coverage (%), final checkpoint, 750 puzzles × 20 samples. 
+
+n = 8 (length 64) n = 10 (length 100) 
+
+pcondclean Accuracy Coverage Accuracy Coverage 0.2 99 .37 92 .39 98 .32 73 .79        
+
+> [99 .07 ,99 .66] [91 .92 ,92 .86] [97 .91 ,98 .73] [73 .19 ,74 .39]
+
+0.5 98 .67 90 .48 95 .09 61 .12        
+
+> [98 .27 ,99 .06] [89 .59 ,91 .38] [94 .55 ,95 .63] [60 .59 ,61 .64]
+
+1.0 (paste-in) 97 .48 89 .02 86 .23 50 .60        
+
+> [96 .73 ,98 .23] [88 .45 ,89 .59] [83 .67 ,88 .78] [49 .41 ,51 .80]
+
+performs best; the default paste-in strategy and p=0 .2 perform similarly, with no statistically significant difference in performance. The fully-unconditional setup ( p = 0 .0) exhibits poor generation, demonstrating that the model needs to see some clean prompts so our inference time clean prompt is within the training distribution. 
+
+4.4 N-Queens 
+
+N-Queens places n mutually non-attacking queens on an n × n board and likewise evaluates reasoning and generalization (Baek et al., 2026). In addition to being combinatorial in nature, N-Queens admits multiple valid solutions for a given starting board. This allows us to measure the diversity of the generated solutions. Following GRAM (Baek et al., 2026), we track coverage of possible solutions and report the fraction of unique solutions generated out of the total number of possible solutions corresponding to that board. We evaluate on held out initial board states and generate 20 samples per input board. We consider two scales, n = 8 (length 64) and n = 10 (length 100). We subsample the data such that puzzles of varying difficulty (as defined by the number of initial queens) are equal in number. For n = 8 this yields 1,758 training / 174 validation samples; for n = 10 we have 15 ,000 training / 1 ,671 validation samples. We also hold-out a seperate evaluation partition of 750 input boards for both n = 8 and n = 10. Training and evaluation splits are disjoint by input board. We train at global batch size 256 for 100k steps and evaluate the final checkpoint on 750 held-out puzzles with 20 generations each, repeating every configuration over 5 training seeds (Table 2). At n = 8 accuracy is high throughout all p; whereas at n = 10 noising the conditioning tokens ( p = 0 .2) performs substantially better than the default paste-in setup (98 .32 vs 86 .23%). 7Published in Transactions on Machine Learning Research (09/2026) Table 3: Gigaword validation NLL. (mean ± std. over 5 training seeds) Model pcondclean Dropout Best Val NLL Checkpoint Step 57M 1.0 (paste-in) 0.1 0.4581 ± 0.0041 8,000 57M 1.0 0.2 0.4537 ± 0.0104 12 ,000 57M 1.0 0.3 0.4478 ± 0.0056 16 ,400 57M 1.0 0.4 0.4455 ± 0.0080 19 ,200 57M 0.5 0.1 0.3707 ± 0.0093 23 ,600 132M 1.0 (paste-in) 0.1 0.4573 ± 0.0022 6,000 132M 0.5 0.1 0.3518 ± 0.0112 14 ,400 Coverage is a more salient metric: for both n = 8 and n = 10, training on just clean conditioning tokens leads to lower diversity of generations, prominently demonstrated at n = 10 (50 .60 vs 73 .79%). We report additional diversity results in Appendix B.2. 
+
+4.5 Natural Language Generation 
+
+We also present results on conditional language generation and specifically we consider the tasks of summa-rization and open ended dialogue. While we see benefits in summary generation—even when compared to regularized baselines—as measured by the mauve-diversity frontier, we do not find supporting evidence in open ended dialogue generation. For natural language generation, we report results with categorical sampling of ˆ x1 distribution for all steps, whereas previously for Sudoku/N-Queens we argmax decode the last sampling step. 
+
+4.5.1 Gigaword summarization 
+
+For summarization we use the Gigaword dataset (Rush et al., 2015), which contains pairs of source text and its summary headline. We filter to sequences of at most L=80 tokens whose headline is at least three words, leaving 191 ,082 training and 3 ,950 validation pairs. We do an initial single seed sweep across 
+
+pcondclean ∈ { 0.3, 0.5, 0.8, 1.0}; every averaged seed result compares p=0 .5 against the paste-in baseline over 
+
+n=5 training seeds. To compare noising prompts to standard regularization methods, we additionally sweep over dropout probability, as reported in Figure 4.5.3. 
+
+4.5.2 Open dialogue 
+
+Open dialogue benchmarks the natural language setting where the response is not as easily determined from the prompt. We use the Commonsense Conversation Dataset (Zhou et al., 2018) as released and processed by the DiffuSeq codebase (Gong et al., 2023); sequences are padded to L=96. We train both on the original 3.38M training dataset and also a training subset of 191k pairs (matching Gigaword’s training set size), both with the DiffSeq’s original 2 ,048-pair validation split. We sweep pcondclean ∈ { 0.3, 0.5, 1.0} over 3 training seeds. 
+
+4.5.3 Validation likelihood and overfitting 
+
+During training, for the validation set we always keep the prompt clean, so our validation likelihood is comparable across different pcondclean probabilities. We observe that noising the prompt acts as a strong regularizer for smaller language datasets (191k samples), providing robustness to overfitting (Table 3); however we do not see a significant regularization advantage for larger datasets (Table 8). On Gigaword we see that noising prompts yields better val NLL even compared to heavily regularized baseline (dropout 0 .4), demonstrating its effectiveness over ordinary regularization. We demonstrate val NLL improvements on larger (132M) models as well. 8Published in Transactions on Machine Learning Research (09/2026) 
+
+Figure 4: Diversity–quality frontiers. MAUVE against average response unigram entropy, traced by a softmax temperature on the denoised x1 distribution ( T ∈ [0 .2, 1.5]). We provide as a target the human references MAUVE (estimated by scoring data halves against each other) and average unigram entropy. We note that the default dropout is 0 .1 and bars represent training seed standard deviation. 
+
+4.5.4 Diversity–quality frontier results 
+
+Following commentary by Pynadath et al. (2026) that diversity–quality frontier plots are more accurate and faithful depictions of model generative quality, we report a diversity–quality frontier plot by sweeping over the temperature on the denoised x1 probability distribution (Figure 4). On Gigaword, noised prompt training dominates clean prompt training at and below reference target entropy, even with significant dropout regularization, demonstrating that noising prompts adds a benefit beyond standard regularization techniques. We also see that the improvement holds for a larger 132M model. On open dialogue, the story is different. We do not see a significant effect under noising, even at larger noising probabilities levels ( p=0 .3). We see no significant effect for both the larger data (3.38M samples) regime and smaller data (191k samples) regime. 
+
+4.6 Guided sampling 
+
+Because our objective trains the model under both clean and noised conditioning tokens, we can sample with guided sampling described in Section 3.3. We affine interpolate the model’s predictions with noised and clean prompts, l = f (xt, y t) + w(f (x1, y t) − f (xt, y t)) before applying a softmax to get our guided ˜ x1 simplex prediction to use during inference. We note that w=1 recovers the default paste-in sampling procedure, and 9Published in Transactions on Machine Learning Research (09/2026) Table 4: Sudoku solve rate (%) under guided sampling at pcondclean =0 .2 on 2,000 held-out puzzles. w=1 represents default sampling with a clean prompt during inference time. 
+
+Easy Hard Setting w Mean ∆ (improvement) Mean ∆ (improvement) 
+
+N =10 ,000 1 89 .44 — 23 .89 —   
+
+> [85 .62 ,93 .26] [20 .25 ,27 .53]
+
+5 92 .08 +2 .64 30 .82 +6 .93        
+
+> [88 .79 ,95 .37] [1 .83 ,3.45] [26 .86 ,34 .78] [6 .55 ,7.31]
+
+N =1 ,000 1 1.66 — 0.03 —   
+
+> [0 .09 ,3.23] [0 .00 ,0.09]
+
+3 3.94 +2 .28 0.03 +0 .00        
+
+> [0 .24 ,7.64] [0 .14 ,4.42] [0 .00 ,0.11] [0 .00 ,0.12]
+
+larger w > 1 encourages the model to rely more on the prompt information during inference. We add full details in Appendix B.3. On Sudoku, which has a unique solution per puzzle, guidance offers an improvement to performance, increasing solve rate accuracy, with the gains most visible on harder tasks. 2 On Sudoku-hard ( N =10 ,000) guidance increases accuracy by 6 .93 (23 .89 → 30 .82) and in the data-limited N =1 ,000 easy setting it more than doubles the solve rate (1 .66 → 3.94). However, as reported in (Ho & Salimans, 2022), guidance presents a trade off with solution diversity, which is apparent with N-Queens (Table 9). While increasing guidance generally improves accuracy, it decreases solution diversity, as measured by coverage (Table 12). 
+
+4.7 Ablations 
+
+We consider the following ablations to illustrate the design choice of our noising scheme: (i) whether the conditioning tokens are noised to the same time as the response or to an independent time; (ii) whether the loss is computed over the full sequence or only the response tokens; (iii) the whether the model needs to see clean conditioning tokens at all (fully unconditional training); (iv) the choice of gaussian noise for prompt tokens versus masked token noise; and (v) noising the prompt jointly. Moreover, to demonstrate the efficacy our method, we compare performance gains relative to increasing the number of training samples. All numbers are calculated with 95% two-sided t-distribution CIs using 5 training seeds, excluding the data scaling numbers in Figure 5, which is calculated using a single seed. 
+
+Separate conditioning time. The current objective noises conditioning tokens to the same sampled noise level (parameterized by time) as the response tokens. We consider drawing an independent time t′ ∼ U (0 , 1) for the conditioning tokens, so the conditioning and response are corrupted to decoupled noise levels. On Sudoku easy ( N =10 ,000) it reaches 93 .23%, above the best single-time setting in Table 1. (91 .18% at 
+
+p=0 .3), while on Sudoku-hard it performs similarly at 25 .09%. On N-Queens it performs worse than frequent same time noising (Table 2). 
+
+Loss calculated on full sequence vs response only. We ablate a response-tokens only loss objective that excludes the conditioning tokens predictions, sweeping pcondclean on Sudoku-easy ( N =10 ,000). By incorporating only the response tokens in the loss, the model performs similar or worse, offering support for our position that a full sequence objective is a more effective training objective. Notably, the noised prompt training still significantly outperforms paste-in clean prompt training (87 .70% at p=0 .2 vs 63 .34% at p=1 .0), demonstrating that the performance gains mainly come from noising, rather than a full sequence loss objective.   
+
+> 2The w=1 rows use the same clean prompt sampling procedure and the same p=0 .2 checkpoints as in Tables 1. Sampling noise makes the re-evaluated numbers differ slightly from those reported earlier.
+
+10 Published in Transactions on Machine Learning Research (09/2026) 
+
+Figure 5: Comparison to scaling dataset size. Puzzle (exact match) solve rate on Sudoku-easy using default paste-in method trained under increasing dataset sizes. All training datasets are subsets of a 100k training dataset. The default paste-in training objective requires 10 × more data to match the performance under noised prompt training p=0 .2. 
+
+Only noised conditioning tokens ( pcondclean =0 ). With conditioning tokens always noised, the model learns the unconditional joint distribution but is unable to utilize the given clean conditioning information at inference time. On Sudoku hard ( N =10 ,000) accuracy collapses to 0%; and on Sudoku easy ( N =10 ,000) accuracy is 1 .41%. This confirms that some exposure to clean conditioning tokens is necessary during training. 
+
+Masked token noise. Currently our method noises the prompt token using gaussian noise, the default choice of continuous diffusion language models. We also evaluate whether our method can hold under other types of noise, such as masked token noise. As before for some probability pcondclean the sequence has a fully clean prompt; else, we noise the prompt sequence, but this time we replace a matched number of the prompt tokens to [MASK], removing all signal from those tokens. We choose the fraction of masked tokens to match the amount of information lost via gaussian noising at level t.Specifically, assuming a uniform prior over token IDs with a vocabulary V , we can characterize the mutual information of a one-hot noised token y with its token ID c.
+
+M I (t) = log V − H(c|y)Then we can define the ratio of mutual information to the max mutual information, r(t) = M I (t)log V , and we can set our masking probability m(t) = 1 − r(t) such that the ratio of mutual information under masking matches the ratio of mutual information under gaussian noise. We see that for both p=0 .2 and p=0 .5 noising the prompt via masked noise performs statistically similar to gaussian noising, meaning that our method can extend to other noising forms as well. 
+
+Individual noising. We ablate the decision to either keep the prompt clean or to noise the prompt jointly by instead considering per token bernoulli noising for all sequences, i.e each token remains clean based on an independent draw with pcondclean . We note that this causes a train/inference gap with clean prompt sampling and correspondingly the method is able to perform better at the higher clean probability p = 0 .5 over p = 0 .2, albeit overall worse than joint noising on Sudoku-hard. 
+
+Comparison to data scaling. By also noising the prompt, our method can be seen as a form of data augmentation. Here we quantify the performance gains relative to increasing the number of training samples. 11 Published in Transactions on Machine Learning Research (09/2026) Table 5: Ablations. First: separate conditioning time variant (independent clue time t′). Second: Per token noising. Third: response-only loss region, swept over pcondclean . Fourth: Fully unconditional generation. Fifth: 
+
+Masked noise variant. Ablation Setting Accuracy Coverage Separate cond. time Sudoku easy 93 .23 [91 .95 , 94 .51] —Sudoku hard 25 .09 [21 .66 , 28 .52] —N-Queens n=8 97 .20 [96 .67 , 97 .74] 88 .84 [88 .04 , 89 .64] 
+
+N-Queens n=10 88 .56 [87 .74 , 89 .39] 51 .69 [50 .89 , 52 .49] 
+
+Per-token Bernoulli Sudoku easy, p=0 .2 75 .97 [72 .89 , 79 .05] —Sudoku easy, p=0 .5 89 .75 [85 .46 , 94 .04] —Sudoku hard, p=0 .2 8.99 [6 .49 , 11 .49] —Sudoku hard, p=0 .5 16 .98 [12 .88 , 21 .08] —Response-only loss (Sudoku easy) 
+
+p=0 .0 1.22 [0 .19 , 2.25] —
+
+p=0 .2 87 .70 [84 .62 , 90 .78] —
+
+p=0 .5 82 .91 [77 .54 , 88 .28] —
+
+p=1 .0 63 .34 [58 .68 , 68 .00] —Unconditional ( p=0) Sudoku easy 1.41 [0 .03 , 2.79] —Sudoku hard 0.00 [0 .00 , 0.00] —Masking noise (Sudoku easy) 
+
+p=0 .2 84 .85 [70 .72 , 98 .98] —
+
+p=0 .5 86 .63 [82 .67 , 90 .59] —We evaluate on Sudoku-easy and train a single seed on various size subsets of a 100k training dataset, with a held-out set of n = 2 , 000 samples drawn i.i.d from the same data generator used for previous Sudoku held-out sets. All training runs follow the same settings as in Appendix C and are computed matched. As seen in Figure 5, training with a noised-prompt has the same effective performance as increasing the total training dataset size by 10 × under the paste-in training objective, demonstrating the efficacy of our training method. 
+
+## 5 Analysis and Discussion 
+
+Why does noising the conditioning help? We posit views consistent with the results above. First, noising the conditioning tokens leads to a wider set of training inputs (seen as data augmentation) and also makes use of the conditioning token predictions in the loss. Second, by decreasing the amount of signal in conditioning tokens, the model becomes less reliant on predicting responses mainly based on the condition, leading to a greater variety of generations, as exhibited by the mode coverage results (always-clean training (p = 1) collapses toward fewer solutions). However, we find that actually noising the conditioning tokens is critical (Appendix A.1). Finally, incorporating both noisy conditional tokens and non-noisy conditioning tokens can be seen as expanding the learning objective: p < 1 mixes an easier prediction task with a harder prediction task. 
+
+Limitations. We show significant improvements to reasoning on small combinatorial puzzle datasets with small flow language models. We show mixed results on natural language generation, with improvements in modest summarization language datasets with small to medium sized flow language models, but null differences with open ended dialogue generation. Due to cost limitations, we have not evaluated on significantly larger models, but future work would include evaluating model and dataset scaling behavior. 
+
+## 6 Conclusion 
+
+We revisit an accepted default practice of keeping conditioning tokens clean during training of continuous diffusion language models and instead noise the conditioning tokens as well. We find noising of conditioning 12 Published in Transactions on Machine Learning Research (09/2026) tokens to be a simple yet effective technique with task-dependent benefits: it improves accuracy and diversity on combinatorial reasoning puzzles and summarization generation quality on Gigaword, but does not improve generation quality on open-ended dialogue. We evaluate on relatively small models—future work includes scaling analysis with larger models and larger datasets. 
+
+## Acknowledgements 
+
+We thank Julian Quevado for his encouragement and support. We thank the broader diffusion language model community for their foundational work and ongoing contributions to this area of research. 
+
+## References 
+
+Michael S. Albergo and Eric Vanden-Eijnden. Building normalizing flows with stochastic interpolants. arXiv preprint arXiv:2209.15571 , 2023. URL https://arxiv.org/abs/2209.15571 .Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van den Berg. Structured denoising diffusion models in discrete state-spaces. arXiv preprint arXiv:2107.03006 , 2021. URL https: //arxiv.org/abs/2107.03006 .Junyeob Baek, Mingyu Jo, Minsu Kim, Mengye Ren, Yoshua Bengio, and Sungjin Ahn. Generative recursive reasoning. arXiv preprint arXiv:2605.19376 , 2026. URL https://arxiv.org/abs/2605.19376 .Boyuan Chen, Diego Martí Monso, Yilun Du, Max Simchowitz, Russ Tedrake, and Vincent Sitzmann. Diffusion forcing: Next-token prediction meets full-sequence diffusion. arXiv preprint arXiv:2407.01392 ,2024. URL https://arxiv.org/abs/2407.01392 .Justin Deschenaux and Caglar Gulcehre. Language modeling with hyperspherical flows. arXiv preprint arXiv:2605.11125 , 2026. URL https://arxiv.org/abs/2605.11125 .Sander Dieleman, Laurent Sartran, Arman Roshannai, Nikolay Savinov, Yaroslav Ganin, Pierre H. Richemond, Arnaud Doucet, Robin Strudel, Chris Dyer, Conor Durkan, Curtis Hawthorne, Rémi Leblond, Will Grathwohl, and Jonas Adler. Continuous diffusion for categorical data. arXiv preprint arXiv:2211.15089 ,2022. URL https://arxiv.org/abs/2211.15089 .Yoshinari Fujinuma and Keisuke Sakaguchi. Unlocking prompt infilling capability for diffusion language models. arXiv preprint arXiv:2604.03677 , 2026. URL https://arxiv.org/abs/2604.03677 .Shansan Gong, Mukai Li, Jiangtao Feng, Zhiyong Wu, and Lingpeng Kong. DiffuSeq: Sequence to sequence text generation with diffusion models. In International Conference on Learning Representations (ICLR) ,2023. URL https://arxiv.org/abs/2210.08933 .Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance. arXiv preprint arXiv:2207.12598 , 2022. URL https://arxiv.org/abs/2207.12598 .Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. arXiv preprint arXiv:2006.11239 , 2020. URL https://arxiv.org/abs/2006.11239 .Jonathan Ho, Chitwan Saharia, William Chan, David J. Fleet, Mohammad Norouzi, and Tim Salimans. Cascaded diffusion models for high fidelity image generation. arXiv preprint arXiv:2106.15282 , 2022. URL 
+
+https://arxiv.org/abs/2106.15282 .Keya Hu, Linlu Qiu, Yiyang Lu, Hanhong Zhao, Tianhong Li, Yoon Kim, Jacob Andreas, and Kaiming He. ELF: Embedded language flows. arXiv preprint arXiv:2605.10938 , 2026. URL https://arxiv.org/abs/ 2605.10938 .Alexia Jolicoeur-Martineau. Less is more: Recursive reasoning with tiny networks. arXiv preprint arXiv:2510.04871 , 2025. URL https://arxiv.org/abs/2510.04871 .13 Published in Transactions on Machine Learning Research (09/2026) Chanhyuk Lee, Jaehoon Yoo, Manan Agarwal, Sheel Shah, Jerry Huang, Aditi Raghunathan, Seunghoon Hong, Nicholas M. Boffi, and Jinwoo Kim. Flow map language models: One-step language modeling via continuous denoising. arXiv preprint arXiv:2602.16813 , 2026. URL https://arxiv.org/abs/2602.16813 .Xiang Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori B. Hashimoto. Diffusion-LM improves controllable text generation. In Advances in Neural Information Processing Systems (NeurIPS) ,2022. URL https://arxiv.org/abs/2205.14217 .Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 , 2023. URL https://arxiv.org/abs/2210.02747 .Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. arXiv preprint arXiv:2310.16834 , 2024. URL https://arxiv.org/abs/2310.16834 .Shen Nie, Fengqi Zhu, Zebin You, Xiaolu Zhang, Jingyang Ou, Jun Hu, Jun Zhou, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. Large language diffusion models. arXiv preprint arXiv:2502.09992 , 2025. URL 
+
+https://arxiv.org/abs/2502.09992 .William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pp. 4195–4205, 2023. Krishna Pillutla, Swabha Swayamdipta, Rowan Zellers, John Thickstun, Sean Welleck, Yejin Choi, and Zaid Harchaoui. MAUVE: Measuring the gap between neural text and human text using divergence frontiers. In Advances in Neural Information Processing Systems (NeurIPS) , 2021. URL https://arxiv.org/abs/ 2102.01454 .Peter Potaptchik, Jason Yim, Adhi Saravanan, Peter Holderrieth, Eric Vanden-Eijnden, and Michael S. Albergo. Discrete flow maps. arXiv preprint arXiv:2604.09784 , 2026. URL https://arxiv.org/abs/2604.09784 .Patrick Pynadath, Jiaxin Shi, and Ruqi Zhang. Generative frontiers: Why evaluation matters for diffusion language models, 2026. URL https://arxiv.org/abs/2604.02718 .Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. Language models are unsupervised multitask learners. OpenAI Technical Report , 2019. Alexander M. Rush, Sumit Chopra, and Jason Weston. A neural attention model for abstractive sentence summarization. In Conference on Empirical Methods in Natural Language Processing (EMNLP) , 2015. URL https://arxiv.org/abs/1509.00685 .Subham Sekhar Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin T. Chiu, Alexander Rush, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. arXiv preprint arXiv:2406.07524 , 2024. URL https://arxiv.org/abs/2406.07524 .Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 ,2021. URL https://arxiv.org/abs/2011.13456 .Bowen Sun, Yujun Cai, Ming-Hsuan Yang, and Yiwei Wang. Blockwise sft for diffusion language models: Reconciling bidirectional attention and autoregressive decoding. 2025. URL https://arxiv.org/abs/ 2508.19529 .Tong Wu, Zhihao Fan, Xiao Liu, Yeyun Gong, Yelong Shen, Jian Jiao, Hai-Tao Zheng, Juntao Li, Zhongyu Wei, Jian Guo, Nan Duan, and Weizhu Chen. AR-Diffusion: Auto-regressive diffusion model for text generation. In Advances in Neural Information Processing Systems (NeurIPS) , 2023. URL https: //arxiv.org/abs/2305.09515 .Zhihan Yang, Wei Guo, Shuibai Zhang, Subham Sekhar Sahoo, Yongxin Chen, Arash Vahdat, Morteza Mardani, and John Thickstun. Continuous diffusion scales competitively with discrete diffusion for language. 
+
+arXiv preprint arXiv:2605.18530 , 2026. URL https://arxiv.org/abs/2605.18530 .14 Published in Transactions on Machine Learning Research (09/2026) Hao Zhou, Tom Young, Minlie Huang, Haizhou Zhao, Jingfang Xu, and Xiaoyan Zhu. Commonsense knowledge aware conversation generation with graph attention. In International Joint Conference on Artificial Intelligence (IJCAI) , 2018. URL https://www.ijcai.org/proceedings/2018/643 .
+
+## A Further Ablations 
+
+A.1 Noising conditioning time but keeping conditioning data clean 
+
+Table 6: Effect of noising the conditioning time while keeping the conditioning data clean. p is the probability that a conditioning tokens’s time value stays clean, i.e remains t = 1. 95% bootstrap CIs reported. Conditioning-time clean prob. p
+
+Difficulty 0.2 0.5 1.0Easy 66 .95 [64.95, 69.00] 69 .55 [67.55, 71.60] 68 .60 [66.60, 70.60] 
+
+Hard 4.80 [3.90, 5.75] 5.50 [4.55, 6.50] 3.75 [2.95, 4.60] 
+
+We ablate whether the improvement in model performance under noised conditioning prompts stems from the increase in variation of conditioning inputs, hinting at a data augmentation effect, (i.e model trains on a range of conditioning tokens xt, not just clean tokens x1) or due to its decrease in reliance on the conditioning prompts for prediction, hinting at regularization effect. We only noise the time values of the conditioning tokens that the model takes as input, but keep the actual conditioning tokens input the same, i.e one-hot vectors. Admittedly, we see a confounding effect where the model can learn to identify one-hot vectors as clean, bypassing the supplied noised conditioning token time values. In Table 6, we see that when the model is "told" via the noised time values that the conditioning prompt is noisy, it performs simillary on Sudoku Easy and nominally better (5 .50% vs 3 .75%) on Sudoku Hard. For significant model improvement, it is necessary to actually noise the conditioning prompt tokens. 
+
+A.2 Separate conditioning time training with pcondclean 
+
+We consider an ablation to the seperate conditioning time method (which simply picks an independent time 
+
+t′ to noise the prompt while noising the response at time t). We instead have with probability pcondclean 
+
+the prompt remains clean, reducing the training/inference gap. Sweeping over pcondclean does not lead to significantly different positive results than the original separate conditioning time training. As before, we see that coverage for N-Queens 10 × 10 is still significantly lower than our default shared time noising. We leave further investigations into why shared time might have better performance for N-Queens coverage to future work. Table 7: Conditioning-time-distribution with pcondclean 
+
+Sudoku N-Queens n=8 N-Queens n=10 
+
+pcondclean Easy Acc. Hard Acc. Accuracy Coverage Accuracy Coverage 0.2 92 .38 24 .65 97 .13 89 .11 88 .93 52 .22            
+
+> [90 .35 ,94 .41] [16 .98 ,32 .32] [96 .61 ,97 .66] [88 .46 ,89 .76] [87 .71 ,90 .14] [51 .37 ,53 .06]
+
+0.5 89 .66 13 .89 97 .55 88 .62 89 .40 52 .10            
+
+> [85 .62 ,93 .70] [9 .44 ,18 .34] [96 .80 ,98 .30] [88 .22 ,89 .02] [87 .15 ,91 .65] [51 .33 ,52 .86]
+
+1.0 61 .32 3.84 97 .52 88 .54 88 .67 51 .92            
+
+> [47 .22 ,75 .42] [0 .77 ,6.91] [97 .03 ,98 .02] [87 .88 ,89 .20] [87 .54 ,89 .81] [51 .50 ,52 .35]
+
+15 Published in Transactions on Machine Learning Research (09/2026) Table 8: Open dialogue validation NLL. (mean ± std. over 3 training seeds) Train pairs pcondclean Best Val NLL Checkpoint Step 191K 1.0 (paste-in) 0.6644 ± 0.0104 12 ,667 191K 0.5 0.5640 ± 0.0045 28 ,667 191K 0.3 0.5543 ± 0.0054 35 ,333 3.38M 1.0 (paste-in) 0.4425 ± 0.0073 97 ,333 3.38M 0.5 0.4133 ± 0.0035 138 ,000 3.38M 0.3 0.4246 ± 0.0084 128 ,667 Table 9: N-Queens accuracy and coverage (%) under guided sampling at pcondclean =0 .2, 750 held-out boards 
+
+× 20 samples. ∆ is the paired within-seed change from w=1. Guidance improves accuracy but trades off with coverage. 
+
+Accuracy Coverage Setting w Mean ∆ Mean ∆
+
+n=8 (length 64) 1 99 .43 — 92 .65 —   
+
+> [99 .14 ,99 .73] [91 .98 ,93 .32]
+
+5 99 .61 +0 .18 90 .94 −1.71        
+
+> [99 .37 ,99 .85] [0 .05 ,0.31] [90 .42 ,91 .45] [−2.18 ,−1.25]
+
+n=10 (length 100) 1 98 .40 — 73 .57 —   
+
+> [98 .05 ,98 .75] [72 .91 ,74 .23]
+
+2 99 .16 +0 .76 67 .27 −6.30        
+
+> [98 .97 ,99 .35] [0 .47 ,1.04] [66 .80 ,67 .74] [−6.91 ,−5.69]
+
+## B Full Results 
+
+B.1 (12x12) N-Queens with disjoint solutions 
+
+For our (8 × 8) and (10 × 10) N-Queens results, we ensure that the training input boards are disjoint from any hold-out evaluation input boards. However, due to the total solution space being rather limited at these board sizes (92, 724 solutions respectively), the set of training solutions fully overlaps with the set of evaluation solutions. Therefore we also consider evaluate using hold out solutions which are disjoint from the solutions seen in the training. We construct a dataset of (12 × 12) N-Queens with 10 ,000 training samples, 2 ,000 validation samples, and a 750 sample hold out evaluation set, ensuring that the training input and solutions are disjoint from the hold out evaluation input and solutions. Besides the dataset, all training details are kept the same as before and we report two-sided t-distribution CIs using 5 seeds. As shown in Table 10, we see that the more heavily noising probability p = 0 .2 performs the best, with increased accuracy and coverage. 
+
+B.2 N-Queens solution diversity at matched validity 
+
+Coverage measures the fraction of total possible solution states generated, which is confounded with the model’s solution generation quality. While not a significant issue for n = 8, this is a confounder for n = 10. Thus we report the solution diversity at matched validity across the models. As shown in the left half of Figure 6, the vast majority of set-of-20 generations have 18 or more valid solutions, making up 97 .4% of generations for the p = 0 .2 model and 67 .5% of generations for the p = 1 .0 model. On the right we group the set-of-20 generations by validity counts and report the mean number of unique solutions to measure diversity of generation under matched validity. We see that the strongly noised p = 0 .2 model upper bounds the default clean prompt p = 1 .0 in terms of solution diversity. 16 Published in Transactions on Machine Learning Research (09/2026) Table 10: N-Queens infill accuracy and coverage (%) at n = 12 (length 144) on a input and solution disjoint evaluation set, final checkpoint, 750 puzzles × 20 samples. 
+
+n = 12 (length 144) 
+
+pcondclean Accuracy Coverage 0.2 39 .59 58 .75    
+
+> [38 .31 ,40 .88] [58 .00 ,59 .51]
+
+0.5 33 .49 51 .11    
+
+> [31 .62 ,35 .36] [49 .44 ,52 .78]
+
+1.0 (paste-in) 22 .66 38 .62    
+
+> [18 .50 ,26 .82] [33 .06 ,44 .18]
+
+Figure 6: Solution diversity at matched validity for N-Queens n = 10. 
+
+B.3 Guidance details 
+
+We sweep the guidance weight w ∈ { 1, 1.5, 2, 3, 5, 8} on a single training seed for both Sudoku and N-Queens experiments. We also consider an affine interpolation in simplex space, i.e exponentiating the model’s log-softmax logits prediction before interpolating and renormalizing the interpolation. However, we found that interpolating logits to be much more effective so we use this throughout. Table 11: Sudoku solve rate (%) over the full guidance sweep, pcondclean =0 .2, using single seed. 
+
+Guidance weight w
+
+Setting Space 1 1.5 2 3 5 8Easy, N =10 ,000 logit 90 .90 91 .30 91 .80 92 .20 92 .65 92 .65 
+
+prob 90 .90 91 .00 91 .15 91 .35 91 .45 91 .55 Hard, N =10 ,000 logit 28 .15 31 .60 32 .95 34 .40 35 .35 34 .95 prob 28 .15 30 .05 30 .80 31 .10 31 .70 32 .15 Easy, N =1 ,000 logit 2.05 2.45 3.75 4.60 4.10 2.65 prob 2.05 1.85 1.85 2.50 2.95 3.30 Hard, N =1 ,000 logit 0.05 0.00 0.05 0.00 0.00 0.00 prob 0.05 0.00 0.00 0.00 0.00 0.05 
+
+17 Published in Transactions on Machine Learning Research (09/2026) Table 12: N-Queens accuracy and coverage (%) under guided sampling, pcondclean =0 .2, single training seed, 750 puzzles × 20 samples. Parenthesised values are the change from w=1. 
+
+n = 8 (length 64) n = 10 (length 100) 
+
+w Accuracy Coverage Accuracy Coverage 1 99 .13 92 .65 97 .92 74 .38 
+
+1.5 99 .18 (+0 .05) 91 .66 (−0.99) 98 .75 (+0 .83) 69 .13 (−5.25) 
+
+2 99 .25 (+0 .13) 91 .26 (−1.39) 98 .95 (+1 .03) 67 .12 (−7.26) 
+
+3 99 .29 (+0 .17) 90 .85 (−1.80) 98 .95 (+1 .03) 65 .45 (−8.93) 
+
+5 99 .35 (+0 .23) 91 .19 (−1.46) 98 .67 (+0 .75) 64 .22 (−10 .16) 
+
+8 99 .16 (+0 .03) 91 .05 (−1.60) 97 .65 (−0.27) 63 .67 (−10 .71) 
+
+## C Full Hyperparameters 
+
+Table 13 lists the shared training configuration. Table 13: Shared hyperparameters Group Setting Value Model hidden size / blocks / heads 512 / 8 / 8 (default), 768 / 12 / 12 (Gigaword 132M) cond. dim / dropout 128 / 0 .1board length 81 (Sudoku), 64/100 (N-Queens n=8/10), 80 (Gigaword) Algorithm pred. type x1
+
+loss type flow 
+
+pcondclean {0.1, 0.2, 0.3, 0.5, 1.0} (Sudoku), 
+
+{0.2, 0.5, 1.0} (N-Queens), {0.3, 0.5, 0.8, 1.0} (Gigaword), 
+
+{0.3, 0.5, 1.0} (Dialogue) Training max steps 100k (N-Queens), 40k (Sudoku), 60k (Gigaword), 150k (Dialogue) global batch size 256 precision / EMA bf16-mixed / 0 .9999 grad clip 1.0Optimizer class AdamW lr / ( β1, β 2) 3×10 −4 / (0 .9, 0.999) warmup 2,500 steps (constant after) Sampling solver Euler steps 128 Hardware accelerator / GPU cuda, 1 device / NVIDIA L40S 18
