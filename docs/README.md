@@ -6,79 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-14
-- 运行时间：2026-10-14 22:33:33 UTC
+- 最新运行日期：2026-10-15
+- 运行时间：2026-10-15 22:23:25 UTC
 - 运行状态：成功
-- 本次总论文数：19
-- 精读区：8
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-1) 2026年10月14日日报成功产出19篇前沿文献，涵盖8篇深度精读与11篇高效速读。
-2) 重点推荐《Reward-Aligned Distillation》与多源数据选择的概率优化方案，两篇均获9.0高分。
-3) 建议普通读者优先精读高分核心论文，快速掌握奖励对齐与方差缩减的最新进展。
-- 详情：[/202610/14/README](/202610/14/README)
+2026-10-15日报：今日成功处理17篇前沿论文，重点精读6篇、速读11篇，聚焦大模型提示词优化与偏好学习。
+最值得看的是RLPE和Item-Level Transitions两篇满分研究，核心探讨如何通过强化学习教LLM提示及优化提示词的单样本转换。
+建议普通读者从得分最高的提示词优化方向入手，快速掌握大模型交互与策略微调的最新进展。
+- 详情：[/202610/15/README](/202610/15/README)
 
 ### 精读区论文标签
-1. [Reward-Aligned Distillation](/202610/14/2610.14572v1-reward-aligned-distillation)  
+1. [RLPE: Teaching LLMs to Prompt with Reinforcement Learning](/202610/15/2610.19062v1-rlpe-teaching-llms-to-prompt-with-reinforcement-learning)  
+   标签：评分：10.0/10、query:bopl
+   evidence：使用强化学习进行自动提示工程与优化
+2. [Beyond Aggregate Accuracy: Item-Level Transitions in Prompt Optimization](/202610/15/2610.19084v1-beyond-aggregate-accuracy-item-level-transitions-in-prompt-optimization)  
+   标签：评分：10.0/10、query:bopl
+   evidence：利用模型响应反馈进行自动提示优化
+3. [HERO: Harnessing Evidence for Test-time Refinement and Prompt Optimization in Program Generation](/202610/15/2610.19184v1-hero-harnessing-evidence-for-test-time-refinement-and-prompt-optimization-in-program-generation)  
    标签：评分：9.0/10、query:bopl
-   evidence：用于加权大模型蒸馏信号的双层优化框架
-2. [Probabilistic Multi-Source Data Selection via Learnable Categorical Priors: Variance Reduction and Guaranteed Derandomization](/202610/14/2610.14942v1-probabilistic-multi-source-data-selection-via-learnable-categorical-priors-variance-reduction-and-guaranteed-derandomization)  
+   evidence：程序生成的自动化提示优化
+4. [Designing Textual Interfaces To Enhance Llm Reasoning On Audio-Visual Question Answering](/202610/15/2610.20085v1-designing-textual-interfaces-to-enhance-llm-reasoning-on-audio-visual-question-answering)  
    标签：评分：9.0/10、query:bopl
-   evidence：多源双层数据选择的概率松弛
-3. [Multilevel Monte Carlo for Zeroth-Order Stochastic Bilevel Optimization with Inexact Lower Level Solves](/202610/14/2610.15047v1-multilevel-monte-carlo-for-zeroth-order-stochastic-bilevel-optimization-with-inexact-lower-level-solves)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于参数调优的随机双层优化
-4. [TIDE: Trajectory-Informed Skill Distillation for Efficient Text-to-Video Prompt Optimization](/202610/14/2610.15098v1-tide-trajectory-informed-skill-distillation-for-efficient-text-to-video-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：高效的文本到视频提示词优化
-5. [REPRO: Reflective Evolutionary Prompt Optimizer for Automated LLM Red-Teaming](/202610/14/2610.15513v1-repro-reflective-evolutionary-prompt-optimizer-for-automated-llm-red-teaming)  
-   标签：评分：9.0/10、query:bopl
-   evidence：用于自动红队测试的进化提示优化
-6. [PID-Gated Continual Prompt Adaptation Under Noisy Feedback](/202610/14/2610.16129v1-pid-gated-continual-prompt-adaptation-under-noisy-feedback)  
-   标签：评分：9.0/10、query:bopl
-   evidence：持续提示词自适应与提示词优化器
-7. [Not All Drift Is a Mechanism: Tracing Prompt Adaptation in LLMs](/202610/14/2610.18412v1-not-all-drift-is-a-mechanism-tracing-prompt-adaptation-in-llms)  
-   标签：评分：9.0/10、query:bopl
-   evidence：比较离散提示优化、提示微调和前缀微调
-8. [DPOison-VL: Clean Preference Poisoning in Vision-Language Direct Preference Optimization](/202610/14/2610.18609v1-dpoison-vl-clean-preference-poisoning-in-vision-language-direct-preference-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：将投毒构造建模为双层优化问题
+   evidence：多模态推理的自动提示词优化
+5. [From Agents to Edges: Paired Optimization for Multi-Agent Collaboration](/202610/15/2610.18069v1-from-agents-to-edges-paired-optimization-for-multi-agent-collaboration)  
+   标签：评分：8.0/10、query:bopl
+   evidence：联合优化多智能体系统的指令和提示词
+6. [FlowCred: Hierarchical Credit Assignment and Functional Coordination for Joint Text-to-Video Post-Training](/202610/15/2610.18142v1-flowcred-hierarchical-credit-assignment-and-functional-coordination-for-joint-text-to-video-post-training)  
+   标签：评分：8.0/10、query:bopl
+   evidence：联合优化提示策略和生成器
 
 ### 速读区论文标签
-1. [REMORY: Learning Residual Memory for Context Compaction](/202610/14/2610.11287v2-remory-learning-residual-memory-for-context-compaction)  
-   标签：评分：8.0/10、query:bopl
-   evidence：生成软记忆标记以逼近历史信息
-2. [Think in Strategies, Act with Tools: Traceable Agentic Optimization for Combinatorial Problems](/202610/14/2610.14736v1-think-in-strategies-act-with-tools-traceable-agentic-optimization-for-combinatorial-problems)  
-   标签：评分：8.0/10、query:bopl
-   evidence：利用 OPRO 进行基于提示的自动化优化
-3. [SIMPLE: Semantic Structure-Aligned Prompt Learning for Open-Vocabulary Audio-Visual Event Localization](/202610/14/2610.15342v1-simple-semantic-structure-aligned-prompt-learning-for-open-vocabulary-audio-visual-event-localization)  
-   标签：评分：8.0/10、query:bopl
-   evidence：可学习的提示学习框架
-4. [Revisiting Natural Language Prompts from Large Language Models for Open-Vocabulary Video Recognition](/202610/14/2610.16666v1-revisiting-natural-language-prompts-from-large-language-models-for-open-vocabulary-video-recognition)  
-   标签：评分：8.0/10、query:bopl
-   evidence：利用LLM生成视频识别提示
-5. [A Bilevel Market Equilibrium Model for Natural Gas Pipeline Network Operations: Convex Relaxations and Single-level Reformulations](/202610/14/2610.14339v1-a-bilevel-market-equilibrium-model-for-natural-gas-pipeline-network-operations-convex-relaxations-and-single-level-reformulations)  
+1. [Personalized Federated Direct Preference Optimization via LoRA Adapters](/202610/15/2610.12885v1-personalized-federated-direct-preference-optimization-via-lora-adapters)  
    标签：评分：7.0/10、query:bopl
-   evidence：市场均衡的双层优化建模
-6. [Using Evidence-Centered Design to Guide Prompt Engineering in Measurement: An Illustration with Automated Essay Scoring](/202610/14/2610.15231v1-using-evidence-centered-design-to-guide-prompt-engineering-in-measurement-an-illustration-with-automated-essay-scoring)  
+   evidence：用于参数高效对齐的 LoRA 适配器
+2. [Matching Full-Hessian Oracle Complexity for Nonconvex--Strongly-Concave Minimax Optimization](/202610/15/2610.16771v1-matching-full-hessian-oracle-complexity-for-nonconvex--strongly-concave-minimax-optimization)  
    标签：评分：7.0/10、query:bopl
-   evidence：提示词工程的有原则设计
-7. [LLM-HB: Language-Aware LLM-Guided Hotword Biasing for Code-Switching ASR](/202610/14/2610.16579v1-llm-hb-language-aware-llm-guided-hotword-biasing-for-code-switching-asr)  
+   evidence：极大极小优化复杂度分析
+3. [EPOCH: Coverage-Aware Evolution with Experiential Preference Optimization for LLM-based Automated Heuristic Design](/202610/15/2610.17379v1-epoch-coverage-aware-evolution-with-experiential-preference-optimization-for-llm-based-automated-heuristic-design)  
    标签：评分：7.0/10、query:bopl
-   evidence：基于大语言模型提示的热词注入
-8. [Answer It or Not? Towards Prompt-Adapted Adversarial Images on Vision Language Models](/202610/14/2610.16622v1-answer-it-or-not-towards-prompt-adapted-adversarial-images-on-vision-language-models)  
+   evidence：基于大语言模型的进化搜索和反思提示词自动化启发式设计
+4. [Gaussian Process Bandits for AI System Optimization with Selectively Verified Feedback](/202610/15/2610.17760v1-gaussian-process-bandits-for-ai-system-optimization-with-selectively-verified-feedback)  
    标签：评分：7.0/10、query:bopl
-   evidence：视觉语言模型的提示自适应优化
-9. [Zeroth-Order Fine-Tuning of LLMs in Learnable Low-Rank Subspaces](/202610/14/2610.15225v1-zeroth-order-fine-tuning-of-llms-in-learnable-low-rank-subspaces)  
+   evidence：利用高斯过程多臂老虎机优化提示
+5. [APT: Feedback-Driven Agentic Post-Training for Text-to-Image Generation](/202610/15/2610.18097v1-apt-feedback-driven-agentic-post-training-for-text-to-image-generation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：具有自适应提示词分布的自动化框架
+6. [PACT: A Pragmatic Prompting Framework for Expressive and Voice-Preserving Speech-to-Speech Translation](/202610/15/2610.18247v1-pact-a-pragmatic-prompting-framework-for-expressive-and-voice-preserving-speech-to-speech-translation)  
+   标签：评分：7.0/10、query:bopl
+   evidence：将语用线索转换为语音生成的连续提示词
+7. [Query-Adaptive Neuron Steering for LLMs](/202610/15/2610.14519v1-query-adaptive-neuron-steering-for-llms)  
    标签：评分：6.0/10、query:bopl
-   evidence：在可学习低秩子空间中进行内存高效的微调
-10. [LLM Agents for Automated Post-Training via Structured Recipe Optimization](/202610/14/2610.18572v1-llm-agents-for-automated-post-training-via-structured-recipe-optimization)  
+   evidence：通过查询自适应引导激发大语言模型能力
+8. [Online LLM Personalization from Pairwise Preferences Across Users](/202610/15/2610.17203v1-online-llm-personalization-from-pairwise-preferences-across-users)  
    标签：评分：6.0/10、query:bopl
-   evidence：通过结构化配方优化实现自动后训练
-11. [Back-Translation Still Matters: Leveraging Monolingual Data for Low-Resource Machine Translation with LLMs](/202610/14/2610.18818v1-back-translation-still-matters-leveraging-monolingual-data-for-low-resource-machine-translation-with-llms)  
+   evidence：从固定提示词集中进行在线选择
+9. [Reliable Text-to-SQL in Resource-Constrained Settings with Small LLMs via Iterative Retry Workflows](/202610/15/2610.17305v1-reliable-text-to-sql-in-resource-constrained-settings-with-small-llms-via-iterative-retry-workflows)  
    标签：评分：6.0/10、query:bopl
-   evidence：机器翻译中的少样本提示
+   evidence：提示词表述如何影响小规模LLM的性能
+10. [Confine to the Task, Anchor the Rest: Concept-Guided Retention Regularizer for Parameter-Efficient Fine-Tuning](/202610/15/2610.17713v1-confine-to-the-task-anchor-the-rest-concept-guided-retention-regularizer-for-parameter-efficient-fine-tuning)  
+   标签：评分：6.0/10、query:bopl
+   evidence：参数高效微调的正则化器
+11. [VARI: Robust Text-to-Video Generation via Group-Structured Intent Alignment](/202610/15/2610.18189v1-vari-robust-text-to-video-generation-via-group-structured-intent-alignment)  
+   标签：评分：6.0/10、query:bopl
+   evidence：优化等效提示词表述之间的可靠性
 
 
 <div class="dpr-home-promo-card">

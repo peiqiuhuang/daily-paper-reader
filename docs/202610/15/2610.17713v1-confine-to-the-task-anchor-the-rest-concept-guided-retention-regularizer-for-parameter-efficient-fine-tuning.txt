@@ -1,0 +1,1025 @@
+Title: Confine to the Task, Anchor the Rest: Concept-Guided Retention Regularizer for Parameter-Efficient Fine-Tuning
+
+URL Source: https://arxiv.org/pdf/2610.17713v1
+
+Published Time: Wed, 14 Oct 2026 04:35:26 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Confine to the Task, Anchor the Rest: Concept-Guided Retention Regularizer for Parameter-Efficient Fine-Tuning 
+
+# Ibna Kowsar 1, Ivan Medri 2, Fanyu Meng 1, Xin Liu 1
+
+> 1
+
+Department of Computer Science, University of California, Davis 
+
+> 2
+
+University of Virginia 
+
+Abstract 
+
+Parameter-efficient fine-tuning (PEFT) has been widely used, yet the adapted model suffers catastrophic forgetting of pre-trained knowledge. While most existing work hardens the adapter by constraining where the weight update may lie, we note that constraining this weight channel does not constrain the activation channel. In this paper, we propose Concept-Guided Retention (CGR), a plug-and-play regularizer that constrains both for any PEFT base. CGR reads a frozen sparse autoencoder (SAE) and treats two disjoint concept sets differently. It softly confines the update to the task-concept subspace (via weight channel), and anchors a selected set of general-purpose concepts to the frozen model (via activation channel). We also provide anchor value bounds based on weight updates to understand how they interact, and show that both terms are necessary. On a CLIP vision panel, CGR significantly improves retention at comparable accuracy for every base, and the same pattern holds for world-knowledge retention under Llama-3.1-8B instruction tuning. Because the protected directions are named SAE concepts, CGR remains inspectable and controllable. 
+
+# 1 Introduction 
+
+Parameter-efficient fine-tuning (PEFT) adapts frozen founda-tion models at a fraction of full fine-tuning’s cost (Chen et al. 2022). Low-Rank Adaptation (LoRA)(Hu et al. 2022), the de facto standard, parameterizes weight updates as ∆W = BA .LoRA optimizes downstream loss without penalizing drift from W0. The adapter is therefore free to write into direc-tions that carry general-purpose capability, and fine-tuned adapters measurably forget pre-trained knowledge (Bider-man et al. 2024; Shuttleworth et al. 2025). The question is how an adapter can learn a new task while preserving pre-trained knowledge. 
+
+The dominant answer is weight-geometric , which is one-sided. Recent work shows that initializing or confin-ing the adapter within a chosen weight subspace mitigates catastrophic forgetting to a degree (Xiong and Xie 2026; Tang et al. 2026; Yang et al. 2024; Luo et al. 2025; Wang et al. 2025a). These methods differ in how they choose the subspace, but most of them constrain only where the weight update lies . A subspace constraint only bounds the compo-nent of the weight delta outside the chosen subspace and leaves the drift of activation space unconstrained (Peng et al. 2026). Thus, weight-subspace constraints alone are insuffi-cient for activation-space retention. Instead, we need to con-strain both: a weight-subspace (where the update lies) and an activation space (how retained features respond). To the best of our knowledge, no existing PEFT method constrains both, a key gap that motivates our work. To address weight- and activation-space retention together, we ask what to constrain and how to constrain it. We an-swer this with Sparse autoencoders (SAEs). SAEs have emerged as a tool for editing and steering concepts in a frozen model (Marks et al. 2025). A key innovation is how we leverage a frozen SAE from a fixed layer to derive two dis-joint concept sets: a task set and a concept-retention set. Us-ing these two sets, our proposed Concept-Guided Retention (CGR), develops a plug-and-play regularizer with two terms: A confine term softly holds the adapter weight-delta in the SAE task-concept subspace (the weight channel). An anchor term holds the fine-tuned model’s selected retention concepts (general-purpose features) to their pre-fine-tuning values (the activation channel). The construction is modality-agnostic, interpretable, and we validate it on vision and language tasks. 
+
+Contributions. 
+
+• Role-split retention. From a frozen SAE we select two small disjoint concept sets: a task set, to which the weight update is confined, and a retention set, which is anchored to the frozen model. Anchoring a small set of the most frequently active off-task concepts beats blanketing every feature. 
+
+• A plug-and-play method. We introduce two regularizers that can be added to any PEFT adapter. Since adaptation is guided by named SAE concept basis, features remain interpretable after fine-tuning. 
+
+• Bounds on retention-concept drift. We propose the an-chor term as the expected drift of the retention con-cepts and derive bounds based on weight-space quanti-ties (Prop. 2). This derivation places weight projections and concept control in a common framework, clarifying how learned weight updates translate into movement of selected concepts and vice-versa. 
+
+• Evaluation. We evaluate CGR on ten vision tasks with CLIP ViT-B/32 and on instruction tuning with Llama-3.1-8B, each with six existing adapters. CGR improves every arXiv:2610.17713v1 [cs.LG] 13 Oct 2026 Method PEFT Weight Activ. Pers. Split Bound V+L OPLoRA ✓ hard × ✓ × × ×                                                 
+
+> LoRA-Null ✓hard ×××××
+> CorDA ✓hard ×××××
+> SC-LoRA ✓hard ×××××
+> SAILS ✓hard ×××××
+> CWAC ×hard soft ✓×××
+> SAE-FD ✓×soft ✓×××
+> CGR (ours) ✓soft soft ✓✓✓✓
+
+Table 1: Mechanism coverage (as reported by each paper). Weight / Activ.: form of the weight- / activation-space reten-tion term, hard (exact projection or initialization) vs. soft (penalty); ×: channel unconstrained; Role split: disjoint task and retention concept sets with opposite treatments; Bound: a stated bound on the retained capability’s drop. adapter’s knowledge retention while maintaining com-parable accuracy. Average vision retention rises by 2–7% (LoRA: 74 .1→80 .2), and average LLM world-knowledge retention rises by 2–8% (LoRA TriviaQA: 27 .6→43 .5). 
+
+# 2 Related work 
+
+We group prior work by the space in which its constraint acts (weight space, activation space) and how SAEs are used. Each addresses catastrophic forgetting only in part, and Ta-ble 1 summarizes which mechanisms each method covers. Concurrent preprints are distinguished in App. A. 
+
+Weight-space methods confine the update ∆W to a chosen low-rank subspace of each frozen weight. OPLoRA (Xiong and Xie 2026) projects out of the top-k sin-gular subspace of W0. LoRA-Null (Tang et al. 2026) initial-izes in the null space of calibration activations. CorDA (Yang et al. 2024) uses an input-covariance–weighted SVD. SC-LoRA (Luo et al. 2025) contrasts fine-tuning against a pre-served covariance, a formulation closely related to CorDA, and in this paper we use CorDA as a baseline for both. SAILS (Wang et al. 2025a) initializes the LoRA B factor from SAE decoder directions. Consistent with this picture, how much LoRA forgets is predicted by the principal angles between the old- and new-task gradient subspaces (Steele 2026). As Table 1 shows, every weight-channel constraint in this cluster is a hard projection. Some of these projections are continuously imposed whereas others are only done during initialization. This can be read as a jump between hard-or-nothing continual-control strategies. CGR’s confine term is a soft continual version of these projections filling the gap of previous hard-or-nothing approaches. CGR’s anchor term adds the activation channel that these methods leave uncon-strained (§3). 
+
+Activation-space methods in PEFT has received far less attention (Wang, Gu, and Huang 2025). Rather than con-straining weights, these methods regularize internal rep-resentations via output distillation (Li and Hoiem 2018), whole-feature alignment (Kumar et al. 2022; Mukhoti et al. 2024), or all-active SAE feature matching (Zhang et al. 2026). Beyond alignment, gradient projection techniques (Yan et al. 2025; Imanov 2026) isolate updates for specialized tasks. However, these existing anchors operate indiscriminately on raw hidden states or full feature maps, with no mechanism to select or name which concepts to preserve. In contrast, CGR anchors a selected, interpretable subset of named concepts. 
+
+Sparse autoencoders decompose the residual stream into a dictionary of named concept directions (Bricken et al. 2023). Most work reads the dictionary to understand, steer, or edit a frozen model (Marks et al. 2025; Chalnev, Siu, and Conmy 2024), or adapts the model around an SAE integrated into the forward path (Chen, Engels, and Tegmark 2025). A few recent works bring the dictionary into the fine-tuning objective. SASFT (Deng et al. 2026) suppresses selected fea-tures during supervised fine-tuning, and SSPU (Wang et al. 2025b) unlearns target knowledge. SAE-FD (Zhang et al. 2026) distills all active features under LoRA in continual learning, and we evaluate it as a control (§4). CWAC (Peng et al. 2026) couples a hard weight projection with an SAE la-tent anchor to preserve safety concepts under full fine-tuning. CGR instead preserves pretrained knowledge under a PEFT adapter, splits one frozen dictionary into disjoint task and re-tention concept roles, and bounds the retention concept drift with its anchor term. 
+
+# 3 Method 
+
+Concept-Guided Retention (CGR) introduces two carefully designed regularizers for adapter base, both read from a sin-gle frozen sparse autoencoder (Figure 1). A confine term that keeps the low-rank weight update inside the task -concept subspace. An anchor term that holds the disjoint retention -concept activations to the frozen-model activations. The an-chor equals the retained concepts’ expected squared drift. We show that this drift is bounded between two weight-space quantities (Prop. 2). The lower side shows that a weight-subspace constraint alone carries no retention guarantee, and the upper side bounds the drift from the weights alone. CGR minimizes the task’s fine-tuning loss Ltask (the classification loss for vision, the language-modelling loss for text) together with the two auxiliary penalties, 
+
+L = Ltask + λconf Lconf + λanc Lanc (1) with coefficients λconf , λ anc ≥ 0.CGR makes deliberate design choices. We constrain the weight space and the activation space through two disjoint concept sets (§3.3). We confine the weight update with a con-tinual soft projection instead of hard projection (§3.4). We anchor the retention concepts’ activations because weight-space control alone does not constrain their drift(§3.5). Both constraints act in a named concept basis, so the adapted fea-tures remain interpretable after fine-tuning. 
+
+3.1 Preliminaries 
+
+Adapters for fine tuning. Given W0 ∈ Rdout ×din a pre-trained matrix, an adapter adds a small trainable update alongside it, W0 + ∆ W . For LoRA, this update is low-rank with r ≪ min( dout , d in ).
+
+∆W = BA, B ∈ Rdout ×r , A ∈ Rr×din . (2) More generally, ∆W is any additive weight update. CGR reg-ularizes the update ∆W and the activation change it causes (1) Select concepts                          
+
+> Task data
+> x∼ D task
+> Frozen backbone
+> h0(x)SAE enc
+> z∈Rm
+> select task & retention concept activations
+> Stsk task Sret general-purpose retention
+> Utsk = orth( Wdec [: ,Stsk ]) fSret frozen ReLU read-out
+> (2) Fine-tune with two retention channels
+> W0
+> frozen
+> ABx
+> +
+> h0
+> confine (weight channel)
+> Lconf =∥(I−Utsk U⊤
+> tsk )BA ∥2
+> F
+> CGR
+> anchor (activation channel)
+> Lanc =Ex∥∆fret (x)∥22
+> CGR hft
+> L=Ltask +λconf Lconf +λanc Lanc
+> Utsk
+> Sret
+
+Figure 1: CGR confines the weight update to task concepts and anchors retained concepts to the frozen model, both read from one frozen SAE. Left: one pass of task data through the frozen backbone and SAE selects the task set Stsk by causal attribution and a disjoint retention set Sret by firing presence. Right: two CGR regularizers attach to any PEFT base. Confine penalizes the part of ∆W outside the task subspace and anchor holds the retention-concept read-out at its frozen-model values. on top of the frozen model, and adds no trainable parameters of its own. 
+
+Sparse autoencoders. A sparse autoencoder (SAE) is a trained map that re-describes a hidden activation h ∈ Rd as a sparse combination of m ≫ d concept directions. CGR keeps this map frozen and only reads from it. Two maps do this, an encoder that scores how strongly each concept is present, and a decoder that rebuilds h from those scores, 
+
+z(h) = g Wenc h + benc 
+
+, dec( z) = Wdec z + bdec . (3) The score vector z(h) ∈ Rm represents concepts , and it is sparse, so most concepts are inactive for any given input. The gate g is the SAE-specific activation (i.e., ReLU, TopK, etc.). The decoder weight matrix Wdec ∈ Rd×m stores the 
+
+j-th concept direction at column Wdec [: , j ], and the encoder weight matrix Wenc ∈ Rm×d at row Wenc [j, :] . The recon-struction term Wdec z sums active concepts’ directions. 
+
+3.2 Reading concepts 
+
+In a transformer, the residual stream is a shared vector that every component writes into and later components read from (Elhage et al. 2021). At a read-out point in each layer, the frozen model produces a residual stream vector that we denote h0(x) ∈ Rd (d = dout ). Here, x ∈ Rdin is an internal representation from earlier layers (different from the raw input) entering the last adapted weight matrix W0.Fine-tuning adds the adapter’s contribution to this vector, 
+
+hft (x) = h0(x) + ∆ W x . Everything computed before is preserved in h0(x), and only ∆W x is new. This holds ex-actly when W0 writes directly into the stream and to first order otherwise. CGR works by limiting the effect of this added term at the read-out points. However, to define the concepts, we use an SAE that was pre-trained at a specific 
+
+read-out point on the residual stream of a fixed layer ℓ. CGR reads how strongly each concept fires. Each concept j ∈ S 
+
+has an encoder row Wenc [j, :] and bias entry benc [j]. We set its concept read-out to be a non-negative score, 
+
+fj (h) ≜ ReLU  Wenc [j, :] h + benc [j]. (4) We use a plain ReLU rather than the SAE’s own gate g, so the read-out has the same form across SAE families. It also reads a concept whenever it is present, even where the SAE’s gate would suppress it. 
+
+3.3 Concept selection: task vs. retention sets 
+
+Concept selection is key to CGR. First, CGR selects a task set Stsk that contains the concepts the fine-tuning task drives most strongly. It confines the weight update to the subspace these concepts span. Second, CGR selects a retention set 
+
+Sret that contains the off-task general-purpose concepts on the weight update path. CGR anchors the activations of these concepts to those of the frozen model because their activation drift drives forgetting most. Both sets are read from the task’s own inputs Dtask on the frozen model, with no held-out data. 
+
+Task set. An unconstrained update may write along off-task directions and cost the pretrained model its retention. The confined update must still learn the task so the allowed subspace must span the directions that causally drive the task loss. We select the concepts the task actually drives, measured by their causal effect on the task loss via attribution patching (Nanda 2023; Marks et al. 2025). Specifically, each concept receives an attribution score aggregated over the task inputs, aj = E P  
+
+> t
+
+zj ∂Ltask /∂z j
+
+ , where zj is the SAE’s own activation of concept j and Ltask is the fine-tuning loss of Eq. (1). The top-scoring concepts form the task set Stsk .Stacking their decoder columns and orthonormalizing them with a thin QR factorization (Golub and Van Loan 2013) gives an orthonormal basis of the task-concept subspace, 
+
+Utsk = orth   [ Wdec [: , j ] ] j∈S tsk 
+
+, U ⊤
+
+> tsk
+
+Utsk = I|S tsk |.
+
+(5) Here Utsk ∈ Rd×|S tsk | holds one orthonormal column per task concept. The confine term uses this basis (§3.4). 
+
+Retention set. For each concept j we compute its mean activation on the frozen single-concept read-out fj of Eq. (4), averaging over the task inputs and over the T token positions of each input (patch tokens for vision, text tokens under the attention mask for language), 
+
+ϕj = Ex∼D task 
+
+h 1
+
+> T
+
+P 
+
+> t
+
+fj (h0(x)) t
+
+i
+
+(6) and form Sret from the k concepts of largest ϕj that lie outside the task set, 
+
+Sret = Top -k  ϕj : j / ∈ S tsk (7) where Top -k returns the indices of the k largest scores. A high ϕj marks a concept that fires on many of the task’s inputs. Fine-tuning writes ∆W along directions those same inputs activate, so the highest-ϕj off-task concepts (general-purpose features) are the features most at risk that sit directly in the update’s path . These are the fea-tures the anchor holds (§3.5), through the stacked read-out 
+
+fSret (h) =  fj (h) 
+
+> j∈S ret
+
+.
+
+3.4 The confine term 
+
+We softly confine the update ∆W to the task-concept sub-space by penalizing its perpendicular component. Writing 
+
+Ptsk = Utsk U ⊤ 
+
+> tsk
+
+and P ⊥ 
+
+> tsk
+
+= Id − Ptsk ,
+
+Lconf = P ⊥ 
+
+> tsk
+
+∆W 2 
+
+> F
+
+= (Id − Utsk U ⊤
+
+> tsk
+
+) BA 2
+
+> F
+
+(8) Since ∆W = BA , its column space lies in col( B). The penalty therefore acts on the up-projection B. Minimizing 
+
+Lconf steers the columns of B towards the task directions. Since this is done for the updates ∆W that write directly in the residual stream, the confinement acts by backpropaga-tion on the full transformer and feed-forward block updates. CGR’s constraint is a continual soft projection analogue of the hard subspace constraints in the weight-geometry family , a penalty on the residual-facing factor applied at every step, rather than an exact projection (OPLoRA) or a subspace fixed once at initialization (LoRA-Null, SC-LoRA). 
+
+Proposition 1 (Subspace confinement) . Given a sequence of stationary points ∆W q of Ltask (∆ W )+ λq 
+
+> conf
+
+∥P ⊥
+
+> tsk
+
+∆W ∥2 
+
+> F
+
+,if ∥P ⊥
+
+> tsk
+
+∇L task (∆ W q )∥ ≤ C for all q, then the perpendic-ular component obeys ∥P ⊥
+
+> tsk
+
+∆W q ∥F = O(1 /λ q 
+
+> conf
+
+) → 0 as 
+
+λq 
+
+> conf
+
+→ ∞ , recovering the hard projection P ⊥
+
+> tsk
+
+∆W = 0 .
+
+The task subspace is built from the directions with the highest attribution scores, so the projected gradient 
+
+P ⊥
+
+> tsk
+
+∇∆W Ltask retains only the components off those se-lected directions (proof in App. D.1). This makes the bounded-gradient condition plausible in practice, although it does not by itself guarantee a uniform bound along the se-quence. The attribution-based choice of task directions and the confinement penalty then act in tandem to control un-necessary drift along directions deemed less important to the current task. Unlike a hard projection, which degrades perfor-mance when enforced strictly (Table 4), the soft penalty does not fully eliminate updates outside the selected subspace, allowing the network to use those directions when they pro-vide sufficient improvement on the current task. Robustness with respect to the choice of λconf in CGR was empirically tested for several λconf values (Table 14, App. K), leaving both accuracy and retention on a plateau above the respec-tive limits of no confine term and hard-projection. In this way, the penalty helps preserve the pretrained capabilities the retention probes measure while retaining the plasticity required to learn the current task. 
+
+Why the confine term is not enough on its own. The confine penalty restricts ∆W , and that restriction alone lifts zero-shot retention well above the unconstrained base (Table 4). However, retention is also related to the drift of the retention-concept activations , ∆fret (x) ≜ fSret (hft (x)) −
+
+fSret (h0(x)) , as shown in Figures 3 and 8. Therefore, soft confine by itself is not sufficient for retention. 
+
+Why soft confine. The lower bound in Proposition 2 shows that hard confine on the weight space, e.g., by projection, is also not enough to close the drift gap. Furthermore, our experiment shows that hard projection drives retention below the unconstrained base and adding the anchor recovers only part of the loss (Table 4). The proven limitation of both soft and hard confine motivates the necessity of the anchor term, discussed next. 
+
+3.5 The anchor term 
+
+We anchor the read-out of the retention concepts of the adapted model to that of the frozen model, 
+
+Lanc = Ex fSret (hft (x)) − fSret (h0(x)) 22. (9) This is the expected squared retention drift Ex∥∆fret (x)∥22,and the next proposition explains it from the weight side, showing along the way why no weight-subspace constraint can control it. The following proposition assumes that only the last layer before the SAE read-out is adapted, so x is a fixed internal representation and h0(x) is the frozen output of that layer. The purpose of this simplified setting is to obtain intuition about the relation between concept directions and weight-update directions in a controlled manner. It does not describe exactly what happens in practice, where earlier adapted lay-ers also modify the representation x, but it provides a model for understanding why the proposed method may outper-form weight-only constraints, as observed empirically. It also shows why the weight subspace constraint of Proposition 1 is not enough to control the retention-concepts drift. 
+
+Proposition 2 (Retention-Concepts and Weight-Change re-lation) . Let Wret = Wenc [Sret , :] , and assume that the inputs have finite second moment Σ = E[xx ⊤]. Let J ⊆ S ret and let A be a subset of the input space such that, for every x ∈ A,all concepts in J are active at h0(x) and remain active under the perturbation ∆W x . Write WJ = Wret [J , :] and define the restricted second moment ΣA = Ex
+
+1A(x) xx ⊤. Let us write 
+
+Llow = tr  WJ ∆W ΣA∆W ⊤W ⊤J
+
+ ,
+
+Lup = tr  Wret ∆W Σ∆ W ⊤W ⊤
+
+> ret
+
+ .
+
+Then 
+
+Llow ≤ Ex ∆fret (x) 22 ≤ L up . (10) 
+
+Moreover, even on the hard-projection surface P ⊥
+
+> tsk
+
+∆W = 0 ,neither Llow nor Lup is controlled by the projection con-straint alone. Whenever the task subspace contains directions 40 50 60 70 80 90 target accuracy (per task, %) 70 .072 .575 .077 .580 .082 .5retention (zero-shot, %) zero-shot ceiling base (weight-only) base + CGR mean retention CGR adds 1Figure 2: CGR pushes the attainable-retention frontier toward the ceiling (CLIP vision panel). One point per (task, base) of Table 2 where gray is for the base and red for +CGR. The shaded band shows the retention CGR adds. 
+
+read by the corresponding retention concepts and excited by the relevant input second moments both bounds can grow. A weight-subspace constraint alone is therefore insufficient to guarantee activation-space retention. (The proof of the proposition is in App. D.2) 
+
+Eq (10) provides lower and upper bounds on the retention-concepts drift. The lower bound indicates that if a subset of the task data activates a retention concept, then move-ment restricted to the task-weight subspace may still amplify the drift of that concept. Although concepts correspond to separate coordinates in the latent space of the SAE, their encoder and decoder directions are not generally orthogonal when pulled back to the residual stream or weight spaces. This overlap is understandable because the retention con-cepts are themselves active on part of the task data. In this setting, the non-orthogonality may be advantageous: directly controlling retention-concept drift can steer movement to-ward task-relevant directions that learn the new task without unnecessarily disrupting the remaining concepts. CWAC (Peng et al. 2026) introduced the channel coupling via a first-order argument for full fine-tuning in safety align-ment tasks. Prop. 2 strengthens it for the PEFT with exact bounds, and shows that confined updates can amplify drift. We anchor a disjoint off-task set (§3.3) rather than one pro-tected set. Further experimentally explored relations between weight space and concept activations are provided in App. E. 
+
+# 4 Experiments 
+
+For evaluation, we ask two questions. (i) Does adding CGR improve retention over the weight-only subspace-LoRA adapters? (ii) Does the recipe transfer beyond vision? We evaluate on target-task accuracy and zero-shot retention on the held-out probes after fine-tuning. 
+
+4.1 Setup 
+
+Backbones and SAEs. For vision, we adapt a frozen CLIP ViT-B/32 and read concepts from the frozen, publicly re-leased Prisma SAE (Joseph et al. 2025) on the residual stream at layer ℓ=8 . For language, we adapt Llama-3.1-8B and read concepts from the frozen Llama-Scope SAE on the residual stream at layer 19 of 32 (He et al. 2024). Both are inter-mediate read-out points, where semantic features are most accessible (Templeton et al. 2024; Lad et al. 2024), before the final layers specialize toward the output (Gandelsman, Efros, and Steinhardt 2024). The layer is fixed per modality, never tuned. App. L reports reconstruction faithfulness at the vision read-out layer for every task. Both SAEs stay frozen and CGR only reads from them, with |S tsk |=|S ret |=128 for CLIP and |S tsk |=256 , |S ret |=128 for Llama-3.1-8B. Neither size is tuned, and App. K shows the effect of concept-set size (Tables 15 and 16). 
+
+Baselines. We evaluate CGR on six adapter families. Each base runs alone and as “base +CGR”, so every comparison is a controlled ablation of the CGR terms with the adapter held fixed. LoRA (Hu et al. 2022) and the parallel-adapter Adapt-Former (Chen et al. 2022) are retention-agnostic bases. 
+
+OPLoRA (Xiong and Xie 2026), LoRA-Null (Tang et al. 2026), CorDA (Yang et al. 2024), and SAILS (Wang et al. 2025a) are weight-geometry retention methods that together cover the family’s subspace constructions (top-k SVD, ac-tivation null space, input covariance, and SAE directions). Anchors on the activation channel are compared in the abla-tion of §4.3. App. B.1 describes each base. 
+
+Protocol. Vision methods fine-tune on ten classification tasks, eight from the VTAB-1k benchmark (Zhai et al. 2019) and the two fine-grained tasks FGVC-Aircraft (Maji et al. 2013) and CUB-200 (Wah et al. 2011). The language ex-periment follows the instruction-tuning forgetting protocol of Tang et al. (2026): fine-tune on WizardLM instruction data and measure zero-shot world-knowledge retention on TriviaQA, NQ-Open, and WebQS with lm_eval 0.4.9. Instruction-following quality is MTBench single-answer grading (1–10) with a Claude Opus 4.8 judge. The dataset-specific details are provided in App. B.2. All experiments are mean over three seeds, with ±std where shown. The LoRA-family adapters use rank 8 for vision and rank 128 for language, where they share one trainable budget of 4.01% 
+
+of parameters. AdaptFormer uses a bottleneck of 16 and 64 
+
+respectively. CGR adds no parameters to any base. Every hyperparameter for both modalities, shared across all bases per modality, is listed in App. C. 
+
+4.2 The accuracy–retention frontier 
+
+Vision. Retention is measured after fine-tuning as zero-shot accuracy on four held-out natural probes (CIFAR-10/100, Caltech-101, SUN397); the frozen backbone scores 
+
+82 .6 on this set. Table 2 and Figure 2 present the per-task results. We observe that CGR improves retention on every base at comparable accuracy, and all 60 dataset ×base cells improve (paired Wilcoxon p ≤ 0.002 per base). Plain LoRA gains 6.1 points ( 74 .1 → 80 .2). LoRA-Null, the strongest FGVC CUB DTD Flow Pets EuroS RESISC DiabR dSpr-O SVHN Avg                                                                                                                                                                                                                                                                                                       
+
+> Method Acc Ret Acc Ret Acc Ret Acc Ret Acc Ret Acc Ret Acc Ret Acc Ret Acc Ret Acc Ret Ret Zero-shot 19.3 82.6 70.9 82.6 54.6 82.6 73.0 82.6 89.8 82.6 40.5 82.6 61.9 82.6 35.4 82.6 9.3 82.6 60.4 82.6 82.6 LoRA 59.3 67.9 74.6 70.1 71.5 74.1 93.2 76.3 82.6 73.8 93.6 78.3 83.0 76.7 72.3 78.6 43.6 70.9 89.4 73.8 74 .1+CGR 60.1 78.0 76.4 78.7 74.3 80.5 95.0 81.6 86.1 80.8 93.4 81.2 84.0 81.8 72.9 81.2 42.9 77.9 85.8 80.6 80 .2⋆
+> OPLoRA 58.9 69.9 75.1 69.3 72.1 72.1 93.4 76.9 81.5 75.9 95.1 78.9 82.7 77.3 72.6 76.4 44.2 72.2 89.8 74.6 74 .4+CGR 59.5 79.2 76.6 79.2 74.6 80.5 95.4 81.6 85.7 81.1 93.4 81.4 84.3 82.1 73.3 81.7 43.4 80.0 86.3 81.5 80 .8⋆
+> LoRA-Null 61.0 78.8 76.2 78.0 73.9 76.2 94.8 81.5 86.5 80.6 95.6 81.2 85.0 80.6 72.5 81.8 44.6 81.0 91.3 76.7 79 .6+CGR 60.5 80.5 76.9 80.5 76.7 81.7 95.9 82.6 87.1 82.0 93.3 82.3 85.0 82.5 73.5 82.0 43.9 81.7 87.9 81.7 81 .7⋆
+> CorDA 57.8 71.7 72.5 65.9 73.3 78.8 93.9 80.4 84.4 78.8 94.5 79.1 84.6 78.9 73.2 79.5 43.1 78.8 90.1 74.4 76 .6+CGR 57.1 76.3 73.0 74.4 73.9 81.1 94.4 81.8 85.5 80.5 94.3 81.5 84.4 81.3 72.3 81.1 41.9 79.9 87.4 80.4 79 .8⋆
+> AF 60.9 77.1 77.1 75.9 74.7 76.0 95.5 80.8 87.4 77.4 95.5 80.4 85.7 80.0 72.8 80.5 45.1 79.8 90.7 78.1 78 .6+CGR 61.2 79.5 77.7 79.8 76.9 81.3 96.3 82.1 88.1 81.5 94.4 81.9 85.9 82.3 73.5 82.5 44.8 81.4 86.6 82.0 81 .4⋆
+> SAILS 59.0 65.8 74.4 69.7 71.0 72.4 92.9 74.6 82.7 73.0 94.5 76.2 83.2 75.2 72.6 77.7 43.8 69.0 90.0 73.7 72 .7+CGR 59.0 77.9 76.3 78.3 74.3 79.7 95.2 81.3 84.5 80.3 93.1 81.2 84.0 81.4 72.1 80.0 42.0 77.7 86.0 80.7 79 .8⋆
+
+Table 2: Results of CGR on ten CLIP ViT-B/32 tasks. Each adapter is shown with and without CGR. AF is AdaptFormer. Acc is target-task accuracy. Ret is zero-shot retention, the mean accuracy on four held-out probes. Avg is the mean retention over the tasks. Best retention per task and best Avg in bold. The star ( ⋆) marks a statistically significant CGR retention gain across tasks.                                                                                      
+
+> World-knowledge retention (%) Target Method Trivia NQ-O WebQS Avg1 Per MTB Zero-shot 61.5 7.9 11.6 27.0 100.0 –LoRA 27.6 11.1 12.4 17.1 81.6 5.8 +CGR 43.5 12.0 12.4 22.6 90.2 6.2 LoRA-Null 47.0 9.5 9.8 22.1 87.1 3.5 +CGR 55.9 9.1 9.7 24.9 91.5 3.3 CorDA 40.5 12.1 10.8 21.1 86.1 5.3 +CGR 45.7 13.2 9.4 22.8 85.0 5.3 OPLoRA 40.2 10.2 11.5 20.6 88.0 5.7 +CGR 51.1 9.4 11.4 24.0 93.8 5.6 SAILS 32.0 11.2 12.2 18.5 84.0 5.8 +CGR 42.9 11.6 12.1 22.2 89.9 5.7 AdaptFormer 38.1 3.7 8.2 16.6 59.6 5.0 +CGR 59.4 6.2 9.9 25.1 86.7 4.4
+
+Table 3: Results of CGR on Llama-3.1-8B instruction-following tasks. Each adapter is shown with and without CGR. Avg1 is the average preservation score. Per is the per-centage of preserved performance relative to the pre-trained model. MTB is the MTBench score. Trivia and NQ-O ab-breviate TriviaQA and NQ-Open. weight-only baseline, still gains ( 79 .6 → 81 .7, within 0.9
+
+of the ceiling), and OPLoRA, itself a hard-projection reten-tion method, gains +6 .4 at matched accuracy. Across the 10 tasks, the one exception is accuracy on SVHN and dSprites, two tasks that read out digit identity or synthetic pose rather than natural object categories, and there CGR gains reten-tion at an accuracy cost. App. I shows detailed vision panel retention performance for every base. 
+
+Language (Llama-3.1-8B). We observe a similar trend on the language instruction-tuning task (Table 3), where reten-tion improves on all six bases on average. Vanilla LoRA forgets the most (TriviaQA 61 .6 → 27 .6) and CGR re-covers nearly half of the drop; CGR on OPLoRA improves                                              
+
+> FGVC CUB Configuration Acc Ret Acc Ret LoRA (no CGR) 59 .353 .174 .659 .5
+> Full CGR ∗60 .172 .076 .473 .2
+> Confine only 59 .866 .375 .666 .9
+> Anchor only 59 .266 .275 .670 .6
+> SAE-subspace init only 59 .050 .474 .459 .0
+> Anchor set from CIFAR-100 59 .769 .576 .071 .5
+> OPLoRA +anchor 59 .168 .475 .670 .2
+> Hard task-projection only 57 .543 .874 .157 .5
+> Hard task-projection +anchor 58 .463 .875 .269 .4
+
+Table 4: Contribution of each CGR component on top of a LoRA base. Ret is CIFAR-100 zero-shot retention. 
+
+40 .2 → 51 .1. MTBench performance stays close to the origi-nal on five of the six bases. AdaptFormer is the one exception, achieving the largest retention gain (TriviaQA 38 .1 → 59 .4)at an instruction-following cost ( 5.03 → 4.38 ). App. J shows detailed retention performance for every base. 
+
+4.3 Ablations 
+
+All vision ablations use FGVC-Aircraft and CUB-200 with CIFAR-100 zero-shot retention because these are the panel’s two fine-grained tasks with their most severe forgetting and in-distribution images for the SAE (App. L). The language model ablation keeps the protocol of §4.1. 
+
+Both channels are crucial for retention. Table 4 decom-poses CGR on a LoRA base. Initializing in an SAE subspace without a persistent loss changes nothing (Wang et al. 2025a). Each term of CGR alone lifts retention, and the two compose. The anchor stops the retention concepts from drifting that confine cannot preserve (App. E). The soft confine beats OPLoRA’s hard projection under the same anchor. An anchor with hard task projection outperforms hard projection only. FGVC CUB Anchor set Acc Ret Acc Ret Anch. act. Top-k firing (ours) 60 .1 72 .0 76 .4 73 .2 53 .3                               
+
+> Random selection 59 .669 .276 .470 .63.6
+> Last-k(least firing) 59 .464 .876 .167 .9<0.1
+> SAE-FD (Zhang et al. 2026) 59 .666 .675 .968 .6100
+> All off-task concepts 60 .066 .475 .968 .698 .3
+> All off-task except top-k58 .365 .476 .068 .845 .1
+> LDIFS (Mukhoti et al. 2024) 59 .564 .875 .967 .2–
+
+Table 5: Concept-selection ablation on CLIP for retention on top of LoRA Base. Ret is CIFAR-100 zero-shot retention. Anchored activation (%) is the share of the total SAE activa-tion on the task inputs that the anchored set accounts for.                  
+
+> Anchor set Trivia NQ-O WebQS Avg1 Top-kfiring (ours) 43.5 12.0 12.4 22.6
+> Random selection 43.4 10.7 12.1 22.1 SAE-FD (Zhang et al. 2026) 42.1 11.1 12.1 21.7
+
+Table 6: Concept-selection ablation on Llama-3.1-8B for re-tention on top of LoRA base. 
+
+Which concepts to anchor. Retention drops monotoni-cally from top-k to random to last-k selection (Table 5). The selected concept set also outperforms anchoring ev-ery active concept of (Zhang et al. 2026; Peng et al. 2026) and distilling the whole representation of (Mukhoti et al. 2024) on both downstream accuracy and retention. Cru-cially, retention performance is not dictated merely by the total magnitude of anchored activation: our selected set an-chors only ∼53% of the total concept activation yet achieves the highest retention. Anchoring the entire representation re-tains less, while anchoring an equivalent activation mass on lower-scoring concepts performs no better than unselective anchoring. Retention-concept drift correlates with held-out retention across every run (Figure 3, App. F). This ordering holds consistently on the language track (Table 6), confirm-ing that the SAE provides tangible value through targeted selection and interpretability (§4.3). 
+
+Interpretability. Because CGR’s subspaces come from a frozen SAE rather than opaque singular vectors or an activa-tion null space, the protected retention directions are named 
+
+and manipulable . Figure 4 shows the mechanism on FGVC and the weight-side complement is in App. H. Removing the selected concepts costs ∼10 pp of zero-shot retention while a size-matched random set costs ∼0pp (App. G). Steering them moves retention smoothly with the intervention strength. Editing them through a concept-bottleneck head (Koh et al. 2020) corrects predictions on demand. We discuss each in detail in App. H. 
+
+# 5 Conclusion 
+
+We propose CGR, a plug-and-play regularization method that uses the concepts of a frozen sparse autoencoder to 
+
+Figure 3: The quantity the anchor reads predicts realized retention (FGVC). Measured Sret drift vs. zero-shot retention (CIFAR-10/100 mean) over all runs. “sailboats” (concept 21368) LoRA +CGR 0.37 0.04 
+
+> “cars and motorbikes” (concept 49085) LoRA +CGR 0.22 0.06
+> “large land animals” (concept 32235) LoRA +CGR 0.22 0.03
+> “pyramids” (concept 18043) LoRA +CGR 0.11 0.01
+> 1
+
+Figure 4: CGR pins the concepts that drift most under plain LoRA (FGVC). Each concept is named by its top-firing Caltech-101 exemplars. Bars show the activation drift un-der LoRA (gray) and under +CGR (red). preserve pre-trained knowledge during parameter-efficient fine-tuning. A confine term restricts the weight update to the task-concept subspace, and an anchor term holds a se-lected, disjoint set of general-purpose concept activations to the frozen model. Extensive experiments across six adapter families on a CLIP vision panel and a Llama-3.1 instruction protocol show that CGR improves retention on every base at comparable task accuracy. Furthermore, each term lifts reten-tion in different channels, and the anchor contributes to the part that the weight-space update does not hold. Additionally, we show that CGR’s preserved capability can be inspected, steered, and edited after fine-tuning. Future work includes a per-task certificate for sequential continual learning, bounds under distribution shift, and drawing both concept sets from SAEs at several layers. References 
+
+Berant, J.; Chou, A.; Frostig, R.; and Liang, P. 2013. Se-mantic Parsing on Freebase from Question-Answer Pairs. In Conference on Empirical Methods in Natural Language Processing (EMNLP) .Biderman, D.; Portes, J.; Ortiz, J. J. G.; Paul, M.; Greengard, P.; Jennings, C.; King, D.; Havens, S.; Chiley, V.; Frankle, J.; Blakeney, C.; and Cunningham, J. P. 2024. LoRA Learns Less and Forgets Less. Transactions on Machine Learning Research .Bricken, T.; Templeton, A.; Batson, J.; Chen, B.; Jermyn, A.; Conerly, T.; Turner, N.; Anil, C.; Denison, C.; Askell, A.; Lasenby, R.; Wu, Y.; Kravec, S.; Schiefer, N.; Maxwell, T.; Joseph, N.; Hatfield-Dodds, Z.; Tamkin, A.; Nguyen, K.; McLean, B.; Burke, J. E.; Hume, T.; Carter, S.; Henighan, T.; and Olah, C. 2023. Towards Monosemanticity: Decomposing Language Models With Dictionary Learning. Transformer Circuits Thread .Chalnev, S.; Siu, M.; and Conmy, A. 2024. Improving Steering Vectors by Targeting Sparse Autoencoder Features. arXiv:2411.02193. Chen, M.; Engels, J.; and Tegmark, M. 2025. Low-Rank Adapting Models for Sparse Autoencoders. In Proceedings of the 42nd International Conference on Machine Learning (ICML) , volume 267 of Proceedings of Machine Learning Research , 8077–8092. PMLR. ArXiv:2501.19406. Chen, S.; Ge, C.; Tong, Z.; Wang, J.; Song, Y.; Wang, J.; and Luo, P. 2022. AdaptFormer: Adapting Vision Transformers for Scalable Visual Recognition. In Advances in Neural Information Processing Systems (NeurIPS) .Deng, B.; Wan, Y.; Yang, B.; Huang, F.; Wang, W.; and Feng, F. 2026. SASFT: Sparse Autoencoder-guided Super-vised Finetuning to Mitigate Unexpected Code-Switching in LLMs. In International Conference on Learning Representa-tions (ICLR) . Https://openreview.net/pdf?id=BQOFU9qO5j. Elhage, N.; Nanda, N.; Olsson, C.; Henighan, T.; Joseph, N.; Mann, B.; Askell, A.; Bai, Y.; Chen, A.; Conerly, T.; DasSarma, N.; Drain, D.; Ganguli, D.; Hatfield-Dodds, Z.; Hernandez, D.; Jones, A.; Kernion, J.; Lovitt, L.; Ndousse, K.; Amodei, D.; Brown, T.; Clark, J.; Kaplan, J.; McCan-dlish, S.; and Olah, C. 2021. A Mathematical Framework for Transformer Circuits. Transformer Circuits Thread .Fei-Fei, L.; Fergus, R.; and Perona, P. 2004. Learning Gener-ative Visual Models from Few Training Examples: An Incre-mental Bayesian Approach Tested on 101 Object Categories. In CVPR Workshop on Generative-Model Based Vision .Gandelsman, Y.; Efros, A. A.; and Steinhardt, J. 2024. In-terpreting CLIP’s Image Representation via Text-Based De-composition. In International Conference on Learning Rep-resentations (ICLR) . ArXiv:2310.05916. Golub, G. H.; and Van Loan, C. F. 2013. Matrix Computa-tions . Johns Hopkins University Press, 4th edition. He, Z.; Shu, W.; Ge, X.; Chen, L.; Wang, J.; Zhou, Y.; Liu, F.; Guo, Q.; Huang, X.; Wu, Z.; Jiang, Y.-G.; and Qiu, X. 2024. Llama Scope: Extracting Millions of Features from Llama-3.1-8B with Sparse Autoencoders. arXiv preprint arXiv:2410.20526 .Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.; Wang, L.; and Chen, W. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations (ICLR) .Imanov, O. Y. L. 2026. Mechanistic Analysis of Catas-trophic Forgetting in Large Language Models During Con-tinual Fine-tuning. arXiv preprint arXiv:2601.18699 .Joseph, S.; Suresh, P.; Hufe, L.; Stevinson, E.; Graham, R.; Vadi, Y.; Bzdok, D.; Lapuschkin, S.; Sharkey, L.; and Richards, B. A. 2025. Prisma: An Open Source Toolkit for Mechanistic Interpretability in Vision and Video. arXiv preprint arXiv:2504.19475 .Joshi, M.; Choi, E.; Weld, D. S.; and Zettlemoyer, L. 2017. TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension. In Annual Meeting of the Association for Computational Linguistics (ACL) .Koh, P. W.; Nguyen, T.; Tang, Y. S.; Mussmann, S.; Pierson, E.; Kim, B.; and Liang, P. 2020. Concept Bottleneck Models. In International Conference on Machine Learning (ICML) .Krizhevsky, A. 2009. Learning Multiple Layers of Features from Tiny Images. Technical report, University of Toronto. Kumar, A.; Raghunathan, A.; Jones, R.; Ma, T.; and Liang, P. 2022. Fine-Tuning can Distort Pretrained Features and Un-derperform Out-of-Distribution. In International Conference on Learning Representations (ICLR) . ArXiv:2202.10054. Kwiatkowski, T.; Palomaki, J.; Redfield, O.; Collins, M.; Parikh, A.; Alberti, C.; Epstein, D.; Polosukhin, I.; Devlin, J.; Lee, K.; Toutanova, K.; Jones, L.; Kelcey, M.; Chang, M.-W.; Dai, A. M.; Uszkoreit, J.; Le, Q.; and Petrov, S. 2019. Natural Questions: A Benchmark for Question Answering Research. Transactions of the Association for Computational Linguistics , 7. Lad, V.; Lee, J. H.; Gurnee, W.; and Tegmark, M. 2024. The Remarkable Robustness of LLMs: Stages of Inference? ArXiv:2406.19384. Li, Z.; and Hoiem, D. 2018. Learning without Forgetting. 
+
+IEEE Transactions on Pattern Analysis and Machine Intelli-gence , 40(12): 2935–2947. ArXiv:1606.09282. Lin, C.-Y.; and Sun, S.-H. 2026. PRISM: A Geometric Risk Bound that Decomposes Drift into Scale, Shape, and Head. 
+
+arXiv preprint arXiv:2605.11608 .Luo, M.; Kuang, F.; Wang, Y.; Liu, Z.; and He, T. 2025. SC-LoRA: Balancing Efficient Fine-tuning and Knowl-edge Preservation via Subspace-Constrained LoRA. arXiv preprint arXiv:2505.23724 .Maji, S.; Rahtu, E.; Kannala, J.; Blaschko, M.; and Vedaldi, A. 2013. Fine-Grained Visual Classification of Aircraft. Technical Report arXiv:1306.5151, arXiv. Marks, S.; Rager, C.; Michaud, E. J.; Belinkov, Y.; Bau, D.; and Mueller, A. 2025. Sparse Feature Circuits: Discover-ing and Editing Interpretable Causal Graphs in Language Models. In International Conference on Learning Represen-tations (ICLR) .Morelli, F.; Uselis, A.; Sonthalia, A.; and Oh, S. J. 2026. Sparse Autoencoders enable Robust and Interpretable Fine-tuning of CLIP models. arXiv preprint arXiv:2605.15961 .Mukhoti, J.; Gal, Y.; Torr, P. H. S.; and Dokania, P. K. 2024. Fine-tuning can cripple your foundation model; preserving features may be the solution. Transactions on Machine Learning Research . ArXiv:2308.13320. Nanda, N. 2023. Attribution Patching: Activation Patching at Industrial Scale. https://www.neelnanda.io/mechanistic-interpretability/attribution-patching. Peng, S.; Zhang, Z.; Zeng, D.; Jiang, L.; and Gao, X. 2026. Preventing Safety Drift in Large Language Models via Cou-pled Weight and Activation Constraints. arXiv preprint arXiv:2604.12384 .Shuttleworth, R.; Andreas, J.; Torralba, A.; and Sharma, P. 2025. LoRA vs Full Fine-tuning: An Illusion of Equiva-lence. In Advances in Neural Information Processing Sys-tems (NeurIPS) .Steele, B. 2026. Subspace Geometry Governs Catas-trophic Forgetting in Low-Rank Adaptation. arXiv preprint arXiv:2603.02224 .Tang, P.; Hu, X.; Liu, Y.; Ding, L.; Zhang, D.; Wu, X.; and Zhang, D. 2026. Put the Space of LoRA Initialization to the Extreme to Preserve Pre-trained Knowledge. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) .ArXiv:2503.02659. Templeton, A.; Conerly, T.; Marcus, J.; Lindsey, J.; Bricken, T.; Chen, B.; Pearce, A.; Citro, C.; Ameisen, E.; Jermyn, A.; Olah, C.; et al. 2024. Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet. Transformer Circuits Thread .Wah, C.; Branson, S.; Welinder, P.; Perona, P.; and Belongie, S. 2011. The Caltech-UCSD Birds-200-2011 Dataset. Tech-nical Report CNS-TR-2011-001, California Institute of Tech-nology. Wang, D.; Ma, Q.; Shang, Y.; Lu, Z.; Xu, Z.; Ning, L.; Wu, H.; and He, Z. 2025a. Interpretable Safety Alignment via SAE-Constructed Low-Rank Subspace Adaptation. arXiv preprint arXiv:2512.23260 .Wang, P.; Gu, M.; and Huang, Q. 2025. VeFA: Vector-Based Feature Space Adaptation for Robust Model Fine-Tuning. ArXiv:2510.19155, arXiv:2510.19155. Wang, X.; Li, Z.; Wang, B.; Hu, Y.; and Zou, D. 2025b. Model Unlearning via Sparse Autoencoder Subspace Guided Projections. In Proceedings of the 2025 Conference on Em-pirical Methods in Natural Language Processing (EMNLP) ,26530–26546. Association for Computational Linguistics. ArXiv:2505.24428. Wortsman, M.; Ilharco, G.; Kim, J. W.; Li, M.; Kornblith, S.; Roelofs, R.; Lopes, R. G.; Hajishirzi, H.; Farhadi, A.; Namkoong, H.; and Schmidt, L. 2022. Robust Fine-tuning of Zero-shot Models. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .Xiao, J.; Hays, J.; Ehinger, K. A.; Oliva, A.; and Torralba, A. 2010. SUN Database: Large-Scale Scene Recognition from Abbey to Zoo. In IEEE Conference on Computer Vision and Pattern Recognition (CVPR) .Xiong, Y.; and Xie, X. 2026. OPLoRA: Orthogonal Projection LoRA Prevents Catastrophic Forgetting dur-ing Parameter-Efficient Fine-Tuning. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) .ArXiv:2510.13003. Xu, C.; Sun, Q.; Zheng, K.; Geng, X.; Zhao, P.; Feng, J.; Tao, C.; and Jiang, D. 2024. WizardLM: Empowering Large Language Models to Follow Complex Instructions. In Inter-national Conference on Learning Representations (ICLR) .ArXiv:2304.12244. Yan, J.; Li, Z.; Wang, F.; Wang, B.; He, Z.; and Fu, Z. 2025. DGS-Net: Distillation-Guided Gradient Surgery for CLIP Fine-Tuning in AI-Generated Image Detection. arXiv preprint arXiv:2511.13108 .Yang, Y.; Li, X.; Zhou, Z.; Song, S. L.; Wu, J.; Nie, L.; and Ghanem, B. 2024. CorDA: Context-Oriented Decomposition Adaptation of Large Language Models for Task-Aware Parameter-Efficient Fine-tuning. In Ad-vances in Neural Information Processing Systems (NeurIPS) .ArXiv:2406.05223. Zhai, X.; Puigcerver, J.; Kolesnikov, A.; Ruyssen, P.; Riquelme, C.; Lucic, M.; Djolonga, J.; Susano Pinto, A.; Neumann, M.; Dosovitskiy, A.; Beyer, L.; Bachem, O.; Tschannen, M.; Michalski, M.; Bousquet, O.; Gelly, S.; and Houlsby, N. 2019. A Large-scale Study of Representation Learning with the Visual Task Adaptation Benchmark. arXiv preprint arXiv:1910.04867 .Zhang, M.; Li, Y.; Li, L.; Shen, D.; Xiong, H.; and Sun, Y. 2026. SAE-FD: Sparse Autoencoder Feature Distillation for Continual Learning of Large Language Models. arXiv preprint arXiv:2605.25525 .Zheng, L.; Chiang, W.-L.; Sheng, Y.; Zhuang, S.; Wu, Z.; Zhuang, Y.; Lin, Z.; Li, Z.; Li, D.; Xing, E. P.; Zhang, H.; Gonzalez, J. E.; and Stoica, I. 2023. Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. In Advances in Neural Information Processing Systems (Datasets and Benchmarks Track) .A Concurrent work 
+
+Two concurrent preprints overlap parts of CGR’s design. 
+
+SAE-FT (Morelli et al. 2026) penalizes the addition and removal of SAE features for robust fine-tuning, on a sin-gle feature set in the activation channel alone. PRISM (Lin and Sun 2026) bounds a cross-entropy risk gap by whole-representation drift, without concept selection or a weight-space certificate. Neither pairs the role split with a weight-space term, and neither attaches to the retention-focused bases we evaluate. 
+
+# B Experimental Details 
+
+B.1 Baselines 
+
+LoRA (Hu et al. 2022) learns a low-rank update ∆W =BA 
+
+on frozen pretrained weights. It places no constraint on where the update acts, so it is a retention-agnostic base. 
+
+AdaptFormer (Chen et al. 2022) inserts a parallel bottle-neck adapter (down-projection, nonlinearity, up-projection) beside the MLP block. It is the one non-LoRA adapter in the panel and is likewise retention-agnostic. 
+
+OPLoRA (Xiong and Xie 2026) applies a double-sided projection that keeps the update out of the top-k singular subspace of the pretrained weight, which leaves the dominant spectral directions of the base model untouched. 
+
+LoRA-Null (Tang et al. 2026) initializes the adapter in the null space of calibration activations, so the update starts with no effect on the calibration inputs. 
+
+CorDA (Yang et al. 2024) builds the adapter from an input-covariance weighted SVD of the pretrained weight. The covariance comes from general data in its knowledge-preserving mode and from task data in its instruction-preserving mode. 
+
+SAILS (Wang et al. 2025a) initializes the LoRA B factor from SAE decoder directions, which starts the update in an interpretable concept basis. We do not include Wise-FT (Wortsman et al. 2022). It leaves fine-tuning unconstrained and interpolates the fine-tuned weights back toward the pre-trained ones afterward, so it composes with any of the methods we compare and leaves the ranking between them unchanged (Mukhoti et al. 2024). 
+
+B.2 Datasets 
+
+Table 7 lists the vision datasets with their class counts. The panel spans fine-grained recognition, textures, natural cat-egories, remote sensing, medical imaging, and structured pose and digit recognition. Eight tasks (DTD, Flowers-102, Oxford-Pets, EuroSAT, RESISC45, Diabetic Retinopathy, dSprites-Orientation, SVHN) come from the VTAB bench-mark (Zhai et al. 2019) and train on 1000 examples each under its VTAB-1k protocol. The two fine-grained tasks, FGVC-Aircraft (Maji et al. 2013) and CUB-200 (Wah et al. 2011), train on their full training sets. Model selection is based on the best validation accuracy on a held-out 20% 
+
+split of the training budget. Retention is measured after fine-tuning as zero-shot accuracy on four held-out natural probes, CIFAR-10, CIFAR-100 (Krizhevsky 2009), Caltech-101 (Fei-Fei, Fergus, and Perona 2004), and SUN397 (Xiao et al. 2010). No probe is ever a fine-tuning task. 
+
+# C Training Details and Hyperparameters 
+
+Compute. Vision and language experiments run on sep-arate machines. Vision fine-tuning jobs use an NVIDIA RTX 2080 Ti (11 GB) on a shared 8-GPU node. Lan-guage jobs use an NVIDIA GH200 (96 GB) with 16 CPU cores. The vision node runs Linux with Python 3.12, Py-Torch 2.12.1 (CUDA 13.0), and open_clip_torch 3.3.0. The language node runs Linux (aarch64) with Python 3.11, PyTorch 2.7.1 (CUDA 12.8), transformers 5.8.1, 
+
+peft 0.19.1, sae-lens 6.43.0, and lm-eval 0.4.9. 
+
+Training configuration. Table 8 lists every hyperparame-ter for both modalities. All adapter families share one training configuration per modality, so each base-vs-CGR compari-son in the main tables varies only the CGR terms. Unless marked otherwise, every vision number in this appendix is the mean over 3 seeds ( ± sample std where shown). Language retention numbers are 3-seed means. Each configuration runs with seeds 0, 1, and 2.The language track fine-tunes Llama-3.1-8B on the Wiz-ardLM evolved-instruction corpus (Xu et al. 2024) with se-quences capped at 512 tokens for a fixed budget of 780 
+
+steps at an effective batch size of 128 . Retention is zero-shot accuracy on the full test sets of TriviaQA (Joshi et al. 2017), NQ-Open (Kwiatkowski et al. 2019), and WebQS (Be-rant et al. 2013). Instruction-following quality is MTBench single-answer grading (Zheng et al. 2023) with a fixed judge. The language model optimization configuration follows Tang et al. (2026): AdamW, learning rate 2×10 −5, cosine schedule with 0.03 warmup, effective batch 128 .
+
+Coefficient selection. CGR itself adds two loss coefficients and the two concept-set sizes. We did not tune coefficients per task. The one anchor coefficient λanc and confine coefficient 
+
+λconf were fixed from a single elbow sweep (App. K) and reused everywhere. Retention is insensitive to the retention-set size over |S ret | ∈ [32 , 256] , and accuracy is likewise in-sensitive to the task-set size over |S tsk | ∈ [32 , 512] (App. K). 
+
+# D Proofs and additional theory 
+
+D.1 Proof of Proposition 1 
+
+Proof. At any stationary point ∆W q of Ltask (∆ W ) + 
+
+λq 
+
+> conf
+
+∥P ⊥
+
+> tsk
+
+∆W ∥2 
+
+> F
+
+, by first order differentiability conditions, we obtain 
+
+P ⊥
+
+> tsk
+
+∆W q = − 12λq
+
+> conf
+
+∇∆W Ltask (∆ W q ).
+
+Applying P ⊥ 
+
+> tsk
+
+to both sides and recalling that (P ⊥
+
+> tsk
+
+)2 =
+
+P ⊥
+
+> tsk
+
+,
+
+P ⊥
+
+> tsk
+
+∆W q = − 12λq
+
+> conf
+
+P ⊥
+
+> tsk
+
+∇∆W Ltask (∆ W q ).
+
+Thus, taking norms, 
+
+∥P ⊥
+
+> tsk
+
+∆W q ∥F = O(1 /λ conf )∥P ⊥
+
+> tsk
+
+∇∆W Ltask (∆ W q )∥F ,
+
+and the conclusion follows from the assumption 
+
+∥P ⊥
+
+> tsk
+
+∇∆W Ltask (∆ W q )∥F ≤ C.Fine-tuning tasks Retention probes                            
+
+> FGVC CUB DTD Flow Pets EuroS RESISC DiabR dSpr-O SVHN C-10 C-100 Calt-101 SUN397 Classes 100 200 47 102 37 10 45 516 10 10 100 101 397
+
+Table 7: Vision task datasets. Class counts for the ten fine-tuning tasks and the four held-out retention probes, with column abbreviations as in Table 2. Training budgets are given in the text. Probes are evaluated zero-shot only and are never fine-tuning tasks. 
+
+D.2 Proof of Proposition 2 
+
+Proof of the upper bound. Write 
+
+q(x) = Wret h0(x) + bret , δ(x) = Wret ∆W x. 
+
+Since ReLU is coordinatewise 1-Lipschitz, 
+
+∆fret (x) 2 = ReLU  q(x) + δ(x) − ReLU  q(x)
+
+> 2
+
+≤ δ(x) 2 = Wret ∆W x 2.
+
+Squaring and taking expectations gives 
+
+Ex ∆fret (x) 22 ≤ Ex Wret ∆W x 22
+
+= tr  Wret ∆W Σ∆ W ⊤W ⊤
+
+> ret
+
+ .
+
+Proof of the lower bound. For every x ∈ A, the concepts in 
+
+J remain in the active ReLU region, and hence their read-out change is exactly 
+
+∆fret ,J (x) = WJ ∆W x. 
+
+Since the squared norm of the complete read-out change dominates the contribution of these coordinates on the subset 
+
+A,
+
+Ex ∆fret (x) 22 ≥ Ex
+
+h
+
+1A(x) WJ ∆W x 22
+
+i
+
+= tr  WJ ∆W ΣA∆W ⊤W ⊤J
+
+ .
+
+To see why exact projection does not control this term, sup-pose there exist u and v such that 
+
+P ⊥
+
+> tsk
+
+u = 0 , WJ u̸ = 0 , v⊤ΣAv > 0.
+
+For ∆Wt = tuv ⊤,
+
+P ⊥
+
+> tsk
+
+∆Wt = 0 ,
+
+while 
+
+tr  WJ ∆WtΣA∆W ⊤ 
+
+> t
+
+W ⊤J
+
+ = t2 v⊤ΣAv WJ u 22.
+
+Thus, along any such admissible family for which the con-cepts in J remain active on A, the lower bound grows quadratically with the magnitude of the in-subspace up-date. Hence the projection constraint alone does not control retention-concept drift. 
+
+# E Small experimental exploration of relation between weight and activation concept space 
+
+We want to compare the change in weight direction (in the residual stream) for each concept to their respecting concept drift in the SAE. To do that we will compare two quantities for each concept j, first the total weight change ∥W Tdec [: ,j ]∆W ∥
+
+and second the concept drift Ex|fj (hf t ) − fj (h0)|.In Figure 6, we divide the concepts into task and retention and plot the weight change and concept drift for several strategies. We do that for the LoRA baseline and then add five other options: Confine only(in task set), Anchor only(in ret set), Anchor all(task and ret), CGR(Anchor ret and confine task), and Anchor all(task and ret sets) and Confine(task set). In terms of task accuracy and retention, the full CGR method is the best option. However, the interesting part is how different strategies control the weights and concept drifts. The Anchor term seems to reduce the concept drift not only in the portion it is applied to but even when applied only to the retention concepts; it helps reduce the drift in the task concepts as well. The confine term seems to always accelerate the change in weights on the task set and reduce the weight change in the retention set; nevertheless, it is unable to control the concept drift in retention. This indicates that both terms are needed. Moreover, anchoring every concept seems to be working against the new task accuracy when compared with only anchoring the retention set, both with or without confine. In an informal way, one could think that the retention concepts are not only helping in retention but also act as sanity checks; the machine changes the internal representations in weight space for the new task, but every time it does it has to pass these checks. This, at the same time, keeps the main concept drift low. For example, if we want to improve our understanding of an elephant, we can change our representation of an elephant, but it still has to be an animal and have four legs. 
+
+# F Activation drift correlates with knowledge retention 
+
+The anchor’s value is the retention concepts’ expected squared drift, so it is worth checking that this drift moves with retention itself. It does on all three drift-instrumented datasets. Figure 3 in the main text plots the FGVC rela-tion, where retention-concept activation drift correlates with zero-shot retention at r=−0.63 (p=8 ×10 −7) over every run logging both quantities. Figure 8 replicates it on CUB-200 (r=−0.70 , p=2 ×10 −7) and DTD ( r=−0.87 , p=3 ×10 −8). Retention is the CIFAR-10/100 mean, the two Table 2 probes Vision (CLIP) Language (Llama)                                                                           
+
+> Backbone & frozen SAE
+> Backbone CLIP ViT-B/32 Llama-3.1-8B (bf16) SAE site resid., block 8resid., layer 19 /32
+> SAE Prisma ( 64 ×, ReLU +L1) Llama-Scope ( 8×, top-32 )
+> |S tsk |,|S ret |128 ,128 256 ,128
+> Optimization
+> Optimizer AdamW AdamW Learning rate 1×10 −32×10 −5
+> Weight decay 10 −40
+> Schedule cosine, 5-ep warmup cosine, 0.03 warmup ratio Budget 50 epochs 780 steps Batch (effective) 64 16 ×8=128
+> Grad clip –1.0
+> Selection best val. acc. ( 20% split) fixed step budget Data regime 1000 -shot (VTAB); full (FG) WizardLM SFT, len 512
+> Seeds 3(0,1,2)3(0,1,2; MTBench: 1)
+> Adapters (rank / config)
+> LoRA r=8 r=128 , α =256
+> OPLoRA r=8 , k =128 r=128
+> LoRA-Null r=8 r=128 (NQ-Open calib, 256 )CorDA-IPM r=8 r=128
+> AdaptFormer bottleneck 16 bottleneck 64 , scale 0.1
+> SAILS-init r=8 , α =0 .1α=0 .1
+> CGR (added terms)
+> Anchor λanc 60 0.2
+> Confine λconf 0.10.2
+> Confine mode inside-task inside-task Retention set top firing top firing
+
+Table 8: Hyperparameters. Shared across all adapter families unless noted; CGR adds only the two loss coefficients and the concept-set sizes. The anchor coefficient λanc differs across modalities because the anchor is a mean squared activation drift, whose scale is set by the backbone’s residual-stream magnitude, not a tuned trade-off. every run logs. In each panel, the anchored runs sit at low drift and high retention, the weight-only runs at the oppo-site extreme. That drift is harmful is therefore an empirical finding rather than an assumption. 
+
+# G Causal validation of the selection 
+
+The previous section shows the selected concepts correlate with retention. Here we test whether they carry it. In each trained model, we zero the retention concepts Sret at the read-out layer and re-measure zero-shot retention. The con-trol repeats the deletion on a size-matched random set, drawn only from concepts that fire on the evaluation data, since re-moving inactive dictionary entries would leave retention un-changed by construction. Removing the selected set destroys a large share of retained zero-shot accuracy, while removing the random set leaves retention unchanged (Fig. 9). A paired Wilcoxon signed-rank test over all FGVC run-probe pairs separates the two conditions at p = 1 .7 × 10 −13 , and the same gap holds on CUB-200 and DTD. Retained capability therefore flows through the concepts the anchor holds, so the drift it measures belongs to the mechanism rather than to a correlated quantity. 
+
+# H Named weight-channel concepts 
+
+Figure 4 in the main text shows which concepts CGR pins in the activation channel. Figure 5 is its weight-channel coun-terpart, answering where the update goes by measurement rather than by the interventions of App. G. For every concept, it plots the weight write |∆W · W (j)
+
+> dec
+
+| under a plain LoRA adapter against the same quantity under CGR. Plain LoRA writes to task and retention concepts with equal weight, leav-ing both sets near the diagonal at a mean of 0.20 . CGR lifts the task concepts to 0.26 and drops the retention concepts to 
+
+0.11 , so the update is reallocated rather than enlarged. The right panel names the four task concepts carrying the most update by their top-activating images. All four are coherent aircraft types (military jets, airliners, propeller light planes, business jets), the fine-grained structure the classifier must separate. The update lands on the task concepts while the retention concepts hold their activations. 
+
+Editing the concepts at test time The editing test of §4.3 asks whether the selected concepts work as an interface and not only as a penalty. A concept bottleneck classifies through an interpretable concept layer, so individual concepts can be corrected at test time. We train a logistic-regression head di-rectly on the frozen model’s 256 selected concept activations, 0.0 0.1 0.2 0.3
+
+weight-update projection under LoRA ∥𝑊 𝑑𝑒𝑐 [:, 𝑗 ]⊤Δ𝑊 ∥
+
+0.00 0.05 0.10 0.15 0.20 0.25 0.30 
+
+> weight-update projection under LoRA+CGR
+
+Stsk mean LoRA 0.20 
+
+→ +CGR 0.26 
+
+Sret mean LoRA 0.20 
+
+→ +CGR 0.11 
+
+123 4
+
+other concepts task Stsk 
+
+retention Sret 
+
+# 1
+
+# “military jets” (concept 12821) 
+
+LoRA +CGR 0.23 0.29 
+
+# 2
+
+# “airliners” (concept 32159) 
+
+LoRA +CGR 0.21 0.29 
+
+# 3
+
+# “propeller light planes” (concept 32171) 
+
+LoRA +CGR 0.22 0.29 
+
+# 4
+
+# “business jets” (concept 43773) 
+
+LoRA +CGR 0.20 0.28 
+
+1Figure 5: The weight update concentrates on the task-driven concepts (FGVC). Left: per-concept residual-write projection 
+
+∥Wdec [: , j ]⊤∆W ∥ under a plain LoRA adapter (horizontal) against the same quantity under CGR (vertical), on a linear scale. Blue marks the task set Stsk , red the retention set Sret , and light gray all remaining concepts. Both sets are computed on the frozen backbone, independently of either adapter, so the same partition applies to both axes. The diagonal marks equal write under both methods. A concept above it receives more update under CGR than under LoRA, a concept below it less. LoRA alone does not separate the two sets (both horizontal-axis means are 0.20 ). CGR lifts the task concepts above the diagonal (from 
+
+0.20 under LoRA to 0.26 under CGR) and drops the retention concepts below it (from 0.20 to 0.11 ), so the update is reallocated, not enlarged. Right: the four task concepts CGR concentrates its update on, named by their top-activating FGVC images. Bars are blue throughout because all four belong to the task set, hollow under LoRA and solid under CGR. following the concept-bottleneck configuration of Koh et al. (2020). The head has no trainable projection, so no recombi-nation can wash out the correspondence between a coordinate and its named concept. The control trains a matching head on a size-matched random set, drawn from concepts that fire on the evaluation data as in §G. Figure 10 shows both arms on all three drift-instrumented datasets. Before any editing, the selected head reaches 10 .7% on FGVC-Aircraft, 7.3% 
+
+on CUB-200 and 40 .5% on DTD, against 1.5% , 1.3% and 
+
+8.7% for the control, four to seven times the control on every dataset. The selected concepts therefore carry class-relevant structure that an equally large random slice of the dictio-nary does not. At test time we intervene on a fraction of the selected concepts, replacing each with its ground-truth class-conditional mean, and re-predict, the standard evalu-ation protocol for bottleneck models (Koh et al. 2020). We intervene on both heads identically, so the contrast isolates the concept set rather than the information the intervention supplies. Accuracy rises steadily as the edited fraction grows, reaching 43 .9% , 37 .2% and 97 .9% under full correction, and the selected head leads the control at every fraction on every dataset. Writing correct values into named concepts repairs wrong predictions, which is the intervenability property a concept bottleneck is meant to provide. Steering generalizes the removal test to a continuous scale factor (Fig. 11). On the frozen backbone, we scale the se-lected concepts’ contribution at the read-out layer by α, so 
+
+α=1 is the unmodified model and α=0 is the removal test above, and we re-measure zero-shot retention. Retention fol-lows α smoothly and peaks at the unmodified model. It falls monotonically toward removal, from 86 .0% at α=1 to 80 .5% 
+
+at α=0 , and it falls again when the contribution is amplified, reaching 85 .0% at α=1 .5. The size-matched random control varies by 0.2pp across the whole range. Retention responds Method CIFAR-10 CIFAR-100 Caltech-101 SUN397 Avg Zero-shot (no FT) 93.8 78.2 90.9 67.6 82.6 LoRA 84 .3 ±4.1 63 .1 ±5.8 87 .3 ±2.5 61 .6 ±2.7 74 .1 ±3.5+CGR ∗ 91 .4 ±1.8 74 .0 ±2.2 89 .5 ±1.9 66 .0 ±1.1 80 .2 ±1.5                                                                                                    
+
+> OPLoRA 84 .5±3.463 .3±5.587 .6±2.361 .9±2.774 .4±3.3+CGR ∗92 .0±1.275 .2±1.490 .0±1.266 .2±1.280 .8±1.1
+> LoRA-Null 89 .9±2.572 .5±4.689 .6±1.966 .5±1.379 .6±2.0+CGR ∗92 .6±1.376 .8±1.090 .2±1.767 .5±0.581 .7±0.7
+> CorDA 87 .0±5.067 .9±6.988 .2±3.163 .4±4.776 .6±4.6+CGR ∗91 .4±2.473 .2±3.189 .4±2.165 .3±2.979 .8±2.5
+> AdaptFormer 89 .4±3.272 .5±2.788 .2±3.064 .4±2.278 .6±1.9+CGR ∗92 .2±1.977 .0±0.689 .8±2.366 .7±0.881 .4±1.0
+> SAILS-init 82 .6±4.360 .8±5.686 .9±2.860 .6±2.772 .7±3.6+CGR ∗91 .0±1.973 .5±2.089 .4±1.665 .4±1.379 .8±1.4
+
+Table 9: Per-probe zero-shot retention (%). The four natural probes that make up the Ret column of Table 2, each shown separately; every cell is meaned over the same 10 fine-tuning tasks and 3 seeds, so each row’s Avg matches its Avg retention in Table 2. Each cell shows mean ±std, the spread across the 10 tasks (as in Table 2; seed noise ≤0.9); CGR tightens it on every probe. Best per column bold; ∗ =ours. to the selected concepts as a dial rather than a switch, and it responds only to them. 
+
+# I Detailed vision results 
+
+In this section, we show a detailed breakdown of the results in Table 2, both over the same 10 fine-tuning tasks and 3 seeds. Table 9 shows its four-probe retention column (§4.2) into the individual probes. Table 10 reports every cell as mean ±std over the seeds, with average accuracy and average retention across the ten tasks. 
+
+# J Detailed language results 
+
+Table 11 reports the seed variability behind Table 3. Every retention column is the mean and sample standard deviation over three seeds. The CGR retention gains clear the seed spread on every backbone. 
+
+# K Anchor and confine robustness 
+
+Retention is insensitive to the anchor coefficient λanc over a wide range. Table 13 sweeps it 15 × on both fine-grained datasets. Accuracy stays within seed variation while retention rises monotonically and plateaus above λanc =100 , from 69 .0
+
+to 73 .8 on FGVC and from 71 .2 to 74 .0 on CUB-200. FGVC is still rising at the top of the range; CUB-200 has settled, its last two settings differing by less than one standard deviation. The LoRA base without the anchor retains 53 .1 and 59 .5
+
+(Table 4), so most of the gain comes from the term being active at all and the response beyond that is smooth. The coefficient is a strength dial with a wide safe range rather than a constant tuned per task. 
+
+Confine strength. The same robustness holds for the con-fine coefficient. Sweeping λconf ∈ 0.03 , 0.1, 0.3, 1.0 under the Table 5 protocol (LoRA r8, anchor λanc =60 , attribution-selected task set, 3 seeds) leaves both axes on a plateau on both datasets (Table 14). Retention varies by 1.8 points on FGVC-Aircraft and stays within seed variation on CUB-200 over the 33 × range, at flat accuracy. The term still engages. The perpendicular fraction of the update, the share of ∆W
+
+outside the task subspace, falls monotonically from 0.26 to 
+
+∼0 as λconf grows, so the plateau reflects a wide safe range rather than an inert term. The flanking columns give the endpoints, anchor alone at λconf =0 and a hard projection replacing the soft confine, and both retain less than every setting inside the sweep. 
+
+Retention-set size. The remaining anchor hyperparam-eter is the retention-set size |S ret |. Sweeping k ∈
+
+32 , 64 , 128 , 256 , 512 under the same protocol leaves both axes on a plateau on both datasets (Table 15). Retention varies by 2.3 points on FGVC and 1.8 on CUB-200 over the 16 × range, declining gently toward the all-active limit of Table 5 ( 66 .6 and 68 .6). Adding ever-lower-presence con-cepts dilutes the anchor uniformly rather than protecting more, so dilution is the mechanism and not anchor breadth itself. An importance-weighted all-active variant, each con-cept weighted by its mean activation magnitude with weights normalized to mean 1, recovers the selected set’s reten-tion at matched λanc (FGVC 73 .0±0.7, CUB-200 74 .1±0.6
+
+against top-k’s 72 .0±0.8 and 73 .2±0.7, accuracy tied) by re-concentrating the anchoring mass on high-firing concepts. Selection reaches the same concentration with 128 named concepts instead of ∼4k weighted ones, which is what keeps the anchored set intervenable (App. G). 
+
+Task-set size. The confine channel has the matching hy-perparameter, the task-set size |S tsk |. It enters both terms, setting the dimension of the subspace the update may occupy and defining the set excluded from Sret in Eq.(7). Sweeping 
+
+|S tsk | ∈ 32 , 64 , 128 , 256 , 512 under the Table 5 protocol (LoRA r8, λanc=60 , λconf =0 .1, 3 seeds) leaves accuracy flat over the 16 × range on both datasets (Table16). A rank-8FGVC  CUB  DTD  Flow  Pets Method  Acc  Ret  Acc  Ret  Acc  Ret  Acc  Ret  Acc  Ret Zero-shot  19.3  82.6  70.9  82.6  54.6  82.6  73.0  82.6  89.8  82.6 LoRA  59 .3±1.7 67 .9±1.7 74 .6±0.4 70 .1±1.1 71 .5±1.7 74 .1±0.1 93 .2±0.3 76 .3±1.8 82 .6±0.8 73 .8±2.2+CGR  60 .1±0.4 78 .0±0.7 76 .4±0.3 78 .7±0.4 74 .3±0.7 80 .5±0.5 95 .0±0.5 81 .6±0.4 86 .1±0.5 80 .8±0.1                                                                                                                                  
+
+> OPLoRA  58 .9±0.4 69 .9±1.1 75 .1±0.2 69 .3±1.6 72 .1±0.5 72 .1±1.1 93 .4±0.4 76 .9±1.7 81 .5±2.4 75 .9±2.4+CGR  59 .5±0.3 79 .2±0.3 76 .6±0.1 79 .2±0.7 74 .6±1.0 80 .5±0.2 95 .4±0.4 81 .6±0.5 85 .7±1.4 81 .1±0.3
+> LoRA-Null  61 .0±0.3 78 .8±0.5 76 .2±0.7 78 .0±1.3 73 .9±1.2 76 .2±1.5 94 .8±0.2 81 .5±0.2 86 .5±1.0 80 .6±0.8+CGR  60 .5±0.2 80 .5±0.3 76 .9±0.5 80 .5±0.3 76 .7±0.6 81 .7±0.1 95 .9±0.3 82 .6±0.1 87 .1±1.1 82 .0±0.2
+> CorDA  57 .8±1.1 71 .7±0.6 72 .5±0.9 65 .9±1.0 73 .3±0.7 78 .8±0.6 93 .9±0.4 80 .4±0.4 84 .4±0.8 78 .8±1.6+CGR  57 .1±1.1 76 .3±0.5 73 .0±0.6 74 .4±0.9 73 .9±0.5 81 .1±0.5 94 .4±0.6 81 .8±0.2 85 .5±0.9 80 .5±0.4
+> AF  60 .9±1.2 77 .1±1.2 77 .1±0.6 75 .9±0.7 74 .7±1.2 76 .0±0.9 95 .5±0.2 80 .8±0.4 87 .4±0.5 77 .4±0.7+CGR  61 .2±0.4 79 .5±0.2 77 .7±0.2 79 .8±0.0 76 .9±0.1 81 .3±0.4 96 .3±0.1 82 .1±0.0 88 .1±1.0 81 .5±0.1
+> SAILS  59 .0±1.5 65 .8±2.8 74 .4±0.3 69 .7±1.6 71 .0±0.3 72 .4±0.7 92 .9±0.4 74 .6±0.7 82 .7±0.8 73 .0±2.3+CGR  59 .0±1.1 77 .9±0.8 76 .3±0.5 78 .3±0.5 74 .3±0.3 79 .7±0.5 95 .2±0.5 81 .3±0.1 84 .5±1.6 80 .3±0.5
+> EuroS  RESISC  DiabR  dSpr-O  SVHN  Avg
+> Method  Acc  Ret  Acc  Ret  Acc  Ret  Acc  Ret  Acc  Ret  Acc  Ret Zero-shot  40.5  82.6  61.9  82.6  35.4  82.6  9.3  82.6  60.4  82.6  51 .5±25 .2 82.6 LoRA  93 .6±1.5 78 .3±1.0 83 .0±0.3 76 .7±0.4 72 .3±1.4 78 .6±5.0 43 .6±1.6 70 .9±4.4 89 .4±1.1 73 .8±0.9 76 .3±15 .8 74 .1±3.5+CGR  93 .4±0.8 81 .2±0.4 84 .0±0.5 81 .8±0.3 72 .9±0.6 81 .2±1.4 42 .9±1.7 77 .9±0.6 85 .8±1.0 80 .6±0.7 77 .1±15 .9 80 .2±1.5⋆
+> OPLoRA  95 .1±1.7 78 .9±1.3 82 .7±1.4 77 .3±1.1 72 .6±0.2 76 .4±6.5 44 .2±1.6 72 .2±2.2 89 .8±1.0 74 .6±0.9 76 .5±15 .8 74 .4±3.3+CGR  93 .4±0.5 81 .4±0.6 84 .3±1.2 82 .1±0.2 73 .3±0.8 81 .7±0.1 43 .4±0.8 80 .0±0.3 86 .3±0.7 81 .5±0.1 77 .2±15 .9 80 .8±1.1⋆
+> LoRA-Null  95 .6±0.7 81 .2±0.4 85 .0±1.2 80 .6±0.2 72 .5±0.6 81 .8±1.4 44 .6±2.0 81 .0±0.7 91 .3±0.7 76 .7±1.6 78 .1±16 .1 79 .6±2.0+CGR  93 .3±0.2 82 .3±0.2 85 .0±0.1 82 .5±0.3 73 .5±0.6 82 .0±0.4 43 .9±2.0 81 .7±0.2 87 .9±0.3 81 .7±0.2 78 .1±15 .9 81 .7±0.7⋆
+> CorDA  94 .5±1.1 79 .1±1.0 84 .6±0.5 78 .9±0.5 73 .2±0.5 79 .5±3.1 43 .1±2.9 78 .8±0.8 90 .1±1.0 74 .4±2.4 76 .7±16 .5 76 .6±4.6+CGR  94 .3±0.4 81 .5±0.2 84 .4±1.0 81 .3±0.1 72 .3±0.9 81 .1±0.9 41 .9±0.4 79 .9±0.6 87 .4±0.9 80 .4±0.4 76 .4±16 .7 79 .8±2.5⋆
+> AF  95 .5±0.5 80 .4±0.4 85 .7±0.8 80 .0±0.3 72 .8±0.8 80 .5±0.6 45 .1±1.9 79 .8±0.1 90 .7±0.1 78 .1±1.6 78 .5±16 .1 78 .6±1.9+CGR  94 .4±0.9 81 .9±0.2 85 .9±0.3 82 .3±0.1 73 .5±0.6 82 .5±0.2 44 .8±1.3 81 .4±0.3 86 .6±0.8 82 .0±0.1 78 .5±15 .8 81 .4±1.0⋆
+> SAILS  94 .5±2.0 76 .2±1.9 83 .2±1.7 75 .2±1.1 72 .6±0.8 77 .7±6.5 43 .8±2.3 69 .0±0.4 90 .0±0.9 73 .7±2.5 76 .4±15 .9 72 .7±3.6+CGR  93 .1±0.8 81 .2±0.3 84 .0±1.5 81 .4±0.3 72 .1±1.6 80 .0±0.3 42 .0±2.0 77 .7±0.9 86 .0±0.7 80 .7±0.4 76 .7±16 .2 79 .8±1.4⋆
+> Table 10: Complete per-task results of CGR on the ten CLIP ViT-B/32 transfer tasks (extended version of Table 2). Every cell is mean ±std over  3 seeds. Acc is target-task accuracy; Ret is the four-probe zero-shot retention of Table 2.  Avg  is the mean over the same  10  tasks ( ±std across tasks), so the Avg Ret column matches Table 2. Best retention per task and best Avg Ret in bold; the star ( ⋆) marks a significant across-task CGR retention gain (paired Wilcoxon,  p< 0.05 ). World-knowledge retention (%) Method Trivia NQ-O WebQS Avg1 Per Zero-shot 61 .57.911 .627 .0100 .0
+> LoRA 27 .6±1.211 .1±0.612 .4±0.717 .1±0.781 .6±0.7
+> +CGR 43 .5±2.212 .0±0.812 .4±0.722 .6±0.490 .2±1.1
+> LoRA-Null 47 .1±0.39.5±0.39.8±0.122 .1±0.187 .1±0.3
+> +CGR 55 .9±0.39.1±0.29.7±0.224 .9±0.191 .5±0.8
+> CorDA 40 .5±2.712 .1±1.210 .8±1.721 .1±1.885 .1±4.5
+> +CGR 45 .7±1.213 .2±0.59.4±0.222 .8±0.385 .0±0.5
+> OPLoRA 40 .2±1.510 .2±0.611 .5±0.720 .6±0.487 .6±1.4
+> +CGR 51 .1±1.39.4±0.811 .4±0.324 .0±0.893 .8±1.5
+> SAILS 32 .0±3.311 .2±0.812 .2±0.318 .5±1.284 .0±1.8
+> +CGR 42 .9±3.111 .6±1.112 .1±0.422 .2±0.889 .9±1.7
+> AdaptFormer 38 .1±0.33.7±0.28.2±0.116 .7±0.159 .6±1.1
+> +CGR 59 .4±0.16.2±0.19.9±0.125 .1±0.186 .7±0.4
+
+Table 11: Seed variability of the Llama-3.1-8B retention results. Every cell of Table 3 is reported as mean ± sample std over seeds. Per is capped per seed here, whereas Table 3 applies the cap to the seed mean, which shifts Per by at most 1.0 where a seed exceeds the zero-shot base. MTBench is single-seed by design and omitted.                       
+
+> Natural Specialized / Structured Task EV Task EV Caltech-101 0.87 RESISC-45 0.74 SUN397 0.86 EuroSAT 0.69 DTD 0.85 Diabetic-Retino 0.49 CUB-200 0.82 dSprites-loc/ori 0.23 Oxford-Pets 0.81 Flowers-102 0.76 CIFAR-100 0.75 CIFAR-10 0.72 SVHN 0.67 FGVC-Aircraft 0.66
+
+Table 12: SAE reconstruction EV (layer-8 CLS, 1000 sam-ples, frozen backbone). Higher = SAE in-distribution, concepts faithful. Natural tasks are high-EV; the struc-tured/synthetic task (dSprites) is low-EV. update occupies few directions, so even the smallest subspace accommodates it. Retention instead declines monotonically as |S tsk | grows, by 8.1 points on FGVC and 5.0 on CUB-200, through two pathways that move together. A larger task set widens the region the update may occupy, so the perpen-dicular fraction falls toward zero and the confine term stops binding. It also enlarges the set excluded from Sret , pushing the anchor’s candidate pool toward lower-presence concepts. Boundedness therefore matters on the task side exactly as it does on the retention side (Table 15). The default |S tsk |=128 
+
+is the symmetric untuned choice and sits in the stable middle of the range on both datasets. 
+
+# L SAE faithfulness across VTAB 
+
+Table 12 reports the in-pipeline layer-8 reconstruction EV of the Prisma SAE on 1000 samples per task used in this paper (frozen backbone, no training). EV spans 0.87 (Caltech-101) down to 0.23 (dSprites). Natural-image tasks are high-EV (the natural-image SAE is in-distribution, so its concepts are faithful) while structured/synthetic tasks are low-EV (out-of-distribution), where the concept channel is expected to weaken. All the mechanism studies above sit in the high-EV natural regime; the low-EV tasks map the boundary of the SAE-concept approach. (Notably the +CGR retention gain 
+
+tracks forgetting pressure rather than EV directly, and EV is anti-correlated with that pressure across the natural tasks, so we do not read EV as a direct cause of the gain.) 
+
+# M Notation 
+
+In Table 17 we list all notations used in this work. λanc 10 30 60 100 150 FGVC Acc 59 .4 ±1.0 58 .8 ±1.7 60 .1 ±0.4 59 .8 ±0.2 59 .4 ±0.3
+
+C-100 ret. 69 .0 ±0.6 70 .0 ±1.1 72 .0 ±0.8 73 .3 ±0.8 73 .8 ±0.4
+
+CUB-200 Acc 76 .0 ±0.2 76 .3 ±0.1 76 .4 ±0.3 76 .3 ±0.2 76 .2 ±0.2
+
+C-100 ret. 71 .2 ±0.6 72 .1 ±0.5 73 .2 ±0.7 74 .2 ±0.5 74 .0 ±0.6
+
+Table 13: Anchor-strength sweep (CGR on LoRA r8). Retention rises with λanc and flattens above 100 on both datasets, at accuracy within seed noise. The default λanc =60 reproduces the full-CGR row of Table 4. Mean over 3 seeds, ±std. 
+
+Anchor only λconf Hard proj. + anchor 
+
+0.03 0.1 0.3 1.0
+
+FGVC Acc 59 .2 60 .4 ±0.9 59 .4 ±1.0 60 .7 ±1.0 60 .4 ±0.7 58 .4
+
+C-100 ret. 66 .2 70 .3 ±0.6 72 .1 ±0.3 71 .8 ±0.5 70 .9 ±0.9 63 .8
+
+CUB-200 Acc 75 .6 76 .2 ±0.1 76 .0 ±0.4 76 .4 ±0.2 76 .3 ±0.4 75 .2
+
+C-100 ret. 70 .6 73 .0 ±1.5 72 .9 ±1.2 73 .2 ±1.2 73 .1 ±1.6 69 .4
+
+Table 14: Confine-strength sweep (CGR on LoRA r8). Accuracy and CIFAR-100 zero-shot retention stay on a plateau over a 33 × range of λconf , and the default λconf =0 .1 sits inside it. The flanking columns give the endpoints. Anchor alone is the 
+
+λconf =0 limit, and replacing the soft confine with a hard projection onto the task subspace retains less still. Every setting inside the sweep beats both. 
+
+|S ret | 32 64 128 256 512 FGVC Acc 59 .4 ±0.4 60 .0 ±0.5 60 .1 ±0.4 59 .7 ±0.6 59 .8 ±0.8
+
+C-100 ret. 72 .8 ±0.4 73 .2 ±0.4 72 .0 ±0.8 71 .8 ±0.5 70 .9 ±0.8
+
+CUB-200 Acc 76 .2 ±0.6 76 .3 ±0.2 76 .4 ±0.3 76 .3 ±0.1 76 .0 ±0.1
+
+C-100 ret. 74 .0 ±0.4 73 .3 ±0.8 73 .2 ±0.7 72 .7 ±0.7 72 .2 ±0.7
+
+Table 15: Retention-set size sweep (CGR on LoRA r8). Accuracy and CIFAR-100 zero-shot retention are flat over a 16 × range of |S ret | on both FGVC-Aircraft and CUB-200. The default k=128 sits inside the plateau. 
+
+|S tsk | 32 64 128 256 512 FGVC Acc 60 .3 ±0.6 59 .9 ±1.3 60 .1 ±0.4 60 .0 ±0.7 59 .9 ±0.5
+
+C-100 ret. 75 .3 ±1.3 73 .2 ±1.0 72 .0 ±0.8 70 .8 ±0.4 67 .2 ±1.1
+
+CUB-200 Acc 77 .0 ±0.1 77 .0 ±0.3 76 .4 ±0.3 76 .1 ±0.3 76 .0 ±0.2
+
+C-100 ret. 75 .7 ±1.6 75 .0 ±0.6 73 .2 ±0.7 72 .0 ±1.1 70 .7 ±0.8
+
+Table 16: Task-set size sweep (CGR on LoRA r8). Accuracy is flat over a 16 × range of |S tsk | on both datasets. Bounding the task set improves retention at no accuracy cost. The default |S tsk |=128 matches |S ret | and is not tuned. 0.00.20.4   
+
+> LoRA
+> task Stsk retention Sret
+
+weight write ∥𝑊 𝑑𝑒𝑐 [:, 𝑗 ]⊤Δ𝑊 ∥   
+
+> 0.00.1task Stsk retention Sret
+
+activation drift E𝑥 | 𝑓 𝑗 (ℎ 𝑓 𝑡 ) − 𝑓 𝑗 (ℎ0)|          
+
+> acc 59.3 ret 53.1 0.00.20.4
+> Confine only
+> 0.00.1acc 59.8 ret 66.3 0.00.20.4
+> Anchor only
+> 0.00.1acc 59.2 ret 66.2 0.00.20.4
+> Anchor all
+> 0.00.1acc 58.9 ret 66.2 0.00.20.4
+> Full CGR
+> 0.00.1acc 60.1 ret 72.0 050 100 150 200 250
+
+SAE concept index (grouped)      
+
+> 0.00.20.4
+> Conf + Anc all
+> 050 100 150 200 250
+
+SAE concept index (grouped)  
+
+> 0.00.1acc 59.4 ret 71.0
+
+1Figure 6: Weight-space control and activation-space drift across task and retention concepts. Each point corresponds to one SAE concept, grouped into the task set Stsk and the retention set Sret . The left column reports the weight change magnitude, 
+
+∥Wdec [: , j ]⊤∆W ∥. The right column reports the corresponding activation drift, Ex|fj (hft (x)) − fj (h0(x)) |. Horizontal lines denote per-set means, and the boxes report task accuracy and CIFAR-100 zero-shot retention. Confine concentrates the weight update on the task concepts and suppresses its projection onto the retention concepts, but does not by itself prevent retention-concept activation drift. Anchor directly suppresses activation drift, including when applied only to the selected retention set. Combining the two terms in full CGR separates their roles: task concepts remain free to support adaptation, while the retention concepts constrain the resulting representation change. Anchoring all concepts instead reduces this flexibility and yields lower task accuracy than selectively anchoring Sret . Results are means over three seeds; off-scale retention-concept drifts are clipped. 5 10 15 0.05 0.10 
+
+> Sret  activation drift
+
+FGVC-Aircraft   
+
+> 510 15
+
+CUB-200   
+
+> 510 15
+
+DTD   
+
+> 510 15
+
+epoch   
+
+> 20 40
+> adapter write magnitude ∑︁
+> ∥Δ𝑊  ∥𝐹
+> 510 15
+
+epoch   
+
+> 510 15
+
+epoch 
+
+> LoRA (weight-only) LoRA + CGR LoRA-Null (weight-only) LoRA-Null + CGR OPLoRA (weight-only) OPLoRA + CGR
+
+1Figure 7: Drift over training: full CGR pins the activation channel and confines the weight write on all three datasets. Columns: FGVC-Aircraft, CUB-200, DTD ( 3 bases × weight-only dashed / +CGR solid, mean ±std over 3 seeds, rows share y-limits). Top row: every weight-only method’s retention-concept activation drift climbs (to ∼0.06 –0.09 ) while all +CGR arms stay pinned at ∼0.01 . Bottom row: the confine term also bounds the adapter write magnitude on every base (e.g. LoRA-Null on FGVC 
+
+37 → 22 ), so the drift gap is not explained by larger weight moves. 0.02 0.04 0.06 0.08 
+
+measured Sret drift 
+
+> 50 60 70 80
+> zero-shot retention (CIFAR-10/100 mean, %)
+> 𝑟 =-0.70 ( 𝑝 =2e-07)
+
+CUB-200 ( 𝑛 =43)    
+
+> weight-only anchored (+CGR) 0.02 0.04 0.06 0.08
+
+measured Sret drift 
+
+> 70 75 80 85
+> zero-shot retention (CIFAR-10/100 mean, %)
+> 𝑟 =-0.87 ( 𝑝 =3e-08)
+
+DTD ( 𝑛 =24) 
+
+1Figure 8: Drift predicts forgetting: replication (CUB-200, DTD). Per-run measured Sret activation drift vs. zero-shot retention (CIFAR-10/100 mean), for every drift-instrumented run per dataset. Anchored runs are red, weight-only runs are open. The negative relation from Fig. 3 holds on both datasets. CIFAR-10 CIFAR-100 Caltech-101 0510 15 20  
+
+> zero-shot retention drop (pp)  8.8 0.0 13.3 0.0 7.2 -0.1 ablate selected S𝑟 𝑒𝑡
+> ablate random (matched)
+
+1
+
+Figure 9: Selected concepts are causally load-bearing. In each trained model we zero the |S ret | = 128 selected retention concepts at layer 8, subtracting their SAE contribution from the residual stream with no retraining, and re-measure zero-shot retention. The control applies the same surgery to 128 
+
+random alive concepts. Bars show retention drop per natural probe (mean ±std over 24 FGVC runs, with the intervention instrumenting three of the four retention probes and SUN397 excluded). The random set is inert. Removing Sret destroys natural-image retention. 0.00 0.25 0.50 0.75 1.00 fraction set to true-class value (0 = none, 1 = all) 020 40 60 80 100 bottleneck test accuracy (%) 
+
+> FGVC-Aircraft CUB-200 DTD selected concepts random control
+
+1
+
+Figure 10: The selected head leads the control at every level. Both heads see only concept values, so these accuracies are not comparable to the fine-tuned models of Table 2. 0.0 0.5 1.0 1.5
+
+concept scale 𝛼 
+
+81 82 83 84 85 86 
+
+> zero-shot retention (%) (CIFAR-10/100 mean)
+
+identity remove protected S𝑟 𝑒𝑡 
+
+random control 
+
+1Figure 11: Steering the selected concepts controls retention (FGVC). On the frozen backbone we scale the selected Sret 
+
+concepts’ layer-8 contribution by α (red). Retention peaks at the unmodified model ( α=1 ) and falls on both sides, toward removal at α=0 and under amplification at α=1 .5. A size-matched random control is flat (gray). Retention is averaged over the CIFAR-10 and CIFAR-100 probes. 
+
+Symbol Meaning 
+
+Model and adaptation 
+
+W0 Frozen pretrained weight at the adapted site, 
+
+W0 ∈ Rd×din 
+
+∆W Additive weight update; ∆W =BA for LoRA 
+
+B, A LoRA factors, B ∈ Rd×r , A ∈ Rr×din 
+
+r LoRA rank 
+
+ℓ Fixed read-out layer, never tuned 
+
+x Input to the adapted weight, x ∈ Rdin 
+
+h0(x), h ft (x) Residual-stream vector at the read-out point be-fore and after fine-tuning, hft =h0+∆ W x 
+
+Σ Input second moment E[xx ⊤], estimated once on the frozen model 
+
+Dtask , D Task input distribution; any evaluation distri-bution 
+
+T Token positions per input (patches for vision) 
+
+Frozen sparse autoencoder 
+
+m Dictionary size, m ≫ dWenc , b enc Encoder, Wenc ∈ Rm×d; concept j reads through row Wenc [j, :] 
+
+Wdec Decoder, Wdec ∈ Rd×m; concept j writes along column Wdec [: , j ]
+
+g The SAE’s native gate (ReLU, TopK, JumpReLU) 
+
+z(h), z j SAE score vector and its j-th entry 
+
+fj (h) CGR’s concept read-out, ReLU( Wenc [j, :] h +
+
+benc [j]) 
+
+fS (h) Read-out stacked over a concept set S
+
+CGR 
+
+Stsk , Sret Task and retention concept sets, disjoint by con-struction 
+
+aj Causal attribution score selecting Stsk 
+
+ϕj Firing presence selecting Sret 
+
+Utsk Orthonormal basis of the task subspace, Utsk ∈
+
+Rd×|S tsk |
+
+Ptsk , P ⊥ 
+
+> tsk
+
+Projector onto the task subspace and its com-plement 
+
+Lconf , Lanc confine and anchor penalties 
+
+λconf , λ anc Their coefficients in Eq. (1) 
+
+Ltask , L Fine-tuning loss and the total objective of Eq. (1) 
+
+k Retention-set size, k = |S ret | in Eq. (7) 
+
+Theory 
+
+∆fret (x) Retention read-out drift, fSret (hft )−fSret (h0)
+
+Jret Jacobian of the retention read-out, ∂f Sret /∂h R, ∆R Retention functional and its change (a frozen probe’s margin or loss, not the reported accu-racy) 
+
+LR Lipschitz constant of RWret , b ret Retention read-out weights, Wenc [Sret , :] and 
+
+benc [Sret ]
+
+Llow , Lup Weight-space drift bounds, Eq. (10) 
+
+J , W J Always-active subset J ⊆ S ret in Prop. 2 and its read-out rows Wret [J , :] ΣA Second moment restricted to the input region 
+
+A, E[1A(x) xx ⊤]
+
+Table 17: Notation used throughout the paper.
