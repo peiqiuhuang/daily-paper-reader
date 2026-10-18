@@ -1,0 +1,835 @@
+Title: FGSS-BO: Feedback-Guided Hypothesis Management for LLM-Based Bayesian Optimization
+
+URL Source: https://arxiv.org/pdf/2610.21246v1
+
+Published Time: Fri, 16 Oct 2026 00:43:26 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# FGSS-BO: Feedback-Guided Hypothesis Management for LLM-Based Bayesian Optimization 
+
+Hao Chen 1, Ziyang Ling 1, Ronald X. Xu 1,2,* , Mingzhai Sun 1,* 
+
+> 1
+
+School of Biomedical Engineering, 2School of Engineering Science University of Science and Technology of China, Suzhou, China   
+
+> {chenhao0873,zaneling}@mail.ustc.edu.cn
+> *Corresponding authors: xux@ustc.edu.cn ,mingzhai@ustc.edu.cn
+
+Abstract 
+
+Large language model (LLM)-guided Bayesian optimization (BO) uses past observations to guide search, but proposed directions and their revision can remain implicit. We propose Feedback-Guided Search State (FGSS), a struc-tured hypothesis-management interface con-necting language-based guidance to observed evidence, executable parameter interventions, and comparative support updates. An LLM re-flector proposes and revises hypotheses; a deter-ministic curator validates them and maintains identities and test records. The evolving state guides candidate construction and priorities. In-stantiated on LLAMBO, FGSS-BO retains its surrogate and default expected improvement selection, with a bounded testing policy. On two retrospective protocol/media tasks with nearest-neighbor response oracles, it attains higher sample mean final best and search AUC than the matched LLAMBO baseline and eval-uated non-LLM baselines. Prose-reflection and EI-only controls show mixed component effects. Six direct-training hyperparameter-optimization tasks show task-dependent trans-fer, strongest on diabetes SVM; exact-grid and reaction controls examine other settings. FGSS exposes hypotheses, their execution, and cross-round revisions for inspection while supporting search gains in selected settings. 
+
+1 Introduction 
+
+Bayesian optimization (BO) addresses black-box search when evaluations are expensive, including hyperparameter tuning and scientific experimen-tation (Jones et al., 1998; Shahriari et al., 2016; Frazier, 2018). Large language models (LLMs) have been incorporated into BO to interpret task descriptions, sample candidates, and predict out-comes from historical examples (Liu et al., 2024). These capabilities offer a flexible interface to ex-perimental parameters whose meanings and admis-sible values differ across tasks. LLAMBO maintains configuration–outcome ob-servations and conditions its LLM calls on that his-tory (Liu et al., 2024). It does not separately main-tain identified search hypotheses with evidence ref-erences and later test outcomes. This distinction matters under a limited evaluation budget: a sug-gestion to reduce one parameter may produce a candidate that also changes other coordinates, so its outcome need not directly test the suggested direction. How can an LLM optimizer turn such suggestions into revisable guidance linked to the decisions they influence? Inspired by reflection and evolving-memory ap-proaches (Shinn et al., 2023; Suzgun et al., 2026; Zhang et al., 2026a), we propose Feedback-Guided Search State (FGSS) for structured, auditable hy-pothesis management in BO. Its continually up-dated guidance consists of search hypotheses with evidence references, an anchor, a parameter inter-vention, and an expected outcome direction. An LLM reflector proposes and revises these hypothe-ses; a deterministic curator validates operations and maintains identities and lifecycle records. Ac-cepted hypotheses guide candidate construction and priorities, while eligible matched tests update comparative support for their primary hypothesis. The base surrogate continues to use the observation history. We instantiate FGSS on LLAMBO and call the resulting optimizer FGSS-BO. LLAMBO sep-arates candidate sampling, surrogate prediction, and acquisition selection, allowing us to intro-duce hypothesis management into the search loop. FGSS-BO and its matched baseline use the same feasibility-preserving candidate interface, while re-taining the LLAMBO surrogate and default EI se-lection. FGSS-BO additionally permits a bounded exception for hypothesis-test selection. We assess search performance alongside this hypothesis-management interface. On retrospec-tive iPSC-RPE protocol search and C2C12 culture-1arXiv:2610.21246v1 [cs.CL] 15 Oct 2026 media search (Kanda et al., 2022; Cosenza et al., 2022), FGSS-BO attains higher sample mean final best and search AUC than its matched baseline. Prose-reflection and testing ablations show mixed component effects. Six preselected hyperparameter-optimization (HPO) tasks use di-rect model training, with the clearest gains on dia-betes SVM; exact-grid, reaction, and chromatogra-phy controls examine other settings. Our contribu-tions are: • A structured search-hypothesis representation linking evidence, parameter interventions, and revision and test records through persistent identities. • A search-control mechanism translating LLM-proposed hypotheses into feasible candidate priorities and matched tests through deter-ministic curation and comparative support up-dates. • Paired offline protocol/media comparisons with LLM and non-LLM baselines, compo-nent ablations, and direct-training HPO trans-fer checks, supplemented by candidate and oracle diagnostics. 
+
+2 Related Work 
+
+Bayesian optimization for scientific discovery. 
+
+BO combines surrogate updating with acquisition-based query selection (Jones et al., 1998; Shahriari et al., 2016; Frazier, 2018). Applications include hyperparameter optimization (Snoek et al., 2012), robotic iPSC-RPE protocol search, and culture-media development (Kanda et al., 2022; Narayanan et al., 2025). LLM-guided methods add a language interface to parameter semantics and experimental knowledge within this numerical search loop. 
+
+LLM-guided optimization. LLM-guided opti-mizers complement statistical optimization with contextual reasoning and pretrained knowledge. LLAMBO frames BO components in natural lan-guage and uses LLMs for warm-starting, candi-date sampling, and surrogate prediction (Liu et al., 2024); related systems address genetic perturba-tion design, scientific optimization, and molecular lead optimization (Roohani et al., 2025; Yang et al., 2026; Zhang et al., 2026b). Gupta et al. (2025) use randomized-feedback controls to diagnose out-come sensitivity in BioDiscoveryAgent. Whereas these controls measure dependence on feedback content, FGSS addresses how an optimizer repre-sents and revises search hypotheses and turns them into search actions. 
+
+Feedback, memory, and reflection in LLM agents. Self-Refine iteratively revises outputs us-ing self-feedback, while Reflexion retains reflec-tive experience across trials (Madaan et al., 2023; Shinn et al., 2023). Dynamic Cheatsheet accumu-lates reusable guidance, and Agentic Context Engi-neering (ACE) organizes evolving context through reflection and curation (Suzgun et al., 2026; Zhang et al., 2026a). FGSS adopts these memory and cu-ration principles for numerical BO. Its hypothesis records specify an observed anchor, a parameter intervention, and an expected outcome direction, making the guidance executable. Candidate lineage connects eligible numerical comparisons to the cor-responding hypothesis, while the surrogate retains the observation history. Our prose-summary con-trol tests a simpler continuously updated memory interface; FGSS additionally maintains individual hypotheses and their test records. 
+
+3 Background and Problem Setup 
+
+Bayesian optimization and LLM-guided opti-mization. We consider maximization of an ex-pensive black-box objective f : X → R under a limited evaluation budget. Starting from K initial observations D0, after t subsequent search evalua-tions the history is 
+
+Dt = D0 ∪ { (xi, y i)}ti=1 , yi = f (xi). (1) BO then selects an unevaluated configuration by maximizing an acquisition criterion over the re-maining search space. LLAMBO augments this loop with LLM-based candidate sampling and sur-rogate prediction while conditioning prompts on task descriptions and previous evaluations (Liu et al., 2024). 
+
+Explicit search-hypothesis management. We augment Dt with a state St of search hypotheses, evidence references, revisions, and eligible test out-comes. Unlike the observations themselves, these records specify proposed actions whose guidance can change across rounds. 
+
+Optimization settings. The method accepts nu-merical, ordinal, and categorical variables. The primary retrospective tasks use a historical-table or-acle bfNN , not new laboratory measurements. Exact-grid, emulator/simulator, and direct-training HPO 2tasks test other interfaces. We present the method for maximization; minimization reverses outcome comparisons and uses the corresponding improve-ment criterion. 
+
+4 Method 
+
+4.1 Framework Overview 
+
+Figure 1 summarizes the loop: evidence et is ex-tracted from Dt, the reflector and curator revise 
+
+St, and the state guides candidate set Ct. For ex-ample, a hypothesis may propose reducing one parameter at an observed anchor. An exact in-tervention changes that parameter alone; compari-son with the anchor updates the parent hypothesis, informing later retention, revision, or retirement. Appendix A.4 provides the prompt contract and a recorded state example. The active set is bounded, with archived and retired records retained. 
+
+4.2 Evidence and Feedback State 
+
+The extractor converts recent and global observa-tions into a compact evidence object, 
+
+et = E(Dt). (2) It contains ranked high- and low-performing con-figurations, recent improvement, stagnation, per-parameter coverage, duplicate regions, and local contrasts between nearby configurations with dif-ferent outcomes. Local contrasts provide an ob-served basis for proposing or revising hypotheses. At round t, S− 
+
+> t
+
+is the carried state after t search evaluations, with S− 
+
+> 0
+
+= ∅; St is its curated revision used for selection. The reflector and curator update it using et:
+
+ht = R(et, S − 
+
+> t
+
+),St = C(S− 
+
+> t
+
+, h t, e t). (3) Each hypothesis contains a persistent identifier, pa-rameter scope, anchor configuration or region, in-tervention, expected outcome direction, evidence references, uncertainty, a heuristic support score, and lifecycle status. Direct tests target one or two variables. The intervention specifies a testable pre-diction, and its recorded lineage links a later obser-vation to the primary hypothesis. The curator val-idates additions and revisions, merges duplicates, manages lifecycle, and caps the active set. For main-effect and interaction hypotheses, support and lifecycle updates retain the ID; changed in-terventions require new cards. 
+
+4.3 Comparative Support and State Evolution 
+
+Each candidate records the hypotheses contributing to its construction or priority. Let Jt(x) index these contributors within the active state. This lineage is distinct from direct-test attribution: 
+
+At(x) = {Hj : j ∈ Jt(x)}. (4) Only an eligible direct test updates its primary hy-pothesis, with mj,t ∈ { 0, 1} and P 
+
+> j
+
+mj,t ≤ 1.Its evidence weight wj,x ∈ [0 , 1] discounts uncer-tainty, imperfect matching, and control reuse. For control outcome yctrl  
+
+> j,t
+
+, define, for maximization, 
+
+δj,t = yt+1 − yctrl  
+
+> j,t
+
+,uj,t = η+1[δj,t > ϵ j,t ]
+
+− η−1[δj,t < −ϵj,t ],sj,t = mj,t wj,x t+1 uj,t ,qj,t +1 = clip(¯ qj,t + sj,t , 0, 1) .
+
+(5) Here ¯qj,t ∈ [0 , 1] is the curated heuristic support score in St, including initialization of new cards; it is not a calibrated probability. Post-evaluation records, including qj,t +1 , enter S−
+
+> t+1
+
+. The incre-ments η+, η − are fixed, and ϵj,t combines an em-pirical effect threshold with a numerical floor, not a significance test. Staleness subtracts λ ≥ 0
+
+once per verification epoch, separately from out-come updates. Minimization reverses δj,t . In-valid matches receive no outcome update; global-incumbent progress is tracked separately. Open-space tests hold non-target variables fixed; table-backed tests allow bounded nuisance differences and receive discounted weight. Thus δj,t supplies comparative support under the oracle, not an identi-fied experimental causal effect. Test counts, control reuse, and failures govern subsequent weakening or retirement (Appendix A.1). 
+
+4.4 Regime Control and Candidate Generation 
+
+The reflector proposes an exploration–exploitation regime, while a deterministic controller constrains the final decision: 
+
+ert = Rregime (et, S − 
+
+> t
+
+),rt = G(ert, b t, g t, c t). (6) Here bt is the current best outcome, gt describes recent progress or stagnation, and ct summarizes coverage. The controller constrains pure exploita-tion, preserves diversity, and triggers recovery un-der repeated low-yield search. During recovery, 3FGSS | Hypothesis state and search control                  
+
+> Shared LLAMBO optimization loop
+> Observation history t
+> Configurations + true outcomes
+> Shared initialization
+> Evidence extractor
+> Local contrasts Coverage & progress
+> LLM reflector
+> Propose & revise hypotheses
+> Curator Regime gate
+> Validate hypotheses Manage lifecycle
+> Persistent hypothesis state St
+> Hj
+> Evidence | Anchor Intervention | Direction
+> Support | Lifecycle | Tests
+> State carried to the next round
+> fResponse oracle
+> Evaluate xt+ 1
+> yt+ 1 =f(xt+ 1 )
+> Selection
+> EI (default) Bounded test
+> LLAMBO surrogate
+> μt(x), σt(x)
+> Feasible candidate pool t
+> Global diversity State-guided Local refinement Recovery
+> St,rt
+> Support update: eligible matched tests
+> xt+ 1 ,yt+ 1
+> Update history
+
+Figure 1: Overview of FGSS-BO. The extractor, LLM reflector, and deterministic curator maintain evidence-linked hypotheses; a regime gate controls candidate allocation. LLAMBO retains its history-conditioned surrogate and default EI selection, with a bounded exception for eligible matched tests. Solid arrows show current-round flow; dashed arrows show cross-round memory and eligible comparative support updates. 
+
+FGSS-BO proposes evidence-linked alternatives to failed directions, for example an interaction hypoth-esis under which a single-parameter effect depends on another parameter. For typed parameter spaces, FGSS-BO samples feasible, previously unevaluated configurations and biases their priority using St and rt:
+
+Ct = Gcand (X \ X t; St, r t). (7) Here Xt is the set of configurations evaluated in 
+
+Dt. Domain specifications enforce variable types and admissible ranges. The generator allocates can-didates among global diversity, local refinement, hypothesis testing near anchors, and recovery. Hy-pothesis scopes, directions, and anchor contexts guide construction and priority; the global branch preserves proposals outside active hypotheses. 
+
+4.5 Integration with LLAMBO 
+
+FGSS-BO retains the LLAMBO surrogate and its expected improvement criterion. With LLM-predicted mean μt(x) and standard deviation σt(x)
+
+floored at 10 −5 in the inherited implementation, EI over Ct is 
+
+EI t(x) = ∆ t(x)Φ( zt) + σt(x)ϕ(zt), (8) 
+
+zt = ∆t(x)
+
+σt(x) , (9) where Φ and ϕ are the standard normal CDF and density, and ∆t(x) = μt(x) − bt for maximization. Let Ctest  
+
+> t
+
+⊆ C t contain eligible matched interven-tions, and define 
+
+xEI  
+
+> t+1
+
+= arg max 
+
+> x∈C t
+
+EI t(x),xtest  
+
+> t+1
+
+= arg max 
+
+> x∈C test
+> t
+
+Pt(x).
+
+The latter is the highest-priority eligible matched intervention. The deterministic priority Pt is lex-icographic: adaptive test priority, EI, support-weighted match quality, challenger status, and dis-tance/index tie-breaks (Appendix A.1). FGSS-BO selects 
+
+xt+1 =
+
+(
+
+xtest 
+
+> t+1
+
+, at = 1 ,xEI 
+
+> t+1
+
+, at = 0 , (10) where at can be one only when an eligible matched test exists and the testing budget and minimum interval permit it. For T = 20 , the policy has four base test slots and up to two additional challenger slots during stagnation, with a minimum interval of three rounds. These constrain policy overrides, not all direct tests: EI can also select a test candidate, which consumes base-test usage. The bounded exception supplies comparisons linked to specific hypotheses; realized overrides and match quality are reported in Appendix A.2. The matched LLAMBO baseline shares the can-didate interface and surrogate but omits state con-ditioning and test-policy selection. Experimental Setup specifies the remaining shared settings. 
+
+5 Experimental Setup 
+
+5.1 Datasets and Tasks 
+
+The primary protocol/media tasks expose configuration–outcome feedback under limited 4budgets with different variable types. 
+
+iPSC-RPE. The task concerns differentiation of induced pluripotent stem cells into retinal pigment epithelial cells, maximizing pigmenta-tion score (Kanda et al., 2022). We use the 
+
+253G1_results_r5r7r10 table. The seven set-tings cover preconditioning concentration and du-ration, detachment duration and pipetting, and dif-ferentiation supplement schedules. Ordered finite concentration/detachment levels, integer durations and speed, and a binary pipetting-length setting define a discrete configuration space. 
+
+C2C12. We use a 209-row processed table from the upstream DBO archive associated with multi-information-source culture-media optimiza-tion (Cosenza et al., 2022). Fourteen media co-ordinates are continuous on [0 , 1] in the supplied representation. All methods maximize the archived response score on its supplied scale, without addi-tional standardization. The source query label se-lects among four measurement sources for response lookup rather than specifying a physical culture in-tervention. Media and source-evaluation costs are outside the objective. Appendix A.3 details the table provenance and response interpretation. 
+
+Response and initialization protocol. Both tasks return the score of a nearest historical configu-ration in normalized parameter coordinates; C2C12 matching is restricted by source. This oracle per-mits new parameter combinations but does not val-idate their physical response. Initialization uses the ten lowest-scoring historical observations, shared across methods, followed by twenty search evalua-tions. This outcome-conditioned low-start protocol is a retrospective stress test, not label-free prospec-tive initialization. The exact-grid iPSC control re-stricts candidates to observed configurations and removes nearest-neighbor assignment. Cross-domain checks include six preselected Bayesmark HPO tasks from the LLAMBO reposi-tory (Liu et al., 2024): breast, digits, and diabetes, each paired with RandomForest and SVM. These train models directly without a nearest-neighbor oracle. Classification maximizes five-fold CV ac-curacy; diabetes minimizes positive CV MSE. Ini-tialization uses ten label-free public configurations, shared within each pair, followed by twenty search evaluations. Held-out test scores never enter op-timization feedback (Appendix A.15). We also retain all five Summit reaction tasks (Felton et al., 2021; Hone et al., 2017; Reizman et al., 2016) and Olympus HPLC (Häse et al., 2021) in the appendix. 
+
+5.2 Baselines 
+
+We evaluate a feasibility-preserving adapta-tion of LLAMBO ( LLAMBO-Feasible , hereafter 
+
+LLAMBO ). It retains the LLAMBO surrogate and EI, with the shared typed sampling/refinement in-terface but no FGSS state or test-policy overrides. The free-form variant, LLAMBO-Freeform , is evaluated separately for candidate-interface diag-nostics; it is an implementation-level variant rather than a strict reproduction of original LLAMBO. We also compare Random Search over the le-gal domains, HEBO (Cowen-Rivers et al., 2022), and GP-EI implemented in BoTorch (Balandat et al., 2020). GP-EI standardizes outcomes and normalizes numerical coordinates, using categor-ical kernels for pipetting length or measurement source. It optimizes EI over legal discrete settings for iPSC and continuous coordinates with enumer-ated sources for C2C12. All five methods share the actual initial observations, admissible domains, evaluation budget, and response oracle. Baseline fitting and acquisition settings are detailed in Ap-pendix A.6. The iPSC comparison adds Reflective Sum-mary : each round, the same extractor’s evidence and previous prose summary are used to produce a replacement summary for the shared candidate re-finer. It has no hypothesis curation or tests. FGSS w/o Tests retains structured reflection and ordinary state guidance but disables matched-test generation, test-policy overrides, and direct support updates. 
+
+No-Override retains test candidates and support updates but always selects by EI. Reflection set-tings and evaluation budgets are shared, not real-ized token totals. HPO compares the two complete LLM pipelines. 
+
+5.3 Metrics 
+
+We report final best-observed objective value and search-stage best-so-far area under the curve (AUC). Let K be the initialization count and T the subsequent search budget. For maximization, 
+
+Bt = max 
+
+> (x,y )∈D t
+
+y, 
+
+AUC search = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+Bt.
+
+(11) Final best is BT ; for minimization, replace max by 
+
+min . Search AUC averages attained performance 5after initialization, not ROC AUC. Tables report means and sample standard deviations over six paired runs; bands are standard deviations. Paired bootstrap intervals are exploratory and unadjusted for multiple comparisons (Appendices A.7, A.11, and A.15). Metrics always use true oracle out-comes. Accuracy and MSE are analyzed separately. 
+
+5.4 Implementation Details 
+
+The primary tasks use K = 10 , T = 20 , and batch size one. The shared LLAMBO configuration uses GPT-4o mini, ten candidates, two templates, and ten generations. We use this backend for its practi-cal balance of instruction following and API cost. FGSS adds a reflection call each round at temper-ature zero with an output cap of 1500 tokens and one configured retry, increasing total LLM com-pute. Table 8 reports its recorded per-run token use and elapsed time. Regime cutoffs use supplied task-response units (Table 5). Optional domain-prior cards and injections are disabled; task descriptions and pretrained LLM knowledge remain available. The appendix specifies settings, prompts, state ex-amples, and provenance. 
+
+6 Results 
+
+6.1 Main Results on Protocol and Media Search 
+
+Table 1 compares five methods under the shared low-start, nearest-neighbor protocol. FGSS-BO has the highest sample mean final best and search AUC in both primary tasks. Relative to LLAMBO, the mean differences are +0 .123 /+0 .147 for iPSC final best/AUC and +0 .445 / + 0 .141 for C2C12. On iPSC, final-best margins over GP-EI and Random Search are modest ( +0 .020 and +0 .033 ), while the AUC margin over GP-EI is +0 .135 . The paired iPSC interval versus GP-EI includes zero for final best but lies above zero for AUC (Table 9). C2C12 intervals versus GP-EI cross zero on both metrics, as does its AUC interval versus LLAMBO. Figure 2 shows the paired LLM trajectories; Fig-ure 4 compares all five methods (Appendix A.6). 
+
+6.2 Component Ablations 
+
+Table 2 places prose reflection and EI-only se-lection alongside full FGSS. Reflective Summary already raises both sample means relative to LLAMBO. Full FGSS exceeds it by 0.0285 in fi-nal best but is 0.0061 lower in search AUC. No-Override also retains higher means than LLAMBO: its AUC exceeds full FGSS’s, while final best is slightly lower, with both paired intervals cross-ing zero (Figure 6). Against FGSS w/o Tests, full FGSS’s differences are +0 .0088 / − 0.0275 ,again with intervals crossing zero (Appendix A.11). These controls show mixed effects on objective progress despite the differences in hypothesis man-agement. Figure 7 reports the immediate oppor-tunity cost of full FGSS’s 18 selection changes (Appendix A.13). State-only feedback permutation gives mixed ef-fects: aligned feedback yields a higher final-best mean and lower final-result variability, whereas per-mutation yields a higher search AUC. Both paired difference intervals include zero (Appendix A.12). 
+
+6.3 Direct-Training HPO Transfer 
+
+Tables 14 and 16 report the complete six-task HPO results and paired differences. Diabetes SVM pro-vides the clearest gain: mean final CV MSE falls from 0.57768 to 0.51711 (10 .48% ), and search AUC from 0.61046 to 0.55636 (8.86% ). Breast SVM improves modestly; breast RF and digits SVM are nearly tied. Digits RF and diabetes RF have mixed final/AUC results. These direct eval-uations show task-dependent transfer beyond the table-backed oracle. 
+
+6.4 Candidate-Sampling Diagnostics 
+
+Figure 3 diagnoses earlier free-form duplication and rejection. On iPSC, 18.4% of raw propos-als are unique and 3.4% survive validity/novelty checks, motivating legal-space construction. The six-seed interface controls in Figure 8 show that Freeform remains viable on C2C12, with sample means close to Feasible (Appendix A.14). Both main LLM methods use the same feasible interface across tasks, holding candidate-interface handling fixed in the FGSS comparison. 
+
+6.5 Oracle and Cross-Domain Controls 
+
+Exact-grid iPSC restricts candidates to observed configurations and removes nearest-neighbor as-signment. Final-best means are close ( 0.840 
+
+LLAMBO, 0.848 FGSS-BO), while mean search AUC favors LLAMBO ( 0.750 versus 0.710 ; Ap-pendix A.9). This pattern suggests protocol-dependent performance; the control changes both the candidate domain and oracle assignment. On all five Summit tasks, HEBO and GP-EI outper-form the two LLM methods in sample mean fi-nal best and AUC; FGSS-BO exceeds LLAMBO 6Task Metric Random Search HEBO GP-EI LLAMBO FGSS-BO                                                                 
+
+> iPSC-RPE Final best 0.780 ±0.078 0.569 ±0.169 0.793 ±0.026 0.691 ±0.117 0.813 ±0.023
+> iPSC-RPE Search AUC 0.557 ±0.150 0.465 ±0.100 0.505 ±0.145 0.494 ±0.057 0.640 ±0.117
+> C2C12 Final best 0.790 ±0.340 1.026 ±0.623 1.516 ±0.904 1.281 ±0.220 1.725 ±0.411
+> C2C12 Search AUC 0.552 ±0.289 0.722 ±0.404 0.868 ±0.653 1.025 ±0.264 1.167 ±0.256
+
+Table 1: Primary offline protocol/media search over six paired runs: mean ± sample standard deviation, higher is better. All methods share ten low-score initial observations and twenty search evaluations under the same task-specific nearest-neighbor response oracle. LLAMBO uses the shared feasibility-preserving interface. 5 10 15 20 25 30      
+
+> Evaluation step
+> 0.0 0.2 0.4 0.6 0.8
+> Best-so-far objective
+> (a) iPSC-RPE
+> LLAMBO FGSS-BO
+> 510 15 20 25 30
+> Evaluation step
+> −1 012
+> (b) C2C12
+> LLAMBO FGSS-BO
+
+Figure 2: Primary-task mean best-so-far objective over six paired runs. The dashed line separates ten shared low-score initialization observations from twenty search evaluations; shading shows one sample standard deviation. LLAMBO and FGSS-BO share the feasible-candidate interface and nearest-neighbor oracle. C2C12 scores refer to the retained configuration–source query task.                                 
+
+> Method Final best Search AUC LLAMBO .691 ±.117 .494 ±.057
+> Reflective Summary .785 ±.061 .646 ±.054
+> FGSS w/o Tests .804 ±.070 .668 ±.051
+> FGSS No-Override .802 ±.110 .690 ±.098
+> Full FGSS .813 ±.023 .640 ±.117
+
+Table 2: iPSC component comparison, six paired runs; mean ± sample standard deviation. All variants share the low-start nearest-neighbor protocol. No-Override retains test candidates and support updates but always selects by EI. LLAMBO uses the shared feasibility-preserving interface. 
+
+on four final-best means and three AUC means, but not Reizman Case 4 (Appendix A.8). HPLC yields higher FGSS-BO means on both metrics (Appendix A.10). 
+
+7 Discussion 
+
+FGSS organizes hypothesis management around inspectable records: a proposed direction identifies parameters, an anchor, and an intervention whose later comparison can revise the same record. The LLM interprets evidence and proposes changes; fixed rules govern admissibility and numerical sup-port updates. Prose reflection and EI-only selection also achieve higher sample means than LLAMBO, so the component results separate this record-and-action interface from a uniform optimization ad-vantage for full FGSS. A candidate can outperform its matched control without improving the incumbent. Local compara-tive support and global progress therefore answer different questions, and FGSS tracks them sepa-rately. The higher AUC of No-Override and FGSS w/o Tests suggests a trade-off between early objec-tive progress and obtaining targeted comparisons under this protocol. HPO extends the evaluation to directly trained objectives, with the strongest gains on diabetes SVM. Exact-grid iPSC’s lower mean FGSS AUC shows that state-guided priorities need not improve progress in a restricted candidate domain. Together with the reaction controls, this motivates adapt-ing guidance and testing to the search interface and response landscape. Future refinements could 7iPSC C2C12 020 40 60 80 100     
+
+> Rate among raw proposals (%)
+> 18.4 96.7 100.0 100.0
+> (a) Unique proposal rate
+> iPSC C2C12
+> 3.4 96.7 100.0 100.0
+> (b) Accepted proposal rate
+> LLAMBO-Freeform LLAMBO-Feasible
+
+Figure 3: Proposal-level candidate diagnostics from earlier runs, comparing free-form LLM proposals with feasibility-preserving construction. Severe iPSC-RPE duplication motivates a shared feasible-candidate interface. 
+
+preserve more global exploration when local hy-potheses dominate and use observed test utility to allocate the testing budget. 
+
+8 Conclusion 
+
+FGSS provides structured hypothesis management for LLM-guided BO, turning proposed directions into executable parameter interventions and linking eligible comparisons to later revisions. FGSS-BO retains LLAMBO’s surrogate and default EI se-lection, with a bounded testing policy. Its records expose the path from language-based hypotheses to search actions and updates. The complete system achieves higher sample means on the two retrospec-tive protocol/media tasks and yields gains on some direct-training HPO tasks, while component and oracle controls show mixed effects across settings. 
+
+9 Limitations 
+
+The primary tasks use historical-table nearest-neighbor responses and outcome-conditioned low-score initialization. Their results describe that retro-spective protocol, not label-free prospective labora-tory search. C2C12 retains a measurement-source variable, so the query score should not be inter-preted as an assay-independent biological optimum. Prospective validation is needed to assess measure-ment noise, batch effects, experimental failures, and temporal drift. Evaluation uses one LLM backend and base op-timizer; FGSS adds reflection cost. The HPO suite compares the two complete LLM pipelines on di-rectly trained objectives. Future evaluation could extend paired runs to ten seeds and examine fur-ther backends, initialization policies, budgets, and optimizers; noise-aware support updates and test prioritization could refine the balance of local hy-potheses and exploration. 
+
+References 
+
+Maximilian Balandat, Brian Karrer, Daniel R. Jiang, Samuel Daulton, Benjamin Letham, Andrew Gordon Wilson, and Eytan Bakshy. 2020. BoTorch: A frame-work for efficient monte-carlo bayesian optimization. In Advances in Neural Information Processing Sys-tems , volume 33, pages 21524–21538. Zachary Cosenza, Raul Astudillo, Peter I. Frazier, Keith Baar, and David E. Block. 2022. Multi-information source bayesian optimization of culture media for cel-lular agriculture. Biotechnology and Bioengineering ,119(9):2447–2458. Alexander I. Cowen-Rivers, Wenlong Lyu, Rasul Tu-tunov, Zhi Wang, Antoine Grosnit, Ryan Rhys Grif-fiths, Alexandre Max Maraval, Jianye Hao, Jun Wang, Jan Peters, and Haitham Bou-Ammar. 2022. HEBO: Pushing the limits of sample-efficient hyperparam-eter optimisation. Journal of Artificial Intelligence Research , 74:1269–1349. Kobi C. Felton, Jan G. Rittig, and Alexei A. Lap-kin. 2021. Summit: Benchmarking machine learn-ing methods for reaction optimisation. Chemistry– Methods , 1(2):116–122. Peter I. Frazier. 2018. A tutorial on bayesian optimiza-tion. Preprint , arXiv:1807.02811. Rushil Gupta, Jason Hartford, and Bang Liu. 2025. LLMs for bayesian optimization in scientific do-mains: Are we there yet? In Findings of the As-sociation for Computational Linguistics: EMNLP 2025 , pages 15482–15510. 
+
+8Florian Häse, Matteo Aldeghi, Riley J. Hickman, Loïc M. Roch, Melodie Christensen, Elena Liles, Jason E. Hein, and Alán Aspuru-Guzik. 2021. Olym-pus: A benchmarking framework for noisy optimiza-tion and experiment planning. Machine Learning: Science and Technology , 2(3):035021. Christopher A. Hone, Nicholas Holmes, Geoffrey R. Akien, Richard A. Bourne, and Frans L. Muller. 2017. Rapid multistep kinetic model generation from tran-sient flow data. Reaction Chemistry & Engineering ,2(2):103–108. Donald R. Jones, Matthias Schonlau, and William J. Welch. 1998. Efficient global optimization of expen-sive black-box functions. Journal of Global Opti-mization , 13(4):455–492. Genki N. Kanda, Taku Tsuzuki, Motoki Terada, Noriko Sakai, Naohiro Motozawa, Tomohiro Masuda, Mit-suhiro Nishida, Chihaya T. Watanabe, Tatsuki Hi-gashi, Shuhei A. Horiguchi, Taku Kudo, Motohisa Kamei, Genshiro A. Sunagawa, Kenji Matsukuma, Takeshi Sakurada, Yosuke Ozawa, Masayo Taka-hashi, Koichi Takahashi, and Tohru Natsume. 2022. Robotic search for optimal cell culture in regenerative medicine. eLife , 11:e77007. Tennison Liu, Nicolás Astorga, Nabeel Seedat, and Mi-haela van der Schaar. 2024. Large language models to enhance bayesian optimization. In International Conference on Learning Representations .Aman Madaan, Niket Tandon, Prakhar Gupta, Skyler Hallinan, Luyu Gao, Sarah Wiegreffe, Uri Alon, Nouha Dziri, Shrimai Prabhumoye, Yiming Yang, Shashank Gupta, Bodhisattwa Prasad Majumder, Katherine Hermann, Sean Welleck, Amir Yazdan-bakhsh, and Peter Clark. 2023. Self-refine: Iterative refinement with self-feedback. In Advances in Neu-ral Information Processing Systems , volume 36. Harini Narayanan, Joshua A. Hinckley, Rachel Barry, Brendan Dang, Lenna A. Wolffe, Adel Atari, Yuen-Yi Tseng, and J. Christopher Love. 2025. Ac-celerating cell culture media development using bayesian optimization-based iterative experimental design. Nature Communications , 16:6055. Brandon J. Reizman, Yi-Ming Wang, Stephen L. Buch-wald, and Klavs F. Jensen. 2016. Suzuki–Miyaura cross-coupling optimization enabled by automated feedback. Reaction Chemistry & Engineering ,1(6):658–666. Yusuf Roohani, Andrew Lee, Qian Huang, Jian Vora, Zachary Steinhart, Kexin Huang, Alexander Marson, Percy Liang, and Jure Leskovec. 2025. BioDiscov-eryAgent: An AI agent for designing genetic pertur-bation experiments. In International Conference on Learning Representations .Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P. Adams, and Nando de Freitas. 2016. Taking the human out of the loop: A review of bayesian opti-mization. Proceedings of the IEEE , 104(1):148–175. Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Re-flexion: Language agents with verbal reinforcement learning. In Advances in Neural Information Pro-cessing Systems , volume 36. Jasper Snoek, Hugo Larochelle, and Ryan P. Adams. 2012. Practical bayesian optimization of machine learning algorithms. In Advances in Neural Informa-tion Processing Systems , volume 25. Mirac Suzgun, Mert Yuksekgonul, Federico Bianchi, Dan Jurafsky, and James Zou. 2026. Dynamic cheat-sheet: Test-time learning with adaptive memory. In 
+
+Proceedings of the 19th Conference of the European Chapter of the Association for Computational Lin-guistics (Volume 1: Long Papers) , pages 7080–7106. Association for Computational Linguistics. Zhuo Yang, Daolang Wang, Lingli Ge, Beilun Wang, Tianfan Fu, and Yuqiang Li. 2026. Reasoning BO: Enhancing bayesian optimization with the reasoning power of LLMs. Materials Genome Engineering Advances , 4(3):e70086. Qizheng Zhang, Changran Hu, Shubhangi Upasani, Boyuan Ma, Fenglu Hong, Vamsidhar Kamanuru, Jay Rainton, Chen Wu, Mengmeng Ji, Hanchen Li, Urmish Thakker, James Zou, and Kunle Olukotun. 2026a. Agentic context engineering: Evolving con-texts for self-improving language models. In Inter-national Conference on Learning Representations .Yiming Zhang, Jun Jin Choong, Kaushalya Madhawa, and Keisuke Ozawa. 2026b. AutoLead: An LLM-guided bayesian optimization framework for multi-objective lead optimization. Journal of Chemical Information and Modeling , 66(9):5091–5100. 
+
+A Additional Experimental Details 
+
+Algorithm settings (Appendix A.1) and prompt/state examples (Appendix A.4) pre-cede the detailed experimental controls below. 
+
+A.1 Algorithm Details 
+
+The following specifies the parameterized, sequen-tial full-FGSS implementation. Scientific-task ob-jectives are maximized; diabetes HPO minimizes positive MSE, reversing improvement and support-update signs. S supplements the observation his-tory with identified hypotheses, revisions, and test records, including persistent archived/retired mem-ory; only the active set is capped. The reflector receives compact cards for all three groups, so its input can grow with retained memory. Candidate guidance includes at most four active cards. 
+
+Full FGSS loop. Input: typed search space X ,oracle f , paired initial observations D0, search bud-get T , candidate count N , and empty carried state 
+
+S− 
+
+> 0
+
+.91. For each search round t = 0 , . . . , T − 1, ex-tract et from all observed configurations and outcomes. Rank the top/bottom three and re-tain the latest five; compute coverage, stagna-tion, and local contrasts. 2. Ask the reflector for evidence-linked add/confirm/revise/weaken/retire operations and a proposed regime using et and S− 
+
+> t
+
+.Apply validation and semantic deduplication, execute operations, apply eligible staleness decay, and govern active capacity to obtain 
+
+St. Resolve the regime with the deterministic gate. 3. Construct N legal, unseen candidates from global diversity, state guidance, local exploita-tion, and recovery. Reserve up to two slots when N = 10 for eligible matched interven-tions. Protect these tests from the shared LLM candidate refiner; validate and replenish the ordinary candidates. 4. Query the shared LLAMBO surrogate on the current history and pool; compute EI. Select its maximizer unless a valid test-policy slot is available. An override requires an eligible test, support score at least 0.55 , and the bud-get/interval checks below. 5. Evaluate the selected configuration with the true oracle and append its outcome to obtain 
+
+Dt+1 . If its lineage passes direct-test eligi-bility, compare its outcome with the iden-tified observed control and update only the parent hypothesis. Record global-incumbent progress separately and carry the resulting state as S−
+
+> t+1
+
+.6. Store the selected configuration, true outcome, candidate lineage, state transition, and call metadata; continue until T evaluations are completed. The matched baseline uses the same typed sam-pling/refinement substrate and surrogate but omits steps involving state, direct tests, and test-policy overrides. Optional domain-prior cards are dis-abled in both methods; task descriptions and pre-trained LLM knowledge remain available. 
+
+Local evidence and control matching. For nu-merical variables, differences are normalized by the specified range; unordered categories use a zero/one mismatch. For a target parameter, an ob-servational pair must have target difference at least 
+
+0.10 and mean nuisance difference at most 0.30 .Pairs are ordered by increasing nuisance difference, decreasing target difference, and decreasing abso-lute outcome difference, retaining at most four per parameter and twelve overall. Median directional differences and agreement summarize support; at most five context-dependent interaction records are retained. These are observational contrasts, not identified causal effects. A direct test has one parent hypothesis, one or two target variables, and an observed anchor. Only the primary hypothesis receives its outcome-based support update, even if other hypotheses con-tributed to candidate guidance. In open spaces, non-target coordinates are held fixed and targeted coordinates are changed according to the interven-tion. Numeric steps are 10% of the range per depth (log-range for log variables); integer steps are rounded with a minimum of one, and ordered finite supports advance by their index. Depths one through six are attempted. Unordered levels change without a numerical direction. All changes are clipped/canonicalized, and unchanged or pre-viously evaluated configurations are rejected. In-teractions change the specified coordinates jointly; this is not an exhaustive factorial design. For table-backed tasks, only label-free covariate matches to observed rows can receive a direct support update, with root-mean-square and per-coordinate nuisance limits of 0.25 and distinct oracle identities. Exact-grid candidates must be observed configurations. Approximate matches can differ in non-target vari-ables; nearest-neighbor assignment can also change the underlying experimental row. These compar-isons are not estimates of an isolated biological causal effect. 
+
+Ordinary candidate policies. Scientific-task global candidates use independent uniform sam-pling of numerical bounds or legal finite lev-els; HPO uses the stated linear/log/logit sam-pling scales (Appendix A.15). Local exploitation chooses a top-evidence configuration uniformly, then samples each coordinate locally with proba-bility 0.8 (globally otherwise). Continuous local sampling is uniform within 12% of the full range around the center, clipped to bounds; integers use the corresponding rounded radius, ordered supports use the center and adjacent levels, and unordered categories retain the center with probability 0.8 or 10 sample a legal level. State-guided candidates prior-itize testable anchor interventions using adaptive-priority sampling, with a small nuisance perturba-tion for ordinary guided proposals; these are not au-tomatically eligible for support updates. Recovery samples up to 128 global proposals to find normal-ized distance at least 0.25 from repeated low-gain centers, then falls back to global sampling. Chal-lenger proposals add evidence-linked alternative parameter/direction/context hypotheses; they do not replace every recovery draw. Ratios are normalized and integer quotas use largest-remainder allocation. Unusable guided quo-tas return to global search or recovery rather than generating ungrounded tests. 
+
+Support score and lifecycle. The LLM-proposed initial support score is a validated heuristic, not a calibrated posterior probability or a test-success frequency. For new falsifiable cards, uncertainty caps it at 0.60 /0.72 /0.85 
+
+for high/medium/low uncertainty. Let vj be 
+
+1, 0.75 , or 0.5 for low, medium, or high un-certainty, Mj,x ∈ [0 , 1] the recorded match quality, aj,x = 0 .75 for a transferred anchor and 
+
+1 otherwise, and nj, ctrl its previous uses. The effective evidence weight is 
+
+wj,x = clip 
+
+ vj Mj,x aj,x 
+
+1 + nj, ctrl 
+
+, 0, 1
+
+
+
+. (12) Exact open-space interventions have Mj,x =1; table-backed match quality is exp[ −(drms +
+
+dmax )] . Approximate matches receive dis-counted weight. The threshold ϵj,t is the larger of the extracted effect threshold ( 0.02 
+
+times the observed score span, floor 10 −12 ) and 
+
+max(10 −10 , 10 −8 max( |yctrl  
+
+> j,t
+
+|, 1)) . This empirical tolerance is not a noise-calibrated significance threshold. Support changes by +0 .12 w, 0, or 
+
+−0.08 w. Staleness applies when rounds since ver-ification exceed the card’s window (two for cards created at the early stage, three subsequently), and subtracts 0.08 once per last-verified epoch. Ac-tive and weakened bands use 0.55 and 0.22 ; low-support cards can be archived without being retired. Failure-based retirement requires at least two con-secutive failures and cumulative consecutive failure weight at least two. Historical controls are reused under a fixed response oracle; this does not control temporal drift or measurement noise in prospective experiments. 
+
+Adaptive priority and override accounting. El-igible test candidates are ordered lexicographically by adaptive priority, EI, support score times uncer-tainty weight and match quality, challenger flag, negative target distance, and negative candidate index. Adaptive priority is 
+
+pj = (0 .5 + 0 .5qj )Uj Bj Rj
+
+× (1 + nj )−1/2(1 + nPj )−1/2
+
+× (1 + nanchor )−1/2
+
+× 1
+
+|P j |
+
+X
+
+> p∈P j
+
+(1 + np)−1/2.
+
+(13) Here nj , nPj , nanchor , and np are direct-test counts for the hypothesis, parameter set, anchor, and individual parameter. Uj is 0.65 /0.85 /1
+
+for low/medium/high uncertainty, Bj = 1.15 
+
+for challengers and 1 otherwise, and Rj =p(d + 1) /(d + 2) for d rounds since the more re-cent of the hypothesis and parameter-set tests ( 1
+
+if untested). Saturated/ineligible contexts receive zero priority. This is a deterministic heuristic, not a learned acquisition function. The uncertainty factor in this priority differs deliberately from the conservative evidence weight. Positive budget fractions define caps 
+
+max(1 , ⌊0.20 T ⌋) and max(1 , ⌊0.10 T ⌋) for base and additional challenger slots. For T = 20 ,these are four and two. Base usage counts trials receiving direct support updates, including tests selected by EI; extra slots require stagnation and exhausted base usage. Overrides have a minimum interval of three rounds. EI-selected tests are not excluded when the override budget is exhausted. The direct candidate quota is 
+
+max(1 , round(0 .20 N )) , preserving at least one ordinary candidate when N > 1.
+
+Threshold roles and configuration sources. 
+
+The normalized-distance, support-score, and bud-get constants in Table 3 are shared development set-tings. Table 5 gives fixed absolute response cutoffs 
+
+τ on each task’s supplied scale. These are FGSS algorithm settings, rather than biological success criteria adopted from the source studies (Kanda et al., 2022; Cosenza et al., 2022). iPSC uses a CLI override; C2C12 uses its task-runner default. All six primary FGSS runs per task record the same cutoff. The effect tolerance instead adapts to the observed score span. Strong reliability requires either improvement over the initial best or an absolute-cutoff hit, to-11 Setting Value Scope/provenance Initialization/search evaluations Primary/HPO 10 /20 ; Summit 8/20 Six paired seeds, batch size one Candidate pool; templates; generations 10 ; 2; 10 Shared main-run configuration Reflector output/temperature/retry 1500 tokens; 0; 1 FGSS extra call; retries logged Shared refiner output/temperature 1000 tokens; 0 Top five plus recent five observations Evidence top/bottom/recent 3/3/5 Outcome-ranked top/bottom Stagnation windows and thresholds 3/5; 0.01 /0.02 Short/long progress heuristics Numeric bins; near-duplicate tolerance 5; 0.05 Normalized configuration coordinates Contrast target/nuisance thresholds 0.10 /0.30 Observational pair selection Pair limits; interactions 4 per parameter; 12 total; 5 Extractor defaults Contrast effect threshold 0.02 times observed score span Floor 10 −12                        
+
+> Active/per-parameter/type capacity 4/1; explore/exploit 2/2Active guidance only Support bands; stale penalty 0.55 /0.22 ;0.08 Not posterior probabilities Success/failure increments +0 .12 /−0.08 times evidence weight Neutral increment zero Retirement failure count/weight 2/2Both conditions required Test pool/base/challenger fractions 0.20 /0.20 /0.10 Pool quota vs override caps Test interval/support score 3rounds; 0.55 Additional eligibility checks Direct nuisance bounds 0.25 /0.25 Aggregate and each coordinate Optional domain prior Disabled No retrieved/static prior card
+
+Table 3: Implementation settings inherited from development defaults and used in the recorded main runs, without a hyperparameter sweep.                     
+
+> Regime Global Guided Local Recovery Explore .55 .25 .10 .10 Mixed .40 .30 .20 .10 Exploit .25 .30 .35 .10 Recover .45 .15 .15 .25
+
+Table 4: Nominal candidate-allocation presets, not fixed realized ratios. The gate preserves a global floor of .30 
+
+(.55 before reliable support, .45 under weak support); plateau recovery enforces global/recovery floors .45 /. 25 
+
+and guided cap .20 .              
+
+> Task Cutoff Configuration source iPSC-RPE 0.12 Recorded CLI override C2C12 0.05 Task-runner default SnAr 0.10 Summit task preset Reizman 1–4 50 Summit task preset HPLC 1000 Task-runner default HPO 0Task-bridge setting
+
+Table 5: Absolute regime-gate cutoffs and their configu-ration sources. iPSC uses the reported override rather than the generic runner default of 0.01 .
+
+gether with at least five search observations and three observations near the current best. The near-best margin is max(0 .10 span( y), 10 −8) over ob-served outcomes. Cutoff hits mean bt ≥ τ for maximization or bt ≤ τ for minimization. Positive MSE therefore reaches the strong regime through improvement and supporting observations rather than HPO’s zero cutoff. For maximization, the same cutoff also replaces the refiner’s hypothesis-guidance text with a broad-exploration instruction when both the best outcome                               
+
+> Seed 012345iPSC overrides 242433iPSC EI tests 606214C2C12 overrides 000000C2C12 EI tests 000000
+
+Table 6: Actual selection changes and EI-selected matched tests; each run has twenty search evaluations. EI tests receive a recorded support update without chang-ing EI selection. 
+
+and observed span are below τ , with at most two distinct positive outcomes after six-decimal round-ing. State records and the regime-controlled candi-date policy remain enabled. 
+
+A.2 Realized Test Policy and Matching 
+
+An actual override changes the selected candidate index from the recorded EI choice, rather than merely activating arbitration. Table 6 audits all six full-FGSS primary runs. iPSC has 18 overrides out of 120 search evaluations ( 15% ), plus 19 EI-selected tests receiving support updates. C2C12 has neither overrides nor direct support updates: its observed gain cannot be attributed to the matched-test path. Its structured reflection and ordinary state-guided search remain enabled. All 37 iPSC updates use approximate covari-ate matches and one primary hypothesis. Their match quality has median 0.748 , interquartile range 
+
+[0 .729 , 0.784] , and range [0 .664 , 0.918] . Normal-ized nuisance RMS distance has median 0.093 and maximum 0.159 ; maximum-coordinate distance 12 has median 0.188 and maximum 0.250 .Generation logs contain 482 iPSC validation-check events, including 155 explicitly rejected events ( 32 .2% : 152 same-oracle and three already-observed configurations). C2C12 records 476 events, including 329 same-oracle rejections (69 .1% ). The denominators include intermediate deferred checks and repeated proposal attempts; these are logged check-event rates, not rejection rates over unique tests or all internal generation attempts. Subsequent reanchoring or observed-row matching can still succeed. FGSS w/o Tests disables test generation, over-ride selection, and outcome support updates to-gether. A separate EI-only selection ablation and post-hoc fixed-oracle cost audit appear in Ap-pendix A.13. 
+
+A.3 Search Spaces and Initialization 
+
+Summit initializes continuous coordinates with seeded Latin hypercube sampling and balances cat-alyst categories; initial points are identical within each paired seed. The primary iPSC-RPE and C2C12 tasks use outcome-conditioned low-score initialization and nearest-neighbor response lookup for retrospective evaluation. Exact-grid iPSC re-stricts candidate configurations to observed rows. HPLC initializes uniformly from observed config-urations without labels and uses the reported of-fline lookup. C2C12’s source indicator denotes measurement provenance, so the optimizer queries configuration–source pairs. 
+
+C2C12 table provenance and response scale. 
+
+The processed table copies all 209 rows of the up-stream DBO archive: the first fourteen columns of 
+
+BO_data.txt provide media coordinates already on [0 , 1] , and its fifteenth column supplies source .The two columns of BO_outputs.txt are retained verbatim as score and score_var . An all-row nu-merical audit confirms this mapping exactly. The source study measures C2C12 growth through cell counting and correlated assay responses; we report the saved response-score scale rather than recon-structing absolute cell counts or an assay-specific inverse transformation. Maximization seeks a larger archived response at a fixed evaluation bud-get. Media costs, source-specific evaluation costs, and source-bias calibration are outside this objec-tive. All rows define a fixed response lookup, with no C2C12 train/test split or learned emulator fitted in this study. Beyond the disclosed low-score ini-tialization, surrogate and reflector inputs contain queried outcomes only. Matching unobserved con-figurations and interventions consults covariates, not their response labels. The oracle returns a saved scalar deterministically; score_var is retained as metadata rather than used to sample additional ob-servation noise. 
+
+A.4 Reflector Prompt and State Schema 
+
+The reflector receives current evidence and the previous state, and returns an assessment, a pro-posed search regime, and evidence-linked opera-tions. The following is an abbreviated output con-tract , not a claimed model response: 
+
+> {"global_assessment": { "stage": "early|mid|late", "search_mode_suggestion": "balanced", "uncertainty_note": "..." }, "operations": [ {"op": "add", "type": "exploit", "parameter": "<legal parameter>", "parameters": ["<legal parameter>"], "hypothesis_kind": "main_effect", "anchor_observation_id": "obs_...", "intervention": {"changes": {...}, "controlled_parameters": [...]}, "expected_outcome": { "objective": "improve", "direction": "increase"}, "evidence_pair_ids": ["pair_..."], "evidence_refs": ["contrastive_evidence"], "confidence": 0.63 }], "search_phase": { "mode": "explore|mixed|exploit|recover", "target_parameters": [...] }}
+
+Existing-card operations use target_id ; the early prompt permits only add operations, while later prompts also permit confirm, revise, weaken, and retire. The validator requires evidence references and executable ranges. Invalid responses can trig-ger a rule-based fallback; deterministic repair and challenger operations can supplement valid re-sponses, and these paths are recorded. A falsifi-able test specification cannot be silently changed in place; a different intervention requires a new evidence-linked card. The LLM does not sup-ply measured test counts or invent tested candi-date IDs: these are populated by the deterministic evaluation/support-update path. Authentic schema and log keys retain confidence for the heuristic support score and credit for comparative evidence updates; neither denotes a calibrated probability or an identified causal effect. 
+
+Recorded state example. The following fields are selected from the pre-selection state in Reizman 13 Task Variable Type Admissible domain SnAr Residence time Continuous [0 .5, 2.0] min Pyrrolidine equivalents Continuous [1 , 5] equivalents DFNB concentration Continuous [0 .1, 0.5] mol/L Temperature Continuous [30 , 120] degrees Celsius Reizman 1–4 Residence time Continuous [60 , 600] sTemperature Continuous [30 , 110] degrees Celsius Catalyst loading Continuous [0 .5, 2.5] mol% Catalyst identity Categorical P1-L1, P2-L1, P1-L2, P1-L3, P1-L4, P1-L5, P1-L6, P1-L7 iPSC-RPE PC Ordered finite support 54 finite levels, 12 .47 –505 .62 
+
+PP; DS; KP; 3P Integer [1 , 6] ; [10 , 100] ; [1 , 19] ; [3 , 19] 
+
+DP; DL Ordered finite support {5, 8, 11 , 14 , 17 , 20 , 23 }; {0, 1}
+
+C2C12 Media components 1–14 Continuous Each [0 , 1] in adapter-normalized coordinates Information source Finite support {0, 1, 2, 3}; retained from the historical offline protocol HPLC Sample/additional/tubing volume Continuous [0 , . 08] ; [0 , . 06] ; [.1, . 9] ml Sample flow; push speed; wait time Continuous [.5, 2.5] ml/min; [80 , 150] Hz; [.5, 10] s
+
+Table 7: Domains used by the actual adapters. Summit bounds and catalyst levels follow benchmark definitions (Felton et al., 2021); HPLC bounds follow the Olympus dataset configuration (Häse et al., 2021). iPSC concentration levels follow the original task-code definition; the adapter domains are not assumed exhaustive physical domains. C2C12 coordinates follow its adapter preprocessing. 
+
+Case 3, seed 0, search round 8 (zero-based). Values and IDs are retained from the saved log. 
+
+> {"id": "llm_h_6_14", "parameters": ["temperature"], "anchor_observation_id": "obs_000000", "evidence_pair_ids": [ "pair_temperature_0000_0011"], "confidence": 0.6399999999999999, "validation_status": "partially_supported", "tested_count": 1, "success_count": 1, "last_test_credit_weight": 0.5, "last_test_improvement": 5.174800627842362, "global_improvement_count": 0, "hypothesis_value_status": "locally_supported" }
+
+The same round proposed exploitation but resolved to mixed under weak reliability. The identified card and its recorded test outcomes illustrate the state objects that guide search and retain comparative support; local support remains distinct from global optimization progress. 
+
+A.5 API Settings and Recorded Usage 
+
+The requested backend is gpt-4o-mini ; the reflec-tor submits its assembled instruction and evidence as a user message, at temperature zero with a 1500-token output cap and one configured retry. It does not explicitly set top_p or an API sampling seed. Optimization seeds and the feedback-permutation seed are separate from API randomness. Temper-ature zero does not guarantee identical cloud re-sponses; deterministic curation and validation refer 
+
+Task Seed Prompt tokens Completion tokens Elapsed (s) iPSC 0 347576 10226 177.5 1 332143 10664 144.0 2 368290 10319 144.7 3 346650 10845 145.7 4 346886 10709 127.8 5 337694 9570 113.4 C2C12 0 412771 11030 175.7 1 365428 12230 178.8 2 370151 10958 156.0 3 361268 10461 161.2 4 457476 11976 168.6 5 436654 12364 174.1 
+
+Table 8: Recorded full-FGSS reflector usage per primary-task run, with twenty final call records each. Elapsed is the sum of saved reflector-call latencies, not total optimizer wall-clock time. 
+
+to fixed recorded inputs, not the entire optimizer. Each primary task has 120 final reflector records marked as successful LLM parses, with no logged fallback. Summed recorded reflector usage is 
+
+2,079 ,239 prompt and 62 ,333 completion tokens for iPSC, and 2,403 ,748 prompt and 69 ,019 com-pletion tokens for C2C12. These are reflector-only usage totals, not total optimizer compute or billing. Final call records do not supply a complete count of transient failed requests or retries. Historical records do not identify exact served 14 model snapshots or per-request timestamps; temperature-zero calls do not guarantee bitwise cloud-API replay. 
+
+A.6 Non-LLM Baseline Implementations and Trajectories 
+
+Random Search samples numerical bounds or finite legal levels uniformly. HEBO uses version 0.3.5, with the imported initialization count determining its startup size. In the primary tasks its GP fitter uses Adam instead of the default pSGLD after a numerical failure in C2C12 smoke; other model set-tings are retained. Ordered finite levels are encoded by index and unordered labels as categories. This fitting change is not applied to the Summit runs, which retain the package defaults. Cross-domain differences therefore cannot be attributed solely to task domain. GP-EI uses BoTorch 0.8.5 with standardized outcomes and range-normalized numerical coor-dinates. It uses a categorical covariance component for iPSC pipetting length, C2C12 source, and Reiz-man catalyst identity. Acquisition optimization uses ten restarts and 256 raw samples; continu-ous optimization has a maximum of 200 iterations. Fully discrete iPSC uses legal discrete local search, C2C12 enumerates source labels, and Summit uses continuous or mixed optimization as appropriate. No wrapper-level random fallback replaces failed fitting. Repeated evaluations consume budget, and all methods reuse the actual paired initialization. 
+
+A.7 Paired Primary-Task Differences 
+
+Table 9 reports FGSS-BO minus the matched LLM and GP-EI references. Intervals use 10,000 paired bootstrap resamples of the six run-level differences (seed 42) and are exploratory, without multiplicity correction. 
+
+A.8 Cross-Domain Summit Evaluation 
+
+We evaluate five Summit tasks. SnAr is a contin-uous kinetic-flow simulator; Reizman Cases 1–4 are continuous/categorical reaction emulators with catalyst choices. Each method shares eight initial observations from the LLM comparison, followed by twenty search evaluations, over six paired seeds. Table 10 compares all five methods. HEBO and GP-EI have higher sample mean final best and search AUC than FGSS-BO and LLAMBO on every task. FGSS-BO exceeds its matched LLM reference on four final-best means and three AUC means, but underperforms it on Case 4. 
+
+Objectives and oracle implementation. All five objectives are maximized. SnAr uses STY /10 4 −
+
+Efactor /100 , the sign reversal of the benchmark tu-torial’s minimization objective. Space-time yield (STY) is measured in kg m −3 h−1; E-factor is the waste-to-product mass ratio. The scalar score com-bines throughput and waste, rather than reporting reaction yield. Reizman Cases 1–4 maximize pre-dicted yield in percent, with responses clipped to 
+
+[0 , 100] . They share three continuous controls and an eight-level catalyst variable; names, units, and bounds appear in Table 7. The downloaded Summit source distribution de-clares version 0.8.9. Our adapter implements the zero-noise SnAr kinetics with SciPy’s solve_ivp 
+
+and reads the official JSON preprocessing statis-tics and five fixed PyTorch predictors for each 
+
+reizman_suzuki_case_1 –4 model directly. No emulator is retrained or additional observation noise sampled. Run seeds control the paired Latin hypercube initialization, category balancing, and candidate sampling; the oracle remains fixed, and cloud LLM randomness is separate. An offline re-play of all 1680 saved responses from the 60 LLM runs agrees with these assets within 1.5 × 10 −14 .Metrics are reported per task without treating de-clared output bounds as verified global optima. 
+
+A.9 Exact-Grid iPSC-RPE Control 
+
+The exact-grid variant restricts candidates to ob-served experimental configurations and does not assign new configurations nearest-neighbor re-sponses. LLAMBO obtains final best 0.840 ±0.026 
+
+and search AUC 0.750 ± 0.009 ; FGSS-BO obtains 
+
+0.848 ± 0.064 and 0.710 ± 0.096 . The final-best means are close and the AUC advantage is not preserved. This control changes the admissible candidate set as well as removing nearest-neighbor assignment, so it does not isolate oracle effects from candidate-space restriction. 
+
+A.10 Olympus HPLC Control 
+
+The continuous-parameter Olympus HPLC bench-mark (Häse et al., 2021) provides a further experimental-design task. Across six paired runs, LLAMBO obtains final best 1803 .720 ± 521 .827 
+
+and search AUC 1677 .365 ± 465 .783 ; FGSS-BO obtains 1962 .651 ± 237 .131 and 1765 .846 ±
+
+381 .965 . FGSS-BO has higher sample means on both metrics; this comparison covers the two LLM pipelines. 15 0 5 10 15 20 25 30 Evaluation step 0.0 0.2 0.4 0.6 0.8 Best-so-far objective       
+
+> iPSC-RPE
+> Random Search HEBO GP-EI LLAMBO FGSS-BO
+> 0510 15 20 25 30 Evaluation step −2 −1 012Best-so-far objective
+> C2C12
+> Random Search HEBO GP-EI LLAMBO FGSS-BO
+> iPSC-RPE and C2C12: five-method paired comparison
+> Seeds 0-5; shared 10-point initialization + 20 search evaluations; bands show sample standard deviation.
+
+Figure 4: Five-method primary-task trajectories, six paired runs with ten shared low-score initialization observations and twenty search evaluations. Lines are means and bands are sample standard deviations. All methods use the same nearest-neighbor response oracle; bands are not confidence intervals. LLAMBO uses the shared feasibility-preserving interface. 
+
+Task Reference Metric Mean difference Bootstrap 95% interval iPSC-RPE GP-EI Final best 0.020 [−0.009 , 0.050] 
+
+iPSC-RPE LLAMBO Final best 0.123 [0 .046 , 0.205] 
+
+iPSC-RPE GP-EI Search AUC 0.135 [0 .014 , 0.254] 
+
+iPSC-RPE LLAMBO Search AUC 0.147 [0 .054 , 0.252] 
+
+C2C12 GP-EI Final best 0.210 [−0.271 , 0.691] 
+
+C2C12 LLAMBO Final best 0.445 [0 .110 , 0.959] 
+
+C2C12 GP-EI Search AUC 0.299 [−0.248 , 0.779] 
+
+C2C12 LLAMBO Search AUC 0.141 [−0.134 , 0.419] 
+
+Table 9: Paired primary-task differences, FGSS-BO minus the reference; positive favors FGSS-BO. LLAMBO uses the shared feasibility-preserving interface. 
+
+A.11 Component-Ablation Protocol and Paired Differences 
+
+All four iPSC variants share ten low-score initial observations, twenty search evaluations, the legal parameter domains, and the nearest-neighbor re-sponse oracle. The shared LLM settings are GPT-4o mini, ten candidates, two templates, and ten generations. The two reflective controls and full FGSS use a reflection output cap of 1500 tokens, temperature zero, and one configured retry. This matches call settings, not actual tokens or total compute with LLAMBO. 
+
+Reflective Summary. Each round, the same structured evidence extractor supplies current evi-dence alongside the previous prose summary. The LLM replaces that summary with updated guid-ance on promising directions, contradictions, un-certainty, coverage, and exploration. The summary conditions the shared candidate refiner, without hy-pothesis cards, deterministic hypothesis curation, matched-test generation, direct support updates, or test-policy overrides. Both this control and FGSS maintain cross-round memory under the shared re-flection settings. 
+
+FGSS w/o Tests. Structured reflection, curation, search-regime gating, and ordinary state-guided candidates remain enabled. Matched-test gener-ation, test-policy overrides of EI, and direct-test support updates are disabled together. This is a testing-bundle ablation, not an isolation of selec-tion overrides alone. All twenty selections use the shared EI path. Realized full-FGSS selection changes and control-match quality appear in Ap-pendix A.2. 
+
+Reference reuse and execution audit. The LLAMBO and full-FGSS references reuse the pri-mary iPSC runs. A source-compatibility audit checked the operative extractor, curator, reflector instructions, phase gate, candidate policies, surro-gate, and oracle paths; subsequent additions were 16 Task Metric Random Search HEBO GP-EI LLAMBO FGSS-BO                                                                                                                                                                 
+
+> SnAr Final best 0.593 ±0.074 1.051 ±0.005 1.058 ±0.001 0.641 ±0.107 0.680 ±0.057
+> SnAr Search AUC 0.572 ±0.078 0.967 ±0.048 0.990 ±0.049 0.579 ±0.101 0.573 ±0.123
+> Reizman Case 1 Final best 67 .505 ±10 .443 86 .480 ±6.887 91 .424 ±0.019 60 .071 ±15 .792 69 .751 ±14 .764
+> Reizman Case 1 Search AUC 64 .033 ±9.672 74 .673 ±9.317 83 .315 ±5.291 55 .087 ±13 .751 65 .738 ±15 .484
+> Reizman Case 2 Final best 21 .602 ±6.882 37 .151 ±6.817 40 .085 ±0.000 20 .910 ±7.124 22 .286 ±9.016
+> Reizman Case 2 Search AUC 19 .916 ±6.719 32 .166 ±6.307 32 .762 ±4.777 19 .164 ±6.721 21 .262 ±8.662
+> Reizman Case 3 Final best 79 .543 ±5.887 89 .536 ±2.604 92 .770 ±0.241 73 .964 ±8.452 76 .606 ±4.921
+> Reizman Case 3 Search AUC 72 .094 ±3.800 85 .115 ±3.114 84 .723 ±4.589 68 .152 ±3.466 71 .726 ±2.183
+> Reizman Case 4 Final best 90 .216 ±3.366 95 .541 ±2.615 96 .688 ±0.034 92 .000 ±4.124 89 .866 ±3.561
+> Reizman Case 4 Search AUC 88 .079 ±2.992 93 .910 ±2.093 94 .243 ±1.450 89 .939 ±2.651 88 .505 ±3.597
+
+Table 10: Cross-domain Summit results: five methods over six paired runs, with eight initialization and twenty search evaluations. Values are mean ± sample standard deviation; higher is better. LLAMBO uses the shared feasibility-preserving interface. 
+
+optional interfaces and logging. Paired initializa-tion, objective outcomes, and direct-control scores were also checked. All runs completed the required thirty evaluations and remain in the analysis, in-cluding the run with one FGSS w/o Tests reflection (seed 4, search round 19, one-based) that used the recorded rule fallback after a connection failure. Table 11 uses 50,000 paired bootstrap resamples with analysis seed 20261012. The intervals are exploratory percentile intervals without multiplic-ity correction. Full FGSS has a higher observed final-best mean than the summary, but no AUC ad-vantage; removing the test bundle has mixed effects. The contrast compares complete prose-summary and structured pipelines, which differ in state repre-sentation, candidate control, and test management. 
+
+A.12 State-Feedback Permutation on iPSC-RPE 
+
+This control retains the full FGSS mechanism but permutes historical outcomes across configurations only for state construction and updates. Config-urations, initialization, domains, and evaluation budgets are unchanged. LLAMBO’s surrogate and the shared candidate refiner retain true observa-tion history; the refiner also receives the perturbed state guidance. The permutation is refreshed at pre-and post-evaluation stages, with feedback seed 42. Each eligible support comparison uses the same post-evaluation view for both intervention and con-trol. All reported performance metrics use true oracle outcomes. Figure 5 includes all six paired seeds 0–5. The true-FGSS and LLAMBO references reuse the pri-mary runs; the permutation runs were completed separately under the same experimental settings. The audit verifies paired initialization and true surrogate-history routing, and all 30 direct support updates agree with their single-view comparisons. State-feedback permutation achieves faster early progress and a higher mean search AUC, whereas aligned feedback achieves a higher mean final ob-jective with lower across-seed variability in final outcomes (Table 12; Figure 5). This pattern is con-sistent with a trade-off between early progress and final-result consistency. The true-minus-permuted mean differences are 0.0275 for final best and 
+
+−0.0349 for AUC; their exploratory paired boot-strap 95% intervals are [−0.0232 , 0.0850] and 
+
+[−0.1236 , 0.0631] , respectively. Both include zero. The surrogate retains true observation history in both conditions. 
+
+A.13 Test-Selection Ablation and Immediate Opportunity Cost EI-only selection control. FGSS No-Override retains the full reflector, curator, state-guided can-didate construction, matched-test candidates, and direct support updates. Only the final selection pol-icy changes to ei_only ; the test-generation quota is retained. All six seeds 0–5 complete the same ten low-score initialization observations and twenty search evaluations. They share initialization, legal domains, oracle, and LLM settings with the refer-ences in Table 13. The audit checks all 120 selected configurations against the CSVs and confirms that each maximizes saved predicted EI. The pools con-tain 99 test-candidate appearances, and 22 selected tests receive a single-parent support update; all 22 control outcomes match prior observations and use 17 Contrast Metric Mean difference Bootstrap 95% interval Full FGSS − Reflective Summary Final best 0.0285 [0 .0050 , 0.0617]                      
+
+> Search AUC −0.0061 [−0.0702 ,0.0605]
+> Full FGSS −FGSS w/o Tests Final best 0.0088 [−0.0370 ,0.0730]
+> Search AUC −0.0275 [−0.1264 ,0.0651]
+> FGSS w/o Tests −Reflective Summary Final best 0.0197 [−0.0527 ,0.0910]
+> Search AUC 0.0214 [−0.0310 ,0.0822]
+
+Table 11: Paired iPSC component differences over six runs. Positive favors the first method. 5 10 15 20 25 30 Evaluation step 0.0 0.2 0.4 0.6 0.8 True best-so-far score 
+
+iPSC: State Feedback Control 
+
+LLAMBO FGSS-BO (True) FGSS-BO (State-Shuffle) 
+
+> Six paired seeds; lines: mean; shading: sample standard deviation; initialization: 10; search: 20.
+
+Figure 5: iPSC-RPE with true or permuted state feedback, alongside the LLAMBO reference. Lines show mean best-so-far true objective over six paired runs; shading shows one sample standard deviation. The dashed boundary separates ten initialization observations from twenty search evaluations. Only FGSS-BO state feedback is permuted; the surrogate retains true observation history.               
+
+> Condition Final best Search AUC True .8132 ±.0225 .6401 ±.1175
+> Permuted .7857 ±.0726 .6751 ±.0654
+
+Table 12: iPSC-RPE state-feedback control: mean ±
+
+sample standard deviation over six paired runs. 
+
+distinct oracle identities. All 120 final reflector records are successful LLM calls without logged fallback. Full FGSS minus No-Override has mean paired differences +0 .0117 in final best and −0.0495 
+
+in search AUC. The respective exploratory boot-strap 95% intervals are [−0.0712 , 0.0965] and 
+
+[−0.1343 , 0.0324] , from 50,000 paired-seed resam-ples with analysis seed 20261012. Both inter-vals include zero. Full FGSS has lower observed final-best dispersion, while No-Override has higher mean search AUC (Figure 6). No-Override’s higher sample means than LLAMBO show that gains oc-cur without forced test selection in these runs. Col-lection periods and cloud API randomness remain uncontrolled. 
+
+Same-history, same-pool opportunity cost. For each of full FGSS’s 18 actual selection changes, we query the original fixed oracle after the fact on the recorded EI choice and selected test, without changing history or generating a new pool. Let 
+
+vEI  
+
+> t
+
+= bfNN (xEI 
+
+> t+1
+
+) and vtest  
+
+> t
+
+= bfNN (xtest 
+
+> t+1
+
+), with bt
+
+the incumbent before that evaluation. Define 
+
+gresp  
+
+> t
+
+= vEI  
+
+> t
+
+− vtest  
+
+> t
+
+,gbest  
+
+> t
+
+= max( bt, v EI  
+
+> t
+
+)
+
+− max( bt, v test  
+
+> t
+
+).
+
+(14) 18 Method Final best Search AUC Selection changes Direct support updates LLAMBO 0.6905 ± 0.1168 0.4936 ± 0.0571 0 0Full FGSS 0.8132 ± 0.0225 0.6401 ± 0.1175 18 37 FGSS No-Override 0.8015 ± 0.1103 0.6896 ± 0.0980 0 22 
+
+Table 13: iPSC selection-policy control over six paired runs: mean ± sample standard deviation. Counts are totals over 120 search evaluations per method. Selection changes mean departures from the recorded EI choice, not tests naturally selected by EI. Full FGSS and LLAMBO reuse the audited primary references and shared feasibility-preserving interface. 5 10 15 20 25 30 Evaluation step 0.0 0.2 0.4 0.6 0.8 1.0 Best-so-far score    
+
+> Initialization Sequential search
+> (a) Mean best-so-far
+> LLAMBO Full FGSS FGSS No-Override
+> Final best Search AUC 0.0 0.2 0.4 0.6 0.8 1.0 Score
+> 0.691 0.494 0.813 0.640 0.801 0.690
+> (b) Mean and sample SD
+> Final best Search AUC 0.20
+> 0.15
+> 0.10
+> 0.05
+> 0.00 0.05 0.10 0.15 Full FGSS minus No-Override
+> 012345
+> 01 2345
+> (c) Paired seed differences
+> Mean; bootstrap 95% CI
+> iPSC-RPE: No-Override ablation, six paired seeds
+> All seeds 0-5; shared 10-point initialization and 20 search evaluations. Bands/bars: sample SD; red intervals: exploratory paired bootstrap.
+
+Figure 6: iPSC No-Override ablation, all six paired seeds. Curves and bars show means; shading and bar error bars show sample standard deviations. The right panel reports full FGSS minus No-Override: numbered points are individual seeds, and red intervals are exploratory paired bootstrap 95% intervals. No-Override retains hypothesis-test generation and support updates but always selects by EI. LLAMBO uses the shared feasibility-preserving interface. 
+
+Positive values favor the EI alternative; negative values favor the test. Replaying all 180 recorded responses (initialization included) reproduces the historical scores, and all selected-test scores and saved EI maxima agree with their logs. No LLM calls or new laboratory evaluations are performed. Across all 18 events, mean response gap is 
+
+0.0563 : EI has higher response in 11 events and the test in seven. Mean one-step incumbent gap is 0.0854 : EI is higher in eight events, the test in five, with five ties (Figure 7). These are event-weighted means; whole-seed cluster bootstrap, rather than independent-event resampling, gives exploratory 95% intervals [−0.0433 , 0.1932] and 
+
+[0 .0001 , 0.1964] , respectively. Intervals use all events and six seed clusters, without multiplicity adjustment. As a post-hoc descriptive partition, the six first-search-round changes all favor EI imme-diately, with mean gap 0.3540 for both mea-sures. The remaining twelve events have mean response/incumbent gaps −0.0926 / − 0.0489 . All 18 events remain included in the aggregates. This audit compares one-step outcomes under a fixed oracle; it does not estimate downstream effects. 
+
+A.14 Freeform and Feasible Candidate Interfaces 
+
+Figure 8 compares LLAMBO-Freeform with the existing LLAMBO-Feasible references on iPSC-RPE and C2C12, using all seeds 0–5. All 24 runs complete ten initialization and twenty search eval-uations with batch size one. Paired initial config-urations and outcomes, parameter domains, and task-specific nearest-neighbor protocols agree. The Freeform runs use GPT-4o mini with ten candi-dates, two templates, and ten generations; neither method uses FGSS state or a reflector. On iPSC, Freeform obtains 0.346 in both final best and search AUC, versus Feasible’s 0.691 ±
+
+0.117 and 0.494 ± 0.057 . All 120 Freeform search rounds exhaust the free-form proposal path and select recovery-fallback candidates; the six evalua-tion CSVs are identical. Its zero dispersion reflects coincident fallback trajectories, not reliable LLM optimization. On C2C12, no search round invokes recovery fallback: Freeform obtains 1.287 ± 0.673 
+
+and 1.058 ± 0.583 , versus Feasible’s 1.281 ± 0.220 
+
+and 1.025 ± 0.264 . Their sample means are close, with larger Freeform dispersion. Search AUC ex-cludes initialization. 19 0.0 0.2 0.4 0.6 0.8 1.0 Oracle response of EI choice 0.0 0.2 0.4 0.6 0.8 1.0 Oracle response of selected test  
+
+> x4 x2
+> (a) Same-pool alternative responses
+> EI response higher Test response higher 0:1 0:5 1:1 1:5 1:14 1:17 2:1 2:5 3:1 3:5 3:9 3:12 4:1 4:9 4:12 5:1 5:5 5:14
+> Seed : search round (one-based) 0.6
+> 0.4
+> 0.2
+> 0.0 0.2 0.4 0.6 EI choice minus selected test
+> (b) Immediate opportunity cost
+> Raw response gap One-step incumbent gap
+> iPSC-RPE: immediate opportunity cost of 18 actual overrides
+> Positive gaps favor EI; negative gaps favor the test. Same recorded history and pool; no counterfactual continuation. xN denotes overlapping response pairs.
+
+Figure 7: Immediate opportunity costs of all 18 full-FGSS selection changes under the fixed iPSC oracle. The left panel compares the alternative response scores; the right reports EI minus test response and one-step incumbent gaps, indexed by seed and one-based search round. Positive gaps favor EI. Each comparison uses the same recorded history and candidate pool. 
+
+These controls compare complete candidate in-terfaces. Feasible includes candidate refinement; Freeform retains validity checks, deduplication, re-tries, and recovery. The latter is an implementation-level free-form variant, not a strict reproduction of original LLAMBO. The new Freeform runs record their settings, whereas older Feasible ref-erences lack complete per-run CLI provenance; collection periods and cloud API responses are not controlled by initialization pairing. Feasibility-preserving construction addresses iPSC’s severe proposal rejection, while C2C12’s viable Freeform path yields sample means close to Feasible. Both main LLM methods use the same feasible interface across tasks; Freeform is reported separately as a candidate-interface control. 
+
+A.15 Direct-Training Bayesmark HPO Transfer 
+
+The suite was fixed before evaluation: breast can-cer, handwritten digits, and diabetes datasets, each paired with RandomForest and SVM. All six tasks and both methods are retained. There are 72 completed runs and 2160 configuration evalua-tions, with six paired seeds, ten initialization points, twenty search evaluations, and batch size one. Ta-ble 14 reports CV-based optimization metrics. The suite compares the two complete LLM pipelines. 
+
+Objective and preprocessing. Each configura-tion trains a scikit-learn model directly with five-fold cross-validation. Classification maximizes accuracy, using stratified folds; regression mini-mizes positive MSE. We retain the downloaded LLAMBO train/test splits and feature preprocess-ing. Diabetes targets are standardized once using the training split’s mean and standard deviation before CV, following that runner; this is not a fold-wise target-scaling protocol. The held-out test set uses the same training-target scaling and is used only for reporting, never for candidate generation, surrogate prediction, or state updates. RandomForest uses ten trees, random state zero, and no fixed maximum leaf count. Classification SVM uses an RBF SVC with probability estimation enabled and random state zero; regression uses an RBF SVR. Folds and training randomness are fixed. The optimization seeds index initialization configu-rations and candidate randomness, not independent training splits. 
+
+Initialization and representation. Both meth-ods use the first ten public initialization configu-rations for their model/seed from the LLAMBO repository, canonicalized to eight decimal places without inspecting outcomes. The HPO spaces are copied from its Bayesmark configuration, with sam-pling scales in Table 15. Global and local candidate sampling respect linear, log, or logit coordinates; evidence distances remain raw range-normalized. Log-variable test steps use log-range increments. Both methods serialize candidate floats to eight decimals and outcomes to six, preventing small im-purity values from collapsing under the legacy for-matter. The shared interface follows the feasibility-preserving baseline, not an exact replication of free-form LLAMBO. Both methods use the main shared LLM set-20 5 10 15 20 25 30 Evaluation step 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 Best-so-far score        
+
+> Initialization Sequential search
+> iPSC-RPE
+> LLAMBO-Feasible LLAMBO-Freeform
+> 510 15 20 25 30 Evaluation step −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5 2.0 Best-so-far score
+> Initialization Sequential search
+> C2C12
+> LLAMBO-Feasible LLAMBO-Freeform Six paired seeds; lines: mean; shading: sample standard deviation; initialization: 10; search: 20.
+
+Figure 8: Candidate-interface controls on both primary tasks over all six paired seeds. Lines are means; shading is sample standard deviation. The dashed line separates ten shared low-score initial observations from twenty search evaluations. iPSC Freeform uses recovery fallback in all 120 search rounds, producing six identical evaluation trajectories; C2C12 has no recovery fallback. Both methods omit FGSS state. 
+
+Task Direction Final best Search AUC LLAMBO FGSS-BO LLAMBO FGSS-BO Breast RF Accuracy ↑ .93187 ± .00340 .93187 ± .00368 .93161 ± .00365 .93152 ± .00388 
+
+Breast SVM Accuracy ↑ .94286 ± .00197 .94432 ± .00266 .94282 ± .00202 .94370 ± .00256 
+
+Digits RF Accuracy ↑ .53550 ± .25607 .52727 ± .29339 .46033 ± .30376 .47376 ± .31506 
+
+Digits SVM Accuracy ↑ .99246 ± .00052 .99258 ± .00036 .99236 ± .00045 .99235 ± .00036 
+
+Diabetes RF MSE ↓ .58558 ± .03102 .57109 ± .04270 .61024 ± .04163 .61335 ± .07394 
+
+Diabetes SVM MSE ↓ .57768 ± .05219 .51711 ± .00984 .61046 ± .08684 .55636 ± .05080 
+
+Table 14: Complete six-task HPO transfer comparison: means ± sample standard deviations over six paired runs per task. Accuracy is maximized; both diabetes metrics are minimized. RF denotes RandomForest. Raw accuracy and MSE are not aggregated. LLAMBO uses the shared feasibility-preserving interface. 
+
+Parameter Domain Scale 
+
+RandomForest 
+
+Max. depth [1 , 15] Linear Max. feature fraction [.01 , . 99] Logit Min. impurity decrease [0 , . 5] Linear Min. leaf sample fraction [.01 , . 49] Logit Min. split sample fraction [.01 , . 99] Logit Min. weighted leaf fraction [.01 , . 49] Logit 
+
+SVM 
+
+C [1 , 1000] Log 
+
+γ [.0001 , . 001] Log Tolerance [.00001 , . 1] Log 
+
+Table 15: HPO domains and sampling scales inherited from LLAMBO’s Bayesmark configuration, shared by both methods. Maximum depth is integer; all other parameters are continuous. 
+
+tings; full FGSS additionally uses the LLM re-flector and bounded test policy. Feedback is true throughout, and no optional domain-prior card is enabled. CSV/JSON metrics, objective directions, budgets, and paired initialization were checked. The recorded independent audit retrained the 72 best configurations and reproduced their CV and held-out scores to floating-point precision. Diabetes SVM reduces mean final MSE/search 
+
+Task Metric Gain Bootstrap 95% interval Breast RF Final 0.00000 [−.00110 , . 00110] 
+
+AUC −.00009 [−.00066 , . 00038] 
+
+Breast SVM Final .00147 [.00037 , . 00293] 
+
+AUC .00088 [−.00051 , . 00242] 
+
+Digits RF Final −.00824 [−.13083 , . 09440] 
+
+AUC .01343 [−.06695 , . 07959] 
+
+Digits SVM Final .00012 [−.00023 , . 00046] 
+
+AUC −.00001 [−.00026 , . 00026] 
+
+Diabetes RF Final .01448 [−.01098 , . 03750] 
+
+AUC −.00312 [−.03414 , . 02294] 
+
+Diabetes SVM Final .06057 [.02708 , . 09707] 
+
+AUC .05411 [.02304 , . 08215] 
+
+Table 16: Paired HPO mean gains use unrounded per-seed metrics. Final denotes final best; AUC denotes search AUC. Positive favors FGSS-BO: FGSS minus LLAMBO for accuracy, reversed for MSE. Exploratory intervals are task-specific and unadjusted for multiple comparisons. LLAMBO uses the shared feasibility-preserving interface. 
+
+AUC by 10 .48% /8.86% ; other tasks show small, tied, or mixed effects. High initialization scores constrain gains on breast RF and digits SVM. Ta-ble 16 reports all paired differences with unadjusted exploratory percentile intervals (20,000 bootstrap resamples, analysis seed 42). 21
