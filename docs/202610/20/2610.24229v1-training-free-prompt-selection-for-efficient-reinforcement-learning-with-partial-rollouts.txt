@@ -1,0 +1,610 @@
+Title: Training-Free Prompt Selection for Efficient Reinforcement Learning With Partial Rollouts
+
+URL Source: https://arxiv.org/pdf/2610.24229v1
+
+Published Time: Tue, 20 Oct 2026 00:19:02 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Training-Free Prompt Selection for Efficient Reinforcement Learning With Partial Rollouts 
+
+Lei Jiang 1, Honghui Bao 1, Yue Zhou 2, Zhengyao Gu 1,Langzhou He 1, Natalie Parde 1
+
+> 1
+
+University of Illinois Chicago, 2LLM Core and Agentic AI, CapitalOne 
+
+{ljian43, hbao, zgu24, lhe24, parde}@uic.edu, yue.zhou@capitalone.com 
+
+Abstract 
+
+Reinforcement learning with verifiable rewards (RLVR) has emerged as a prominent paradigm for training reasoning models, but its com-putational cost makes efficient data selection increasingly important. Since training exam-ples contribute unequally to learning, selecting a small, informative subset can offer a more efficient alternative to using the entire data pool. The training-free selection method (Wu et al., 2026) estimates prompt value with hid-den states from complete greedy rollouts. How-ever, in our datasets, 26 –32% of these rollouts fail to terminate within the generation budget. We introduce LIFT, a training-free data selec-tor that identifies impactful prompts using only partial reasoning rollouts. At its core, LIFT uses Partial Rollout Context Lift (PRCL), a score inspired by pointwise V-information that accumulates token-level log-likelihood ratios between a question-conditioned context and a null context with the question removed. This enables prompt scoring from a short rollout pre-fix rather than a complete trajectory. Across Qwen2.5-Math-1.5B and DeepSeek-R1-Distill-1.5B, prefixes retaining at least 90% and 95% of the full-rollout PRCL score, respectively, require only 26% and 4.7% of the tokens gen-erated by full rollouts. Compared with SHIFT, LIFT reduces selection cost by 3.7–9.1 × while achieving competitive downstream RLVR per-formance, with the highest six-benchmark av-erage in three of six settings. 1
+
+1 Introduction 
+
+Reinforcement learning (RL), particularly with ver-ifiable rewards, has become a central paradigm for improving the reasoning capabilities of language models (Lambert et al., 2025; Shao et al., 2024; DeepSeek-AI, 2025; Yu et al., 2025). However, generating multiple rollouts for each training exam-ple is computationally expensive because multiple       
+
+> 1Correspondence: hbao@uic.edu Qwen MATH-500 Qwen LIMR R1 LIMR 0246810
+> token (million)
+> 0.13 0.24 0.49
+> 3.8 ×less
+> 0.51 1.00 1.71
+> 3.3 ×less
+> 1.10 6.79 10.05
+> 9.1 ×less
+> Total generated token
+> LIFT SHIFT-ES SHIFT
+
+Figure 1: Tokens generated to score each dataset and model by LIFT(ours), SHIFT-ES, and SHIFT. 
+
+responses are sampled for each prompt at every optimization step (Zheng et al., 2025; Yu et al., 2025). Recent studies show that training on care-fully selected subsets of examples can achieve per-formance comparable to training on the full data pool (Li et al., 2025), suggesting that identifying in-formative training examples can improve RL train-ing efficiency. Existing approaches to identifying impactful ex-amples fall into two broad categories: training-dependent and training-free methods. Training-dependent methods leverage signals that emerge during RL training to identify or re-weight infor-mative prompts (Yu et al., 2025; Zheng et al., 2025; Bae et al., 2026a; Sun et al., 2025a; Kim et al., 2026; Li et al., 2025; Wang et al., 2025; Xia et al., 2024; Li et al., 2026b; Yang et al., 2026). However, these approaches typically require both access to verifiable rewards (which often entail ground-truth answers) and partial fine-tuning over a large can-didate pool to obtain the signals needed for rank-ing. In contrast, training-free methods estimate the information that prompts can provide for RL by using different measures of prompt utility (Sener 1arXiv:2610.24229v1 [cs.AI] 16 Oct 2026 Dataset           
+
+> q1
+> q2
+> • • •
+> qm
+> Policy
+> Model
+> Partial rollouts
+> o1,≤ t
+> o2,≤ t
+> • • •
+> om,≤ t
+> H(oi,≤ t|qi)
+> H(oi,≤ t|∅)
+> PRCL Score
+> Computation
+> s1
+> s2
+> • • •
+> sm
+> Top-k
+> Selection
+> Selected ( kof m)
+> q(1)
+> q(2)
+> • • •
+> q(k)
+> qi
+
+Figure 2: Overview of LIFR. Given an input prompt, the LLM generates a greedy partial rollout, and the PRCL score is calculated from the entropy with and without the question. Then the prompts are ranked by it. 
+
+and Savarese, 2018; Li et al., 2026a). For exam-ple, SHIFT (Wu et al., 2026) uses hidden-state shifts from a single greedy rollout. By avoiding training-time prompt utility estimation and reward supervision, training-free methods provide a more general way to select prompts before RL training. However, SHIFT’s full trajectory requirement can be costly when greedy decoding becomes repet-itive. On our two datasets, Math-500 (Lightman et al., 2023) and LIMR (Li et al., 2025), 26–32% of greedy trajectories fail to terminate within the generation budget, and most exhibit fixed n-gram repetition. We observed that such trajectories can spend a substantial number of tokens after the infor-mative part of the reasoning has already been gener-ated, suggesting that a complete trajectory may not be necessary to obtain an effective selection signal. We therefore ask: Under the training-free setting, can we efficiently select a high-quality subset of prompts with only a partial informative rollout? 
+
+We answer this question by showing that effec-tive prompt selection can be performed from par-tial rollouts. First, we introduce LIFT, a training-free data selector that needs only a single, partial 
+
+reasoning trajectory. Second, motivated by point-wise V-information(PVI) (Ethayarajh et al., 2022), which estimates example difficulty, we propose 
+
+Partial Rollout Context Lift (PRCL). PRCL mea-sures how much the question changes the entropy of its partial reasoning trajectory compared with removing the question. We show that partial roll-outs suffice for effective training-free prompt selection : short prefixes retain over 90% of the selection signal of complete trajectories while re-quiring substantially fewer generated tokens. Third, the resulting subsets achieve competitive down-stream performance at substantially lower se-lection cost . Across models and selection budgets, PRCL-selected subsets achieve performance com-parable to full-pool training and competitive with full-trajectory selection, while reducing selection cost by a factor of 3.7–9.1×. Additionally, inspired by the effectiveness of partial rollouts, we further adapt SHIFT with an early-stop rule that halts de-coding at the onset of n-gram repetition. This cuts its selection cost by 1.5 to 2.0× at no loss in down-stream accuracy in four settings. 
+
+2 Related Work 
+
+RL for LLM reasoning. RL was initially used in LLM post-training for preference align-ment (Ouyang et al., 2022), optimizing the policy against a learned reward model with proximal pol-icy optimization (PPO) (Schulman et al., 2017). With automatically checkable answers, a verifier can replace the reward model; this approach is known as reinforcement learning with verifiable rewards (RLVR) (Lambert et al., 2025). Group rela-tive policy optimization (GRPO) (Shao et al., 2024) can then drop PPO’s value network, instead esti-mating advantages by normalizing rewards within a group of rollouts per prompt. GRPO has been used to train recent reasoning models (e.g., DeepSeek-R1 (DeepSeek-AI, 2025)). Follow-up work refin-ing the GRPO objective (Yu et al., 2025) decouples the lower and upper clipping bounds and discards prompts whose rollouts all receive the same reward. 
+
+Data Selection for LLM Training-dependent methods use signals that emerge during training to filter prompts or rollouts online (Zheng et al., 2025; Bae et al., 2026b; Sun et al., 2025b), real-locate rollout budgets across prompts (Kim et al., 2026), or identify informative prompts from re-ward curves, historical reward variance, or gradient similarity (Li et al., 2025; Wang et al., 2025; Xia et al., 2024; Li et al., 2026b; Yang et al., 2026). E.g.GRESO (Zheng et al., 2025) filters out the prompt with zero-variance based one the histor-ical rewards before rollout. Analogous “less is 2Algorithm 1 Training-free GRPO Data Selection via the PRCL  
+
+> 1:
+
+Input: Pool U = {xi}Ni=1 ; budget B; base LM πθ; template T ; null context ∅; estimation fraction γ; target share α; cap Kmax  
+
+> 2:
+
+Output: Selected subset S ⊂ U with |S| = B 
+
+> 3:
+
+function SCORE (x, K) 
+
+> 4:
+
+y(x) ← greedy decode from πθ under 
+
+T (x), at most K tokens  
+
+> 5:
+
+for t = 1 , . . . , |y(x)| do  
+
+> 6:
+
+st(x) ← log πθ
+
+ yt | T (x), y <t 
+
+ −
+
+log πθ
+
+ yt | T (∅), y <t 
+
+ 
+
+> 7:
+
+return s(x)
+
+Phase 1: Estimate prefix length on a subset  
+
+> 8:
+
+Draw C ⊂ U at random, |C| = ⌈γN ⌉ 
+
+> 9:
+
+s(x) ← SCORE (x, Kmax ) for every x ∈ C  
+
+> 10:
+
+PRCL K (x) ← P  
+
+> t≤min( K, |y(x)|)
+
+st(x) for ev-ery x ∈ C , K ≤ Kmax  
+
+> 11:
+
+F (K) ←
+
+P 
+
+> x∈C
+
+PRCL K (x)
+
+P 
+
+> x∈C
+
+PRCL Kmax (x) 
+
+> 12:
+
+ˆK ← min {K : F (K) ≥ α}
+
+Phase 2: Score the pool at ˆK 
+
+> 13:
+
+s(x) ← SCORE (x, ˆK) for every x ∈ U \ C  
+
+> 14:
+
+PRCL ˆK (x) ← P 
+
+> t≤min( ˆK, |y(x)|)
+
+st(x) for ev-ery x ∈ U  
+
+> 15:
+
+S ← Top -B x∈U PRCL ˆK (x) 
+
+> 16:
+
+return S
+
+more (Zhou et al., 2023)” results have also been reported for supervised reasoning data (Ye et al., 2025; Muennighoff et al., 2025) by finding the min-imal exemplars. 
+
+Training-free methods estimate prompt utility using signals extracted from the base model. Sener and Savarese (Sener and Savarese, 2018) select rep-resentative examples by maximizing embedding-space coverage. Marion et al. (Marion et al., 2023) explore model uncertainty signals such as perplex-ity and entropy for assessing when a language model needs assistance. Li et al. (Li et al., 2026a) use the diversity of model-generated answers to guide instruction-data selection. SHIFT (Wu et al., 2026) estimates prompt utility from hidden-state shifts across a single greedy reasoning rollout and applies quality-weighted coreset selection to bal-ance prompt utility and diversity. Our method falls into this category, using only token log-probabilities from a fixed-length rollout prefix. 
+
+3 Methodology 
+
+Task Formulation. Given an unlabeled prompt pool U and a selection budget B, our goal is to select an impactful subset S ⊂ U of size B for downstream RLVR training. We propose a training-free data selection method LIFT that uses only partial reasoning rollouts to identify impactful prompts. First, we randomly sample a subset of the pool to estimate an appro-priate rollout prefix length. Then, we score the remaining prompts using this prefix length and se-lect the top-B prompts based on their PRCL scores. 
+
+Setup. Let U = {xi}Ni=1 be an unlabeled pool of prompts and B ≪ N a selection budget. Let πθ be the initial policy and T (·) the chat template used for GRPO training. For each prompt x, we generate a deterministic rollout y(x) = ( y1, . . . , y Lx ) using greedy decoding under T (x). We define a null context T (∅) by removing the user prompt while retaining the same template and system prompt. 
+
+Partial Rollout Context Lift (PRCL). Moti-vated by PVI (Ethayarajh et al., 2022), which is used to the difficulty of a dataset in Classification Task, we create the PRCL metric.Given a context c
+
+and a token sequence y, let 
+
+HKθ (y | c) = −
+
+> K
+
+X
+
+> t=1
+
+log πθ
+
+ yt | c, y <t 
+
+ (1) be the entropy of the first K tokens of y under πθ
+
+given c, computed by teacher forcing, where K is the prefix length . Taking c = T (x) and c = T (∅),and evaluating both on the same rollout y = y(x),defines the Partial Rollout Context Lift, the amount by which the question lifts the likelihood of the models own partial rollout: 
+
+PRCL K (x) = HKθ
+
+ y | T (∅) − HKθ
+
+ y | T (x)
+
+=
+
+> K
+
+X
+
+> t=1
+
+st(x),
+
+(2) 
+
+st(x) = log πθ(yt | T (x), y <t )
+
+πθ(yt | T (∅), y <t ) . (3) Each st(x) is the log-ratio of the next-token proba-bility with and without the question, so PRCL K (x)
+
+measures how much the question changes the log-likelihood of the model’s own continuation, accu-mulated over the prefix. 3Estimate the prefix length. Equations (1)–(3) hold for an arbitrary prefix length, so K must be fixed before the pool can be ranked. Truncating too early omits remaining influence exerted by the question, while extending too far delegates decod-ing effort to minimally contributing tokens. We estimate K from a randomly drawn subset of the pool, as shown by Phase 1 of Algorithm 1: a γ-fraction C is drawn and scored to a cap Kmax , from which we form the pooled cumulative share 
+
+F (K) = 
+
+P 
+
+> x∈C
+
+PRCL K (x)
+
+P 
+
+> x∈C
+
+PRCL Kmax (x) ,
+
+ˆK = min {K : F (K) ≥ α},
+
+(4) so that ˆK is the shortest prefix at which the subset has accumulated a share α of its total score. The target share α is set manually. Phase 2 then scores the rest of the pool at ˆK only. 
+
+Selection. Finally, we rank the pool by the score and keep the B highest: 
+
+S = Top -B
+
+> x∈U
+
+PRCL ˆK (x). (5) The selected subset S is then used for GRPO training in place of the full pool. Selecting S re-quires only forward passes of πθ over prefixes of at most ˆK tokens (or Kmax tokens for prompts in 
+
+C), without rewards, ground truth, or fine-tuning. 
+
+4 Experiments 
+
+4.1 Setting Models and datasets. due to xx We train two models, Qwen2.5-Math-1.5B (Yang et al., 2024) and DeepSeek-R1-Distill-Qwen-1.5B (DeepSeek-AI, 2025), using subsets selected with budgets of 2% and 4% of the respective datasets. For Qwen2.5-Math-1.5B, we select 7 and 14 prompts from MATH-500 (Lightman et al., 2023) and 28 and 56 prompts from LIMR (Li et al., 2025), re-spectively. DeepSeek-R1-Distill-Qwen-1.5B is trained only on LIMR using the same budgets. 2
+
+MATH-500 is split into 350 training problems and 150 held-out evaluation problems. We evaluate the trained models on six mathematical reasoning benchmarks: MATH-500, AIME24 (Zhang and 
+
+> 2We exclude DeepSeek-R1-Distill-Qwen-1.5B from train-ing on MATH-500 because its initial accuracy on MATH-500 is already 83.1%, leaving limited headroom for comparing selection methods.
+
+Math-AI, 2024), AMC23 (Art of Problem Solv-ing, 2024), Gaokao (Zhang et al., 2023), Minerva Math (Lewkowycz et al., 2022), and Olympiad-Bench (He et al., 2024). For each model, prompt selection is performed by the same model used to initialize RL training, relying exclusively on prob-lem text without access to answers or rewards. All runs use two NVIDIA GH200 96 GB GPUs, and a single seed takes from 1.0 hour for Qwen2.5-Math-1.5B on the MATH training split to 13 .5
+
+hours for DeepSeek-R1-Distill on LIMR. 
+
+Training and evaluation. Each model is trained on selected subsets with GRPO (Shao et al., 2024) in verl (Sheng et al., 2025), with identical hyper-parameters for every selection method: learning rate 2 × 10 −6, eight rollouts per prompt at tem-perature 0.7, and a low-variance KL loss with co-efficient 10 −3. Qwen2.5-Math-1.5B uses a 4,096-token context (at most 1,408 prompt and 2,688 response tokens), and DeepSeek-R1-Distill uses a 12,288-token response budget, matching the train-ing length for each model. We train for 270 steps and evaluate the final checkpoint with accuracy av-eraged over four samples per problem (avg@4) at temperature 0.6 and top-p 0.95, graded with Math-Ruler (hiyouga, 2025). We report the mean and standard deviation over four training seeds. 
+
+Comparison methods. We evaluate performance relative to a variety of baselines and alternative ap-proaches. Random draws a subset uniformly from the dataset, each trained with four seeds. PRCL 
+
+scores each prompt by PRCL ˆK over a prefix of its greedy rollout and keeps the top B prompts, with 
+
+ˆK estimated from a random 10% of the dataset at a target share α. We set α = 0 .90 for Qwen2.5-Math-1.5B and α = 0 .95 for DeepSeek-R1-Distill; 
+
+SHIFT (Wu et al., 2026) ranks prompts by the hidden-state shift of a single greedy rollout and selects with quality-weighted farthest-first cover-age. While SHIFT reads the hidden state at the final token of the rollout (its anchor), SHIFT-ES 
+
+reads it at the last non-repeated token and stops decoding at the first repetition. The signal and the selection rule are otherwise unchanged, thus iso-lating the anchor. Full data trains on the entire dataset for the same number of steps. We compare all subsets under the same training setting. And finally, GRESO (Zheng et al., 2025) filters during training instead. It predicts from each prompt’s reward history which groups will be zero-variance, and accordingly skips their rollouts. 4Training dataset Evaluation benchmarks 
+
+Dataset Budget Method Math500 AIME24 AMC Gaokao Miner. Olymp. Avg. # Sel. Tok. 
+
+Qwen2.5-Math-1.5B 
+
+Base model 33.5 10.8 29.4 18.0 6.2 21.3 19.9 –MATH 
+
+350 train 
+
+2% (7) Random 64.0 ±1.2 10.9 ±1.8 47.4 ±2.3 51.9 ±1.1 17.3 ±1.1 28.8 ±0.6 36.7 ±0.6 -SHIFT 63.9 ±2.6 8.8 ±4.2 48.8 ±2.4 53.3 ±0.7 19.0 ±0.9 28.9 ±0.7 37.1 ±0.9 0.49M SHIFT-ES 65.7 ±0.9 6.9 ±2.1 42.3 ±1.7 55.4 ±1.6 20.3 ±0.9 28.2 ±0.7 36.5 ±0.6 0.24M LIFT (ours) 63.8 ±0.9 7.7 ±2.7 46.2 ±1.8 53.1 ±0.4 17.4 ±1.1 27.6 ±0.7 36.0 ±1.0 0.13M 4% (14) Random 65.7 ±1.3 11.5 ±2.7 49.8 ±1.3 53.1 ±1.2 18.4 ±0.9 29.5 ±0.7 38.0 ±0.8 -SHIFT 67.5 ±2.3 9.4 ±2.4 47.5 ±3.9 55.3 ±3.2 20.4 ±2.3 30.5 ±2.1 38.4 ±2.1 0.49M SHIFT-ES 67.7 ±2.6 8.8 ±3.7 45.2 ±0.9 56.7 ±2.1 21.1 ±1.3 30.5 ±1.0 38.3 ±0.6 0.24M LIFT (ours) 69.1 ±3.3 10.0 ±1.7 44.8 ±1.4 56.6 ±3.0 18.9 ±2.0 30.6 ±1.6 38.4 ±1.8 0.13M 100% Full data 69.0 ±0.5 10.6 ±3.6 50.2 ±2.6 55.4 ±1.5 19.7 ±0.8 31.6 ±0.9 39.4 ±0.5 –GRESO 71.2 ±1.0 12.1 ±2.4 48.3 ±1.6 57.3 ±2.1 20.3 ±1.0 31.7 ±0.6 40.1 ±0.6 –LIMR 
+
+1,389 
+
+2% (28) Random 67.6 ±1.5 13.2 ±2.9 48.3 ±2.9 55.6 ±1.5 20.4 ±0.9 29.9 ±1.0 39.2 ±0.9 -SHIFT 69.2 ±0.1 11.9 ±2.2 50.0 ±2.2 55.5 ±0.6 21.4 ±0.8 31.7 ±0.4 39.9 ±0.5 1.71M SHIFT-ES 68.5 ±0.5 10.8 ±0.8 50.0 ±2.9 55.0 ±0.3 21.0 ±1.0 30.5 ±0.2 39.3 ±0.4 1.00M LIFT (ours) 69.2 ±0.6 13.8 ±1.4 49.4 ±1.5 54.2 ±0.6 22.6 ±0.8 31.4 ±0.4 40.1 ±0.3 0.51M 4% (56) Random 66.9 ±0.8 14.3 ±2.0 50.1 ±1.0 54.2 ±1.3 20.1 ±0.9 30.2 ±0.4 39.3 ±0.3 -SHIFT 69.0 ±0.9 11.9 ±1.8 46.9 ±1.5 54.8 ±0.8 21.9 ±0.9 31.2 ±0.6 39.3 ±0.7 1.71M SHIFT-ES 68.8 ±0.5 12.7 ±2.8 49.8 ±2.2 54.7 ±0.1 22.2 ±0.6 31.7 ±0.5 40.0 ±0.5 1.00M LIFT (ours) 69.9 ±1.1 12.1 ±2.1 51.9 ±3.1 56.1 ±1.0 22.0 ±0.2 32.0 ±0.5 40.6 ±0.7 0.51M 100% Full data 69.3 ±0.5 14.0 ±2.0 48.9 ±2.6 55.2 ±0.5 21.3 ±1.0 31.8 ±0.8 40.1 ±0.4 –GRESO 70.0 ±1.0 14.6 ±2.6 52.3 ±0.6 56.2 ±0.2 22.0 ±0.4 32.2 ±0.2 41.2 ±0.6 –
+
+DeepSeek-R1-Distill-Qwen-1.5B 
+
+Base model 83.1 26.7 66.9 73.0 27.8 44.3 53.6 –LIMR 
+
+1,389 
+
+2% (28) Random 84.7 ±0.7 31.9 ±4.7 73.0 ±1.4 75.1 ±0.3 28.9 ±0.4 47.1 ±0.2 56.8 ±1.0 -SHIFT 84.6 ±0.5 30.4 ±3.1 75.0 ±3.8 75.3 ±0.6 29.3 ±0.6 46.8 ±0.7 56.9 ±0.6 10.05M SHIFT-ES 85.5 ±0.4 31.9 ±2.9 75.2 ±1.4 76.4 ±0.1 30.1 ±0.6 49.3 ±0.6 58.1 ±0.4 6.79M LIFT (ours) 84.2 ±0.1 31.9 ±4.2 74.1 ±1.2 75.6 ±0.6 29.5 ±0.8 46.6 ±0.6 57.0 ±1.0 1.10M 4% (56) Random 84.6 ±0.6 30.4 ±2.2 73.4 ±1.9 75.8 ±0.8 29.2 ±1.2 47.2 ±0.7 56.8 ±0.9 -SHIFT 84.4 ±0.4 30.2 ±2.6 74.5 ±2.4 75.7 ±1.0 29.8 ±1.1 47.9 ±0.3 57.1 ±0.7 10.05M SHIFT-ES 83.8 ±1.0 31.4 ±2.7 75.0 ±1.1 74.5 ±1.2 29.1 ±0.4 48.4 ±1.1 57.0 ±0.7 6.79M LIFT (ours) 84.7 ±0.4 32.5 ±2.4 74.8 ±0.6 75.5 ±0.2 29.0 ±0.9 47.3 ±0.5 57.3 ±0.5 1.10M 100% Full data 83.9 ±0.6 30.0 ±4.4 74.1 ±2.9 75.1 ±0.4 29.6 ±0.8 47.1 ±0.9 56.6 ±0.8 –GRESO 84.2 ±1.2 28.3 ±7.1 76.9 ±2.7 75.7 ±1.2 29.9 ±1.5 47.9 ±2.0 57.2 ±1.7 –
+
+Table 1: Accuracy (%) on math reasoning benchmarks. The left three columns identify the training dataset, budget, and selection method; the remaining columns are evaluation benchmarks, their average, and the number of tokens generated for selection (# Sel. Tok.). 
+
+4.2 Results 
+
+As an example, Figure 3 traces held-out accuracy through training at the 4% budget on MATH. The results yield several key findings, elaborated as follows. 
+
+Scoring model Dataset 2% 4% Qwen2.5-Math MATH-500 2 / 7 5 / 14 LIMR 13 / 28 30 / 56 R1-Distill LIMR 3 / 28 5 / 56 
+
+Table 2: Prompts common to SHIFT and SHIFT-ES selections. 
+
+Repetition has limited impact on SHIFT’s se-lection quality. We shows the Moving SHIFT’s end anchor before repeated spans substantially changes the selected prompts, as shown in Table 2, with Qwen2.5-Math retaining 29–54% overlap and DeepSeek-R1-Distill only 5–11%. Despite these changes, downstream accuracy remains similar. Across six settings, SHIFT-ES improves the av-erage by only 0.1 points over SHIFT, within seed standard deviations of 0.4–2.1. Meanwhile, scoring LIMR with DeepSeek-R1-Distill requires 10.05M generated tokens, 61% spent on non-terminating rollouts, highlighting the decoding cost of full roll-outs. 550 100 150 200 250 
+
+> training step
+> 57.5 60.0 62.5 65.0 67.5 70.0 72.5 75.0 77.5
+> greedy pass@1 (%)
+> Random SHIFT SHIFT-ES LIFT Full data
+
+Figure 3: Held-out accuracy during training for Qwen2.5-Math-1.5B under 4% training setting, eval-uated every 10 steps. 
+
+LIFT is competitive across models and datasets while saving scoring cost. LIFT has the highest six-benchmark average in three of the six settings, all of them on LIMR. Qwen2.5-Math reaches 40 .1
+
+at the 2% budget and 40 .6 at 4%, against 39 .9 and 
+
+40 .0 for the best baseline in each, and R1-Distill reaches 57 .3 at 4% against 57 .1. In the remaining three settings LIFT is second at the R1-Distill 2% budget with 57 .0 behind SHIFT-ES at 58 .1, level with SHIFT at MATH-500 4% at 38 .4, and last at MATH-500 2% with 36 .0 against 37 .1. That last setting selects seven prompts in total, which hints that LIFT may need a budget of more than a few prompts to be effective. Against training on all of the data, LIFT-selected subsets lose no accuracy on LIMR. Qwen2.5-Math achieves accuracies of 40 .1 and 40 .6 with 2% and 4% of the 1,389 prompts, against 40 .1 for the full dataset, and R1-Distill achieves accuracies of 57 .0
+
+and 57 .3 compared to 56 .6. On the 350-problem MATH-500 training set, performance is observed to be 36 .0 and 38 .4 accuracy compared to 39 .4. LIFT scoring costs 0.13 M generated tokens on MATH-500 and 0.51 M and 1.10 M on LIMR, each includ-ing the Phase 1 estimation pass over a random 10% 
+
+of the dataset, compared to 0.49 M, 1.71 M, and 
+
+10 .05 M for SHIFT. LIFT therefore generates 3.3
+
+to 9.1× fewer tokens than SHIFT and 1.9 to 6.2×
+
+fewer than SHIFT-ES. 
+
+An online rollout selection baseline. GRESO filters during training rather than selecting data, training on all 350 or 1,389 prompts and skipping rollouts for groups it predicts will be zero-variance. It achieves accuracies of 40 .1 and 41 .2 on the two Qwen2.5-Math settings, relative to 39 .4 and 40 .1
+
+for full dataset training. It achieves an accuracy of 57 .2 on R1, compared to 56 .6 for full dataset training. We include it as a compatible reference point from the other family of methods rather than as a competing selector. 
+
+5 Additional Studies 
+
+5.1 PRCL Distribution 
+
+To understand why a prefix of the rollout can be sufficient for impactful prompt selection, we ana-lyze the distribution of PRCL across models and datasets to see how it changes as the rollout length grows. We decode one full greedy rollout per prompt for all four model and dataset combinations, obtain the per-token log-ratio st(x) of Eq. (3), and average it by position. Our findings are summa-rized in Figure 4. 0.00 0.25 0.50 0.75 1.00 1.25 mean per-token PRCL,  st      
+
+> 90% of PRCL by 26% 95% of PRCL by 5%
+> LIMR, 1,389 problems
+> 020 40 60 80 100 position in the rollout (% of its own tokens) 0.0 0.5 1.0 mean per-token PRCL,  st
+> 90% of PRCL by 20% 95% of PRCL by 6%
+> MATH-500 train, 350 problems
+> Qwen2.5-Math-1.5B ( α=0.90) R1-Distill-Qwen-1.5B ( α=0.95)
+
+Figure 4: Prompt influence by position along greedy rollouts, shown as mean per-token st in 1% bins of each rollout’s own length, with every rollout weighted equally, on LIMR (top) and the MATH-500 training set (bottom). 
+
+Score distribution. PRCL rises steeply over the opening tokens and then flattens. The median roll-out reaches its target share within roughly the first quarter of the answer for Qwen2.5-Math, at 25.9% on LIMR and 20.3% on MATH-500, and within the first few percentage points for R1-Distill, at 5.1% and 6.3%. Beyond those points the curve is almost 6flat, so most of the selection signal lies in an early prefix, therefore enabling prefix-based scoring. 
+
+Effect of repetition. The flat tail consists largely of repeated tokens. About a fifth of greedy rollouts end in a verbatim loop (21.3% for Qwen and 22.5% for R1-Distill), and those loops account for 41.8% and 32.4% of all generated tokens while conveying very little of the score. Qwen’s mean |st| falls from 0.0998 before loop onset to 0.0012 after, since inside a loop both contexts predict each repeated token from the rollout itself. Conditioning on the problem has almost no effect. 
+
+Model dependence. The two panels of Figure 4 (i.e., the two datasets) differ far less than the two curves within each panel (i.e., the two models). Qwen2.5-Math reaches its target share at 25.9% and 20.3% of the answer, compared to R1-Distill’s 5.1% and 6.3%, and 55.5% and 50.4% of its to-kens carry st > 0, compared to 25.8% and 25.6%. In both cases, the gap between the models is sev-eral times the gap between the two datasets of one model. The tightness of the signal concentration therefore depends on the model’s generation behav-ior rather than on the problems it is given, motivat-ing the prefix length estimation per model that we analyze in Section 5.3. 
+
+5.2 Characteristics of Selected Subsets 
+
+Different prefix lengths can change the PRCL scores and thus the relative ranking of prompts; This may lead to different selected subsets. To ana-lyze this effect, we vary α to obtain different prefix lengths across all 1,389 LIMR prompts and mea-sure the overlap between the resulting top-B sub-sets and the subset selected using full trajectories. To characterize the subsets selected by different methods, we compare the solve rate p(x) of their selected subset, as solve rate is considered an im-portant learning signal in GRPO (Bae et al., 2026a; Shao et al., 2024). 
+
+PRCL ranking robustness. Table 3 sweeps the target share α and reports how many prompts in the full-trajectory selection remain selected at the pre-fix length each value yields. The sweep changes ˆK
+
+by a factor of four to five but changes the selection far less. The 2% set on MATH-500 is already the full-trajectory set from α = 0 .90 , and on LIMR its overlap grows by 13 prompts for Qwen2.5-Math and 7 for R1-Distill over the whole range. R1-Distill agrees least at every α, as Section 5.1 pre-                                                  
+
+> Target Share α
+> Model / Dataset .85 .90 .95 .99 Qwen / MATH-500
+> ˆK160 260 418 752
+> ∩76777
+> ∩14 10 12 12 12 Qwen / LIMR
+> ˆK208 340 520 952
+> ∩28 13 18 21 26
+> ∩56 29 36 43 52 R1 / LIMR
+> ˆK120 173 299 552
+> ∩28 10 11 14 17
+> ∩56 23 23 30 36
+> Table 3: Target share versus selected set. ˆK: the prefix length in tokens at which the whole dataset has accumu-lated a share αof its PRCL. ∩B: prompts shared by the top-Bset at ˆKand the top-Bset of the full rollout, at the 2% and 4% budgets.
+
+dicts, since its order keeps shifting through the long reasoning that follows the early mass. 
+
+Subset characteristics. To characterize the se-lection of each method, we estimate every LIMR prompt’s solve rate p(x) (Zhou et al., 2024), de-fined as the fraction of correctly answered rollouts among 16 samples at temperature 0.7. GRPO pro-duces a gradient on x only when a group of roll-outs contains both correct and incorrect answers, so prompts with p(x) ∈ { 0, 1} produce no signal in expectation. Since solve rates are unavailable to training-free selectors, we use them post hoc to characterize the selected subsets in terms of prompt difficulty.                                                      
+
+> 2% (28) 4% (56) Model Method ¯pp=0 p≤.25 ¯pp=0 p≤.25
+> Qwen Random .324 414 .275 12 31 SHIFT .174 524 .206 842 PRCL .114 923 .142 16 45 R1 Random .442 713 .472 15 23 SHIFT .163 18 22 .081 46 50 PRCL .234 16 19 .277 26 36
+> Table 4: Solve rate of the selected LIMR subsets, each scored by the model that selects and trains on it: subset mean ¯pand the number of prompts with p= 0 and with
+> p≤0.25 .pis estimated from 16 sampled rollouts per prompt at temperature 0.7 for both models.
+
+As shown in Table 4 selectors move toward dif-ficult prompts, even though by different margins for the two models. For Qwen2.5-Math, PRCL is the more concentrated, with a subset mean of 
+
+¯p = 0 .11 at the 2% budget against 0.17 for SHIFT 70 20 40 60 80 100 position in the rollout (%) 0.0 0.2 0.4 0.6 0.8 1.0 share of rollouts past their own target point           
+
+> 10% subset, 139 prompts
+> 020 40 60 80 100 position in the rollout (%)
+> 15% subset, 208 prompts
+> 020 40 60 80 100 position in the rollout (%)
+> 20% subset, 278 prompts
+> Qwen2.5-Math-1.5B R1-Distill-Qwen-1.5B
+
+Figure 5: Random subset recovery of the whole dataset’s distribution, at three subset sizes. Each panel plots the share of LIMR rollouts that have collected their target share α of their own PRCL by a given position. The line is the whole 1,389-prompt dataset, and the band spans ten independent random draws. 
+
+and 0.33 for the dataset, and 23 of its 28 prompts at p ≤ 0.25 . For R1-Distill the ordering reverses: SHIFT reaches ¯p = 0 .16 at 2% and 0.08 at 4%, where 46 of its 56 prompts are never solved, against 0.23 and 0.28 for PRCL. Both therefore retain many prompts the policy never solves, which contribute no gradient until it solves them at least once. 
+
+5.3 Random Subset Ratio for Prefix-Length Estimation 
+
+Since estimating the prefix length from a random subset introduces sampling variability, we investi-gate how the subset size affects the reliability of the estimate. Specifically, we estimate the full-dataset PRCL distribution using 10%, 15%, and 20% of the data, and compare each estimate with the full-dataset distribution and the corresponding prefix length it yields.                  
+
+> Qwen2.5-Math R1-Distill
+> αmed. range med. range
+> 0.80 128 112–208 96 64–144
+> 0.90 336 224–496 176 96–448
+> 0.95 528 416–736 288 128–832
+
+Table 5: Estimated prefix length ˆK in tokens at three target shares, on greedy LIMR rollouts: the median and the full minimum to maximum range over 300 random 10% subsets. 
+
+Estimation error. Table 5 reports ˆK in tokens over 300 random γ = 0 .1 draws, 139 prompts each. At the model-specific settings, Qwen2.5-Math with α = 0 .90 yields a token-length range of 224–496, with a median of 336, while R1-Distill with α = 0 .95 yields a range of 128–832, with a median of 288. The upper bounds are influenced by only a few random draws, making the median a more representative reference. As shown in Figure 5, the largest gap between a subset curve and the whole dataset curve falls from 0.096 to 0.055 for Qwen as γ goes from 0.1 to 0.2, and from 0.119 to 0.066 for R1-Distill. Estimation error improves with the larger size of the random subset. The 350-problem MATH-500 training set is a harder basis for estimation, since 10% of it is 35 prompts. The Qwen spread widens to 16.8–35.4%, and the worst gap widens to 0.19. 
+
+6 Conclusion 
+
+We investigated whether training-free prompt selec-tion for RLVR requires decoding complete greedy rollouts and found that short prefixes can provide sufficient information for effective selection. We introduce LIFT, a training-free RLVR data selector that estimates prompt value from partial reasoning rollouts using a token-level information score. The core of LIFT is the Partial Rollout Context Lift (PRCL), which measures how the question context changes the log-likelihood of the opening tokens of the model’s own greedy rollout relative to a null context with the question removed. PRCL’s cumulative score allows multiple prefix lengths to be evaluated from a single decode. More-over, the prefix length can be estimated using a ran-dom 10% of the candidate pool rather than fixed in advance. By using partial rollouts, PRCL reduces dataset-level scoring cost by 3.7–9.1× relative to SHIFT. Across six benchmark and budget settings, it achieves the highest average downstream per-formance in three settings while remaining com-petitive with full trajectory selection and full pool 8training. 
+
+7 Limitations 
+
+Choosing the prefix length. Our prefix-length rule identifies the point at which a random γ-fraction of the dataset has accumulated a target share α of its score. Although this replaces an ab-solute token-count heuristic with a score-based cri-terion, the target share α remains model-dependent and must be calibrated for each model. We set 
+
+α = 0 .90 for Qwen2.5-Math and α = 0 .95 for DeepSeek-R1-Distill based on their score accumu-lation curves. The estimate is also sensitive to the sampled subset: at γ = 0 .1, ˆK ranges from 224 to 496 tokens for Qwen2.5-Math and from 128 to 832 for DeepSeek-R1-Distill. Although the median matches the whole-dataset estimate, increasing γ is needed to reduce variability, leaving a more robust, model-agnostic prefix-length estimation for future work. 
+
+Scope of the evaluation. We evaluate two 1.5B models on two mathematics datasets at selection budgets of 2% and 4%. The smallest setting se-lects seven prompts, where the differences between methods fall within the spread across training seeds. Whether the early concentration of PRCL holds at larger model scales, on other reasoning domains, or at larger budgets remains untested. 
+
+References 
+
+Art of Problem Solving. 2024. Amc problems and solutions. https://artofproblemsolving.com/ wiki/index.php?title=AMC_Problems_and_ Solutions . Accessed: 2025-04-20. Sanghwan Bae, Jiwoo Hong, Min Young Lee, Hanbyul Kim, Jeongyeon Nam, and Donghyun Kwak. 2026a. Online difficulty filtering for reasoning oriented re-inforcement learning. In Proceedings of the 19th Conference of the European Chapter of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 700–719, Rabat, Morocco. Associa-tion for Computational Linguistics. Sanghwan Bae, Jiwoo Hong, Min Young Lee, Hanbyul Kim, Jeongyeon Nam, and Donghyun Kwak. 2026b. Online difficulty filtering for reasoning oriented re-inforcement learning. In Proceedings of the 19th Conference of the European Chapter of the Associa-tion for Computational Linguistics (Volume 1: Long Papers) , pages 700–719, Rabat, Morocco. Associa-tion for Computational Linguistics. DeepSeek-AI. 2025. Deepseek-r1: Incentivizing rea-soning capability in llms via reinforcement learning. 
+
+Preprint , arXiv:2501.12948. Kawin Ethayarajh, Yejin Choi, and Swabha Swayamdipta. 2022. Understanding dataset difficulty with V-usable information. In Proceedings of the 39th International Conference on Machine Learning , volume 162 of Proceedings of Machine Learning Research , pages 5988–6008. PMLR. Chaoqun He, Renjie Luo, Yuzhuo Bai, Shengding Hu, Zhen Leng Thai, Junhao Shen, Jinyi Hu, Xu Han, Yujie Huang, Yuxiang Zhang, and 1 oth-ers. 2024. Olympiadbench: A challenging bench-mark for promoting agi with olympiad-level bilin-gual multimodal scientific problems. arXiv preprint arXiv:2402.14008 .hiyouga. 2025. Mathruler. https://github.com/ hiyouga/MathRuler .Woojeong Kim, Ziyi Yang, Jing Nathan Yan, and Jialu Liu. 2026. Spend your rollouts where it counts: Rollout allocation for group-based rl post-training. 
+
+Preprint , arXiv:2605.26606. Nathan Lambert, Jacob Morrison, Valentina Pyatkin, Shengyi Huang, Hamish Ivison, Faeze Brahman, Lester James V. Miranda, Alisa Liu, Nouha Dziri, Shane Lyu, Yuling Gu, Saumya Malik, Victoria Graf, Jena D. Hwang, Jiangjiang Yang, Ronan Le Bras, Oyvind Tafjord, Chris Wilhelm, Luca Sol-daini, and 4 others. 2025. Tulu 3: Pushing fron-tiers in open language model post-training. Preprint ,arXiv:2411.15124. Aitor Lewkowycz, Anders Andreassen, David Dohan, Ethan Dyer, Henryk Michalewski, Vinay Ramasesh, Ambrose Slone, Cem Anil, Imanol Schlag, Theo Gutman-Solo, Yuhuai Wu, Behnam Neyshabur, Guy Gur-Ari, and Vedant Misra. 2022. Solving quantita-tive reasoning problems with language models. In 
+
+Advances in Neural Information Processing Systems ,volume 35, pages 3843–3857. Curran Associates, Inc. Bo Li, Mingda Wang, Shikun Zhang, and Wei Ye. 2026a. Instruction data selection via answer divergence. In 
+
+Proceedings of the 64th Annual Meeting of the As-sociation for Computational Linguistics (Volume 1: Long Papers) , pages 4684–4702, San Diego, Cali-fornia, United States. Association for Computational Linguistics. Shipeng Li, Zhiqin Yang, Shikun Li, Xiaobo Xia, Hengyu Liu, Xinghua Zhang, Gaode Chen, Dong Fang, Ying Tai, and Zhe Peng. 2026b. LearnAlign: Data selection for LLM reinforcement learning with improved gradient alignment. In Findings of the As-sociation for Computational Linguistics: ACL 2026 ,pages 40417–40434, San Diego, California, United States. Association for Computational Linguistics. Xuefeng Li, Haoyang Zou, and Pengfei Liu. 2025. Limr: Less is more for rl scaling. https://github.com/ GAIR-NLP/LIMR .Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri Edwards, Bowen Baker, Teddy Lee, Jan Leike, 
+
+9John Schulman, Ilya Sutskever, and Karl Cobbe. 2023. Let’s verify step by step. arXiv preprint arXiv:2305.20050 .Max Marion, Ahmet Üstün, Luiza Pozzobon, Alex Wang, Marzieh Fadaee, and Sara Hooker. 2023. When less is more: Investigating data pruning for pre-training llms at scale. Preprint , arXiv:2309.04564. Niklas Muennighoff, Zitong Yang, Weijia Shi, Xi-ang Lisa Li, Li Fei-Fei, Hannaneh Hajishirzi, Luke Zettlemoyer, Percy Liang, Emmanuel Candès, and Tatsunori Hashimoto. 2025. s1: Simple test-time scaling. Preprint , arXiv:2501.19393. Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul F Christiano, Jan Leike, and Ryan Lowe. 2022. Training language models to follow instructions with human feedback. In Advances in Neural Information Processing Systems , volume 35, pages 27730–27744. Curran Associates, Inc. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Prox-imal policy optimization algorithms. Preprint ,arXiv:1707.06347. Ozan Sener and Silvio Savarese. 2018. Active learn-ing for convolutional neural networks: A core-set approach. In International Conference on Learning Representations .Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024. Deepseekmath: Pushing the limits of mathemati-cal reasoning in open language models. Preprint ,arXiv:2402.03300. Guangming Sheng, Chi Zhang, Zilingfeng Ye, Xibin Wu, Wang Zhang, Ru Zhang, Yanghua Peng, Haibin Lin, and Chuan Wu. 2025. Hybridflow: A flexible and efficient rlhf framework. In Proceedings of the Twentieth European Conference on Computer Sys-tems , EuroSys ’25, page 1279–1297, New York, NY, USA. Association for Computing Machinery. Yifan Sun, Jingyan Shen, Yibin Wang, Tianyu Chen, Zhendong Wang, Mingyuan Zhou, and Huan Zhang. 2025a. Improving data efficiency for LLM reinforce-ment fine-tuning through difficulty-targeted online data selection and rollout replay. In The Thirty-ninth Annual Conference on Neural Information Process-ing Systems .Yifan Sun, Jingyan Shen, Yibin Wang, Tianyu Chen, Zhendong Wang, Mingyuan Zhou, and Huan Zhang. 2025b. Improving data efficiency for LLM reinforce-ment fine-tuning through difficulty-targeted online data selection and rollout replay. In The Thirty-ninth Annual Conference on Neural Information Process-ing Systems .Yiping Wang, Qing Yang, Zhiyuan Zeng, Liliang Ren, Lucas Liu, Baolin Peng, Hao Cheng, Xuehai He, Kuan Wang, Jianfeng Gao, Weizhu Chen, Shuohang Wang, Simon Shaolei Du, and Yelong Shen. 2025. Reinforcement learning for reasoning in large lan-guage models with one training example. arXiv preprint arXiv:2504.20571 .Jianghao Wu, Jianfei Cai, Weiqiang Wang, Jin Ye, Daniel F. Schmidt, and Yasmeen George. 2026. Single-rollout hidden-state dynamics for training-free RLVR data selection. In Forty-third International Conference on Machine Learning .Mengzhou Xia, Sadhika Malladi, Suchin Gururangan, Sanjeev Arora, and Danqi Chen. 2024. LESS: Se-lecting influential data for targeted instruction tuning. In International Conference on Machine Learning (ICML) .An Yang, Baosong Yang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Zhou, Chengpeng Li, Chengyuan Li, Dayiheng Liu, Fei Huang, and 1 others. 2024. Qwen2 technical report. arXiv preprint arXiv:2407.10671 .Ningyuan Yang, Weihua Du, Weiwei Sun, Sean Welleck, and Yiming Yang. 2026. Gradalign: Gradient-aligned data selection for LLM reinforcement learn-ing. In Third Conference on Language Modeling .Yixin Ye, Zhen Huang, Yang Xiao, Ethan Chern, Shijie Xia, and Pengfei Liu. 2025. LIMO: Less is more for reasoning. In Second Conference on Language Modeling .Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xi-aochen Zuo, YuYue, Weinan Dai, Tiantian Fan, Gao-hong Liu, Juncai Liu, LingJun Liu, Xin Liu, Haibin Lin, Zhiqi Lin, Bole Ma, Guangming Sheng, Yuxuan Tong, Chi Zhang, Mofan Zhang, and 17 others. 2025. DAPO: An open-source LLM reinforcement learning system at scale. In The Thirty-ninth Annual Confer-ence on Neural Information Processing Systems .Xiaotian Zhang, Chunyang Li, Yi Zong, Zhengyu Ying, Liang He, and Xipeng Qiu. 2023. Evaluating the performance of large language models on gaokao benchmark. Yifan Zhang and Team Math-AI. 2024. American invi-tational mathematics examination (aime) 2024. Haizhong Zheng, Yang Zhou, Brian R. Bartoldson, Bhavya Kailkhura, Fan Lai, Jiawei Zhao, and Beidi Chen. 2025. Act only when it pays: Efficient rein-forcement learning for llm reasoning via selective rollouts. Preprint , arXiv:2506.02177. Chunting Zhou, Pengfei Liu, Puxin Xu, Srinivasan Iyer, Jiao Sun, Yuning Mao, Xuezhe Ma, Avia Efrat, Ping Yu, LILI YU, Susan Zhang, Gargi Ghosh, Mike Lewis, Luke Zettlemoyer, and Omer Levy. 2023. Lima: Less is more for alignment. In Advances in Neural Information Processing Systems , volume 36, pages 55006–55021. Curran Associates, Inc. 
+
+10 Yue Zhou, Yada Zhu, Diego Antognini, Yoon Kim, and Yang Zhang. 2024. Paraphrase and solve: Explor-ing and exploiting the impact of surface form on mathematical reasoning in large language models. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computa-tional Linguistics: Human Language Technologies (Volume 1: Long Papers) , pages 2793–2804, Mexico City, Mexico. Association for Computational Lin-guistics. 
+
+A Per-Seed Results Under Greedy Decoding 
+
+Table 1 reports accuracy under sampled decoding, four samples per problem at temperature 0.6 and top-p 0.95 . Table 6 repeats it under greedy decod-ing, one sample per problem at temperature 0 and top-p 1, for the same checkpoints and the same training seeds, with the same layout. For Qwen2.5-Math the two decoding rules agree closely: every greedy average lies within 1.7 points of its sampled counterpart, and LIFT has the high-est greedy average in three of the four Qwen blocks. For DeepSeek-R1-Distill they diverge sharply, by 
+
+12 to 18 points, and the seed spread grows from 
+
+0.4–1.0 under sampling to 2.7–9.6 under greedy decoding. Greedy decoding drives this model into the non-terminating repetitions analysed in Sec-tion 5.1, so a single greedy sample is a poor mea-sure of its quality, which is why Table 1 reports sampled accuracy for both models. 
+
+B Prompt Templates 
+
+Every prompt is built through the tokenizer’s chat template, so the conditional context T (x) and the null context T (∅) of Eq. (3) differ only in the prob-lem text. The same template is used for selection, for RL training and for evaluation of a given model, so the scored policy and the trained policy see iden-tical inputs. Table 7 gives both templates and both null contexts. 
+
+Evaluation. Benchmark problems are substituted into the same template as the model’s own training prompt. Table 1 uses four samples per problem at temperature 0.6 and top-p 0.95 , with a generation cap of 2,688 tokens for Qwen2.5-Math and 32 ,768 
+
+for DeepSeek-R1-Distill. Answers are extracted from the final \boxed{} expression and checked for mathematical equivalence against the reference. 
+
+C What LIFT Responds To 
+
+Two selected prompts. Table 8 shows two prompts from LIFT’s 2% LIMR selection, one per model, both near the top of their selection by 
+
+PRCL ˆK and of almost the same length. They differ in difficulty: the Qwen2.5-Math pick is solved by none of 16 sampled rollouts, while the R1-Distill pick is solved in 7 of 16, close to that model’s dataset mean. Both are long, multi-step and narratively framed, and both score near the top of their selection. Only the first is difficult. Averaged over the whole selec-tion, LIFT picks prompts of 185 tokens against a dataset mean of 136 for Qwen2.5-Math, 262 
+
+against 99 for R1-Distill, and 362 against 131 on the MATH training split. 
+
+Length or informativeness. The two examples raise the question of whether PRCL measures how informative a prompt is or simply how long it is, since a longer question is a larger context to remove. The two are separable, and they separate differently for the two models. For Qwen2.5-Math the rank correlation between PRCL ˆK and prompt length is 0.41 , and the association between the score and difficulty survives when length is regressed out, falling only from −0.22 to −0.18 . For R1-Distill the correlation with length is 0.77 and the associa-tion with difficulty does not survive, with a residual rank correlation of +0 .01 . On that model the diffi-culty of the selected subsets is therefore attributable to prompt length rather than to additional signal in the score, which is consistent with Section 5.2, where SHIFT selects markedly harder prompts than LIFT for R1-Distill while the ordering reverses for Qwen2.5-Math. 11 Training dataset Evaluation benchmarks 
+
+Dataset Budget Method Math500 AIME24 AMC Gaokao Miner. Olymp. Avg. 
+
+Qwen2.5-Math-1.5B 
+
+Base model 40.6 10.0 37.5 17.5 7.4 23.9 22.8 MATH 
+
+350 train 
+
+2% (7) Random 65.2 ±2.7 10.4 ±5.5 49.1 ±5.8 53.1 ±1.8 16.5 ±1.2 29.8 ±1.3 37.4 ±1.8
+
+SHIFT 64.7 ±2.1 6.7 ±7.2 46.9 ±6.9 55.2 ±2.6 17.9 ±1.3 28.7 ±1.5 36.7 ±1.0
+
+SHIFT-ES 67.7 ±1.4 5.8 ±1.7 45.6 ±5.5 57.2 ±0.9 19.5 ±1.2 27.9 ±0.9 37.3 ±0.7
+
+LIFT (ours) 64.0 ±3.7 8.3 ±1.9 41.9 ±4.7 55.0 ±1.6 17.4 ±1.5 29.7 ±1.4 36.1 ±0.6
+
+4% (14) Random 65.8 ±2.9 11.7 ±3.6 51.2 ±3.0 55.4 ±1.3 18.2 ±1.2 30.2 ±1.8 38.7 ±1.0
+
+SHIFT 68.7 ±3.7 10.8 ±4.2 47.5 ±7.4 57.2 ±2.7 19.2 ±3.0 30.6 ±1.0 39.0 ±0.7
+
+SHIFT-ES 70.5 ±3.4 5.8 ±5.7 48.1 ±5.2 58.9 ±2.1 19.2 ±2.0 30.2 ±1.9 38.8 ±0.6
+
+LIFT (ours) 71.3 ±4.5 12.5 ±3.2 47.5 ±4.6 58.6 ±3.1 19.1 ±1.9 31.3 ±1.7 40.1 ±2.0
+
+100% Full data 71.0 ±2.6 11.7 ±3.3 51.9 ±5.5 57.4 ±1.4 17.6 ±2.6 31.9 ±1.1 40.3 ±0.5
+
+GRESO 71.0 ±3.0 9.2 ±1.7 50.0 ±5.4 58.7 ±2.3 19.7 ±1.8 31.8 ±1.1 40.1 ±1.9
+
+LIMR 
+
+1,389 
+
+2% (28) Random 68.7 ±1.2 12.1 ±4.0 50.3 ±2.5 57.0 ±1.3 20.2 ±1.8 31.5 ±0.8 40.0 ±0.7
+
+SHIFT 70.0 ±0.7 10.8 ±3.2 55.0 ±6.1 56.1 ±0.9 18.4 ±1.6 32.5 ±1.4 40.5 ±1.9
+
+SHIFT-ES 69.5 ±0.4 10.0 ±5.8 54.2 ±3.8 55.7 ±0.8 19.9 ±0.4 30.5 ±0.3 40.0 ±0.5
+
+LIFT (ours) 69.9 ±1.0 12.5 ±5.7 54.4 ±4.3 56.8 ±1.0 20.5 ±2.6 31.8 ±0.1 41.0 ±1.5
+
+4% (56) Random 68.2 ±1.0 12.9 ±2.8 52.2 ±8.0 56.3 ±1.1 18.7 ±0.8 31.2 ±1.3 39.9 ±1.6
+
+SHIFT 71.0 ±0.7 10.8 ±6.3 54.4 ±6.9 56.5 ±0.3 20.1 ±1.2 31.5 ±0.4 40.7 ±1.6
+
+SHIFT-ES 70.9 ±0.8 13.3 ±2.7 51.2 ±4.3 56.7 ±0.6 18.9 ±1.5 31.8 ±0.5 40.5 ±1.0
+
+LIFT (ours) 70.0 ±1.6 16.7 ±2.7 56.2 ±5.2 57.3 ±1.2 20.4 ±0.8 32.0 ±0.3 42.1 ±0.9
+
+100% Full data 70.1 ±1.1 14.2 ±1.7 58.8 ±3.2 55.5 ±1.2 19.9 ±2.1 32.3 ±0.7 41.8 ±0.2
+
+GRESO 70.8 ±0.6 12.5 ±5.0 54.4 ±2.4 57.0 ±0.9 20.7 ±1.5 32.2 ±1.1 41.3 ±1.1
+
+DeepSeek-R1-Distill-Qwen-1.5B 
+
+Base model 67.2 13.3 47.5 58.0 17.6 28.5 38.7 LIMR 
+
+1,389 
+
+2% (28) Random 69.2 ±2.8 15.8 ±6.3 51.2 ±6.0 60.6 ±3.5 20.1 ±1.3 31.2 ±1.9 41.4 ±2.0
+
+SHIFT 71.5 ±3.5 18.3 ±7.9 56.9 ±5.5 61.8 ±5.0 21.5 ±3.1 32.6 ±4.7 43.8 ±3.7
+
+SHIFT-ES 73.5 ±3.6 20.0 ±8.8 55.8 ±11 .8 62.8 ±7.6 22.5 ±4.9 33.9 ±4.4 44.7 ±6.7
+
+LIFT (ours) 72.2 ±3.5 20.8 ±5.0 56.9 ±5.5 62.8 ±3.7 21.2 ±3.2 32.5 ±3.4 44.4 ±2.9
+
+4% (56) Random 73.3 ±4.7 21.0 ±1.6 56.4 ±5.9 62.3 ±4.9 21.0 ±3.6 33.8 ±3.7 44.6 ±3.6
+
+SHIFT 73.6 ±4.5 20.8 ±1.7 55.0 ±8.9 63.9 ±4.0 23.3 ±2.6 34.2 ±3.9 45.1 ±3.7
+
+SHIFT-ES 63.0 ±11 .4 17.8 ±6.9 55.8 ±18 .9 54.0 ±11 .0 16.7 ±4.8 28.6 ±8.0 39.3 ±9.6
+
+LIFT (ours) 69.9 ±1.7 20.0 ±4.7 45.6 ±9.4 59.9 ±3.2 18.9 ±1.5 31.7 ±2.1 41.0 ±2.7
+
+100% Full data 73.2 ±2.1 23.3 ±9.0 60.6 ±8.0 63.3 ±1.6 21.4 ±1.5 34.6 ±2.2 46.1 ±2.7
+
+GRESO 68.4 ±9.6 15.0 ±7.1 53.8 ±12 .4 59.0 ±7.4 21.3 ±1.0 31.8 ±6.0 41.6 ±7.2
+
+Table 6: Greedy pass@1 (%) for the checkpoints of Table 1: one sample per problem at temperature 0 and top-p 1,with a 2,688 token cap for Qwen2.5-Math and 12 ,288 for DeepSeek-R1-Distill. Rows, methods and training seeds match Table 1 exactly; the selection cost column is omitted because it does not depend on the decoding rule used at evaluation. Bold marks the best method within each budget block. 
+
+12 Prompt Templates 
+
+Qwen2.5-Math-1.5B, conditional context T (x).
+
+system: “You FIRST think about the reasoning process as an internal monologue and then provide the final answer. The reasoning process MUST BE enclosed within <think> </think> tags. The final answer MUST BE put in \boxed{}.” 
+
+user: “{problem}” 
+
+Qwen2.5-Math-1.5B, null context T (∅).
+
+system: the same message as above. 
+
+user: the turn is removed entirely, so the problem is the only difference from T (x).
+
+DeepSeek-R1-Distill-Qwen-1.5B, conditional context T (x).
+
+system: none, as the model’s release recommends. 
+
+user: “{problem} Please reason step by step, and put your final answer within \boxed{}.” 
+
+DeepSeek-R1-Distill-Qwen-1.5B, null context T (∅).
+
+system: none. 
+
+user: “Please reason step by step, and put your final answer within \boxed{}.” The instruction is kept and the problem removed, the analogue of dropping the user turn under the Qwen2.5-Math template. 
+
+Table 7: Prompt templates and null contexts for the two models. Benchmark problems are substituted into the same template as the model’s own training prompt. 
+
+Prompts Selected by LIFT at the 2% LIMR Budget 
+
+Qwen2.5-Math-1.5B, highest-scoring pick. PRCL ˆK = 208 .8, highest of the 28 selected; 207 prompt tokens; solve rate 0.00 against a dataset mean of 0.33 .
+
+“Dr. Jones lives in a country with a progressive tax system. That is, he does not pay any taxes on the first $20,000 in income he makes, he pays 5% taxes on the next $25,000, he pays 10% taxes on the next $35,000, he pays 15% on the next $50,000, and he pays 20% on every additional dollar onwards. If Dr. Jones pays $10,000 in taxes, then how much income does he make?” 
+
+DeepSeek-R1-Distill-Qwen-1.5B, second-highest pick. PRCL ˆK = 228 .7; 211 prompt tokens; solve rate 0.44 against a dataset mean of 0.47 .
+
+“Tina the tourist goes on a trip. She starts at the origin and drives north for 10 units. Then she turns east and as she is turning her camera flies out the window and lands exactly at (0 , 10) . She then drives 9 units east, turns and drives 8
+
+units north. She continues this pattern of turning and driving one unit less than after the previous turn, until stopping after driving 1 unit east. She reaches for her camera only to find it missing. She activates the GPS homing device on her camera and drives back to it in a straight line. What is the equation of this line?” 
+
+Table 8: Two prompts selected by LIFT, one per model, both near the top of their selection by PRCL ˆK and of almost the same length. Only the first is difficult for the model that selected it. 
+
+13

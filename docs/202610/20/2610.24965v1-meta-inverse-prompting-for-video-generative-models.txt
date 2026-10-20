@@ -1,0 +1,870 @@
+Title: Meta Inverse Prompting for Video Generative Models
+
+URL Source: https://arxiv.org/pdf/2610.24965v1
+
+Published Time: Tue, 20 Oct 2026 01:15:48 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# Meta Inverse Prompting for Video Generative Models 
+
+Yerin Jung Jongheon Jeong 
+
+Korea University 
+
+{yerinj,jonghj}@korea.ac.kr 
+
+## Abstract 
+
+Recent advances in video generative models have enabled flexible conditional gen-eration and editing pipelines, such as text-to-video, image-to-video, and reference-guided synthesis. However, these workflows are inherently one-directional, map-ping conditions to videos without providing a mechanism to invert this process. In complex media production settings, the ability to recover controllable textual conditions from a given video is highly desirable, yet remains underexplored. While inverse prompting has been studied for image generation, directly extending these approaches to video is challenging due to the need to capture temporal dy-namics beyond static appearance, as well as the substantial computational cost of per-video optimization. In this work, we propose the first practical framework for efficient video inverse prompting. Specifically, we formulate inverse prompting as a meta-learning problem and introduce Meta Video Inverse Prompting (MVIP), which learns a meta-prompt optimized over temporal dimensions to enable fast and effective prompt inference. Our approach amortizes the inversion process, elimi-nating the need for costly iterative optimization at test time. Experimental results demonstrate that MVIP recovers higher-quality inverse prompts with significantly improved reconstruction fidelity compared to image-based inversion and iterative captioning baselines, while achieving substantial gains in efficiency. Code and video results are available at https://ueriniuno.github.io/mvip-page/ .
+
+## 1 Introduction 
+
+Video generative models have rapidly advanced to produce high-quality and temporally coherent videos, approaching realistic visual fidelity across diverse scenes and motions [62, 60, 70]. These models are increasingly deployed across a wide range of applications, including content creation [44, 57], editing [68, 74, 15, 36], simulation [7, 69], and world modeling [2, 7, 11]. To support such applications, modern video generation frameworks support flexible conditional pipelines such as text-to-video [55, 62, 70], image-to-video [5, 9, 60], and reference-guided synthesis [31, 75]. However, despite this progress, existing workflows to access video generative models are inherently “unidirectional”; viz ., while conditions can effectively guide video synthesis, they lack a clear mechanism to invert this process, e.g., for fine-grained semantic controls. For example, a creator may generate a video from a prompt and later wish to modify it, such as changing lighting or motion while preserving the scene. However, the original prompt is often unavailable or insufficient to reproduce the video due to the non-unique and model-dependent nature of prompt-video mappings, forcing users to rely on trial-and-error prompt engineering. This motivates the problem of inverse prompting , which aims to recover a textual prompt that can faithfully reproduce a given target video under a generative model. Prior work on inverse prompting has largely focused on images [65, 38, 50], primarily relying on gradient-based optimization or iterative captioning strategies. However, these approaches do not scale well to video. Gradient-based methods [65, 38] require repeated forward and backward passes during target-specific prompt optimization, which becomes prohibitively expensive for long video sequences. Captioning-based  
+
+> 40th Conference on Neural Information Processing Systems (NeurIPS 2026). arXiv:2610.24965v1 [cs.CV] 18 Oct 2026 Recovered Prompt
+> “A white drone is stationary on an orange landing pad.”
+> Inverse
+> Prompting
+> Prompt Edit
+> Edit a white drone
+> an orange landing pad
+> stationary → take off
+> Recovered Prompt
+> “A white drone is stationary on an orange landing pad.”
+> Edited Prompt
+> “A white drone takes off vertically from the orange landing pad.”
+> Video
+> Generator
+> Video
+> Generator
+> Target Video Video Reconstruction
+> Edited Video
+
+Figure 1: Illustration of MVIP and downstream editing. MVIP recovers a prompt from a target video through inverse prompting, enabling a video generator conditioned on the prompt to reproduce the video. Using the recovered prompt, video generation can be controlled by editing the prompt, enabling controllable video editing. approaches [50], on the other hand, often produce semantically plausible but insufficient prompts to support reconstruction, as videos require capturing not only per-frame appearance but also temporal dynamics and coherence across frames, e.g., action sequences, motion trajectories, and camera movements. Consequently, directly applying existing methods to video results in a poor trade-off between reconstruction fidelity and computational efficiency, while the problem itself remains largely unexplored in the video domain. As shown in Figure 1, our goal is to recover a reusable prompt from a target video, enabling both faithful video reconstruction and controllable prompt-based video editing. 
+
+Contributions. In this paper, we propose Meta Video Inverse Prompting (MVIP), the first practical framework for video inverse prompting, to the best of our knowledge. Our key idea is to unify gradient-based optimization and captioning-based approaches within a meta-learning [16, 39] formulation, achieving both high reconstruction fidelity and efficiency. Instead of optimizing prompts from scratch for each video, we cast inverse prompting as a meta-learning that learns a shared prompt initialization across videos. During meta-training, MVIP performs gradient-based prompt optimization over diverse videos, allowing the meta-prompt to capture common spatiotemporal structures required for faithful reconstruction. At inference time, this learned initialization enables rapid prompt inference without costly per-video optimization, effectively behaving as a reconstruction-aware captioning mechanism. In this way, MVIP combines the reconstruction fidelity of gradient-based methods with the efficiency of captioning-based approaches. We evaluate MVIP on both real and synthetic videos, including videos generated from diverse video generative models, to assess its generality across different video distributions and genera-tion pipelines. Since video inverse prompting remains largely unexplored and lacks established benchmarks or baselines, we construct practical comparison methods based on recent image inverse prompting approaches, including PEZ [65] and ARPO [50], as well as captioning-based methods. The results demonstrate that MVIP consistently achieves superior reconstruction performance across diverse video-video and video-text alignment metrics. Notably, our method significantly outperforms iterative captioning approaches despite requiring substantially lower computational cost, showing that high-quality inverse prompting cannot be achieved by simply increasing inference-time iterations. Qualitative comparisons further show that our meta-learned initialization produces prompts that better capture temporal dynamics and fine-grained scene details, resulting in more faithful and controllable video reconstructions. 
+
+## 2 Related Work 
+
+Video generative models. Recent advances in video generation have been largely driven by text-to-video (T2V) frameworks, where diffusion models [6, 62, 60], transformer architectures [21, 20], and flow-matching objectives [28, 44] have enabled high-quality video synthesis from textual descriptions. Alongside open research models [9, 28, 33, 60, 70], commercial systems [40, 52, 19] have further established video generation as a practical tool for content creation. This progress has extended video generation beyond T2V to conditional interfaces such as image-to-video generation [72, 35, 22, 37], reference-guided synthesis [26, 67], and text-driven editing [46, 34, 61]. Here, prompts serve not only as semantic descriptions but also as control signals that guide visual content, motion, and editing. 2Video Tasks   
+
+> Target videos
+> Segment = task
+> ⋮
+> (Meta-train task pool)
+> Inner Loop: Reconstruction-guided Adaptation
+> Target segment first–last frames
+> Generated
+> videos
+> N candidate prompts
+> Instruction A player … in yellow and red.
+> Describe the video in detail.
+> Video Generator
+> Soft meta-prompt
+> VLM  A player drives right … in yellow.
+> ⋮
+> ⋮
+> A player cuts back left …
+> Likelihood update
+> Reference
+> Similarity
+> 0.64
+> 0.91
+> Best-of-N
+> 0.37
+> Outer Loop: Meta-update
+> Soft-prompt space
+> mean
+> inner loop (K steps)
+> Meta-update
+> Meta-test: unseen video → prompt
+> A snowboarder in red rides ... under a bright sun.
+> Frozen VLM + meta-learned Φ
+
+Figure 2: Overview of MVIP. MVIP meta-learns a shared soft-prompt initialization for video inverse prompting across video tasks. During inner-loop adaptation, a frozen VLM generates candidate prompts, and the candidate with the highest reconstruction score from a frozen video generator is selected as a pseudo-target for updating the soft prompt. The task-adapted prompts are then used to update the shared initialization, which can be directly applied to unseen videos. 
+
+Prompt optimization and inversion. Recent video generative models have achieved substantial progress, yet their outputs remain highly sensitive to input conditions, including textual prompts and visual anchors. Minor variations in these conditions can lead to substantially different visual outputs [25, 73]. Existing prompt inversion methods have mainly focused on images, including pseudo-word embedding learning [18], model fine-tuning with unique identifiers [51], gradient-based hard-prompt optimization [65, 38], and black-box prompt search [50]. While effective for static visual content, these methods are not directly suited to video, where the recovered prompt must account for temporal evolution in addition to appearance. In this paper, we address this inverse problem through a reconstruction-driven framework that recovers prompts directly from target videos. 
+
+Meta-learning. Meta-learning aims to extract transferable knowledge from a distribution of tasks so that a model can rapidly adapt to new tasks with limited data or optimization. Beyond metric-based methods [59] that learn shared embeddings and model-based approaches [54] that leverage memory, optimization-based meta-learning is a prominent paradigm. Notably, MAML [16] and Reptile [39] focus on learning an optimal initialization for rapid gradient-based adaptation. This paradigm has been widely adopted in domains where task-specific adaptation is costly, such as personalized federated learning [14], few-shot image classification [32, 53], and natural language classification [4]. A similar initialization-based view has also been explored in prompt learning and prompt optimization. Meta prompt tuning learns transferable initializations for cross-task generalization [47], while system prompt optimization uses a meta-learning framework to learn system prompts that generalize across diverse user inputs and unseen tasks [13]. These studies highlight the benefit of transferring task-level experience through learned prompt initializations. Building on this, we formulate video inverse prompting as a meta-learning problem, leveraging shared initializations to facilitate precise, reconstruction-oriented adaptation for each target video. 
+
+## 3 Method 
+
+In this section, we introduce Meta Video Inverse Prompting (MVIP), the first practical framework for video inverse prompting, to the best of our knowledge. Our key insight is that gradient-based prompt optimization for video reconstruction can be lifted into the instruction-prompt space within a vision-language model (VLM) and amortized via meta-learning, enabling it to directly generate reconstruction-aware prompts from unseen videos in a fast, captioning-like manner. We first formalize our problem of interest, viz ., video inverse prompting, in Section 3.1. In Section 3.2, we provide a brief overview of the meta-learning framework underlying our approach. Finally, we present the details of our proposed method, MVIP, in Section 3.3. An overview of the proposed framework is illustrated in Figure 2. 33.1 Problem setup 
+
+We consider a conditional video generative model G, conditioned on a textual prompt c and a first-last-frame condition vcond = ( f v 
+
+> 1
+
+, f vT ), where f v 
+
+> 1
+
+and f vT denote the first and last frames of v,respectively. Our goal is to recover a textual prompt c that enables a video generator G to reconstruct the target video v. Since text alone underconstrains video reconstruction, we use the first and last frames to specify how the video starts and ends. We write the generator output for a candidate prompt as ˆv = Gθ (c, v cond ). Video inverse prompting then seeks the prompt whose generated video best reconstructs the target video: 
+
+c∗(v) = arg max  
+
+> c
+
+S G(c, v cond ), v . (1) Here, S(·, ·) denotes a video-level reconstruction similarity score between the generated and target videos. In our setting, G is a fixed black-box generator, so we do not update its parameters or access its internal gradients. Instead, we solve video inverse prompting by searching for a textual prompt c
+
+that maximizes the reconstruction score under the fixed first-last-frame condition vcond .
+
+3.2 Background: Meta-learning 
+
+Meta-learning aims to acquire transferable knowledge that enables a learner to quickly adapt to new tasks. It consists of meta-training and meta-testing. During meta-training, the learner uses multiple tasks to learn transferable knowledge across tasks. At meta-test time, the learned knowledge is used to facilitate adaptation to an unseen task. In gradient-based meta-learning, this transferable knowledge is commonly represented as an initial-ization θ. Let AKτ (θ) denote the parameters obtained after K task-specific adaptation steps from θ on a task τ sampled from the task distribution p(τ ). A representative approach in this direction is Model-Agnostic Meta-Learning (MAML) [16], which optimizes the initialization by differentiating the post-adaptation validation loss through the adaptation process: θ ← θ − η · Eτ
+
+∇θ Lτ
+
+ AKτ (θ) | D val 
+
+> τ
+
+ ,where η is the meta-learning rate, and Dval  
+
+> τ
+
+denotes the validation data used to evaluate the task-adapted parameters. Reptile [39] follows a similar task-adaptation procedure but adopts a significantly simpler meta-update rule. In contrast to MAML [16], which computes the meta-gradient by differentiating through task-specific adaptation and thus involves second-order derivatives, Reptile [39] avoids differentiating through the adaptation trajectory. Specifically, it directly updates the initialization toward the task-adapted parameters using a first-order meta-update: 
+
+θ ← θ + η · Eτ
+
+AKτ (θ) − θ . (2) In our setting, differentiating through the adaptation process is particularly challenging, since video generation is computationally expensive and prompt generation involves discrete captioning processes within a VLM. Therefore, our approach is instead motivated by Reptile [39], which performs meta-learning through simple first-order updates toward task-adapted parameters. Building on this intuition, we next introduce our meta-learning formulation for video inverse prompting. 
+
+3.3 MVIP: Meta Video Inverse Prompting 
+
+We adopt a meta-learning perspective for video inverse prompting by treating each target video segment as a task and learning a prompt-space initialization. In MVIP, the meta-learned initialization 
+
+θ introduced in Section 3.2 is instantiated as a VLM-side soft prompt Φ. For each task τ , Φ is adapted for K steps to the target video, and the resulting task-adapted soft prompt is used to update the shared initialization following Reptile [39]. The resulting meta-learned soft prompt Φ can be directly applied to unseen video segments. MVIP optimizes only Φ, while keeping both the VLM Mψ and video generator G frozen. 
+
+Prompt-space parameterization. The prompt c in Eq. 1 denotes the discrete textual prompt used by the video generator G, whereas the learnable soft prompt Φ conditions the VLM Mψ .For task τ , let xτ = {f vτ 
+
+> r
+
+}r∈R denote the frames sampled from vτ as input to the VLM, and let 
+
+vτ, cond = ( f vτ 
+
+> 1
+
+, f vτ 
+
+> T
+
+) denote its first-last-frame condition. Let h denote the fixed hard instruction used for prompt generation. We write 
+
+cτ (Φ) ∼ pψ (· | xτ , h, Φ) , ˆvτ = G(cτ (Φ) , v τ, cond ) . (3) 4Thus, MVIP steers prompt generation through the soft prompt Φ, while the resulting hard prompt 
+
+cτ (Φ) remains in the textual space compatible with the video generator. 
+
+Reconstruction-guided inner adaptation. For each task τ , we initialize the task-specific soft prompt as Φ(0)  
+
+> τ
+
+= Φ . At inner step k, we sample N candidate prompts c(k) 
+
+> τ,i
+
+∼ pψ (· | xτ , h, Φ(k−1)  
+
+> τ
+
+)
+
+and select the candidate with the highest reconstruction score: 
+
+i∗ = arg max  
+
+> i=1 ,...,N
+
+S
+
+
+
+G(c(k) 
+
+> τ,i
+
+, v τ, cond ), v τ
+
+
+
+, c∗,(k) 
+
+> τ
+
+= c(k) 
+
+> τ,i ∗
+
+. (4) The selected prompt c∗,(k) 
+
+> τ
+
+serves as a reconstruction-guided pseudo-target for updating the soft prompt. Since the reconstruction score is used only for candidate selection, we adapt the soft prompt by maximizing the VLM likelihood of the selected prompt: 
+
+Φ(k) 
+
+> τ
+
+= Φ (k−1)  
+
+> τ
+
++ α∇Φ(k−1) 
+
+> τ
+
+log pψ
+
+
+
+c∗,(k) 
+
+> τ
+
+| xτ , h, Φ(k−1) 
+
+> τ
+
+
+
+. (5) After K steps, we obtain the task-adapted soft prompt ˜Φτ = Φ (K) 
+
+> τ
+
+= AKτ (Φ) .
+
+Meta-update. The outer loop aggregates the task-adapted soft prompts into a shared prompt-space initialization. At iteration t, inner adaptation starts from Φt for each task in a batch {τb}Bb=1 ,producing ˜Φt,b = AKτb (Φ t). We then update the shared initialization toward the average task-adapted soft prompt: 
+
+Φt+1 = Φ t + η
+
+"
+
+1
+
+B
+
+> B
+
+X
+
+> b=1
+
+ ˜Φt,b − Φt
+
+#
+
+. (6) This update amortizes reconstruction-guided adaptation across tasks into a single prompt-space initialization. At inference time, the learned initialization can be directly used to condition the VLM on unseen video segments, producing reconstruction-oriented prompts for the video generator. The complete meta-training procedure is summarized in Algorithm 1 in Appendix. 
+
+## 4 Experiments 
+
+In this section, we evaluate MVIP on both real and synthetic video datasets. We compare MVIP with caption-based and image inverse prompting baselines to assess reconstruction fidelity, and analyze how meta-learned initialization affects the efficiency and quality of the reconstruction prompt. We also analyze the iterative refinement baseline to examine whether feedback-based updates provide additional gains over one-shot prompt generation. 
+
+Implementation details. We use a Wan2.2 [60]-based first/last-frame conditioned video generator for all reconstruction experiments. Long-form videos are split into scene-consistent segments with PySceneDetect, and first/last-frame conditioning is applied to each segment. This segment-level protocol is shared by all methods to keep generation and evaluation consistent. We use Qwen2.5-VL-7B-Instruct [3] as the VLM for captioning and comparison, while keeping both the VLM and video generator frozen. Full implementation details are provided in Appendix B. 
+
+Datasets. We evaluate on both real-world and synthetic videos. The real-world split consists of ActivityNet [8] and MSR-VTT [66], covering long human-activity videos and short everyday web videos, respectively. The synthetic split is built from VidProM [63], a large-scale text-to-video prompt-gallery dataset containing videos generated by Pika [43], VideoCrafter2 [9], and ModelScope [62], along with Wan2.2 [60] videos generated using VidProM prompts. We additionally evaluate on Kinetics-400 [27] and DAVIS-2017 [42, 45] to assess generalization beyond the meta-training datasets. 
+
+Baselines. We compare MVIP with four baselines. FLF-Only uses boundary-frame visual anchors without text. PEZ [65] applies image inverse prompting to four sampled frames and concatenates the recovered prompts. Captioning uses the VLM instruction “Describe this video in detail.” Caption-ing+Refine adapts ARPO [50], an image reverse prompting method, to video by refining prompts through comparisons between sampled target and generated frames. All baselines follow the same evaluation protocols as MVIP, with details in Appendix D. 5Table 1: Quantitative comparison of MVIP against baselines. Performance is evaluated across video-level, visual, and image-alignment metrics on both synthetic and real-world videos. Bold 
+
+and underline denote the best and runner-up results, respectively. MVIP achieves the best overall reconstruction in both domains.                                                                                                                             
+
+> Video Similarity Visual Similarity Alignment Method ViCLIP V-V ↑VideoMAE ↑RAFT Dist. ↓DINOv2 ↑DreamSim ↓CLIP-I ↑
+> Meta-training datasets
+> Synthetic videos (from VC2 [9], MS [62], Pika [43], and Wan 2.2 [60])
+> FLF-Only 0.9424 0.9878 0.3777 0.8678 0.0667 0.9272 PEZ [65] 0.9381 0.9860 0.3820 0.8583 0.0747 0.9255 Captioning (Qwen2.5-VL [3]) 0.9284 0.9828 0.3802 0.8505 0.0897 0.9233 Captioning + Refine [50] 0.9327 0.9880 0.4288 0.8576 0.0775 0.9261
+> MVIP (Ours )0.9460 0.9905 0.3530 0.8785 0.0636 0.9335
+> Real videos (from ActivityNet [8] and MSR-VTT [66])
+> FLF-Only 0.6992 0.9474 0.5772 0.5116 0.3421 0.7324 PEZ [65] 0.7883 0.9536 0.5857 0.5710 0.3166 0.7643 Captioning (Qwen2.5-VL [3]) 0.7977 0.9488 0.5955 0.5705 0.3300 0.7668 Captioning + Refine [50] 0.8047 0.9489 0.6040 0.5618 0.3295 0.7712
+> MVIP (Ours )0.8328 0.9523 0.5738 0.5848 0.3121 0.7825 Unseen datasets
+> Kinetics-400 [27]
+> FLF-Only 0.8808 0.9807 0.4880 0.7483 0.1620 0.8598 PEZ [65] 0.8963 0.9776 0.5058 0.7659 0.1619 0.8678 Captioning (Qwen2.5-VL [3]) 0.9007 0.9803 0.4932 0.7753 0.1533 0.8712
+> MVIP (Ours )0.9186 0.9829 0.4897 0.7933 0.1419 0.8804
+> DAVIS-2017 [42, 45]
+> FLF-Only 0.9364 0.9617 0.4320 0.8018 0.1374 0.9074 PEZ [65] 0.9451 0.9669 0.4097 0.8132 0.1411 0.9152 Captioning (Qwen2.5-VL [3]) 0.9525 0.9651 0.4105 0.8278 0.1348 0.9210
+> MVIP (Ours )0.9568 0.9790 0.3412 0.8364 0.1282 0.9234
+
+4.1 Main results Quantitative results. In Table 1, we first evaluate MVIP on held-out videos from datasets used during meta-training, covering both synthetic and real-world videos. MVIP achieves the best overall performance in both domains. Specifically, in the synthetic video subset, MVIP consistently achieves higher scores than existing methods, including VLM-based captioning and iterative refinement. In the real-world video domain, MVIP increases the ViCLIP V-V score to 0.8328, compared to 0.8047 achieved by the 3-step iterative refinement baseline. To further evaluate generalizability beyond the meta-training datasets, we evaluate MVIP on two unseen test sets, Kinetics-400 [27] and DAVIS-2017 [42, 45], without changing the learned meta-prompt or any other training procedure. MVIP achieves the best performance on most metrics across both datasets, suggesting that the learned meta-prompt generalizes well to previously unseen video distributions. As shown in Table 3, iterative refinement provides only modest gains at substantially higher computational cost while remaining below MVIP in reconstruction quality. Overall, these results show that MVIP improves the quality-efficiency trade-off by reducing reliance on costly test-time refinement. We further report text-alignment results in Appendix F.5. 
+
+Qualitative results. As shown in Figure 3, MVIP reconstructs the target video more faithfully than the baselines, preserving the subject, scene composition, and temporal progression across sampled frames. In contrast, FLF-Only and PEZ [65] often drift from the target at corresponding time points, while captioning captures only coarse semantics and produces inconsistent visual content. Overall, the proposed approach better aligns with the target over time while maintaining stronger temporal consistency across frames. Table 2 shows that MVIP recovers a more readable and detailed prompt, capturing the action, appearance, scene context, and temporal progression better than other baselines. We further examine the effect and interpretation of the learned soft prompt in Appendix F.6. 6Reference FLF-Only Captioning  PEZ MVIP(Ours) 
+
+> ……………
+
+𝒇 𝟎 𝒇 𝟒 𝒇 𝟖 𝒇 𝟓𝟐 𝒇 𝟓𝟔 𝒇 𝟔𝟎 Figure 3: Qualitative comparison of video reconstruction over time. Compared with the baselines, which begin to drift from the reference video at early time steps such as f = 4 or f = 8 , MVIP pre-serves the reference content and temporal progression throughout the sequence, remaining consistent even at f = 60 . Additional discussion is provided in Appendix F.1. Table 2: Image-text qualitative comparison. Given sampled frames from the target video, our prompt inversion produces more temporally informative and semantically coherent descriptions compared to captioning and image-based inverse prompting baselines.          
+
+> Target Video
+> Sampled Frame f1f2f3f4f5f6
+> Qwen2.5-VL [3] A female athlete is running down the track, preparing to jump into a sand pit for long jump competition. She leaps off her feet and lands gracefully on one foot before landing fully onto both feet inside of the sandpit. The camera then cuts away from the action as she walks back towards where she started. PEZ [65] 1. ipl lick minogue javelin athletics hurdle musicvideo . . . 2. cracking gopher crumbs ibm dden euro decathathletics . . . 3. hewadrenaline sprinter jumper latvia serbia . . . 4. robyn gwynecapped athletics athletics equalsardinia . . .
+> MVIP (Ours) The video captures a female athlete in the midst of a long jump event at an indoor stadium. . . . She is running towards the sand pit, her body leaning forward as she approaches the takeoff board. As she reaches the board, she leaps into the air. . . . Her body is in mid-air when the video cuts to a close-up of her face. She lands in the sand pit. . . . The video then cuts to a scoreboard displaying her name, "Ineta Radevica," and her jump distance of 6.97 meters.
+
+Runtime analysis. We evaluate whether test-time refinement makes captioning competitive with MVIP. We adapt a black-box image inverse-prompting method to video, where the initial VLM caption is iteratively rewritten using feedback from the generated video. Runtime is reported as the average seconds per video-second across real and synthetic test videos. As shown in Table 3, “Captioning + Refine” yields modest gains but incurs a high computational cost: compared with MVIP at K = 0 , it requires 3.88 × the runtime while still underperforming on both metrics. Per-iteration results are in Appendix F.2. 
+
+Test-time adaptation. To assess the effect of test-time adaptation, we evaluate K ∈ { 0, 1, 2}
+
+reconstruction-guided adaptation steps per video, starting from the same meta-learned Φ. As shown in Table 3, even without test-time adaptation ( K = 0 ), MVIP already outperforms all competing baselines on both metrics. A single adaptation step achieves the best reconstruction quality (0.8392 ViCLIP V-V and 0.7861 CLIP-I), while all evaluated values of K outperform the baselines on both metrics. 
+
+Stronger captioning baselines. To evaluate MVIP against stronger captioning baselines, we conduct experiments on MSR-VTT [66], replacing Qwen2.5-VL-7B [3] with Qwen3.5-9B [48] and using a more detailed instruction covering visual and temporal content. As shown in Table 5, the stronger 7Table 3: Runtime and reconstruction quality com-parison. Reconstruction quality is evaluated on real-world videos. Inference time is measured on a sin-gle NVIDIA B200 GPU instance with two Intel Xeon 6960P CPUs (72 cores each). Bold and underline de-note the best and runner-up results, respectively.                                         
+
+> Method Runtime (s/video-second) ↓ViCLIP V-V ↑CLIP-I ↑
+> PEZ 342.7 ±1.9 0.7883 0.7643 Captioning (Qwen2.5-VL) 261.9 ±1.2 0.7977 0.7668 Captioning + Refine 1060.0 ±3.7 0.8047 0.7712
+> MVIP (Ours)
+> K= 0 (no adaptation) 273.1 ±1.0 0.8328 0.7825
+> K= 1 1082.8 ±1.7 0.8392 0.7861
+> K= 2 1893.4 ±5.9 0.8322 0.7808
+
+Table 4: Comparison under cross-generator transfer. Wan2.2 [60] is re-placed with CogVideoX [70] at test time without further optimization. Bold and underline denote the best and runner-up re-sults, respectively.                     
+
+> Method ViCLIP V-V ↑DINOv2 ↑CLIP-I ↑
+> Wan2.2 →CogVideoX FLF-Only 0.7882 0.6589 0.8297 PEZ 0.8047 0.6318 0.8206 Captioning 0.8222 0.6615 0.8307
+> MVIP (Ours) 0.8709 0.7044 0.8517
+
+Table 5: Comparison with stronger captioning baselines on MSR-VTT. Bold and underline denote the best and runner-up results, respectively. 
+
+Method ViCLIP V-V ↑ DINOv2 ↑ CLIP-I ↑
+
+Captioning (Qwen2.5-VL-7B) [3] 0.8021 0.6214 0.7872 Captioning (Qwen3.5-9B) [48] 0.8312 0.6207 0.8063 + Detailed instruction 0.8123 0.6206 0.7932 
+
+MVIP (Ours) 0.8434 0.6516 0.8091 
+
+captioning baseline improves over the original one, while MVIP remains the best across all metrics. Based on the prompt variants we explored, more elaborate prompting does not provide a clear improvement over standard Qwen3.5-9B captioning. These results indicate that the improvement of MVIP cannot be explained simply by a stronger VLM or more elaborate prompting. 
+
+Cross-generator transfer. We further assess cross-model transfer by replacing the Wan2.2 [60] generator used during meta-training with CogVideoX [70] at test time, while keeping the learned meta-prompt fixed. As shown in Table 4, MVIP consistently outperforms the baselines on all three reported metrics, suggesting that the learned meta-prompt is not tightly coupled to a specific video generator. Additional implementation details are provided in Appendix B. 
+
+4.2 Downstream Application: Prompt-Based Video Editing 
+
+To evaluate the effectiveness of MVIP in downstream video editing, we consider the subject-motion editing tasks of IVEBench [12] as a representative downstream editing benchmark. We follow its evaluation protocol and compare MVIP with two video editing methods: RF-Edit [61], an inversion-based editing framework for rectified-flow models, and Wan-Edit [30], a training-free video editing method for the Wan model family. For MVIP, we use GPT-4o [24] to minimally rewrite the recovered inverse prompt according to the edit instruction and check whether the requested motion is reflected in the edited prompt. The edited prompt and only the first frame of the source video are then used for video generation, without access to the benchmark target prompt or any editing-specific training. 
+
+Quantitative results. As shown in Table 6, despite requiring no editing-specific training, the MVIP-based prompt editing pipeline achieves the highest Instruction Satisfaction and Content Fidelity while remaining competitive across the other metrics. In particular, MVIP remains competitive with RF-Edit [61], which is built upon a substantially larger video model with an RF solver, and Wan-Edit [30], which is specifically designed for editing within the same model family. These results show that inverse prompts recovered for reconstruction can also serve as effective control interfaces for downstream video editing. Further details on the evaluation metrics and additional quantitative results are provided in Appendix F.3. 
+
+Qualitative results. Figure 4 further illustrates that simple textual modification of the recovered inverse prompt can induce the intended motion changes in the generated video. For the instruction “Make the man and the boy suddenly fall asleep,” MVIP progressively changes their postures, with the man reclining backward and the boy lowering his head, while preserving the source scene and overall composition. Compared with MVIP, RF-Edit [61] shows greater changes in subject appearance 8Table 6: Quantitative comparison of video editing performance. We compare MVIP with RF-Edit [61] and Wan-Edit [30] under the same edit instructions in terms of instruction compliance, video quality, and content fidelity. Best results are marked in bold .
+
+Dimension Metric RF-Edit Wan-Edit MVIP (Ours) 
+
+Compliance Instruction Satisfaction 3.09 2.09 3.25 
+
+Phrase Semantic Consistency 0.18 0.19 0.19 
+
+Overall Semantic Consistency 0.23 0.25 0.25 
+
+Quality Subject Consistency 0.90 0.93 0.92 Background Consistency 0.94 0.95 0.95 
+
+Temporal Flickering 0.98 0.97 0.97 Motion Smoothness 0.99 0.98 0.99 
+
+Video Training Suitability Score 0.02 0.05 0.05 
+
+Fidelity Content Fidelity 3.06 3.81 3.95 
+
+Semantic Fidelity 0.79 0.97 0.96 Source MVIP(Ours) RF-Edit Wan-Edit       
+
+> 𝑓 !𝑓 "𝑓 #𝑓 $𝑓 %𝑓 &
+> Edit instruction: Make the man and the boy suddenly fall asleep.
+
+Figure 4: Qualitative comparison on prompt-based video editing. All methods use the same source video and edit instruction. More qualitative results can be found in Appendix F.3. and scene content in later frames, while Wan-Edit [30] reflects the requested sleeping motion less clearly. Table 7 further shows how the recovered inverse prompt is modified according to the edit instruction. In this example, the action of examining an object is changed to waving the other hand, while the surrounding scene details are preserved. This illustrates how the recovered prompt can support targeted motion editing while retaining the original scene context. 
+
+4.3 Ablation study Effect of meta-learning. To examine whether the improvement comes from the meta-learning paradigm itself or simply from optimization with video-generation feedback, we compare MVIP with an ablated variant without the meta-update. As shown in Table 8, the variant without meta-learning outperforms direct captioning but remains consistently below MVIP across all metrics. This indicates that the improvement cannot be explained solely by optimization under the reconstruction objective, but also benefits from learning a task-adaptive initialization through meta-learning. 
+
+Effect of Best-of-N sampling. We compare the default Best-of-N setting ( N = 4 ) with single-candidate sampling ( N = 1 ) during inner-loop adaptation. As shown in Table 8, using multiple candidate prompts consistently improves all evaluation metrics. This suggests that ranking sampled candidates by their reconstruction scores provides a higher-quality pseudo-target for meta-prompt adaptation under the black-box reconstruction objective. 9Table 7: Prompt transformations for downstream video editing. For an IVEBench [12] example, we show the prompts recovered and edited by MVIP, with the benchmark’s source and target prompts for reference. Phrases modified to reflect the edit instruction are highlighted in bold .
+
+Method Before editing 
+
+> Source / Recovered
+
+After editing 
+
+> Target / Edited
+
+IVEBench A woman is enjoying a sunny day on a yacht, smiling. A woman is waving her hand and enjoying a sunny day on a yacht, smiling. 
+
+MVIP (Ours) The, the woman is standing on a boat, holding a small object in her hand and 
+
+examining it closely . She appears to be focused, . . . The, the woman is standing on a boat, holding a small object in one hand and 
+
+waving her other hand . She appears to be focused, . . . 
+
+Table 8: Ablation study of MVIP on MSR-VTT. We compare reconstruction performance with and with-out the meta-update and Best-of-N candidate selection. Best results are marked in bold .Method Meta BoN ViCLIP V-V ↑ DINOv2 ↑ CLIP-I ↑                    
+
+> MVIP (Ours) ✓✓0.8434 0.6516 0.8091
+> MVIP (Ours) ✓×0.8389 0.6174 0.8081 MVIP (Ours) ×✓0.8314 0.6303 0.8057 Captioning ––0.8021 0.6214 0.7872
+
+Table 9: Ablation on meta-prompt ini-tialization and configuration. Bold and underline denote the best and runner-up re-sults, respectively.                                       
+
+> Prompt init. |Φ|KViCLIP-VV ↑DreamSim ↓CLIP-I ↑
+> Natural Φ16 10.9193 0.0917 0.8993
+> Random Φ410.9064 0.0986 0.8926 Natural Φ410.9129 0.1010 0.8960 Natural Φ810.9045 0.1021 0.8916 Natural Φ16 30.9174 0.0971 0.8992
+
+Meta-prompt initialization. Table 9 analyzes meta-prompt initialization by comparing randomly initialized soft tokens and natural soft-token initialization. All configurations are evaluated on a held-out validation subset. Natural Φ initializes the learnable soft tokens from the token embeddings of the instruction, “Describe objects, actions, camera motion, and temporal changes,” while random Φ
+
+uses Gaussian samples of the same length. The results show that natural Φ provides a better starting point for meta-learning and achieves stronger reconstruction quality than random Φ of the same length across most metrics, suggesting that a meaningful textual prior offers a better initial basis for meta-learning. 
+
+Effect of meta-prompt length. We examine the influence of the number of learnable soft tokens 
+
+|Φ|. Too few tokens limit the meta-prompt capacity, while longer prompts bring little additional benefit. As shown in Table 9, using |Φ| = 16 rather than |Φ| = 4 improves ViCLIP V-V from 0.9129 to 0.9193, with |Φ| = 16 achieving the best score. Notably, the best and second-best results across metrics are also obtained by configurations with |Φ| = 16 , showing that this length is consistently effective. This suggests that a compact but sufficiently expressive set of learnable tokens provides an effective prompt prior without requiring a long prompt representation. 
+
+Inner-loop adaptation depth. We also vary the number of inner-loop adaptation steps K during meta-training. Table 9 shows that increasing K from 1 to 3 does not translate into better overall performance. Compared with K = 1 , K = 3 slightly lowers ViCLIP V-V and CLIP-I and worsens DreamSim. Moreover, as detailed in Appendix F, using three inner-loop steps takes about 3 × longer per outer update than using one inner-loop step. Since this additional cost does not lead to clear performance gains, we use K = 1 as our default configuration. 
+
+## 5 Conclusion 
+
+In this paper, we have presented MVIP, a meta-learning framework for recovering inverse prompts from videos. While prior inverse prompting methods focus on images, we show that video inverse prompting requires a different approach due to temporal dynamics and the high cost of video optimiza-tion. Through comparisons with baselines, we show that MVIP improves video reconstruction using only a compact set of meta-learned soft tokens, without updating the VLM or the video generator. These results suggest that video inverse prompting can be effectively amortized through a learned prompt prior, which provides a reusable initialization for retaining scene context and temporal cues. 10 Acknowledgments and Disclosure of Funding 
+
+We thank Yunhun Nam for his help in improving our manuscript. This work was supported by Institute of Information & communications Technology Planning & Evaluation (IITP) grants funded by the Korea government (MSIT) (Development of Human-Like Intelligent Generative Agents Based on Interactive Multimodal Reverse Prompting (No. RS-2026-25519206, 25%); Development of Media Vibe Editing Technology (No. RS-2026-25519202, 25%); Artificial Intelligence Star Fellowship Support Program to Nurture the Best Talents (No. IITP-2026-RS-2025-02304828, 20%); Development of AI Co-Scientist based on Scientific Causal World Model (No. RS-2026-25507543, 10%); Artificial Intelligence Graduate School Program (Korea University) (No. RS-2019-II190079, 5%)), the National Research Foundation of Korea (NRF) grant funded by the Korea government (MSIT) (No. RS-2025-23523603, 10%), and the Korea Creative Content Agency grant funded by the Ministry of Culture, Sports and Tourism (International Collaborative Research and Global Talent Development for the Development of Copyright Management and Protection Technologies for Generative AI (No. RS-2024-00345025, 5%)). We also acknowledge the compute supports by the National Supercomputing Center (KSC-2025-CRE-0511) and the Advanced GPU Utilization Support Program funded by the Korea Government (Ministry of Science and ICT). 
+
+## References 
+
+[1] aigc apps. Videox-fun: A video generation pipeline for diffusion transformer, 2026. URL https: //github.com/aigc-apps/VideoX-Fun .[2] Eloi Alonso, Adam Jelley, Vincent Micheli, Anssi Kanervisto, Amos Storkey, Tim Pearce, and François Fleuret. Diffusion for world modeling: Visual details matter in atari. Advances in Neural Information Processing Systems , 37:58757–58791, 2024. [3] Shuai Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, Sibo Song, Kai Dang, Peng Wang, Shijie Wang, Jun Tang, Humen Zhong, Yuanzhi Zhu, Mingkun Yang, Zhaohai Li, Jianqiang Wan, Pengfei Wang, Wei Ding, Zheren Fu, Yiheng Xu, Jiabo Ye, Xi Zhang, Tianbao Xie, Zesen Cheng, Hang Zhang, Zhibo Yang, Haiyang Xu, and Junyang Lin. Qwen2.5-vl technical report. arXiv preprint arXiv:2502.13923 , 2025. [4] Trapit Bansal, Rishikesh Jha, and Andrew McCallum. Learning to few-shot learn across diverse natural language classification tasks. In Proceedings of the 28th international conference on computational linguistics , pages 5108–5123, 2020. [5] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. [6] Andreas Blattmann, Robin Rombach, Huan Ling, Tim Dockhorn, Seung Wook Kim, Sanja Fidler, and Karsten Kreis. Align your latents: High-resolution video synthesis with latent diffusion models. In 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 22563–22575. IEEE, 2023. [7] Jake Bruce, Michael D Dennis, Ashley Edwards, Jack Parker-Holder, Yuge Shi, Edward Hughes, Matthew Lai, Aditi Mavalankar, Richie Steigerwald, Chris Apps, et al. Genie: Generative interactive environments. In Forty-first international conference on machine learning , 2024. [8] Fabian Caba Heilbron, Victor Escorcia, Bernard Ghanem, and Juan Carlos Niebles. Activitynet: A large-scale video benchmark for human activity understanding. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 961–970, 2015. [9] Haoxin Chen, Yong Zhang, Xiaodong Cun, Menghan Xia, Xintao Wang, Chao Weng, and Ying Shan. Videocrafter2: Overcoming data limitations for high-quality video diffusion models. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 7310–7320. IEEE, 2024. [10] Lichang Chen, Jiuhai Chen, Tom Goldstein, Heng Huang, and Tianyi Zhou. Instructzero: Efficient instruction optimization for black-box large language models. In Forty-first International Conference on Machine Learning , 2024. URL https://openreview.net/forum?id=rADFNrIss3 .[11] Taiye Chen, Xun Hu, Zihan Ding, and Chi Jin. Learning world models for interactive video generation. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. URL https: //openreview.net/forum?id=FzfYoUp8F1 .
+
+11 [12] Yinan Chen, Jiangning Zhang, Teng Hu, Yuxiang Zeng, Zhucun Xue, Qingdong He, Chengjie Wang, Yong Liu, Xiaobin Hu, and Shuicheng Yan. Ivebench: Modern benchmark suite for instruction-guided video editing assessment. In International Conference on Learning Representations , volume 2026, pages 137363–137383, 2026. [13] Yumin Choi, Jinheon Baek, and Sung Ju Hwang. System prompt optimization with meta-learning. In 
+
+The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. URL https: //openreview.net/forum?id=IYVknFxsJb .[14] Alireza Fallah, Aryan Mokhtari, and Asuman Ozdaglar. Personalized federated learning: A meta-learning approach. In Advances in Neural Information Processing Systems (NeurIPS) , volume 33, 2020. [15] Ruoyu Feng, Wenming Weng, Yanhui Wang, Yuhui Yuan, Jianmin Bao, Chong Luo, Zhibo Chen, and Baining Guo. Ccedit: Creative and controllable video editing via diffusion models. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 6712–6722. IEEE, 2024. [16] Chelsea Finn, Pieter Abbeel, and Sergey Levine. Model-agnostic meta-learning for fast adaptation of deep networks. In International conference on machine learning , pages 1126–1135. PMLR, 2017. [17] Stephanie Fu, Netanel Tamir, Shobhita Sundaram, Lucy Chai, Richard Zhang, Tali Dekel, and Phillip Isola. Dreamsim: Learning new dimensions of human visual similarity using synthetic data. In 
+
+Advances in Neural Information Processing Systems , volume 36, pages 50742–50768. Curran Asso-ciates, Inc., 2023. URL https://proceedings.neurips.cc/paper_files/paper/2023/file/ 9f09f316a3eaf59d9ced5ffaefe97e0f-Paper-Conference.pdf .[18] Rinon Gal, Yuval Alaluf, Yuval Atzmon, Or Patashnik, Amit Haim Bermano, Gal Chechik, and Daniel Cohen-Or. An image is worth one word: Personalizing text-to-image generation using textual inversion. In 
+
+The Eleventh International Conference on Learning Representations , 2023. URL https://openreview. net/forum?id=NAQvF08TcyG .[19] Google DeepMind. Veo 3.1. https://deepmind.google/models/veo/ , 2025. [20] Agrim Gupta, Lijun Yu, Kihyuk Sohn, Xiuye Gu, Meera Hahn, Fei-Fei Li, Irfan Essa, Lu Jiang, and José Lezama. Photorealistic video generation with diffusion models. In European Conference on Computer Vision , pages 393–411. Springer, 2024. [21] Wenyi Hong, Ming Ding, Wendi Zheng, Xinghan Liu, and Jie Tang. Cogvideo: Large-scale pretraining for text-to-video generation via transformers. In The Eleventh International Conference on Learning Representations , 2023. URL https://openreview.net/forum?id=rB6TpjAuSRy .[22] Li Hu. Animate anyone: Consistent and controllable image-to-video synthesis for character animation. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 8153–8163, 2024. [23] Ziqi Huang, Yinan He, Jiashuo Yu, Fan Zhang, Chenyang Si, Yuming Jiang, Yuanhan Zhang, Tianxing Wu, Qingyang Jin, Nattapol Chanpaisit, et al. Vbench: Comprehensive benchmark suite for video generative models. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 21807–21818. IEEE, 2024. [24] Aaron Hurst, Adam Lerer, Adam P Goucher, Adam Perelman, Aditya Ramesh, Aidan Clark, AJ Ostrow, Akila Welihinda, Alan Hayes, Alec Radford, et al. Gpt-4o system card. arXiv preprint arXiv:2410.21276 ,2024. [25] Yatai Ji, Jiacheng Zhang, Jie Wu, Shilong Zhang, Shoufa Chen, Chongjian Ge, Peize Sun, Weifeng Chen, Wenqi Shao, Xuefeng Xiao, et al. Prompt-a-video: Prompt your video diffusion model via preference-aligned llm. In 2025 IEEE/CVF International Conference on Computer Vision (ICCV) , pages 18725–18735. IEEE, 2025. [26] Yuming Jiang, Tianxing Wu, Shuai Yang, Chenyang Si, Dahua Lin, Yu Qiao, Chen Change Loy, and Ziwei Liu. Videobooth: Diffusion-based video generation with image prompts. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 6689–6700. IEEE, 2024. [27] Will Kay, Joao Carreira, Karen Simonyan, Brian Zhang, Chloe Hillier, Sudheendra Vijayanarasimhan, Fabio Viola, Tim Green, Trevor Back, Paul Natsev, et al. The kinetics human action video dataset. arXiv preprint arXiv:1705.06950 , 2017. [28] Weijie Kong, Qi Tian, Zijian Zhang, Rox Min, Zuozhuo Dai, Jin Zhou, Jiangfeng Xiong, Xin Li, Bo Wu, Jianwei Zhang, et al. Hunyuanvideo: A systematic framework for large video generative models. arXiv preprint arXiv:2412.03603 , 2024. 
+
+12 [29] Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi. Blip-2: Bootstrapping language-image pre-training with frozen image encoders and large language models. In International conference on machine learning ,pages 19730–19742. PMLR, 2023. [30] Minghan Li, Chenxi Xie, Yichen Wu, Lei Zhang, and Mengyu Wang. Five-bench: A fine-grained video editing benchmark for evaluating emerging diffusion and rectified flow models. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 16672–16681, 2025. [31] Xin Li, Wenqing Chu, Ye Wu, Weihang Yuan, Fanglong Liu, Qi Zhang, Fu Li, Haocheng Feng, Errui Ding, and Jingdong Wang. Videogen: A reference-guided latent diffusion approach for high definition text-to-video generation. arXiv preprint arXiv:2309.00398 , 2023. [32] Zhenguo Li, Fengwei Zhou, Fei Chen, and Hang Li. Meta-sgd: Learning to learn quickly for few-shot learning. arXiv preprint arXiv:1707.09835 , 2017. [33] Bin Lin, Yunyang Ge, Xinhua Cheng, Zongjian Li, Bin Zhu, Shaodong Wang, Xianyi He, Yang Ye, Shenghai Yuan, Liuhan Chen, et al. Open-sora plan: Open-source large video generation model. arXiv preprint arXiv:2412.00131 , 2024. [34] Shaoteng Liu, Yuechen Zhang, Wenbo Li, Zhe Lin, and Jiaya Jia. Video-p2p: Video editing with cross-attention control. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) ,pages 8599–8608. IEEE, 2024. [35] Shaowei Liu, Zhongzheng Ren, Saurabh Gupta, and Shenlong Wang. Physgen: Rigid-body physics-grounded image-to-video generation. In European Conference on Computer Vision (ECCV) , pages 360–378, 2024. [36] Zichi Liu, Yinggui Wang, Tao Wei, and Chao Ma. Anchorsync: Global consistency optimization for long video editing. In Proceedings of the 33rd ACM International Conference on Multimedia , pages 4494–4503, 2025. [37] Xin Ma, Yaohui Wang, Gengyun Jia, Xinyuan Chen, Tien-Tsin Wong, Yuan-Fang Li, and Cunjian Chen. Consistent and controllable image animation with motion diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 7288–7298, 2025. [38] Shweta Mahajan, Tanzila Rahman, Kwang Moo Yi, and Leonid Sigal. Prompting hard or hardly prompting: Prompt inversion for text-to-image diffusion models. In 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 6808–6817. IEEE, 2024. [39] Alex Nichol, Joshua Achiam, and John Schulman. On first-order meta-learning algorithms. arXiv preprint arXiv:1803.02999 , 2018. [40] OpenAI. Sora: Creating video from text. https://openai.com/index/sora/ , 2024. [41] Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy V. Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel HAZIZA, Francisco Massa, Alaaeldin El-Nouby, Mido Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Herve Jegou, Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski. DINOv2: Learning robust visual features without supervision. Transactions on Machine Learning Research , 2024. ISSN 2835-8856. URL https://openreview.net/forum?id=a68SUt6zFt .Featured Certification. [42] Federico Perazzi, Jordi Pont-Tuset, Brian McWilliams, Luc Van Gool, Markus Gross, and Alexander Sorkine-Hornung. A benchmark dataset and evaluation methodology for video object segmentation. In 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , pages 724–732, 2016. [43] Pika Labs. Pika. https://pika.art , 2023. Accessed: September 2026. [44] Adam Polyak, Amit Zohar, Andrew Brown, Andros Tjandra, Animesh Sinha, Ann Lee, Apoorv Vyas, Bowen Shi, Chih-Yao Ma, Ching-Yao Chuang, et al. Movie gen: A cast of media foundation models. 
+
+arXiv preprint arXiv:2410.13720 , 2024. [45] Jordi Pont-Tuset, Federico Perazzi, Sergi Caelles, Pablo Arbeláez, Alex Sorkine-Hornung, and Luc Van Gool. The 2017 davis challenge on video object segmentation. arXiv preprint arXiv:1704.00675 ,2017. [46] Chenyang Qi, Xiaodong Cun, Yong Zhang, Chenyang Lei, Xintao Wang, Ying Shan, and Qifeng Chen. Fatezero: Fusing attentions for zero-shot text-based video editing. In 2023 IEEE/CVF International Conference on Computer Vision (ICCV) , pages 15886–15896. IEEE, 2023. 
+
+13 [47] Chengwei Qin, Shafiq Joty, Qian Li, and Ruochen Zhao. Learning to initialize: Can meta learning improve cross-task generalization in prompt tuning? In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 11802–11832, 2023. [48] Qwen Team. Qwen3.5: Towards native multimodal agents, February 2026. URL https://qwen.ai/ blog?id=qwen3.5 .[49] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual models from natural language supervision. In International conference on machine learning , pages 8748–8763. PMLR, 2021. [50] Zhiyao Ren, Yibing Zhan, Baosheng Yu, and Dacheng Tao. Reverse prompt: Cracking the recipe inside text-to-image generation. arXiv preprint arXiv:2503.19937 , 2025. [51] Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Yael Pritch, Michael Rubinstein, and Kfir Aberman. Dream-booth: Fine tuning text-to-image diffusion models for subject-driven generation. In 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 22500–22510. IEEE, 2023. [52] Runway. Runway Gen-3 Alpha: Ai video generation with temporal control. https://runway.com/ research/introducing-gen-3-alpha , 2024. [53] Andrei A. Rusu, Dushyant Rao, Jakub Sygnowski, Oriol Vinyals, Razvan Pascanu, Simon Osindero, and Raia Hadsell. Meta-learning with latent embedding optimization. In International Conference on Learning Representations , 2019. URL https://openreview.net/forum?id=BJgklhAcK7 .[54] Adam Santoro, Sergey Bartunov, Matthew Botvinick, Daan Wierstra, and Timothy Lillicrap. Meta-learning with memory-augmented neural networks. In International conference on machine learning ,pages 1842–1850. PMLR, 2016. [55] Uriel Singer, Adam Polyak, Thomas Hayes, Xi Yin, Jie An, Songyang Zhang, Qiyuan Hu, Harry Yang, Oron Ashual, Oran Gafni, Devi Parikh, Sonal Gupta, and Yaniv Taigman. Make-a-video: Text-to-video generation without text-video data. In The Eleventh International Conference on Learning Representations ,2023. URL https://openreview.net/forum?id=nJfylDvgzlq .[56] Zachary Teed and Jia Deng. Raft: Recurrent all-pairs field transforms for optical flow. In European conference on computer vision , pages 402–419. Springer, 2020. [57] Hansi Teng, Hongyu Jia, Lei Sun, Lingzhi Li, Maolin Li, Mingqiu Tang, Shuai Han, Tianning Zhang, WQ Zhang, Weifeng Luo, et al. Magi-1: Autoregressive video generation at scale. arXiv preprint arXiv:2505.13211 , 2025. [58] Zhan Tong, Yibing Song, Jue Wang, and Limin Wang. Videomae: Masked autoencoders are data-efficient learners for self-supervised video pre-training. Advances in neural information processing systems , 35: 10078–10093, 2022. [59] Oriol Vinyals, Charles Blundell, Timothy Lillicrap, Daan Wierstra, et al. Matching networks for one shot learning. Advances in neural information processing systems , 29, 2016. [60] Team Wan, Ang Wang, Baole Ai, Bin Wen, Chaojie Mao, Chen-Wei Xie, Di Chen, Feiwu Yu, Haiming Zhao, Jianxiao Yang, et al. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. [61] Jiangshan Wang, Junfu Pu, Zhongang Qi, Jiayi Guo, Yue Ma, Nisha Huang, Yuxin Chen, Xiu Li, and Ying Shan. Taming rectified flow for inversion and editing. In Forty-second International Conference on Machine Learning , 2025. URL https://openreview.net/forum?id=uDreZphNky .[62] Jiuniu Wang, Hangjie Yuan, Dayou Chen, Yingya Zhang, Xiang Wang, and Shiwei Zhang. Modelscope text-to-video technical report. arXiv preprint arXiv:2308.06571 , 2023. [63] Wenhao Wang and Yi Yang. Vidprom: A million-scale real prompt-gallery dataset for text-to-video diffusion models. Advances in Neural Information Processing Systems , 37:65618–65642, 2024. [64] Yi Wang, Yinan He, Yizhuo Li, Kunchang Li, Jiashuo Yu, Xin Ma, Xinhao Li, Guo Chen, Xinyuan Chen, Yaohui Wang, et al. Internvid: A large-scale video-text dataset for multimodal understanding and generation. In International Conference on Learning Representations , volume 2024, pages 42055–42079, 2024. 
+
+14 [65] Yuxin Wen, Neel Jain, John Kirchenbauer, Micah Goldblum, Jonas Geiping, and Tom Goldstein. Hard prompts made easy: Gradient-based discrete optimization for prompt tuning and discovery. Advances in Neural Information Processing Systems , 36:51008–51025, 2023. [66] Jun Xu, Tao Mei, Ting Yao, and Yong Rui. Msr-vtt: A large video description dataset for bridging video and language. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 5288–5296, 2016. [67] Xuancheng Xu, Yaning Li, Sisi You, and Bing-Kun Bao. Smrabooth: Subject and motion representation alignment for customized video generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 16130–16141, 2026. [68] Hanshu Yan, Jun Hao Liew, Long Mai, Shanchuan Lin, and Jiashi Feng. Magicprop: Diffusion-based video editing via motion-aware appearance propagation. arXiv preprint arXiv:2309.00908 , 2023. [69] Ze Yang, Yun Chen, Jingkang Wang, Sivabalan Manivasagam, Wei-Chiu Ma, Anqi Joyce Yang, and Raquel Urtasun. Unisim: A neural closed-loop sensor simulator. In 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 1389–1399. IEEE, 2023. [70] Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, et al. Cogvideox: Text-to-video diffusion models with an expert transformer. In International Conference on Learning Representations , volume 2025, pages 83048–83077, 2025. [71] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer. Sigmoid loss for language image pre-training. In 2023 IEEE/CVF International Conference on Computer Vision (ICCV) , pages 11941–11952. IEEE, 2023. [72] Shiwei Zhang, Jiayu Wang, Yingya Zhang, Kang Zhao, Hangjie Yuan, Zhiwu Qin, Xiang Wang, Deli Zhao, and Jingren Zhou. I2vgen-xl: High-quality image-to-video synthesis via cascaded diffusion models. arXiv preprint arXiv:2311.04145 , 2023. [73] Xiangjun Zhang, Litong Gong, Yinglin Zheng, Yansong Liu, Wentao Jiang, Mingyi Xu, Biao Wang, Tiezheng Ge, and Ming Zeng. Rise-t2v: Rephrasing and injecting semantics with llm for expansive text-to-video generation. arXiv preprint arXiv:2511.04317 , 2025. [74] Zhenghao Zhang, Zuozhuo Dai, Long Qin, and Weizhi Wang. Effived: Efficient video editing via text-instruction diffusion models. arXiv preprint arXiv:2403.11568 , 2024. [75] Zijian Zhou, Shikun Liu, Haozhe Liu, Haonan Qiu, Zhaochong An, Weiming Ren, Zhiheng Liu, Xiaoke Huang, Kam-Woh Ng, Tian Xie, et al. Scaling zero-shot reference-to-video generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 9253–9262, 2026. 
+
+15 A Limitations and Broader Impact 
+
+Limitations. While our work demonstrates the feasibility of practical video inverse prompting, several aspects remain beyond the scope of the current framework. In particular, the proposed method assumes a first-last-frame (FLF) conditioning setup, where the boundary frames of the target video are provided. This design choice allows the model to focus on learning temporally coherent inverse prompting beyond static appearance reconstruction, and is also motivated by the fact that many recent public video generative models support FLF-conditioned generation. Nevertheless, the current framework does not address fully text-only video inverse prompting, which remains a challenging open problem due to the severe ambiguity of prompt-video mappings in the video domain. Despite this limitation, the proposed approach can still serve as a practical component within broader media generation pipelines when combined with existing image-based inverse prompting and editing methods. In addition, further developments may be required for deployment in real-world media production workflows. For example, learning more structured and editable captioning schemas through meta-learning could improve controllability and downstream editing flexibility, which we view as a promising direction for future work. 
+
+Broader impact. This work can provide positive societal impacts by improving the controllability of video generative models, which benefits applications such as content creation, media production, and simulation. In particular, enabling reconstruction-aware inverse prompting may reduce the manual trial-and-error process currently required for prompt engineering, improving accessibility and efficiency for non-expert users. At the same time, the framework could potentially be misused to facilitate unauthorized reproduction or manipulation of generated media, including malicious editing through video generation pipelines. Furthermore, recovering prompts from videos may raise concerns regarding intellectual property when applied to proprietary or copyrighted generative content. While our work focuses on improving controllable generation workflows rather than bypassing model safeguards or recovering hidden prompts exactly, we acknowledge these potential risks and encourage future research on responsible deployment, access control, and misuse monitoring for inverse prompting systems. 
+
+## B Experimental Details 
+
+Models. We use Qwen2.5-VL-7B-Instruct [3] as the VLM for video captioning and reference– generation comparison. Two Wan2.2 [60] checkpoints are used. During meta-training, the inner-loop reconstruction score in Eq. (4) is computed with the first-frame-conditioned 
+
+Wan-AI/Wan2.2-TI2V-5B-Diffusers . All reported evaluations, including every baseline, use the first-last-frame-conditioned alibaba-pai/Wan2.2-Fun-5B-InP [1]; the meta-learned Φ is transferred to this checkpoint without any further optimization. For the cross-generator evaluation in Table 4, we additionally use alibaba-pai/CogVideoX-Fun-V1.5-5b-InP [1, 70] at test time only. First-last-frame conditioning for both evaluation generators is provided by VideoX-Fun [1]. In the refinement baseline, prompt rewriting is performed by GPT-4o-mini [24]; prompt editing in Section 4.2 uses GPT-4o [24]. All VLM and video generator weights are kept frozen throughout the experiments. 
+
+Video generation. We use 30 inference steps for video generation. The length of each generated video is matched to the corresponding reference segment and then adjusted to the nearest valid temporal length of the form 4k + 1 , as required by the generator. Unless otherwise specified, we use a fixed random seed of 42. For seed robustness analysis, we additionally use seeds 43 and 44. 
+
+Segmentation and conditioning. All videos are split into scene-consistent segments using PySceneDetect with a threshold of 27. For each segment, the first and last frames are used as visual conditions for the video generator. The same segmentation and conditioning protocol is applied to both MVIP and all baselines. 
+
+Datasets. 
+
+• DAVIS-2017. For evaluation on unseen datasets, we use all 30 sequences from the DAVIS-2017 validation split [42, 45], without additional filtering. Each sequence is treated as a single evaluation unit. Video generation uses 30 inference steps, a fixed random seed of 16 42, and a maximum generation length of 121 frames. For prompt generation, we uniformly sample 8 frames as input to the VLM, while PEZ uses 4 uniformly sampled frames. • Kinetics-400. We randomly sample 30 clips with seed 42 from the first shard of the Kinetics-400 validation split [27], which contains approximately 1,000 videos. We segment each clip using PySceneDetect with a threshold of 27 and a minimum scene length of 15 frames. Scenes longer than 5 seconds are further divided into shorter segments, resulting in 75 evaluation units in total. Video generation follows the same settings as for DAVIS-2017. 
+
+Meta-learning hyperparameters. MVIP uses a prefix-based soft prompt consisting of 16 learnable soft tokens. The soft prompt is initialized from the token embeddings of the instruction “Describe objects, actions, camera motion, and temporal changes.” During meta-training, we use Best-of-N
+
+prompt sampling with N = 4 , an inner learning rate of α = 10 −3, a meta-step size of η = 0 .1, and 100 outer-loop optimization steps. 
+
+Compute infrastructure. Our experiments are conducted on compute cluster instances equipped with a single NVIDIA B200 GPU, each with 183GB of VRAM. 
+
+## C Evaluation Metrics 
+
+Let V and ˆV denote the reference video segment and the generated video, respectively. 
+
+Frame-level metrics. We evaluate frame-level visual correspondence between the reference and generated videos. We uniformly sample T = 8 frames from each video over its temporal extent and pair frames sampled at corresponding relative temporal positions, yielding {(vt, ˆvt)}Tt=1 .• CLIP-I We compute the cosine similarity between CLIP [49] image features of correspond-ing sampled frames and average over time: 
+
+SCLIP -I = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+cos ( ECLIP (vt), ECLIP (ˆ vt)) .
+
+• DINOv2 We compute the cosine similarity between DINOv2 [41] features of corresponding sampled frames and average over time: 
+
+SDINOv2 = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+cos ( EDINOv2 (vt), EDINOv2 (ˆ vt)) .
+
+• DreamSim We compute the DreamSim [17] perceptual distance between corresponding sampled frames and average over time: 
+
+DDreamSim = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+dDreamSim (vt, ˆvt).
+
+Video-level metrics. We evaluate video-level semantic and temporal alignment using video-level representations. • ViCLIP V-V We encode 8 uniformly sampled frames from each video using ViCLIP [64] and compute their cosine similarity: 
+
+SViCLIP = cos 
+
+
+
+EViCLIP (V ), EViCLIP ( ˆV )
+
+
+
+.
+
+• VideoMAE We encode 16 uniformly sampled frames from each video using VideoMAE [58] and compute their cosine similarity: 
+
+SVideoMAE = cos 
+
+
+
+EVideoMAE (V ), EVideoMAE ( ˆV )
+
+
+
+.
+
+• RAFT Dist. We estimate optical flow for corresponding adjacent frame pairs using RAFT [56] and measure the differences in flow magnitude and direction. The final distance is the equally weighted average of the magnitude and direction distances: 
+
+DRAFT = 12 Dmag + 12 Ddir .
+
+17 Text-alignment metrics. We additionally evaluate the semantic alignment between the generated text prompts and the target videos. • ViCLIP V-T We compute the cosine similarity between the ViCLIP [64] video embedding of the target video and the text embedding of the generated prompt. • SigLIP We compute the SigLIP [71] image-text similarity between each sampled frame of the target video and the generated prompt, averaged over frames. • BLIP2-ITM We compute the image-text matching score of BLIP-2 [29] between each sampled frame of the target video and the generated prompt, averaged over frames. 
+
+VBench metrics. We evaluate general video generation quality using the official VBench [23] evaluation pipeline. • Motion smoothness Quantifies the temporal continuity and physical plausibility of the gen-erated motion. This metric evaluates whether object movements and camera motions evolve smoothly across consecutive frames, without sudden jumps, discontinuous trajectories, or unnatural transitions. A higher score indicates that the motion follows a coherent temporal progression and appears more realistic. • Dynamic degree Measures the amount of motion contained in the generated video. This metric evaluates whether the model produces sufficiently dynamic content when motion is expected, rather than generating nearly static frames. A higher score indicates that the generated video contains more noticeable object movement, camera motion, or scene-level dynamics. • Subject consistency Measures the temporal consistency of the main subject throughout the video. This metric evaluates whether the subject preserves its identity, shape, appearance, and visual attributes across frames, even when it moves or changes position. A higher score indicates that the generated subject remains recognizable and does not suffer from identity drift, deformation, or unintended appearance changes. • Background consistency Measures the stability and temporal coherence of the background scene. This metric evaluates whether the background maintains a consistent layout, struc-ture, and visual appearance across frames, instead of changing abruptly or being distorted over time. A higher score indicates that the generated scene remains stable and coherent throughout the video. • Temporal flickering Measures undesirable frame-to-frame visual fluctuations in the gen-erated video. This metric focuses on local and high-frequency temporal artifacts such as sudden brightness changes, texture instability, color shifts, or pixel-level flickering. Ahigher score indicates less temporal flickering and, therefore, better visual stability across consecutive frames. 
+
+Internal optimization scores. We use internal reconstruction scores during prompt optimization to guide prompt refinement. • CLIP score. We compute the frame-level CLIP similarity between the generated and reference videos: 
+
+SCLIP = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+cos ( ECLIP (vt), ECLIP (ˆ vt)) .
+
+## D Baselines 
+
+All baselines are evaluated on the same segmented video set as MVIP. For each segment, we use the same first-last-frame conditioning, generation seed, video length cap, resolution, and inference budget. Generated videos are evaluated against the same reference segments using the same metric pipeline. • FLF-Only. This baseline evaluates how much reconstruction can be achieved from the video conditioning signal alone, without using any text description of the target video. For 18 each video segment, we use the same first–last frame conditioning as MVIP, where the first and last frames of the segment are provided to the video generator. The text prompt is set to an empty string. The video is then generated using the same T2V model, resolution, length, and inference budget as MVIP. This baseline isolates the contribution of first–last frame conditioning from the contribution of inverse prompt recovery. • Captioning. We next consider a direct describe-then-generate pipeline, which provides a straightforward text prompt for each target video segment. For each segment, we feed the target video to Qwen2.5-VL and ask the model to describe the visible scene, subjects, actions, and temporal progression in natural language. The generated caption is then used as the text prompt for the video generator, together with the same first–last frame conditioning as MVIP. No prompt optimization, iterative rewriting, or learnable soft prompts are used. • PEZ. PEZ [65] is originally proposed as an image inverse prompting method, while our task requires video-level reverse prompting. Since there is no directly comparable video inverse prompting baseline, we adapt PEZ to the video setting as follows. For each video segment, we uniformly sample four frames across the temporal span of the segment. We then apply PEZ independently to each sampled frame to recover an image-level prompt. The recovered prompts are concatenated in temporal order and used as the text condition for video generation. • ARPO-based refinement. ARPO [50] proposes an iterative feedback-and-rewrite strategy for image reverse prompting, where a prompt is refined by comparing the generated image with the reference image and using the resulting feedback to update the prompt. To adapt this idea to video reverse prompting, we introduce a Captioning+Refine baseline. Starting from a VLM-generated caption using the instruction “Describe this video in detail,” we generate an initial reconstruction video. We then uniformly sample frames from both the target video segment and the generated video, and ask Qwen2.5-VL-7B-Instruct to describe their concrete visual and motion differences. The resulting feedback is passed to GPT-4o-mini, which rewrites the current video prompt while preserving its correct content and structure. The refined prompt is then used to regenerate the video under the same first-last-frame conditioning and generation protocol as MVIP. To analyze the test-time refinement behavior of a caption-based baseline, we apply this refinement procedure only to the Captioning baseline and compare its iteration-wise performance with MVIP. 19 E Overall Procedure: MVIP 
+
+Algorithm 1 summarizes the full meta-training procedure of MVIP. At each outer iteration, we sample a batch of video tasks and perform task-specific inner-loop adaptation using Best-of-N
+
+prompt sampling and reconstruction-based selection. The resulting task-adapted soft prompts are then aggregated through a Reptile-style update, yielding a meta-learned initialization that can be reused for video inverse prompting. 
+
+Algorithm 1 MVIP Meta-Training 
+
+1: Input: task distribution p(τ ) over video segments, frozen VLM Mψ , frozen video generator Gθ , recon-struction score S, sampled-frame index set R, fixed instruction h, inner learning rate α, meta learning rate 
+
+η, inner steps K, number of candidates N , batch size B, outer iterations T
+
+2: Output: meta-learned soft prompt ΦT
+
+3: Initialize: shared soft prompt Φ0
+
+4: for t = 0 , . . . , T − 1 do 
+
+5: {τb}Bb=1 ∼ p(τ ) // sample video tasks 6: for b = 1 , . . . , B do 
+
+7: xb ← { f vτb 
+
+> r
+
+}r∈R // sample VLM input frames 8: vb, cond ← (f vτb 
+
+> 1
+
+, f vτb 
+
+> T
+
+) // first-last-frame condition 9: Φ(0)  
+
+> b
+
+← Φt // initialize task prompt 10: for k = 1 , . . . , K do 
+
+11: for i = 1 , . . . , N do 
+
+12: c(k) 
+
+> b,i
+
+∼ pψ (· | xb, h, Φ(k−1)  
+
+> b
+
+) // sample candidate prompt 13: ˆv(k) 
+
+> b,i
+
+← Gθ (c(k) 
+
+> b,i
+
+, v b, cond ) // generate reconstruction 14: s(k) 
+
+> b,i
+
+← S (ˆ v(k) 
+
+> b,i
+
+, v τb ) // score reconstruction 15: end for 
+
+16: i∗ ← arg max i=1 ,...,N s(k) 
+
+> b,i
+
+// best-of-N selection 17: c∗,(k) 
+
+> b
+
+← c(k) 
+
+> b,i ∗
+
+// reconstruction-guided pseudo-target 18: g(k) 
+
+> b
+
+← ∇ Φ(k−1) 
+
+> b
+
+log pψ (c∗,(k) 
+
+> b
+
+| xb, h, Φ(k−1)  
+
+> b
+
+) // VLM likelihood gradient 19: Φ(k) 
+
+> b
+
+← Φ(k−1)  
+
+> b
+
++ αg (k) 
+
+> b
+
+// inner soft-prompt update 20: end for 
+
+21: ˜Φt,b ← Φ(K) 
+
+> b
+
+= AKτb (Φ t) // task-adapted soft prompt 22: end for 
+
+23: Φt+1 ← Φt + η 1
+
+> B
+
+PBb=1 ( ˜Φt,b − Φt) // Reptile-style meta-update 24: end for 
+
+25: return ΦT // meta-learned soft-prompt initialization 
+
+20 F Additional Results 
+
+F.1 Qualitative comparison 
+
+Figure 5 shows qualitative reconstruction examples. While the baselines capture parts of the target video, they often drift in subject appearance, scene layout, or temporal progression across time. In contrast, MVIP preserves the visual content and temporal evolution of the reference video more consistently, especially at later frames. This suggests that the recovered inverse prompt provides stronger reconstruction cues than FLF-only conditioning, PEZ [65], or direct captioning. Reference MVIP(Ours) FLF-Only PEZ      
+
+> 𝑓 !𝑓 "𝑓 #𝑓 $𝑓 %𝑓 &
+> Captioning
+
+(a) 𝑓 ! 𝑓 " 𝑓 # 𝑓 $ 𝑓 % 𝑓 &
+
+> Reference MVIP(Ours) FLF-Only PEZ Captioning
+
+(b) 
+
+Figure 5: Additional qualitative reconstruction results. 
+
+21 𝑓 ! 𝑓 " 𝑓 # 𝑓 $ 𝑓 % 𝑓 &
+
+> Reference MVIP(Ours) FLF-Only PEZ Captioning
+
+(c) 𝑓 ! 𝑓 " 𝑓 # 𝑓 $ 𝑓 % 𝑓 &
+
+> Reference MVIP(Ours) FLF-Only PEZ Captioning
+
+(d) 
+
+(e) 
+
+Figure 5: Additional qualitative reconstruction results. 
+
+22 F.2 Quantitative comparison Iterative caption refinement baseline. We further compare MVIP with an iterative caption refinement baseline adapted from ARPO [50]. ARPO refines an image prompt by comparing the target image with the generated image and using the observed discrepancies as feedback for the next prompt. To extend this idea to videos, we sample multiple frames from both the target video and the generated video at matched temporal positions. A VLM is then asked to compare the two sets of frames and identify missing or mismatched visual details, including objects, scene layout, background appearance, motion cues, and temporal changes. The captioning baseline is rewritten using this feedback, and the updated caption is used to generate the next video. We repeat this process for three refinement iterations. Results are reported on the full evaluation set of Table 1, aggregated over the synthetic and real-world splits. Table 10 shows that ARPO-style refinement improves the captioning baseline from iteration 0 to iteration 3 on most reported metrics. However, even after three refinement iterations, the refined baseline remains below MVIP at iteration 0 across all metrics. This indicates that test-time caption refinement helps the captioning baseline, but is not sufficient to match the reconstruction quality of our meta-learned inverse prompt. Table 10: Comparison with iterative caption refinement. We extend the ARPO-style iterative refinement strategy to the video setting by refining the captioning baseline for three iterations. Although refinement improves the captioning baseline, it remains below MVIP across all reported reconstruction metrics. Method It. CLIP-I ↑ DINOv2 ↑ VideoMAE ↑ DreamSim ↓ RAFT ↓
+
+Captioning 0 0.858 0.733 0.969 0.191 0.471 Captioning 1 0.862 0.736 0.972 0.179 0.460 Captioning 2 0.862 0.735 0.972 0.180 0.458 Captioning 3 0.861 0.733 0.972 0.180 0.459 Ours 0 0.870 0.755 0.974 0.168 0.446 Robustness. We additionally conduct a seed-robustness analysis over three different seeds (viz., 42, 43, and 44) on the synthetic video benchmark used in Table 1. As shown in Table 11, the reconstruction performance of MVIP remains highly consistent across different random seeds, with small standard deviations on all three metrics, while continuing to outperform the captioning baseline. These results further confirm that the effectiveness of MVIP is robust to seed choice rather than depending on the default seed. Table 11: Robustness to random seeds on the synthetic video benchmark. Results are reported as mean ± standard deviation over three random seeds (42, 43, and 44).                         
+
+> Method ViCLIP V-V ↑DINOv2 ↑CLIP-I ↑
+> Captioning 0.9281 ±0.0018 0.8448 ±0.0052 0.9224 ±0.0008
+> MVIP 0.9441 ±0.0017 0.8728 ±0.0050 0.9309 ±0.0024
+
+F.3 Downstream Video Editing Experimental setup. We follow the evaluation metrics of IVEBench [12]: Instruction Satisfaction (IS), Phrase Semantic Consistency (PSC), Overall Semantic Consistency (OSC), Subject Consistency (SC), Background Consistency (BC), Temporal Flickering (TF), Motion Smoothness (MS), Video Training Suitability Score (VTSS), Content Fidelity (CF), and Semantic Fidelity (SF). We evaluate all 64 Subject Motion Editing instances from the Short subset. All methods receive the same source video and edit instruction. RF-Edit [61] and Wan-Edit [30] additionally use the benchmark source and target prompts required by their respective editing pipelines. For MVIP, given a source video, we first recover a reconstruction-oriented inverse prompt and minimally rewrite it according to the edit instruction using GPT-4o [24]. We then apply an additional GPT-4o verification pass to ensure that the requested motion is reflected in the rewritten prompt, revising it if necessary. The edited prompt and only the first frame of the source video are then used for video generation. 23 Subcategory analysis. We additionally report results for the two predefined Subject Motion Editing subcategories in IVEBench: single-subject and multiple-subject motion editing. As shown in Table 12, MVIP achieves the highest Instruction Satisfaction and Content Fidelity in both subcategories, consistent with the aggregate results in Table 6. Table 12: Results by editing subcategory. Results on the two predefined Subject Motion Editing subcategories of IVEBench [12].                                                                         
+
+> (a) Single-subject motion editing. Dimension Metric RF-Edit Wan-Edit MVIP (Ours)
+> Compliance Instruction Satisfaction 2.94 1.88 3.06
+> Phrase Semantic Consistency 0.19 0.19 0.19
+> Overall Semantic Consistency 0.24 0.25 0.25
+> Quality Subject Consistency 0.92 0.93 0.93
+> Background Consistency 0.95 0.96 0.96
+> Temporal Flickering 0.98 0.97 0.98
+> Motion Smoothness 0.99 0.98 0.99
+> Video Training Suitability Score 0.03 0.05 0.05
+> Fidelity Content Fidelity 3.09 3.79 3.91
+> Semantic Fidelity 0.79 0.98 0.96 (b) Multiple-subject motion editing. Dimension Metric RF-Edit Wan-Edit MVIP (Ours)
+> Compliance Instruction Satisfaction 3.27 2.33 3.47
+> Phrase Semantic Consistency 0.18 0.19 0.19
+> Overall Semantic Consistency 0.23 0.25 0.24 Quality Subject Consistency 0.89 0.92 0.92
+> Background Consistency 0.93 0.95 0.95
+> Temporal Flickering 0.98 0.96 0.97 Motion Smoothness 0.99 0.98 0.99
+> Video Training Suitability Score 0.02 0.05 0.05
+> Fidelity Content Fidelity 3.03 3.83 4.00
+> Semantic Fidelity 0.79 0.96 0.95
+
+Robustness to random seeds. We evaluate the robustness of MVIP to diffusion noise by using three independently sampled random seeds per video. As shown in Table 13, MVIP maintains performance comparable to the default-seed setting with consistently small standard deviations across metrics, indicating that its effectiveness does not depend on using the same seed for reconstruction and editing. These results further support the practical applicability of MVIP without explicit seed control. 
+
+Additional qualitative results. We further provide qualitative analyses of downstream video editing. As shown in Figure 6, the compared editing methods are applied to the same source video under the same edit instruction. Table 14 further compares the prompts before and after editing for the examples shown in Figures 4 and Figure 6, respectively. 24 Table 13: Robustness to random seeds in downstream video editing. Random-seed results are reported as mean ± standard deviation over three independently sampled seeds per video. 
+
+Dimension Metric RF-Edit 
+
+> [61]
+
+Wan-Edit 
+
+> [30]
+
+MVIP (Default) MVIP (Random) 
+
+Compliance Instruction Satisfaction 3.09 2.09 3.25 3.302 ± 0.039 
+
+Phrase Semantic Consistency 0.18 0.19 0.19 0.191 ± 0.001 
+
+Overall Semantic Consistency 0.23 0.25 0.25 0.247 ± 0.001 Quality Subject Consistency 0.90 0.93 0.92 0.921 ± 0.002 Background Consistency 0.94 0.95 0.95 0.951 ± 0.001 
+
+Temporal Flickering 0.98 0.97 0.97 0.976 ± 0.001 
+
+Motion Smoothness 0.99 0.98 0.99 0.986 ± 0.001 Video Training Suitability Score 0.02 0.05 0.05 0.052 ± 0.001 
+
+Fidelity Content Fidelity 3.06 3.81 3.95 3.932 ± 0.045 Semantic Fidelity 0.79 0.97 0.96 0.956 ± 0.001 Source MVIP(Ours) RF-Edit Wan-Edit 
+
+Edit instruction: Make the woman on the yacht wave her hand. 
+
+(a) Edit instruction: Make the boys remain completely still.      
+
+> Source MVIP(Ours) RF-Edit Wan-Edit
+> 𝑓 !𝑓 "𝑓 #𝑓 $𝑓 %𝑓 &
+
+(b) 
+
+25 𝑓 ! 𝑓 " 𝑓 # 𝑓 $ 𝑓 % 𝑓 &
+
+Edit instruction: Make the soldier turn around on the ship. 
+
+> Source MVIP(Ours) RF-Edit Wan-Edit
+
+(c) Edit instruction: Make the bird hop around instead of walking and foraging. 
+
+> Source MVIP(Ours) RF-Edit Wan-Edit
+
+𝑓 ! 𝑓 " 𝑓 # 𝑓 $ 𝑓 % 𝑓 &
+
+(d) 
+
+Figure 6: Qualitative comparison on downstream video editing. 
+
+26 Table 14: Prompt transformations for downstream video editing. Relevant prompt changes are highlighted in bold. 
+
+(a) Edit instruction: “Make the man and the boy suddenly fall asleep.” 
+
+Method Before editing 
+
+> Source / Recovered
+
+After editing 
+
+> Target / Edited
+
+IVEBench A man and a boy are sitting at a table in a room with floral wallpaper. The man is holding a phone and a bottle of beer, while the boy is facing away from the camera, looking at an open book on the table. 
+
+A man and a boy are sitting at a table in a room with floral wallpaper. The man and the boy suddenly fall asleep. MVIP (Ours) The person on the left, presumably male based on attire and body structure, is seated casually, wearing a maroon polo shirt with a logo or emblem printed on it, paired with beige shorts shorts. His posture indicates attentiveness, as he leans slightly toward the table, suggesting engagement in the ongoing discourse . . . . The right, another individual, presumably younger, clad in a plaid, button-down, partakes actively albeit subtlyly, his back angled toward us, indicating introspection or evasion .The person on the left, presumably male based on attire and body structure, is seated casually, wearing a maroon polo shirt with a logo or emblem printed on it, paired with beige shorts shorts. His posture indicates attentiveness, as he leans slightly toward the table, but he suddenly falls asleep ,suggesting engagement in the ongoing discourse. . . . The right, another individual, presumably younger, clad in a plaid, button-down, partakes actively albeit subtlyly, his back angled toward us, 
+
+but he suddenly falls asleep , indicating introspection or evasion. 
+
+(b) Edit instruction: “Make the boys remain completely still.” 
+
+Method Before editing 
+
+> Source / Recovered
+
+After editing 
+
+> Target / Edited
+
+IVEBench Two boys are standing on a balance beam in an indoor trampoline park. They jump off the beam into a foam pit filled with black foam blocks .Two boys are standing on a balance beam in an indoor trampoline park, remaining completely still in place, without jumping into the foam pit filled with black foam blocks .
+
+MVIP (Ours) The video shows two young boys standing on a foam pit, which is a large area filled with foam blocks designed for jumping and landing safely. They appear to be in an indoor recreational or sports center, evidenced the surrounding equipment and the general setup of the space The video shows two young boys remaining completely still on a foam pit, which is a large area filled with foam blocks designed for jumping and landing safely. They appear to be in an indoor recreational or sports center, evidenced the surrounding equipment and the general setup of the space 
+
+F.4 VBench 
+
+We further evaluate the generated videos using VBench [23], which measures reference-free video generation quality along multiple dimensions, including subject consistency, background consistency, temporal flickering, motion smoothness, and dynamic degree. As shown in Table 15, MVIP achieves the best or competitive scores across most dimensions on both real and synthetic videos. In particular, MVIP achieves the highest background consistency on both splits and the highest subject consistency on synthetic videos, while remaining competitive on real videos, suggesting that the recovered prompts help maintain coherent subject appearance and scene context during generation. While Captioning+Refine slightly improves flicker and motion smoothness in some cases, MVIP maintains strong temporal quality while producing more semantically consistent videos. These results suggest that the proposed inverse prompts improve reconstruction-oriented alignment without sacrificing general video quality. 
+
+F.5 Image-text alignment 
+
+Table 16 reports additional video-text and image-text alignment metrics. This evaluation complements the video-level reconstruction metrics by measuring whether the recovered prompt is semantically aligned with the target video. The FLF-only baseline is marked as N/A because it relies only on 27 Table 15: VBench results on real and synthetic videos. Method Subject ↑ Background ↑ Flicker ↑ Motion Smooth. ↑ Dynamic ↑
+
+Real videos 
+
+PEZ [65] 0.7832 0.8897 0.9774 0.9855 0.8448 Captioning (Qwen2.5-VL) [3] 0.7706 0.8892 0.9788 0.9871 0.8793 Captioning + Refine [50] 0.7716 0.8907 0.9786 0.9880 0.8966 MVIP (Ours) 0.7777 0.8919 0.9816 0.9888 0.8621 
+
+Synthetic videos 
+
+PEZ [65] 0.9286 0.9571 0.9792 0.9885 0.4375 Captioning (Qwen2.5-VL) [3] 0.9153 0.9502 0.9738 0.9829 0.4875 
+
+Captioning + Refine [50] 0.9289 0.9576 0.9836 0.9901 0.3750 
+
+MVIP (Ours) 0.9335 0.9581 0.9826 0.9901 0.4500 Table 16: Text-alignment evaluation. 
+
+Split Method ViCLIP V-T ↑ SigLIP ↑ BLIP2-ITM ↑
+
+Synthetic FLF-Only N/A N/A N/A PEZ [65] 0.1820 0.0711 0.5050 Captioning (Qwen2.5-VL) [3] 0.2687 0.1408 0.5213 Captioning + Refine [50] 0.2644 0.1419 0.5172 
+
+MVIP (Ours) 0.2814 0.1550 0.7986 
+
+Real FLF-Only N/A N/A N/A PEZ [65] 0.1718 0.0649 0.3551 Captioning (Qwen2.5-VL) [3] 0.2675 0.1231 0.4426 Captioning + Refine [50] 0.2663 0.1203 0.4182 
+
+MVIP (Ours) 0.2708 0.1485 0.7124 
+
+first-last-frame conditioning and does not provide a text prompt to evaluate. Across both synthetic and real videos, MVIP achieves the highest scores on all metrics. These results indicate that the proposed method recovers prompts that better capture the semantic content of the target video, rather than merely improving visual or temporal similarity. 
+
+F.6 Analysis of the Learned Soft Prompt Effect on generated prompts. We further examine the effect of the learned soft prompt Φ in Figure 7. When sampled without the learned Φ, i.e. , the target VLM is conditioned only on the manually written hard meta-prompt, the generated prompt mainly captures the coarse action while omitting details about the subject, scene context, and temporal progression. With Φ, on the other hand, the prompt significantly better specifies the subject’s appearance, the surrounding environment, and how the motion unfolds over time. This comparison shows that Φ acts as a learned prompt prior, steering the VLM toward visual and temporal cues that are useful for the video inversion process.       
+
+> Setting Generated Prompt
+> Without ΦC throws the bowling ball. With Φ(Ours )A young man in a maroon and yellow bowling shirt is standing on the bowling lane, preparing to bowl. He is holding a black bowling ball in his right hand and is in the process of winding up for his throw. The bowling alley is well-lit with overhead lights, and there are other people in the background, some of whom are also bowling. The lanes are clearly marked, and the pins are set up at the end of the lane. The young man appears focused and determined as he prepares to release the ball down the lane.
+
+Figure 7: Qualitative comparison of prompts generated without and with the learned soft prompt Φ. The learned soft prompt yields a more detailed reconstruction-oriented prompt, capturing the subject, scene context, and action progression, while the prompt without Φ only describes the coarse action. 28 Natural-language interpretation. To better understand what the learned soft prompt encodes, we perform a qualitative analysis following the soft-prompt-to-instruction conversion used in In-structZero [10]. For each checkpoint, we provide the soft prompt together with the same set of video–caption input-output examples and ask an LLM to infer the underlying instruction. As shown in Table 17, the decoded outputs evolve from a generic clarification request to a task-specific de-scription of video captioning, suggesting that the soft prompt gradually acquires task-level semantics during meta-training. These outputs should be viewed as approximate interpretations rather than exact discrete inversions of the soft prompt. Table 17: Natural-language interpretation of the learned soft prompt during meta-training. We decode the continuous soft prompt at different training steps using the procedure of InstructZero [10].     
+
+> Training step Decoded output (InstructZero) [10]
+> 30 “It seems like you’ve provided a series of unrelated video clips and descriptions. Could you please clarify what specific information you’re looking for?” 60 “The prompt you provided seems to be a series of unrelated video clips with different scenes and themes. It appears to be asking for a description or analysis of the content shown in each clip.” 100 “It seems like you’ve provided a series of video clips with different scenes and themes. It looks like the task was to describe what each video clip shows.”
+
+F.7 Efficiency 
+
+Table 18 reports the computational cost of increasing the inner-loop adaptation depth. Using three inner-loop steps increases the wall-clock time per outer update from 10.65 minutes to 33.01 minutes, corresponding to a 3.10 × higher runtime. Since the additional inner-loop steps provide limited performance gain in Table 9, we use K = 1 as our default setting for better efficiency. Table 18: Runtime analysis of inner-loop adaptation depth. We report the average wall-clock time per outer update over three matched outer updates under the same training video schedule. Increasing the number of inner-loop adaptation steps from K = 1 to K = 3 increases runtime by 3.10 ×.        
+
+> Inner steps KTime / outer update ↓Relative cost 110.65 min 1.00 ×
+> 333.01 min 3.10 ×
+
+29
