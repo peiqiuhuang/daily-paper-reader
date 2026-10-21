@@ -1,0 +1,479 @@
+Title: Explore More, Validate Less: Efficient Reflective Prompt Optimization
+
+URL Source: https://arxiv.org/pdf/2610.27367v1
+
+Published Time: Wed, 21 Oct 2026 00:27:19 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Explore More, Validate Less: Efficient Reflective Prompt Optimization 
+
+# Xiaofan Zhou 
+
+Pennsylvania State University USA xpz5429@psu.edu 
+
+# Lu Cheng 
+
+Pennsylvania State University USA 
+
+## Abstract 
+
+Reflective prompt optimization improves instructions using task feedback, but coupling candidate generation with full-validation-based selection can make search costly and sequential. We propose a two-stage framework that decouples reflective candidate-pool construction from validation allocation. During construction, we sample multiple parents and reuse each parent’s training responses across parallel reflection branches. Each revision is screened against its parent on a small training minibatch, allowing locally improved candidates to support further revisions without full validation. Af-ter construction, an exploration policy selects candidates from the frozen pool under a fixed full-validation budget, and the prompt with the highest measured validation score is returned. This sepa-ration allows candidate-pool size and validation budget to be set independently. We evaluate random selection and learned score prediction with similarity-based exploration on five benchmarks using Qwen3.5-9B and Llama-3.1-8B-Instruct. With 100 retained candidates and 20 full validations, our framework improves over the initial solver by up to 11.22 percentage points. Learned selection improves over the initial solver in all ten comparisons, although neither selection policy consistently outperforms the other. These results support separating reflective search from budgeted valida-tion while leaving room for stronger candidate-selection policies. 
+
+## CCS Concepts 
+
+• Computing methodologies → Natural language processing .
+
+## Keywords 
+
+automatic prompt optimization, reflective search, parallel search, candidate selection 
+
+## 1 Introduction 
+
+Large language models (LLMs) exhibit broad capabilities in lan-guage and reasoning [2, 5, 19], but their task performance depends on how these capabilities are elicited. In-context learning (ICL) specifies tasks through demonstrations without updating model weights [3]; these demonstrations convey input distributions, label spaces, and output formats [18]. Chain-of-thought (CoT) prompt-ing improves multi-step reasoning through worked examples of intermediate steps [28], while zero-shot CoT can elicit such steps with a short instruction [11]. Prompt design is also consequen-tial within a task: example selection [14], example order [15], and prompt format [36] can substantially affect performance. These findings make prompts a practical optimization target. Manually inspecting outputs and revising instructions is costly across tasks, motivating automatic prompt optimization that improves prompts while keeping model parameters fixed [1, 20, 37]. Automatic Prompt Engineer (APE) generates and selects instruc-tions [37], while the Multi-prompt Instruction Proposal Optimizer (MIPRO) jointly optimizes instructions and demonstrations [20]. Repeatedly expanding only the best prompt can concentrate search on one strategy; Genetic-Pareto (GEPA) instead retains comple-mentary parents through instance-wise Pareto selection [1]. In its original single-proposal loop, a parent answers a sampled training minibatch, errors guide revision, and a child passing local screening receives full validation before the frontier update. Figure 1 high-lights two bottlenecks: successive reflections wait for preceding evaluations and decisions; all-correct minibatches incur parent-answering and scoring costs but skip reflection, producing no can-didate. Rejected children also consume work without expanding the pool. Parallel proposals relax serial generation [34], but accepted proposals still require full validation before frontier updates. These dependencies limit opportunities to explore alternatives and refine descendants under finite budgets. To address the above challenges, our approach separates reflec-tive candidate-pool construction from validation-based selection, exploring multiple lineages before fully validating a subset of candi-dates. We sample multiple parents and generate revisions in parallel, retaining children that improve upon their parents on small training minibatches. Once the pool is frozen, an exploration policy, such as random sampling or learned score prediction with similarity-based exploration, selects candidates for full validation under a fixed bud-get. The candidate with the highest measured validation score is returned. Removing full validation from the generation loop allows the pool to grow beyond the validation budget, while different selection policies can reuse the same pool without regenerating prompts. Our contributions are threefold: 
+
+• We introduce a two-stage framework that decouples reflective candidate-pool construction from full validation, allowing pool size and validation budget to be set independently. This targets validation efficiency by reserving expensive full evaluations for a selected subset rather than every accepted revision. 
+
+• We develop a multi-parent construction procedure that shares training feedback across parallel reflection branches and locally screens revisions without full-validation scores. Reusing parent responses reduces repeated evaluation, while concurrent expan-sion across parents and minibatches supports broader search over alternative revision paths. 
+
+• Experiments on five benchmarks with two models demonstrate the effectiveness of our framework, with gains over the initial solver of up to 11.22 percentage points. Our two exploration 
+
+> 1arXiv:2610.27367v1 [cs.CL] 19 Oct 2026 Xiaofan Zhou and Lu Cheng
+
+GEPA: the original single-proposal loop 
+
+Pareto frontier Select parent + minibatch Parent answers + scoring 
+
+Reflector 
+
+Reflect + revise Child screening Full validation 
+
+> Update frontier; begin the next attempt
+
+Two bottlenecks around reflection Serial reflection attempts     
+
+> Each new reflection waits for the previous attempt’s evaluation and decision. Reflect →evaluate →next reflection
+
+All-correct sampled questions   
+
+> All sampled answers are correct: skip reflection. Parent answering and scoring are already paid. Sampled parent evaluations →no new candidate
+
+Figure 1: GEPA’s original single-proposal workflow. The reflector callout highlights sequential evaluation dependencies and parent-evaluation cost when all sampled answers are correct. Solid arrows show the successful-proposal path and frontier update; return edges for all-correct minibatches and rejected children are omitted for clarity. The dashed arrow connects the reflector to explanatory annotations rather than an execution step. 
+
+policies collectively lead on seven of ten model–dataset com-binations, while neither policy dominates. Separate analyses report stage-wise runtime and show greater mean tree depth in nine of ten comparisons against the configured GEPA searches. 
+
+## 2 Related Work 2.1 Automatic Prompt Optimization 
+
+Automatic prompt optimization searches for effective prompts while keeping model weights fixed. AutoPrompt uses gradient-guided search to find discrete trigger tokens for masked language models [25]. For natural-language instructions, APE generates candidates from demonstrations [37]; Optimization by Prompting (OPRO) conditions proposals on past instructions and scores [31]; EvoPrompt evolves prompt populations [6]. MIPRO jointly opti-mizes instructions and demonstrations for multi-stage programs [20]. Beyond individual prompts, AFlow searches code-represented agentic workflows using Monte Carlo tree search and execution feedback [35]. Consensus-Evolve (C-Evolve) evolves prompt groups using voting-based fitness rather than individual scores [12]. meta-TextGrad optimizes the prompts and structure of language-model optimizers themselves [30]. Evaluation-efficient selection is also established. Prompt Opti-mization with Textual Gradients (ProTeGi) combines textual feed-back, beam search, and bandit-based selection [21]. InstructZero uses Bayesian optimization over low-dimensional soft prompts that an open model converts into instructions for a black-box model [4]. Instruction Optimization using Neural Bandits Coupled with Transformers (INSTINCT) uses a multilayer perceptron (MLP) sur-rogate coupled to transformer representations to guide soft-prompt search and instruction generation [13]. Multi-Agent System Prompt Optimization via Bandits (MASPOB) combines graph neural repre-sentations, uncertainty-aware selection, and coordinate ascent to optimize prompts within fixed multi-agent workflows [7]. TRIPLE formulates selection from a pre-generated prompt pool as fixed-budget best-arm identification [24]. Thus, separating gen-eration from budgeted selection is not itself new. Our focus is the construction of a reflective candidate tree without full-validation scores, using shared parent feedback and local child screening. The subsequent policy allocates complete validation-set evaluations over that frozen pool. Unlike soft-prompt search, it selects among already constructed natural-language prompts; the learned selec-tor is an exploration option rather than a new neural prediction paradigm. 
+
+## 2.2 Feedback-driven Improvement 
+
+Self-Refine critiques and revises individual outputs [17], while Re-flexion stores feedback-derived reflections for subsequent agent trials [26]. TextGrad propagates language-model feedback through a computation graph to optimize its components [33]. This ad-dresses how feedback reaches optimization variables, whereas our framework controls when candidate prompts receive full validation. GEPA combines trajectory reflection with instance-wise Pareto se-lection to retain complementary prompts [1]. Its parallel-proposal extension generates revisions from multiple parents, but still fully validates accepted proposals before updating the frontier [34]. Our distinction is therefore not reflection or parallel generation alone: training feedback and local screening drive pool construction with-out full-validation scores, and validation is allocated only after the 
+
+> 2Explore More, Validate Less
+
+pool is frozen. The optimization target remains a reusable task prompt rather than an individual output or the optimizer itself. 
+
+## 3 Method 3.1 Problem Definition 
+
+We seek a reusable task prompt that performs well on unseen ex-amples under a limited evaluation budget. Let 𝑓 𝑝 denote an LLM conditioned on prompt 𝑝 , with model weights and the task inter-face held fixed. For an input 𝑥 and target 𝑦 , a task-specific scoring function 𝑠 (𝑓 𝑝 (𝑥 ), 𝑦 ) ∈ [ 0, 1] measures output quality. Optimization uses a training partition Dtr for feedback and a validation partition 
+
+Dval to measure the full-validation score 𝑉 (𝑝 ):
+
+𝑉 (𝑝 ) = 1
+
+|D val |∑︁ (𝑥,𝑦 ) ∈ D val 
+
+𝑠 (𝑓 𝑝 (𝑥 ), 𝑦 ). (1) Vertical bars denote set cardinality or minibatch length. We distin-guish the candidate-pool size 𝑁 from the full-validation budget 𝐵 ,both positive integers with 𝐵 ≤ 𝑁 . One budget unit evaluates one candidate on all of Dval , rather than on a single example. Given an initial prompt 𝑝 0, the problem is to construct a pool P of size 
+
+𝑁 , choose an evaluated subset O ⊆ P with |O| ≤ 𝐵 , and return a prompt from O. Training evaluations and reflection calls are ac-counted for separately; limiting 𝐵 does not bound their cost. Test data are reserved for final assessment; validation performance does not guarantee generalization. 
+
+## 3.2 Overall Framework 
+
+Our framework separates candidate-pool construction from vali-dation-based selection. In the first stage, multiple parents undergo reflective revision using training feedback, and locally improved children enter the pool. Parent–child relationships are recorded as generation provenance. At the stage boundary, prompt texts and generation metadata are frozen. The second stage applies an exploration policy to this pool, acquiring validation scores without generating additional candidates. Different exploration policies can therefore share the same construction stage. The final output is the prompt with the highest measured validation score. Figure 2 illus-trates the framework, and Algorithm 1 summarizes the procedure. 
+
+## 3.3 Candidate-Pool Construction 
+
+Parent response generation. Let 𝑔 = 0, 1, . . . index generation batches and P𝑔 denote the pool at the start of batch 𝑔 , initialized as P0 = {𝑝 0 }. At each batch, we uniformly sample up to 𝑃 distinct parents from P𝑔 , where 𝑃 is the maximum number of parents per batch. Uniform sampling distributes proposal opportunities across lineages without full-validation scores, while distinctness prevents one parent from occupying multiple slots in the same batch. For each selected parent 𝑝 , we sample a feedback set 𝑇 𝑝 ⊆ D tr of 𝑀 dis-tinct training examples. We generate and score a response to each example, saving its evaluation feedback. These parent trajectories are shared across subsequent reflections rather than regenerated for each proposal. Parent selection does not consult full-validation scores. Parent-specific notation below is local to the current gener-ation batch. The shared feedback set is larger than an individual reflection minibatch so that groups can be constructed from a broader set 
+
+Algorithm 1 Two-stage prompt optimization 
+
+Input: Initial prompt 𝑝 0; data Dtr , Dval ; pool size 𝑁 ; validation budget 𝐵 ;parent limit 𝑃 ; feedback size 𝑀 ; branches 𝐾 ; minibatch size 𝑏 ; explo-ration policy 𝜋 .
+
+Output: Selected prompt 𝑝 ★.
+
+Stage I: Candidate-pool construction  
+
+> 1:
+
+P0 ← { 𝑝 0 }; 𝑔 ← 0 
+
+> 2:
+
+while | P 𝑔 | < 𝑁 do  
+
+> 3:
+
+Uniformly select up to 𝑃 distinct parents from P𝑔  
+
+> 4:
+
+for all selected parents 𝑝 in parallel do  
+
+> 5:
+
+repeat  
+
+> 6:
+
+Sample 𝑀 distinct examples 𝑇 𝑝 ⊆ D tr  
+
+> 7:
+
+Evaluate 𝑝 on 𝑇 𝑝 ; save responses, scores, and feedback  
+
+> 8:
+
+until at least one response fails  
+
+> 9:
+
+Draw 𝐾 size-𝑏 minibatches 𝑆 𝑝, 1, . . . , 𝑆 𝑝,𝐾 using Eq. (3)  
+
+> 10:
+
+for 𝑘 = 1, . . . , 𝐾 in parallel do  
+
+> 11:
+
+𝑟 𝑝,𝑘 ∼ 𝑅 ( · | 𝑝, 𝜏 (𝑝, 𝑆 𝑝,𝑘 ) )  
+
+> 12:
+
+𝑝 ′ 
+
+> 𝑝,𝑘
+
+∼ 𝐺 ( · | 𝑝, 𝑟 𝑝,𝑘 ) 
+
+> 13:
+
+Evaluate 𝑝 ′ 
+
+> 𝑝,𝑘
+
+on 𝑆 𝑝,𝑘 ; compute Δ𝑝,𝑘 against saved parent scores  
+
+> 14:
+
+end for  
+
+> 15:
+
+Gather improving children Q𝑝 using Eq. (5)  
+
+> 16:
+
+end for  
+
+> 17:
+
+Join all branches; merge Q𝑝 across parents and deduplicate against 
+
+P𝑔 and within the batch  
+
+> 18:
+
+Form P𝑔 +1 by appending children to P𝑔 in fixed parent-slot and proposal order, stopping at size 𝑁  
+
+> 19:
+
+𝑔 ← 𝑔 + 1 
+
+> 20:
+
+end while  
+
+> 21:
+
+Freeze P ← P 𝑔 
+
+Stage II: Validation-based selection  
+
+> 22:
+
+O0 ← ∅ ; H0 ← ∅  
+
+> 23:
+
+for 𝑡 = 0, . . . , 𝐵 − 1 do  
+
+> 24:
+
+U𝑡 ← P \ O 𝑡  
+
+> 25:
+
+𝑞 𝑡 +1 ∼ 𝜋 ( · | U 𝑡 , H𝑡 ) 
+
+> 26:
+
+Measure 𝑉 (𝑞 𝑡 +1 ) on all of Dval  
+
+> 27:
+
+Update O𝑡 +1, H𝑡 +1 using Eq. (6)  
+
+> 28:
+
+end for  
+
+> 29:
+
+return 𝑝 ★ = arg max 𝑝 ∈O 𝐵 𝑉 (𝑝 )
+
+Break ties by fixed pool order. The default 𝜋 selects 𝑝 0 first, then samples uniformly without replacement. 
+
+of observed successes and failures. Increasing 𝑀 provides more possible combinations but also increases upfront parent-evaluation cost. Our setting of 𝑀 = 15 supplies five three-example branches from a common set, with overlap allowed. Saved responses let overlapping branches reuse evidence without answering the same question again. 
+
+Stratified resampling and reflection. For each parent 𝑝 , we con-struct 𝐾 ordered minibatches 𝑆 𝑝, 1, . . . , 𝑆 𝑝,𝐾 , where 𝐾 is the number of proposal slots per parent and 𝑘 indexes a slot. Small minibatches keep each reflection focused and limit child-screening cost, while multiple groups offer different combinations of feedback. We split 
+
+𝑇 𝑝 into examples with failed responses, 𝐸 𝑝 , and successful responses, 
+
+𝐶 𝑝 , according to whether their recorded score is below or equal to the maximum of 1. Each minibatch contains 𝑏 examples from these strata, supplying errors to correct and successful behavior to preserve when available. If a stratum cannot meet its target count, the other fills the remaining positions, with at least one failure 
+
+> 3Xiaofan Zhou and Lu Cheng
+
+Stage I Candidate-pool construction Training feedback only 
+
+Pool P𝑔 
+
+starts with 𝑝 0
+
+Up to 𝑃 parents Evaluate each on 
+
+𝑀 examples 
+
+Parallel branches 
+
+𝑆 𝑝, 1: 𝑏 examples Reflect → revise 
+
+𝑆 𝑝,𝐾 : 𝑏 examples Reflect → revise 
+
+... 
+
+> 𝐾 minibatches per parent
+
+Child on 𝑆 𝑝,𝑘 
+
+vs. saved scores 
+
+Δ𝑝,𝑘 > 0
+
+Deduplicate Fixed-order commit     
+
+> pass otherwise discard Repeat while | P 𝑔 |<𝑁
+> Shared parent feedback
+
+Freeze candidate pool: |P | = 𝑁 
+
+Stage II Validation-based selection No new prompt generation 
+
+Frozen pool 
+
+P
+
+Exploration policy 
+
+𝜋 : select 𝐵 prompts from frozen pool Full validation 
+
+𝐵 prompts measure 𝑉 (𝑝 )
+
+Return 𝑝 ★
+
+Highest 𝑉 (𝑝 )
+
+> No feedback to Stage I Test evaluation follows prompt selection.
+
+Figure 2: Two stages separated by a frozen candidate pool. Stage I constructs 𝑁 prompts using training feedback only. The dashed region highlights parallel proposal branches: reflection and revision can execute concurrently across minibatches and parents, while each revision follows its own reflection. Locally improved children enter the pool, and the generation loop stays within Stage I. Once the pool reaches 𝑁 prompts, its texts and metadata are frozen. Stage II uses an exploration policy 𝜋 to allocate 𝐵 full validations and returns the prompt with the highest measured validation score, without generating new prompts or sending validation feedback to Stage I. Construction and selection symbols are defined in Sections 3.3 and 3.4, respectively. Test evaluation follows final selection. 
+
+required. Requiring a failure avoids allocating a reflection branch to a group with no observed error. An entirely successful feedback set is resampled. Let 𝑏 err and 𝑏 ok be the resulting numbers of failed and successful examples, respectively, with 𝑏 err + 𝑏 ok = 𝑏 .For an ordered minibatch 𝑆 , let 𝑈 (𝑆 ) be its set of distinct exam-ples, and let 𝑇 𝑏 𝑝 denote all ordered tuples of length 𝑏 drawn from 
+
+𝑇 𝑝 . The admissible minibatch set A𝑝 and sampling rule are 
+
+A𝑝 = {𝑆 ∈ 𝑇 𝑏 𝑝 : |𝑈 (𝑆 )| = 𝑏, 
+
+|𝑈 (𝑆 ) ∩ 𝐸 𝑝 | = 𝑏 err ,
+
+|𝑈 (𝑆 ) ∩ 𝐶 𝑝 | = 𝑏 ok },
+
+(2) 
+
+𝑆 𝑝,𝑘 ∼ Unif  A𝑝 \ { 𝑆 𝑝,ℎ : 1 ≤ ℎ < 𝑘 } . (3) Here Unif denotes uniform sampling, and ℎ indexes earlier draws for the same parent. The set 𝑇 𝑝 stays fixed across draws: only pre-viously sampled ordered minibatches are excluded, not their con-stituent examples. Across-group reuse lets a scarce failure inform several branches with different companions. Within-group distinct-ness avoids repeating evidence in one reflection, while excluding identical ordered groups avoids allocating branches to the same feedback sequence. Task-specific variants are stated in the experi-mental setup. Each minibatch drives a separate reflection and prompt revision. Reflection diagnoses the observed errors before revision uses that diagnosis to modify the reusable prompt. The main task-score exper-iments use one fixed error-analysis instruction across all branches, keeping reflection style constant across groups and exploration-policy comparisons. Following the trace-based reflection setup of Agrawal et al. [1], let 𝜏 (𝑝, 𝑆 𝑝,𝑘 ) contain the saved parent responses, scores, and feedback for 𝑆 𝑝,𝑘 . We generate reflection text 𝑟 𝑝,𝑘 and a revised child prompt 𝑝 ′ 
+
+> 𝑝,𝑘
+
+as 
+
+𝑟 𝑝,𝑘 ∼ 𝑅 ( · | 𝑝, 𝜏 (𝑝, 𝑆 𝑝,𝑘 )) ,𝑝 ′ 
+
+> 𝑝,𝑘
+
+∼ 𝐺 ( · | 𝑝, 𝑟 𝑝,𝑘 ), (4) where 𝑅 and 𝐺 are the conditional output distributions of the re-flection and revision operators, and ∼ denotes sampling. Branches can run concurrently across minibatches and parents; within each branch, reflection precedes revision and child evaluation. A sin-gle reflection instruction does not restrict the number of parallel branches. 
+
+> 4Explore More, Validate Less
+
+Local screening and admission. After revision, each child an-swers the same 𝑏 training examples that supplied its reflection. We compare its scores with the saved parent scores, without gener-ating additional parent responses. Using the same examples avoids confounding the comparison with question selection and checks whether the revision addresses its motivating feedback. This is local screening, not full validation. Let b𝑣 (𝑝 ; 𝑆 ) be the mean task score of prompt 𝑝 on minibatch 𝑆 , using the recorded responses. The local improvement Δ𝑝,𝑘 and qualifying-child set Q𝑝 are 
+
+Δ𝑝,𝑘 = b𝑣 (𝑝 ′ 
+
+> 𝑝,𝑘
+
+; 𝑆 𝑝,𝑘 ) − b𝑣 (𝑝 ; 𝑆 𝑝,𝑘 ),
+
+Q𝑝 = {𝑝 ′ 
+
+> 𝑝,𝑘
+
+: 1 ≤ 𝑘 ≤ 𝐾, Δ𝑝,𝑘 > 0}. (5) We combine the qualifying children from all selected parents and retain nonduplicate prompts, together with their parent identi-fiers and generation metadata. Strict improvement rejects revisions with no measured local gain, and deduplication prevents identical prompts from consuming pool capacity. This gate measures local training improvement; it does not establish improvement on un-seen examples. After batch 𝑔 finishes, candidates are added to P𝑔 
+
+in a predefined parent-slot and proposal order to form P𝑔 +1, rather than in completion order. Fixed-order admission prevents response latency from determining which candidates occupy the remaining slots. If the final batch exceeds the target size, this order determines which candidates fill the remaining slots. Construction continues until 𝑁 prompts, including the initial prompt, have been retained; we denote this frozen pool by P. The size limit bounds the pool available for final selection. No full-validation scores are queried during this stage, allowing unvalidated intermediate prompts to support further revisions. 
+
+## 3.4 Validation-Based Selection 
+
+Once P is frozen, an exploration policy 𝜋 chooses which candidates receive full validation. Let 𝑡 count completed selections, O𝑡 be the set of fully validated candidates, and H𝑡 = {( 𝑝, 𝑉 (𝑝 )) : 𝑝 ∈ O 𝑡 } be the observed history. The remaining candidates form U𝑡 = P \ O 𝑡 .For 𝑡 = 0, . . . , 𝐵 − 1, let 𝑞 𝑡 +1 denote the next selected prompt. The common interface is 
+
+𝑞 𝑡 +1 ∼ 𝜋 ( · | U 𝑡 , H𝑡 ),
+
+O𝑡 +1 = O𝑡 ∪ { 𝑞 𝑡 +1 },
+
+H𝑡 +1 = H𝑡 ∪ {( 𝑞 𝑡 +1, 𝑉 (𝑞 𝑡 +1))} ,
+
+(6) starting from empty sets O0 = H0 = ∅. The exploration policy has support only on candidates not yet fully validated and may ignore the observed scores. Test scores are never inputs. This interface separates the exploration policy from candidate-pool construction; we evaluate random selection and a prediction-guided alternative. 
+
+Random selection. In the baseline-inclusive configuration, the initial prompt is selected first, 𝑞 1 = 𝑝 0. The remaining 𝐵 − 1 candi-dates are sampled uniformly without replacement from P \ { 𝑝 0 },independently of their validation scores. 
+
+Prediction-guided exploration. We also evaluate an MLP trained on prompt embeddings and observed full-validation scores. After random initialization, the policy repeatedly refits the predictor and ranks unvalidated candidates by a weighted combination of pre-dicted score and novelty. Novelty is one minus the maximum cosine similarity to any already validated prompt. Predictions and novelty are separately min–max normalized over the remaining candidates before combination. This policy uses only acquired validation labels and the frozen pool; unlike the baseline-inclusive random policy, it does not force the initial prompt to be selected. Selection stops when the validation budget is exhausted. The returned prompt 𝑝 ★ is 
+
+𝑝 ★ = arg max  
+
+> 𝑝 ∈ O 𝐵
+
+𝑉 (𝑝 ), (7) where arg max selects the prompt with the highest measured valida-tion score, breaking ties by the fixed pool order. Thus, exploration policies differ in validation allocation, while sharing the same can-didate pool and final selection criterion. Full validation requires 
+
+𝐵 |D val | candidate–example evaluations; this accounting excludes candidate-pool construction and final test evaluation and is not, by itself, a claim of lower end-to-end cost. 
+
+Inference. We fix 𝑝 ★ and model weights throughout testing. For each unseen input 𝑥 , the solver receives 𝑝 ★ through the task’s system-instruction template, together with the question and any task-provided context, and generates 𝑓 𝑝 ★ (𝑥 ). No reflection, candi-date search, or prompt-tree traversal is performed. The task-specific evaluator scores the answer against the held-out target without feeding test scores back into selection. Decoding settings and three-seed averaging follow the experimental setup. 
+
+## 4 Experimental Setup 4.1 Research Questions 
+
+We organize the experiments around three research questions (RQs): 
+
+RQ1. How do the two-stage framework and its exploration poli-cies compare with the initial solver, prompt optimization, and preference fine-tuning across two models? 
+
+RQ2. What do the reported construction and full-validation times indicate about the relative costs of our workflow and GEPA? 
+
+RQ3. How do the retained candidate trees compare with GEPA in mean depth and mean branching factor? 
+
+## 4.2 Datasets 
+
+We evaluate on five benchmarks. HotpotQA [32] tests multi-hop question answering, scored by normalized exact match using three retrieved passages per question. SuperGPQA [16] contains graduate-level questions with ten answer options, scored by accuracy. LiveBench-Math [29] covers mathematical reasoning and uses task-specific answer checkers. IFBench [22] measures instruction following using the mean fraction of satisfied constraints per example. BIG-Bench Extra Hard (BBEH) [9] evaluates challenging reasoning tasks with binary answer matching. Training, validation, and test subsets contain 150, 300, and 300 examples, respectively, except for LiveBench-Math, which uses 122 examples per subset. For IFBench, training and validation use multi-constraint instruction data, while testing uses the official test set. All subsets are fixed across methods; validation guides prompt selection, and test data are reserved for final evaluation. 
+
+> 5Xiaofan Zhou and Lu Cheng
+
+## 4.3 Models 
+
+We evaluate Qwen3.5-9B and Llama-3.1-8B-Instruct [5]. Within each prompt-optimization experiment, the same model performs task solving, reflection, and prompt revision, with its parameters fixed; Qwen’s thinking mode is disabled. Training and validation task responses use temperature 0, while reflection and revision use temperature 0 .7. Task responses have a maximum output budget of 4,096 tokens. Final testing uses temperature 0 .7. For every method, final test scores are averaged over three inference seeds. 
+
+## 4.4 Compared Methods 
+
+We compare against four reference methods: the initial solver, MIPRO version 2 (MIPROv2), GEPA, and Direct Preference Op-timization (DPO) [23]. They cover an unoptimized prompt, prompt optimization, and preference-based parameter adaptation. Within each model block, methods start from the same base checkpoint and use the same test examples and scoring metrics. 
+
+Initial solver. The initial prompt provides a reference without reflective search. We retain the initial prompt for HotpotQA, Su-perGPQA, IFBench, and BBEH. For LiveBench-Math, the reference uses the minimal task instruction from the existing evaluation setup with an empty evolvable component, rather than an optimized pool candidate. 
+
+MIPROv2. MIPROv2 extends MIPRO [20] in the Declarative Self-improving Python (DSPy) framework [10] and jointly searches over instructions and few-shot demonstrations. 1 It provides a prompt-optimization comparison that keeps solver parameters fixed. 
+
+GEPA. We compare against a local implementation based on GEPA [1], which interleaves reflective revision with validation-based Pareto selection. The task-score configuration uses the shared-parent proposal variant, with five proposal slots per selected parent, and a budget of 30 full-validation evaluations. This is an imple-mentation variant, not an unmodified single-proposal reproduction. The budget counts full-validation evaluations rather than reflection rounds. The separate runtime comparison reports GEPA-20, the time consumed by 20 full-validation rounds of GEPA, including evaluation of the initial prompt. 
+
+DPO. We use DPO [23] to train a separate adapter for each model– dataset pair using preference pairs constructed only from training examples. The base model generates candidate answers, which are scored by the dataset’s native evaluator. The highest-scoring answer is chosen and the lowest-scoring answer is rejected; pairs are retained only when their scores differ strictly. Training uses Low-Rank Adaptation (LoRA) [8], with the base parameters frozen and the adapter-disabled base model serving as the reference policy. The DPO loss uses sequence log probabilities over answer tokens only. This baseline adapts model parameters rather than searching for a task prompt. 
+
+> 1https://dspy.ai/3.4.0/api/optimizers/MIPROv2/
+
+Our exploration policies. Both variants use a single fixed reflec-tion instruction and the same frozen candidate pool for each model– dataset pair. Ours (Random) uses baseline-inclusive random selec-tion; Ours (MLP + similarity) combines predicted validation perfor-mance with similarity-based exploration, as described in Section 3.4. 
+
+## 4.5 Implementation Details 
+
+All experiments are conducted on NVIDIA A100 hardware with 80 GB of accelerator memory. We report candidate construction and full validation separately in minutes, with 20 full-validation evaluations per method in the runtime comparison. These are refer-ence times for relative comparison within our experimental setting, not hardware-independent absolute runtimes. The Qwen IFBench construction entry is estimated, and the entries have not all been recalculated using the same procedure. 
+
+Prompt optimization. We set the target pool size to 𝑁 = 100 prompts, including the initial prompt, using the training-only pro-cedure in Section 3.3. Each generation batch samples up to 𝑃 = 5 par-ents. Each parent first answers 𝑀 = 15 training examples. From its scored responses, we sample 𝐾 = 5 minibatches of 𝑏 = 3 examples, with replacement across minibatches but not within a minibatch. In the updated single-reflector runs, LiveBench-Math uses strati-fied sampling targeting two failures and one success, with counts adjusted when a stratum is unavailable. The other benchmarks sam-ple three distinct examples uniformly and reject all-successful or repeated ordered minibatches. All branches use the same ordinary error-analysis instruction. After freezing the pool, the random policy validates the initial prompt and 19 additional candidates sampled uniformly without replacement. The MLP-based policy uses five randomly selected candidates for initialization, then allocates the remaining 15 vali-dations sequentially. It embeds prompt text with a frozen MPNet-based sentence encoder [27] and refits an MLP with one 16-unit hidden layer, tanh activation, an L2 regularization coefficient of 1, and a maximum of 500 quasi-Newton optimization iterations. Acquisition weights are 0 .4 for normalized predicted score and 0 .6for normalized novelty. Both policies select the prompt with the highest measured validation score, breaking ties by fixed pool or-der. For task-score comparisons, our method uses 20 full-validation evaluations, and GEPA is configured with a budget of 30. We conduct training on multiple NVIDIA A100 graphics process-ing units (GPUs). 
+
+DPO training. For each training question, we sample four an-swers at temperature 0 .7 with a maximum output length of 4,096 tokens. LoRA uses rank 16, scaling parameter 𝛼 = 32, and dropout 0.05. We train for two epochs with learning rate 5 × 10 −6, four gradient-accumulation steps, and DPO preference-loss coefficient 
+
+𝛽 = 0.1. We use the second-epoch checkpoint throughout. Test-ing uses the fixed test examples and native scorers, with scores averaged over three inference seeds. 
+
+## 5 Results 5.1 Main Results (RQ1) 
+
+Table 1 shows that our framework achieves the highest reported score in most model–dataset combinations. The two exploration 
+
+> 6Explore More, Validate Less
+
+Table 1: Main task scores (%; higher is better). All test scores are averaged over three inference seeds. Both variants of our method use one fixed reflection instruction. Bold marks the highest score within each model block, not statistical significance.                                                                  
+
+> Method SuperGPQA LiveBench-Math IFBench BBEH HotpotQA
+> Llama-3.1-8B-Instruct
+> Initial solver 17 .00 7.38 31 .00 9.33 32 .33 MIPROv2 18 .67 8.47 31 .50 9.33 44 .89
+> GEPA 16 .67 10 .66 30 .78 7.33 41 .00 DPO 16 .33 7.38 32 .00 8.33 41 .00 Ours (Random) 18 .89 10 .38 28 .11 10 .00 42 .44 Ours (MLP + similarity) 21 .44 9.02 31 .67 9.67 42 .22
+> Qwen3.5-9B
+> Initial solver 48 .44 53 .28 39 .28 25 .22 40 .67 MIPROv2 50 .00 51 .64 31 .33 22 .00 49 .33 GEPA 50 .56 52 .05 40 .39 21 .11 51 .00 DPO 49 .33 52 .46 36 .83 21 .33 40 .00 Ours (Random) 51 .33 56 .28 41 .67 24 .56 51 .89
+> Ours (MLP + similarity) 52 .78 56 .83 41 .22 25 .78 51 .78
+
+policies collectively lead in seven of ten comparisons, covering all five Qwen tasks as well as Llama SuperGPQA and BBEH. MLP-based selection leads on Qwen SuperGPQA, LiveBench-Math, and BBEH, and on Llama SuperGPQA; random selection leads on Qwen IFBench and HotpotQA, and on Llama BBEH. Thus, the leading results are distributed across both selectors rather than attributable to one universally superior policy. These counts describe the best observed variant for each task, not a policy chosen in advance that wins all seven. The improvements over the initial solver extend across both model families and are largest on HotpotQA. Random selection increases Qwen from 40.67 to 51.89 and Llama from 32.33 to 42.44, gains of 11.22 and 10.11 percentage points. MLP-based selection reaches 51.78 and 42.22, respectively, yielding similarly large gains. On SuperGPQA, learned selection increases Qwen from 48.44 to 52.78 and Llama from 17.00 to 21.44, improvements of 4.34 and 4.44 points despite different starting scores. More broadly, the learned policy improves over the initial solver in all ten comparisons, while random selection improves in eight. Across the same comparisons, MIPROv2 improves in six cases, GEPA in five, and DPO in three. The gains therefore extend beyond a few favorable tasks. Our method also outperforms GEPA in most comparisons. Ran-dom and MLP-based selection exceed GEPA in eight and nine of ten cases, respectively, with both policies winning on all five Qwen tasks. Their largest Qwen margins occur on LiveBench-Math, where 56.28 and 56.83 exceed GEPA’s 52.05 by 4.23 and 4.78 points. On Llama SuperGPQA, learned selection reaches 21.44 versus 16.67, a 4.77-point gain; random selection reaches 10.00 versus 7.33 on Llama BBEH. The exceptions are Llama LiveBench-Math for both policies and Llama IFBench for random selection. These results support an advantage over the configured GEPA baseline across most tasks without implying a uniform improvement. The comparison with the strongest alternative method remains task-dependent. Both of our policies exceed MIPROv2 and DPO on every Qwen benchmark, but three Llama tasks favor another method. GEPA leads on LiveBench-Math at 10.66, only 0.28 points above random selection. DPO leads on IFBench at 32.00, with learned selection close behind at 31.67. The larger remaining gap is on HotpotQA: MIPROv2 reaches 44.89, compared with 42.44 for random selection and 42.22 for learned selection. Thus, large gains over an unoptimized prompt do not necessarily imply the best score among optimizers; both statements must be evaluated against their respective baselines. Prompt optimization is competitive with preference fine-tuning without updating solver weights. Each of our policies exceeds DPO in nine of ten comparisons; Llama IFBench is the sole exception. On Qwen LiveBench-Math, random and learned selection score 56.28 and 56.83 against DPO’s 52.46, while on HotpotQA they score 51.89 and 51.78 against 40.00. These results compare final performance under the evaluated configurations, not equal-cost optimization. Random selection nevertheless exhibits two regressions that illustrate the importance of candidate choice. On Qwen BBEH, it reaches 24.56, above GEPA’s 21.11 but below the initial solver’s 25.22. Learned selection instead reaches 25.78 and improves upon both. On Llama IFBench, random selection falls from the initial score of 31.00 to 28.11, whereas learned selection reaches 31.67. In contrast, random selection leads on Qwen IFBench at 41.67 versus 41.22 for the learned policy. The same task can therefore favor different selectors across models, and superiority over a weaker optimization baseline should not be confused with improvement over the starting prompt. Learned exploration does not consistently outperform random exploration on the same candidate pools. It wins five comparisons and loses five, with its largest gains of 3.56 points on Llama IFBench and 2.55 on Llama SuperGPQA, but a 1.36-point decline on Llama LiveBench-Math. On Qwen, it gains 1.45 points on SuperGPQA, 0.55 on LiveBench-Math, and 1.22 on BBEH; random selection re-tains advantages of 0.45 on IFBench and 0.11 on HotpotQA. Strong results with both policies support the usefulness of the framework, while the mixed selector ranking motivates better exploration meth-ods. These findings describe three-seed test means, not statistical significance or a diagnosis of predictor accuracy. 
+
+> 7Xiaofan Zhou and Lu Cheng
+
+## 5.2 Runtime Evaluation (RQ2) 
+
+Table 2: Reference runtime in minutes. Times are intended for relative comparison within our experimental setting. Build denotes candidate construction.                                              
+
+> Ours GEPA-20 Dataset Build Validation Build Validation
+> Llama-3.1-8B-Instruct
+> SuperGPQA 53.92 54.42 85.91 56.58 LiveBench-Math 219.51 35.54 287.26 37.24 IFBench 38.77 43.33 46.02 40.97 BBEH 173.17 76.37 367.25 78.51 HotpotQA 15.70 15.28 25.29 19.42
+> Qwen3.5-9B
+> SuperGPQA 87.47 52.04 63.70 64.01 LiveBench-Math 113.12 47.58 113.80 45.98 IFBench 34.61 46.92 33.89 52.33 BBEH 284.64 100.34 358.66 63.17 HotpotQA 33.34 8.96 51.75 8.98
+
+Table 2 reports candidate-construction and full-validation times for our method and GEPA-20, which denotes the time consumed by 20 full-validation rounds of GEPA. The values provide a relative-time reference for the reported setting. Summing the displayed components gives lower totals for our method in eight of ten model– dataset comparisons: all five Llama tasks and IFBench, BBEH, and HotpotQA on Qwen. Qwen IFBench totals 81.53 minutes for our method versus 86.22 for GEPA-20. Qwen SuperGPQA remains higher at 139.51 versus 127.71, while LiveBench-Math is nearly tied at 160.70 versus 159.78. The estimation procedure described in Section 4.5 limits interpreting these differences as controlled speedup rates. Full-validation times are relatively close in most comparisons, with differences below six minutes in eight of ten cases; Qwen SuperGPQA and BBEH are the exceptions. 
+
+## 5.3 Search-Tree Structure (RQ3) 
+
+The third experiment characterizes the retained search trees using mean depth and mean branching factor. Depth counts revision steps from the initial prompt; its zero depth is included in the mean over all retained nodes. Mean branching factor is the number of retained parent–child edges divided by the number of non-leaf nodes, mea-suring the average number of direct children per expanded node. Table 3 reports both statistics. Our retained trees have greater mean branching in eight of ten comparisons, with four of five tasks for each model; the exceptions are Llama LiveBench-Math and Qwen BBEH. Mean depth is greater in nine of ten comparisons, with Llama IFBench the exception at 3.37 versus 5.73. Thus, expanded nodes generally retain more children, and revision paths are usually longer. However, the methods differ in retained-node counts and retention rules. These observations characterize search behavior; they do not by themselves establish better task performance, greater efficiency, or semantic diversity. 
+
+Table 3: Retained search-tree structure. Depth and branching describe search behavior, not prompt quality. Node counts differ across methods.                                              
+
+> Mean depth Mean branching Dataset Ours GEPA Ours GEPA
+> Llama-3.1-8B-Instruct
+> SuperGPQA 4.37 3.47 2.41 1.81 LiveBench-Math 4.09 3.00 2.15 2.23 IFBench 3.37 5.73 3.19 1.93 BBEH 5.24 3.80 2.11 1.93 HotpotQA 5.01 3.67 2.75 2.07
+> Qwen3.5-9B
+> SuperGPQA 3.32 2.73 2.68 2.08 LiveBench-Math 3.44 1.67 2.83 2.20 IFBench 3.28 2.93 2.54 1.81 BBEH 3.46 3.00 2.35 2.42 HotpotQA 3.28 3.10 2.75 2.07
+
+Depth and branching need not move together. On Llama IFBench, higher branching of 3.19 versus 1.93 accompanies lower depth, in-dicating more direct alternatives per expanded node rather than longer chains. Llama LiveBench-Math shows the reverse: depth rises from 3.00 to 4.09 while branching falls from 2.23 to 2.15. To-gether, these measures distinguish expansion around a parent from refinement along a path. 
+
+## 6 Conclusion 
+
+We presented a two-stage framework that separates training-driven candidate construction from full-validation-based selection. Shared parent feedback supports parallel reflection, while later descen-dants can be selected without fully validating intermediate prompts. Across five benchmarks and two models, our variants lead on all five Qwen tasks and two Llama tasks, but neither exploration pol-icy dominates. Reference timing totals are lower in eight of ten comparisons against GEPA-20 under the reported estimation proce-dure. Retained trees show greater mean depth in nine comparisons and greater branching in eight, under differing node counts and retention rules. Better candidate-selection policies and matched-total-budget comparisons remain important directions. 
+
+## Limitations 
+
+Our learned exploration policy uses an MLP over individual prompt embeddings, without modeling their reflection paths. Future work could replace the MLP with a recurrent neural network (RNN) that encodes prompts, reflections, and revisions along each parent– child path. The resulting trajectory representations could exploit evolution history to predict candidate performance and guide full-validation selection. Our experiments cover two open-weight models, Qwen3.5-9B and Llama-3.1-8B-Instruct, but no closed-source models such as GPT [19] or Claude [2]. Whether the results extend to these model families remains to be tested. 
+
+> 8
+
+Explore More, Validate Less 
+
+## References 
+
+[1] Lakshya A. Agrawal, Shangyin Tan, Dilara Soylu, Noah Ziems, Rishi Khare, Krista Opsahl-Ong, Arnav Singhvi, Herumb Shandilya, Michael J. Ryan, Meng Jiang, Christopher Potts, Koushik Sen, Alexandros G. Dimakis, Ion Stoica, Dan Klein, Matei Zaharia, and Omar Khattab. 2025. GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning. arXiv preprint arXiv:2507.19457 (2025). https://arxiv.org/abs/2507.19457 [2] Anthropic. 2024. The Claude 3 Model Family: Opus, Sonnet, Haiku . Model card. Anthropic. https://assets.anthropic.com/m/61e7d27f8c8f5919/original/Claude-3-Model-Card.pdf [3] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D. Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Ziegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. 2020. Language Models are Few-Shot Learners. In Advances in Neural Information Processing Systems , Vol. 33. 1877–1901. https://papers.nips. cc/paper/2020/hash/1457c0d6bfcb4967418bfb8ac142f64a-Abstract.html [4] Lichang Chen, Jiuhai Chen, Tom Goldstein, Heng Huang, and Tianyi Zhou. 2024. InstructZero: Efficient Instruction Optimization for Black-Box Large Language Models. In Proceedings of the 41st International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 6503–6518. https: //proceedings.mlr.press/v235/chen24e.html [5] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Ab-hishek Kadian, et al. 2024. The Llama 3 Herd of Models. arXiv preprint arXiv:2407.21783 (2024). doi:10.48550/arXiv.2407.21783 [6] Qingyan Guo, Rui Wang, Junliang Guo, Bei Li, Kaitao Song, Xu Tan, Guoqing Liu, Jiang Bian, and Yujiu Yang. 2024. Connecting Large Lan-guage Models with Evolutionary Algorithms Yields Powerful Prompt Optimizers. In The Twelfth International Conference on Learning Rep-resentations . https://proceedings.iclr.cc/paper_files/paper/2024/hash/ 9156b0f6dfa9bbd18c79cc459ef5d61c-Abstract-Conference.html [7] Zhi Hong, Qian Zhang, Jiahang Sun, Zhiwei Shang, Mingze Kong, Xiangyi Wang, Yao Shu, and Zhongxiang Dai. 2026. MASPOB: Bandit-Based Prompt Optimization for Multi-Agent Systems with Graph Neural Networks. arXiv preprint arXiv:2603.02630 (2026). https://arxiv.org/abs/2603.02630 [8] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In The Tenth International Conference on Learning Representa-tions . https://openreview.net/forum?id=nZeVKeeFYf9 [9] Mehran Kazemi, Bahare Fatemi, Hritik Bansal, John Palowitch, Chrysovalantis Anastasiou, Sanket Vaibhav Mehta, Lalit K. Jain, Virginia Aglietti, Disha Jindal, Peter Chen, Nishanth Dikkala, Gladys Tyen, Xin Liu, Uri Shalit, Silvia Chiappa, Kate Olszewska, Yi Tay, Vinh Q. Tran, Quoc V. Le, and Orhan Firat. 2025. BIG-Bench Extra Hard. arXiv preprint arXiv:2502.19187 (2025). https://arxiv.org/abs/ 2502.19187 [10] Omar Khattab, Arnav Singhvi, Paridhi Maheshwari, Zhiyuan Zhang, Ke-shav Santhanam, Sri Vardhamanan, Saiful Haq, Ashutosh Sharma, Thomas T. Joshi, Hanna Moazam, Heather Miller, Matei Zaharia, and Christopher Potts. 2024. DSPy: Compiling Declarative Language Model Calls into State-of-the-Art Pipelines. In The Twelfth International Conference on Learn-ing Representations . https://proceedings.iclr.cc/paper_files/paper/2024/hash/ f1cf02ce09757f57c3b93c0db83181e0-Abstract-Conference.html [11] Takeshi Kojima, Shixiang (Shane) Gu, Machel Reid, Yutaka Matsuo, and Yusuke Iwasawa. 2022. Large Language Models are Zero-Shot Reasoners. In Advances in Neural Information Processing Systems , Vol. 35. 22199–22213. doi:10.52202/068431-1613 [12] Tiancheng Li, Yuhang Wang, Zhiyang Chen, Zijun Wang, Liyuan Ma, and Guo-jun Qi. 2025. C-Evolve: Consensus-based Evolution for Prompt Groups. arXiv preprint arXiv:2509.23331 (2025). https://arxiv.org/abs/2509.23331 [13] Xiaoqiang Lin, Zhaoxuan Wu, Zhongxiang Dai, Wenyang Hu, Yao Shu, See-Kiong Ng, Patrick Jaillet, and Bryan Kian Hsiang Low. 2024. Use Your INSTINCT: INSTruction optimization for LLMs usIng Neural bandits Coupled with Trans-formers. In Proceedings of the 41st International Conference on Machine Learn-ing (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 30317–30345. https://proceedings.mlr.press/v235/lin24r.html [14] Jiachang Liu, Dinghan Shen, Yizhe Zhang, Bill Dolan, Lawrence Carin, and Weizhu Chen. 2022. What Makes Good In-Context Examples for GPT-3?. In 
+
+Proceedings of Deep Learning Inside Out (DeeLIO 2022): The 3rd Workshop on Knowledge Extraction and Integration for Deep Learning Architectures . Association for Computational Linguistics, 100–114. doi:10.18653/v1/2022.deelio-1.10 [15] Yao Lu, Max Bartolo, Alastair Moore, Sebastian Riedel, and Pontus Stenetorp. 2022. Fantastically Ordered Prompts and Where to Find Them: Overcoming Few-Shot Prompt Order Sensitivity. In Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) . Association for Computational Linguistics, 8086–8098. doi:10.18653/v1/2022.acl-long.556 [16] M-A-P Team, Xinrun Du, Yifan Yao, Kaijing Ma, Bingli Wang, et al. 2025. SuperG-PQA: Scaling LLM Evaluation across 285 Graduate Disciplines. arXiv preprint arXiv:2502.14739 (2025). https://arxiv.org/abs/2502.14739 [17] Aman Madaan, Niket Tandon, Prakhar Gupta, Skyler Hallinan, Luyu Gao, Sarah Wiegreffe, Uri Alon, Nouha Dziri, Shrimai Prabhumoye, Yiming Yang, Shashank Gupta, Bodhisattwa Prasad Majumder, Katherine Hermann, Sean Welleck, Amir Yazdanbakhsh, and Peter Clark. 2023. Self-Refine: Iterative Refinement with Self-Feedback. In Advances in Neural Information Process-ing Systems , Vol. 36. https://papers.neurips.cc/paper_files/paper/2023/hash/ 91edff07232fb1b55a505a9e9f6c0ff3-Abstract-Conference.html [18] Sewon Min, Xinxi Lyu, Ari Holtzman, Mikel Artetxe, Mike Lewis, Hannaneh Hajishirzi, and Luke Zettlemoyer. 2022. Rethinking the Role of Demonstrations: What Makes In-Context Learning Work?. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing . Association for Computational Linguistics, 11048–11064. doi:10.18653/v1/2022.emnlp-main.759 [19] OpenAI. 2023. GPT-4 Technical Report. arXiv preprint arXiv:2303.08774 (2023). https://arxiv.org/abs/2303.08774 [20] Krista Opsahl-Ong, Michael J Ryan, Josh Purtell, David Broman, Christopher Potts, Matei Zaharia, and Omar Khattab. 2024. Optimizing Instructions and Demonstrations for Multi-Stage Language Model Programs. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , Yaser Al-Onaizan, Mohit Bansal, and Yun-Nung Chen (Eds.). Association for Computa-tional Linguistics, Miami, Florida, USA, 9340–9366. doi:10.18653/v1/2024.emnlp-main.525 [21] Reid Pryzant, Dan Iter, Jerry Li, Yin Lee, Chenguang Zhu, and Michael Zeng. 2023. Automatic Prompt Optimization with “Gradient Descent” and Beam Search. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing . Association for Computational Linguistics, Singapore, 7957–7968. doi:10.18653/v1/2023.emnlp-main.494 [22] Valentina Pyatkin, Saumya Malik, Victoria Graf, Hamish Ivison, Shengyi Huang, Pradeep Dasigi, Nathan Lambert, and Hannaneh Hajishirzi. 2025. Generalizing Verifiable Instruction Following. arXiv preprint arXiv:2507.02833 (2025). https: //arxiv.org/abs/2507.02833 [23] Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, and Chelsea Finn. 2023. Direct Preference Optimization: Your Language Model is Secretly a Reward Model. arXiv preprint arXiv:2305.18290 (2023). https: //arxiv.org/abs/2305.18290 [24] Chengshuai Shi, Kun Yang, Zihan Chen, Jundong Li, Jing Yang, and Cong Shen. 2024. Efficient Prompt Optimization Through the Lens of Best Arm Identification. In Advances in Neural Information Process-ing Systems , Vol. 37. https://papers.nips.cc/paper_files/paper/2024/hash/ b46bc1449205888e1883f692aff1a252-Abstract-Conference.html [25] Taylor Shin, Yasaman Razeghi, Robert L. Logan IV, Eric Wallace, and Sameer Singh. 2020. AutoPrompt: Eliciting Knowledge from Language Models with Automatically Generated Prompts. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP) . Association for Computational Linguistics, 4222–4235. doi:10.18653/v1/2020.emnlp-main.346 [26] Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik Narasimhan, and Shunyu Yao. 2023. Reflexion: Language Agents with Verbal Reinforcement Learning. In Advances in Neural Information Processing Systems , Vol. 36. https://papers.nips.cc/paper_files/paper/2023/hash/ 1b44b878bb782e6954cd888628510e90-Abstract-Conference.html [27] Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, and Tie-Yan Liu. 2020. MPNet: Masked and Permuted Pre-training for Language Understanding. arXiv preprint arXiv:2004.09297 (2020). https://arxiv.org/abs/2004.09297 [28] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed H. Chi, Quoc V. Le, and Denny Zhou. 2022. Chain-of-Thought Prompting Elicits Reasoning in Large Language Models. In Advances in Neural Information Processing Systems , Vol. 35. 24824–24837. doi:10.52202/068431-1800 [29] Colin White, Samuel Dooley, Manley Roberts, Arka Pal, Ben Feuer, Siddhartha Jain, Ravid Shwartz-Ziv, Neel Jain, Khalid Saifullah, Sreemanti Dey, Shubh-Agrawal, Sandeep Singh Sandha, Siddartha Naidu, Chinmay Hegde, Yann LeCun, Tom Goldstein, Willie Neiswanger, and Micah Goldblum. 2024. LiveBench: A Challenging, Contamination-Limited LLM Benchmark. arXiv preprint arXiv:2406.19314 (2024). https://arxiv.org/abs/2406.19314 [30] Guowei Xu, Mert Yuksekgonul, Carlos Guestrin, and James Zou. 2025. meta-TextGrad: Automatically optimizing language model optimizers. In Advances in Neural Information Processing Systems , Vol. 38. https://openreview.net/forum? id=10s01YrlKp [31] Chengrun Yang, Xuezhi Wang, Yifeng Lu, Hanxiao Liu, Quoc V. Le, Denny Zhou, and Xinyun Chen. 2024. Large Language Models as Optimizers. In The Twelfth International Conference on Learning Representations . https://openreview.net/ forum?id=Bb4VGOWELI [32] Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William Cohen, Ruslan Salakhutdinov, and Christopher D. Manning. 2018. HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering. In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing . Association for Computational Linguistics, 2369–2380. doi:10.18653/v1/D18-1259 9Xiaofan Zhou and Lu Cheng 
+
+[33] Mert Yuksekgonul, Federico Bianchi, Joseph Boen, Sheng Liu, Pan Lu, Zhi Huang, Carlos Guestrin, and James Zou. 2025. Optimizing generative AI by backpropagating language model feedback. Nature 639 (2025), 609–616. doi:10.1038/s41586-025-08661-4 [34] Jialin Zhang, Lakshya A. Agrawal, Shangyin Tan, Donghyun Lee, Lutfi Eren Erdogan, Dan Klein, Koushik Sen, Alexandros G. Dimakis, and Matei Zaharia. 2026. Batching the Reflective Optimization Loop: Parallel Proposals Make GEPA Faster and Better. GEPA technical blog. https://gepa-ai.github.io/gepa/blog/ 2026/07/30/parallel-proposals/ [35] Jiayi Zhang, Jinyu Xiang, Zhaoyang Yu, Fengwei Teng, Xionghui Chen, Jiaqi Chen, Mingchen Zhuge, Xin Cheng, Sirui Hong, Jinlin Wang, Bingnan Zheng, Bang Liu, Yuyu Luo, and Chenglin Wu. 2025. AFlow: Automating Agentic Workflow Generation. In The Thirteenth International Conference on Learning Representations . https://openreview.net/forum?id=z5uVAKwmjf [36] Zihao Zhao, Eric Wallace, Shi Feng, Dan Klein, and Sameer Singh. 2021. Calibrate Before Use: Improving Few-shot Performance of Language Models. In Proceedings of the 38th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 139) . PMLR, 12697–12706. https://proceedings.mlr.press/ v139/zhao21c.html [37] Yongchao Zhou, Andrei Ioan Muresanu, Ziwen Han, Keiran Paster, Silviu Pitis, Harris Chan, and Jimmy Ba. 2023. Large Language Models Are Human-Level Prompt Engineers. In The Eleventh International Conference on Learning Repre-sentations . https://openreview.net/forum?id=YdqwNaCLCx 10
