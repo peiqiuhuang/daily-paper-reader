@@ -6,34 +6,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-21
-- 运行时间：2026-10-21 22:49:03 UTC
+- 最新运行日期：2026-10-22
+- 运行时间：2026-10-22 22:14:54 UTC
 - 运行状态：成功
-- 本次总论文数：4
-- 精读区：3
-- 速读区：1
+- 本次总论文数：9
+- 精读区：4
+- 速读区：5
 
 ### 今日简报（AI）
-1) 2026年10月21日日报新鲜出炉，今日共高效处理4篇优质论文，精读3篇并速读1篇。
-2) 重点推荐《Explore More, Validate Less》等高分工作，深入解析高效反射提示词优化与分布式双层优化算法。
-3) 建议普通读者从DPO超参数景观等前沿速读内容入手，逐步探索提示词优化的高分精读论文。
-- 详情：[/202610/21/README](/202610/21/README)
+1) 2026年10月22日日报新鲜出炉，今日精读4篇、速读5篇，聚焦多模态预测与提示词优化前沿。
+2) 最值得关注多模态预测的免训练持续学习，以及角色增强的零样本思维链提示词大规模评估。
+3) 建议普通读者从高分精读论文入手，重点掌握提示词演化与上下文解码的最新应用方法。
+- 详情：[/202610/22/README](/202610/22/README)
 
 ### 精读区论文标签
-1. [Explore More, Validate Less: Efficient Reflective Prompt Optimization](/202610/21/2610.27367v1-explore-more-validate-less-efficient-reflective-prompt-optimization)  
-   标签：评分：9.0/10、query:bopl
-   evidence：高效的反思性提示词优化框架
-2. [Dynamic Regret and Tightened Constraint Violation for Communication-Efficient Distributed Online Bilevel Optimization](/202610/21/2610.26911v1-dynamic-regret-and-tightened-constraint-violation-for-communication-efficient-distributed-online-bilevel-optimization)  
+1. [Training-Free Continual Learning for Multimodal Forecasting via Prompt Evolution](/202610/22/2610.27468v1-training-free-continual-learning-for-multimodal-forecasting-via-prompt-evolution)  
    标签：评分：8.0/10、query:bopl
-   evidence：带不等式约束的分布式在线双层优化
-3. [Deep Auxiliary Learning via Bilevel Feature Optimization for Label-Efficient Medical Image Segmentation](/202610/21/2610.26954v1-deep-auxiliary-learning-via-bilevel-feature-optimization-for-label-efficient-medical-image-segmentation)  
+   evidence：通过结果驱动反思进行提示词演化
+2. [A Large-Scale Evaluation of Role-Enhanced Zero-Shot Chain-of-Thought Prompting](/202610/22/2610.29073v1-a-large-scale-evaluation-of-role-enhanced-zero-shot-chain-of-thought-prompting)  
    标签：评分：8.0/10、query:bopl
-   evidence：公式化为双层优化问题
+   evidence：动态角色选择以实现自适应任务角色对齐
+3. [Recovering Plausible Transmission Outage Scenarios](/202610/22/2610.29872v1-recovering-plausible-transmission-outage-scenarios)  
+   标签：评分：8.0/10、query:bopl
+   evidence：构建双层优化问题并使用梯度下降更新上层变量
+4. [Robust Soft Skill Adaptation via Behavioral Localization in Tool-Using Agents](/202610/22/2610.30041v1-robust-soft-skill-adaptation-via-behavioral-localization-in-tool-using-agents)  
+   标签：评分：8.0/10、query:bopl
+   evidence：通过行为定位监督短软提示
 
 ### 速读区论文标签
-1. [The Shape of the DPO Hyperparameter Landscape: What to Measure, How It Moves with Scale, and When Not to Transfer It](/202610/21/2610.27895v1-the-shape-of-the-dpo-hyperparameter-landscape-what-to-measure-how-it-moves-with-scale-and-when-not-to-transfer-it)  
+1. [Let Agents Design How They Search: Automatic Interface Optimization for Agentic Search](/202610/22/2610.29250v1-let-agents-design-how-they-search-automatic-interface-optimization-for-agentic-search)  
    标签：评分：7.0/10、query:bopl
-   evidence：语言模型DPO中的超参数优化
+   evidence：自动搜索界面优化，包括使用指令的优化
+2. [Mitigating Query Shortcuts in Chain-of-Thought with Context-Aware Decoding](/202610/22/2610.29518v1-mitigating-query-shortcuts-in-chain-of-thought-with-context-aware-decoding)  
+   标签：评分：7.0/10、query:bopl
+   evidence：思维链提示与推理优化
+3. [S-EDL: Eliciting Self-Evidence from Sequence Likelihoods for Semantic Calibration of LLMs](/202610/22/2610.29832v1-s-edl-eliciting-self-evidence-from-sequence-likelihoods-for-semantic-calibration-of-llms)  
+   标签：评分：7.0/10、query:bopl
+   evidence：提示特定类别的可微狄利克雷先验
+4. [PhysiCalWorld: In-Context Physics Calibration for World Models](/202610/22/2610.30125v1-physicalworld-in-context-physics-calibration-for-world-models)  
+   标签：评分：7.0/10、query:bopl
+   evidence：通过上下文提示校准世界模型
+5. [Best of Both Worlds: Fine-Tuned Small Models Complement LLMs for Cost and Performance Benefits](/202610/22/2610.24260v1-best-of-both-worlds-fine-tuned-small-models-complement-llms-for-cost-and-performance-benefits)  
+   标签：评分：6.0/10、query:bopl
+   evidence：探索 GPT-3.5 在文本分类中的最佳提示方法
 
 
 <div class="dpr-home-promo-card">

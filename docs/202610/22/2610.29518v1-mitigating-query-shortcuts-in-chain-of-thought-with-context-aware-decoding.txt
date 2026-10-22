@@ -1,0 +1,346 @@
+Title: Mitigating Query Shortcuts in Chain-of-Thought with Context-Aware Decoding
+
+URL Source: https://arxiv.org/pdf/2610.29518v1
+
+Published Time: Thu, 22 Oct 2026 01:05:10 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+## Mitigating Query Shortcuts in Chain-of-Thought with Context-Aware Decoding 
+
+Shin’ya Yamaguchi 
+
+NTT 
+
+shinya.yamaguchi@ntt.com 
+
+Abstract 
+
+While Chain-of-Thought (CoT) prompting im-proves the reasoning performance of large lan-guage models (LLMs), recent studies have shown that final answers do not always de-pend on the generated rationales. In particu-lar, LLMs may rely on query-specific shortcuts rather than the information provided by their reasoning steps. In this paper, we investigate whether context-aware decoding (CAD), an ex-isting contrastive decoding method, can miti-gate such shortcut behavior when applied to CoT reasoning. We study this application as Rationale Contrastive Decoding (RCD), which contrasts the next-token distributions condi-tioned on the query with and without its ra-tionale, amplifying tokens whose likelihood increases due to the rationale. We provide a the-oretical interpretation of this decoding rule via a KL-regularized reward-maximization objec-tive. Experiments across five reasoning bench-marks demonstrate that RCD improves answer accuracy over standard CoT. Furthermore, in-tervention analyses using ground-truth and ran-dom rationales reveal that RCD increases the behavioral dependence of final answers on the rationale content. Our findings suggest that con-trastive decoding offers a simple, training-free approach to mitigating query shortcuts. 
+
+1 Introduction 
+
+Chain-of-Thought (CoT) prompting (Wei et al., 2022; Kojima et al., 2022) has emerged as an ef-fective inference strategy for improving the rea-soning performance of Large Language Models (LLMs). By generating multiple intermediate rea-soning steps, or rationales, before producing a fi-nal answer, CoT enables LLMs to solve complex problems. Beyond improving task performance, these rationales are often interpreted as explana-tions of the model’s predictions. However, recent studies have revealed that generated rationales do not necessarily reflect the actual decision-making process (Turpin et al., 2023; Arcuschin et al., 2025; Lewis-Lim et al., 2025). In particular, LLMs may rely on shortcut information directly from the in-put query, even when their rationales suggest a different conclusion. Such query-shortcut behavior weakens the behavioral dependency between ratio-nales and final answers, raising concerns about the reliability of CoT. Prior research has investigated this issue by ra-tionale interventions that measure whether changes to reasoning steps affect final predictions (Lanham et al., 2023; Turpin et al., 2023) or improving ratio-nale reliability with additional supervision or ratio-nale selection (Paul et al., 2024; Sun et al., 2026). While these studies provide important insights, a complementary question is whether query-shortcut behavior can be mitigated directly during answer decoding, without modifying model parameters or employing external evaluators. In standard CoT decoding, the query and generated rationale are jointly provided as context for next-token predic-tion. However, this formulation does not explicitly distinguish the contributions of the query and the rationale, allowing the model to generate answers primarily from query-conditioned predictions. In this work, we investigate the application of Context-Aware Decoding (CAD) (Shi et al., 2024) to mitigate query-shortcut behavior in CoT. CAD is an established contrastive decoding approach orig-inally developed to prioritize contextual evidence over a model’s parametric knowledge. We examine whether the same principle can encourage LLMs to rely more heavily on self-generated rationales dur-ing decoding. Specifically, we study Rationale Con-trastive Decoding (RCD), an application of CAD in which the context part is a CoT rationale rather than an external document. RCD contrasts the next-token distributions conditioned on both the query and rationale with those conditioned only on the query. By subtracting query-only logits, this decod-ing rule increases the relative preference for tokens arXiv:2610.29518v1 [cs.CL] 21 Oct 2026 supported by the rationale, potentially suppressing query-shortcut behavior without additional training. We further interpret this established decoding for-mulation as a KL-regularized reward-maximization objective, in which the reward is the log-density ratio between the rationale-conditioned and query-only distributions. We empirically investigate RCD through com-prehensive experiments across multiple reason-ing benchmarks. First, intervention analyses with ground-truth and randomly substituted rationales demonstrate that RCD makes final predictions more sensitive to rationale content, providing be-havioral evidence of increased rationale–answer dependency. Second, RCD consistently improves answer accuracy over standard CoT across five rea-soning benchmarks and multiple model families. Third, an analysis of rationale correctness reveals that the performance gains primarily stem from cor-recting answers that fail to follow valid rationales, rather than repairing incorrect reasoning. These findings suggest that applying contrastive decoding to CoT can mitigate query-shortcut behavior and improve the utilization of generated rationales. 
+
+2 Preliminary 
+
+2.1 Next-token Prediction in LLM 
+
+Consider an auto-regressive LLM, parameterized by θ. Given a query q, an LLM generates an output token sequence y = ( y1, . . . , y L) ∈ V L following: 
+
+p(y|q) = 
+
+> L
+
+Y
+
+> i=1
+
+pθ(yi|y<i , q ), (1) where L is token length, V is token vocabulary, and y<i are preceding output tokens. pθ(yi|y<i , q )
+
+over V is computed by the softmax of the model’s output logits θ(yi|y<i , q ) as follows. 
+
+pθ(yi|y<i , q ) = σ(logits θ(yi|y<i , q )) (2) 
+
+= exp(logits θ(yi|y<i , q )) 
+
+P 
+
+> w∈V
+
+exp(logits θ(yi = w|y<i , q )) . (3) Each token yi is generated from pθ(yi|y<i , q ) via a decoding strategy such as greedy decoding and sampling. We define a function for an arbitrary decoding strategy: 
+
+y = generate θ(q). (4) 
+
+2.2 Chain-of-Thought (CoT) 
+
+CoT aims to enhance LLM reasoning by incorpo-rating multi-step rationale generation during de-coding (Wei et al., 2022; Kojima et al., 2022). First, LLMs generate a rationale r from query 
+
+q with instruction prompt, e.g., Let’s think step-by-step (Kojima et al., 2022), as follows. 
+
+r = generate θ(q). (5) Adding r to the input context, LLMs generate the final answer by the next-token prediction, similar to Eq. (4): 
+
+y = generate θ(q, r ). (6) For simplicity, we assume that the rationale and answer generation steps are separated, and that the generated rationale can be intervened by alternative rationales, e.g., ground truth. In Eq. (6), each answer token yi is decoded by the next-token distribution pθ(yi|y<i , q, r ), and thus, it is not guaranteed that the output tokens are based on the rationale r, i.e., LLMs can directly an-swer from the query q. In fact, previous works have reported the unfaithful behavior of CoT, such as post-hoc rationalizing by biasing toward the order of multiple-choice options for the answer (Turpin et al., 2023), silent error correction, where the model implicitly fixes the computational or logical errors in the rationales due to shortcuts (Arcuschin et al., 2025). These findings indicate that standard CoT can exhibit weak or inconsistent behavioral dependence on its rationale. 
+
+3 Method 
+
+3.1 Rationale Contrastive Decoding (RCD) 
+
+We investigate whether context-aware decoding can mitigate query-shortcut behavior in CoT by increasing the influence of rationales during an-swer generation. To this end, we study Ratio-nale Contrastive Decoding (RCD), which applies Context-Aware Decoding (CAD; Shi et al. (2024)) to self-generated CoT rationales rather than exter-nal contexts (Fig. 1). Following CAD, RCD instead reweights this distribution using the density ratio: 
+
+ˆpθ(yi) ∝ pθ(yi|y<i , q, r ) ×
+
+ pθ(yi|y<i , q, r )
+
+pθ(yi|y<i , q )
+
+α
+
+,
+
+(7) where α controls the contrastive strength. During decoding, this is equivalently implemented by the Rationale Contrastive Decoding        
+
+> Input:
+> Query ( q) + Rationale ( r)LLM log pθ(yi|y<i , q, r )
+> Input:
+> Query ( q) only LLM log pθ(yi|y<i , q )
+> −Next-token
+> yi
+> ×(1 + α)
+> ×α
+
+Figure 1: Overview of Rationale Contrastive Decoding (RCD), which applies context-aware decoding to CoT answer generation. Instead of standard decoding, RCD contrasts the rationale-conditioned pass and the query-only pass to explicitly strengthen the dependency on the rationales, without any parameter updates. 
+
+logit-level computation in a batch-parallel manner: 
+
+ˆlogits θ(yi) :=(1 + α) logits θ(yi|y<i , q, r )
+
+− α logits θ(yi|y<i , q ). (8) For α > 0, the density ratio increases the rela-tive preference for tokens whose probability rises when conditioning on the rationale. Unlike logit addition, which reinforces tokens favored by both distributions, subtraction emphasizes the informa-tion contributed by the rationale beyond the query alone as shown in Section 4. This aims to mitigate query-shortcut behavior rather than simply increase agreement with query-only predictions. 
+
+3.2 Theoretical Insight 
+
+Eq. (7) can be interpreted as the closed-form solu-tion to the following KL-regularized reward maxi-mization problem (Schulman et al., 2015, 2017): 
+
+max  
+
+> π
+
+Eπ[R] − βDKL [π|| πref ], (9) where R = log pθ (yi|y<i ,q,r )  
+
+> pθ(yi|y<i ,q )
+
+is reward function, 
+
+πref = pθ(yi|y<i , q, r ) is reference policy, and β is a hyperparameter modulating the KL-penalty term. 
+
+Theorem 3.1. Sampling by Eq. (7) is equivalent to sampling from the optimal policy π∗ for Eq. (9). Proof. See Appendix A. Intuitively, maximizing Eq. (9) means finding the next-token distribution π that yields a token clearly highlighting the difference from the query-only distribution while preserving the likelihood of the original query-rationale conditional distribution. As a result, the LLM is expected to generate an answer by relying heavily on the CoT rationale r.
+
+4 Experiments 
+
+4.1 Settings 
+
+We used five representative reasoning-intensive benchmark datasets: GSM8K (Cobbe et al., 2021), 
+
+Table 1: Intervention Analysis with Ground-Truth (GT) and Irrelevant (Random) Rationales.               
+
+> GSM8K
+> Self ( ↑)GT ( ↑)Random ( ↓)
+> Qwen3-8B
+> Direct 50.14 ±.17 −−
+> CoT 89.16 ±.13 94.93 ±.04 43.35 ±.03 Logit Addition 81.26 ±.40 83.41 ±.68 50.82 ±.72 RCD 89.91 ±.28 95.82 ±.01 27.79 ±.03
+
+MATH (Hendrycks et al.), CommonsenseQA (Tal-mor et al., 2019), AQuA-RAT (Ling et al., 2017), and MMLU-Pro (Wang et al., 2024). For LLMs, we used Qwen3 (Yang et al., 2025), Gemma3 (Team et al., 2025), and Llama-3.1 (Grattafiori et al., 2024). To examine the effect of contrastive sub-traction, we additionally evaluate Logit Addition, which sums the rationale-conditioned and query-only logits, corresponding to a Product-of-Experts combination. This baseline allows us to investi-gate whether subtracting query-only predictions is more effective than reinforcing them. We set α = 1 
+
+for RCD by grid-searching on the GSM8K train subset. For sampling, we used the official default parameters (temperature: 0.7, top_k: 20, top_p: 0.8) for Qwen3. CoT and RCD shared the same rationales. All experiments were run three times on an NVIDIA H100 with 80 GB of VRAM. 
+
+4.2 Proof-of-Concept by Intervention Analysis 
+
+We conduct an intervention analysis on GSM8K by replacing the rationale r in Eq. (6) with either ground-truth (GT) or random rationales. If a decod-ing method sensitive to rationales, GT rationales should improve performance and irrelevant random rationales should degrade it. We use the GT ratio-nales provided in GSM8K and construct random rationales by shuffling them across examples. Table 1 shows the intervention results. Stan-dard CoT improves over direct answering, but still keeps non-trivial accuracy even with random ra-tionales, suggesting that it can often ignore the given rationale and rely on shortcut biases. In con-trast, RCD achieves higher accuracy with GT ratio-nales and substantially lower accuracy with random rationales, indicating stronger behavioral depen-dence on rationale content. Notably, Logit Addi-tion degrades accuracy with both self-generated and GT rationales while retaining higher accuracy with random rationales. These contrasting results suggest that subtracting query-only logits, rather than reinforcing them, is effective in increasing rationale–answer dependency. Table 2: Performance on Reasoning Benchmarks.                         
+
+> GSM8K MATH CommonsenseQA AQuA-RAT MMLU-Pro Qwen3-8B
+> Direct 50.14 ±.17 1.73 ±.23 71.27 ±.81 58.88 ±.74 35.29 ±.48 CoT 89.16 ±.13 17.20 ±.35 78.29 ±.53 68.50 ±.68 50.24 ±.52 Logit Addition 81.26 ±.40 15.59 ±.66 77.19 ±.56 63.38 ±.53 48.62 ±.65 RCD 89.91 ±.28 27.60 ±.51 80.13 ±.47 70.41 ±.40 52.28 ±.41
+
+RCD CoT (E) practice (A) record album 
+
+RCD CoT 60    
+
+> Rationale is not related to the given question.
+> Q. An earthquake caused four buildings to collapse … how many buildings had collapsed including those from the first earthquake?
+> Rationale (Random): The total cost of the tickets is 12+10=<<12+10=22>>22 dollars.
+> Q. Question: Why would a band be performing when there are no people nearby? (A) record album (B) play music (C) hold concert (D) blaring (E) practice
+> Rationale (Self):
+> A band might be performing for recording or rehearsing even if there are no people nearby. The absence of people nearby does not necessarily mean the performance is not happening. The answer is A.
+
+Query + Rationale Answer 
+
+Figure 2: Qualitative Evaluation with Qwen3-8B. 
+
+Top: Given a self-generated rationale supporting an-swer (A), standard CoT predicts (E), whereas RCD follows the rationale and predicts (A). Bottom: Given an irrelevant rationale randomly sampled from another question, standard CoT produces the correct answer, whereas RCD indicates that the rationale is unrelated to the query. These examples illustrate RCD’s stronger sensitivity to rationale content. 
+
+4.3 Multiple Reasoning Benchmarks 
+
+Table 2 shows the performance across the bench-marks. We see that RCD outperforms the standard CoT and Logit Addition for all cases. This sug-gests that RCD’s increasing reliance on rationales is effective, particularly for reasoning-intensive tasks. We also analyze RCD on varying α, mul-tiple LLM backbones, and the combination with Self-Consistency in the Appendix. 
+
+4.4 Qualitative Analysis 
+
+Figure 2 shows examples of RCD in CoT. In the top example, CoT ignores the rationale’s conclusion, i.e., “the answer is A”, whereas RCD generates the correct answer based on the conclusion. The bottom case also highlights the RCD’s reliance: CoT generates the correct answer by ignoring the rationale, whereas RCD increased reliance and an-swered that it cannot draw a conclusion from it. 
+
+4.5 Analysis with Human Annotation 
+
+To examine how rationale correctness affects RCD, we annotated the rationales generated by Qwen3-8B on the GSM8K test set (1,319 samples) and analyzed prediction transitions from CoT to RCD. Table 3 summarizes the results. Among 1,201 cor-rect rationales, RCD corrects 10 of 33 CoT errors (30.30%) without corrupting any correct predic-
+
+Table 3: Prediction Transitions from CoT to RCD               
+
+> Rationale CoT Acc. RCD Acc. Wrong →Correct Correct →Wrong Qwen3-8B
+> Correct ( N=1,201) 97.25 98.08 10/33 (30.30%) 0/1,168 (0.00%) Incorrect ( N=118) 6.78 6.78 0/110 (0.00%) 0/8 (0.00%)
+
+tions. In contrast, among 118 incorrect rationales, RCD neither corrects any of the 110 CoT errors nor changes any of the eight correct predictions. These results indicate that RCD’s accuracy gains primarily stem from improving adherence to cor-rect rationales, while increased reliance on incor-rect rationales can occasionally be detrimental. 
+
+5 Related Work 
+
+Recent studies have examined CoT faithfulness through rationale interventions (Lanham et al., 2023) and methods for measuring or improving rationale-answer alignment (Paul et al., 2024; Sun et al., 2026). These approaches primarily focus on faithfulness evaluation or require additional mechanisms (e.g., preference tuning and multiple-rationale evaluations), rather than directly provid-ing comparable answer-decoding baselines. In contrast, we investigate the application of exist-ing Context-Aware Decoding (Shi et al., 2024) to CoT rationales, without training or external eval-uators. We therefore focus on decoding baselines and separately examine compatibility with Self-Consistency (Wang et al., 2023) in Appendix H. 
+
+6 Conclusion 
+
+In this work, we investigated the application of context-aware contrastive decoding to mitigate query-shortcut behavior in Chain-of-Thought rea-soning. By contrasting rationale-conditioned and query-only next-token distributions, Rationale Con-trastive Decoding (RCD) encourages LLMs to gen-erate answers that depend more strongly on their rationales. Our experiments demonstrate increased behavioral rationale–answer dependency and con-sistent accuracy improvements over standard CoT across multiple reasoning benchmarks. These find-ings suggest that existing contrastive decoding tech-niques can improve the utilization of CoT ratio-nales without additional training or external evalu-ators. Nevertheless, stronger rationale dependency does not guarantee faithful reasoning, particularly when the rationales themselves are incorrect. Our study thus highlights both the potential and the limitations of decoding-level interventions for miti-gating query shortcuts in CoT. Acknowledgment 
+
+The initial ideas for this project were developed in February 2026 in collaboration with Manami Hasegawa of Japan Women’s University, who was working as an NTT intern at the time. 
+
+Limitations 
+
+First, although our rationale interventions show that RCD increases the behavioral dependency of final answers on the provided rationales, they do not establish that the rationales faithfully reflect the model’s internal reasoning process. In partic-ular, changes in accuracy under ground-truth or randomly shuffled rationales measure sensitivity to rationale content but do not necessarily indi-cate more correct or faithful reasoning. Therefore, our findings should be interpreted as evidence of stronger rationale–answer dependency rather than a general improvement in reasoning reliability. Second, stronger rationale dependency can be detrimental when rationales are incorrect or incom-plete. Since RCD does not verify rationale cor-rectness, it may amplify erroneous reasoning while suppressing useful information from the query-only distribution. Future work could explore adaptive contrastive weighting based on rationale quality. We further discuss potential societal and deploy-ment risks in Appendix B. 
+
+References 
+
+Iván Arcuschin, Jett Janiak, Robert Krzyzanowski, Senthooran Rajamanoharan, Neel Nanda, and Arthur Conmy. 2025. Chain-of-thought reasoning in the wild is not always faithful. arXiv preprint arXiv:2503.08679 .Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, and 1 others. 2021. Training verifiers to solve math word problems. arXiv preprint arXiv:2110.14168 .Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, and 1 others. 2024. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 .Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and Jacob Steinhardt. Measuring mathematical problem solving with the math dataset. In Thirty-fifth Con-ference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 2) .Takeshi Kojima, Shixiang Shane Gu, Machel Reid, Yu-taka Matsuo, and Yusuke Iwasawa. 2022. Large lan-guage models are zero-shot reasoners. Advances in neural information processing systems .Tamera Lanham, Anna Chen, Ansh Radhakrishnan, Benoit Steiner, Carson Denison, Danny Hernandez, Dustin Li, Esin Durmus, Evan Hubinger, Jackson Kernion, and 1 others. 2023. Measuring faithful-ness in chain-of-thought reasoning. arXiv preprint arXiv:2307.13702 .Samuel Lewis-Lim, Xingwei Tan, Zhixue Zhao, and Nikolaos Aletras. 2025. Analysing chain of thought dynamics: Active guidance or unfaithful post-hoc rationalisation? In Proceedings of the 2025 Con-ference on Empirical Methods in Natural Language Processing , pages 29826–29841. Wang Ling, Dani Yogatama, Chris Dyer, and Phil Blun-som. 2017. Program induction by rationale genera-tion: Learning to solve and explain algebraic word problems. In Proceedings of the 55th annual meet-ing of the association for computational linguistics (volume 1: Long papers) , pages 158–167. Debjit Paul, Robert West, Antoine Bosselut, and Boi Faltings. 2024. Making reasoning matter: Measur-ing and improving faithfulness of chain-of-thought reasoning. In Findings of the Association for Com-putational Linguistics: EMNLP 2024 , pages 15012– 15032. Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2023. Direct preference optimization: Your language model is secretly a reward model. Advances in Neu-ral Information Processing Systems .John Schulman, Sergey Levine, Pieter Abbeel, Michael Jordan, and Philipp Moritz. 2015. Trust region pol-icy optimization. In International conference on ma-chine learning . PMLR. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Proxi-mal policy optimization algorithms. arXiv preprint arXiv:1707.06347 .Weijia Shi, Xiaochuang Han, Mike Lewis, Yulia Tsvetkov, Luke Zettlemoyer, and Wen-tau Yih. 2024. Trusting your evidence: Hallucinate less with context-aware decoding. In Proceedings of the 2024 Confer-ence of the North American Chapter of the Associ-ation for Computational Linguistics: Human Lan-guage Technologies (Volume 2: Short Papers) , pages 783–791. Yuxi Sun, Aoqi Zuo, Haotian Xie, Wei Gao, Mingming Gong, and Jing Ma. 2026. Fact-e: Causality-inspired evaluation for trustworthy chain-of-thought reason-ing. arXiv preprint arXiv:2604.10693 .Alon Talmor, Jonathan Herzig, Nicholas Lourie, and Jonathan Berant. 2019. Commonsenseqa: A question answering challenge targeting commonsense knowl-edge. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Tech-nologies, Volume 1 (Long and Short Papers) , pages 4149–4158. Gemma Team, Aishwarya Kamath, Johan Ferret, Shreya Pathak, Nino Vieillard, Ramona Merhej, Sarah Perrin, Tatiana Matejovicova, Alexandre Ramé, Morgane Rivière, and 1 others. 2025. Gemma 3 technical report. arXiv preprint arXiv:2503.19786 .Miles Turpin, Julian Michael, Ethan Perez, and Samuel Bowman. 2023. Language models don’t always say what they think: Unfaithful explanations in chain-of-thought prompting. Advances in Neural Information Processing Systems , 36:74952–74965. Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2023. Self-consistency improves chain of thought reasoning in language models. In Interna-tional Conference on Learning Representations .Yubo Wang, Xueguang Ma, Ge Zhang, Yuansheng Ni, Abhranil Chandra, Shiguang Guo, Weiming Ren, Aaran Arulraj, Xuan He, Ziyan Jiang, and 1 others. 2024. Mmlu-pro: A more robust and challenging multi-task language understanding benchmark. Ad-vances in Neural Information Processing Systems ,37:95266–95290. Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny Zhou, and 1 others. 2022. Chain-of-thought prompting elic-its reasoning in large language models. Advances in neural information processing systems , 35:24824– 24837. Shin’ya Yamaguchi, Kosuke Nishida, and Daiki Chijiwa. 2026. Rationale-enhanced decoding for multi-modal chain-of-thought. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recog-nition .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, and 1 others. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .A Proof of Theorem 3.1 
+
+Proof. Consider the general KL-regularized re-ward maximization objective (Schulman et al., 2015, 2017; Rafailov et al., 2023): 
+
+max  
+
+> π
+
+Eπ[R(s, a )] − βDKL [π(a|s)|| πref (a|s)] ,
+
+(10) where R is a reward function, s is a state (input context), and a is an action (output). Obviously, Eq. (9) is a special case of Eq. (10). From Appendix A.1 of Rafailov et al. (2023), the optimal policy 
+
+π∗(a|s) for this objective is given by 
+
+π∗(a|s) ∝ πref (a|s) exp 
+
+ 1
+
+β R(s, a )
+
+
+
+. (11) In the maximization of Eq. (9), given a = yi and 
+
+s = ( yi< , q, r ), we can set each component in Eq. (10) as πref (a|s) = pθ(yi|y<i , q, r ), R(s, a ) = log pθ (yi|y<i ,q,r )  
+
+> pθ(yi|y<i ,q )
+
+, and β = 1 /α . Substituting them into Eq. (11) yields 
+
+π∗(a|s)
+
+∝ pθ(yi|y<i , q, r ) exp 
+
+
+
+α log pθ(yi|y<i , q, r )
+
+pθ(yi|y<i , q )
+
+
+
+= pθ(yi|y<i , q, r )
+
+ pθ(yi|y<i , q, r )
+
+pθ(yi|y<i , q )
+
+α
+
+= Eq. (7) .
+
+Therefore, sampling by Eq. (7) is indeed equivalent to sampling from the optimal policy π∗(a|s) for the maximization in Eq. (9). Note that while this theoretical framework is shared with RED (Yamaguchi et al., 2026), which multiplies the separated image-conditioned and rationale-conditioned distributions as product-of-experts for multimodal CoT, our RCD and RED have different formalizations and objectives. 
+
+B Potential Risks 
+
+First, RCD has potential dual-use risks. By making answers more consistent with explicit rationales, the method could be misused to produce more per-suasive but misleading explanations, such as ra-tionalized misinformation, deceptive arguments, or fabricated justifications. While our work does not target such applications, future deployment of rationale-sensitive decoding methods should con-sider monitoring, provenance tracking, and safe-guards against persuasive misuse.                   
+
+> Artifact Type License / Terms GSM8K Dataset MIT License MATH Dataset MIT License CommonsenseQA Dataset MIT License AQuA-RAT Dataset MIT License MMLU-Pro Dataset Apache License 2.0 Qwen3 Model Apache License 2.0 Gemma3 Model Gemma Terms of Use Llama3.1 Model LLAMA 3.1 Community License
+
+Table 4: Licenses or terms of use for the public artifacts used in this work, based on their public dataset or model cards. 
+
+Second, the fairness and robustness implications of RCD remain underexplored. Our experiments fo-cus on standard English reasoning benchmarks and do not evaluate multilingual, culturally grounded, or demographically sensitive scenarios. If the gen-erated rationales encode social biases or cultur-ally narrow assumptions, increasing the model’s reliance on them may reinforce biased outputs. Fu-ture work should evaluate RCD on more diverse languages, domains, and user populations before deployment in broad-facing applications. 
+
+C Artifact Licenses and Terms of Use 
+
+We use existing public artifacts only for research evaluation. Specifically, our experiments use public reasoning benchmarks, GSM8K, MATH, Common-senseQA, AQuA-RAT, and MMLU-Pro, and the Qwen3/Gemma3/Llama3.1 model families. We do not create, modify, or redistribute these artifacts as part of this work; we only use them to eval-uate inference-time decoding methods. Table 4 summarizes the licenses or terms reported by the corresponding public artifact pages. Our use of these artifacts is consistent with their intended research use: the datasets are used as eval-uation benchmarks, and the pretrained language models are used as fixed inference backbones. We do not fine-tune the models, release model deriva-tives, or redistribute benchmark data. We cite the original papers and artifact pages associated with each dataset and model. Users who reproduce or extend our experiments should consult the latest official artifact pages and comply with the corre-sponding licenses and terms of use. 
+
+D Use of AI Assistant 
+
+We used ChatGPT to polish the structure and gram-mar of the manuscript. We used Claude Code as a supporting tool for building experimental code. E Instruction Prompts 
+
+Instruction for Rationale Generation       
+
+> ## Instruction
+> For the provided question, please provide detailed step-by-step reasoning descriptions as the rationale to output the answer. Please compose your output with short and clear sentences. Output only reasoning descriptions and DO NOT output the final answer.
+> ## Question
+> [Placeholder for Question]
+> ## Response
+
+Instruction for Answer Generation        
+
+> ## Instruction
+> Answer the following question based on the given rationales. Please directly output answer in short.
+> ## Rationales
+> [Placeholder for Rationales]
+> ## Question
+> [Placeholder for Question]
+> ## Response
+
+Instruction for Direct Baseline 
+
+> ## Instruction
+> Answer the following question directly in short without reasoning steps.
+> ## Question
+> [Placeholder for Question]
+> ## Response
+
+F Grid Search for α
+
+For the validation dataset, we randomly extracted 1,000 samples from the training set of GSM8K. Then, we searched α from the search space of 
+
+{0.1, 0.3, 0.5, 1, 3, 5}.
+
+F.1 Ablation Study Effects of α. Figure 3 shows the validation perfor-mance when varying α. We observed that increas-ing α enhances the reliance on the rationales, but accuracy actually decreases once a certain value is exceeded. This is because if the query-only condi-tions in Eq. (8) are significantly reduced with larger 
+
+α, the performance of the query itself also declines. 
+
+Model Generality. We show the performance when varying the model size and families in Ta-ble 5. RCD stably performed on multiple mod-els. The performance gain over CoT increases with model size, suggesting that RCD can significantly improve answer quality with stronger rationales when a model has strong reasoning capabilities. 
+
+G Computational Analysis 
+
+RCD requires two model evaluations at each answer-decoding step. To quantify the practical cost, we measured end-to-end latency and peak VRAM on Qwen3-8B/GSM8K under the same hardware and decoding settings. Table 6 shows 0.1 0.3 0.5 1.0 3.0 5.0 
+
+α
+
+20 40 60 80 100           
+
+> GSM8K Validation Accuracy  89.0 89.3 89.3 89.4 69.0 52.6 94.3 94.4 94.5 94.6 94.8 93.9 40.8 34.6 32.9 35.6 29.2 23.5
+
+Self GT Random 
+
+Figure 3: Effects of α on GSM8K validation accuracy (%) using Qwen3-8B. We evaluate self-generated (Self), ground-truth (GT), and randomly shuffled (Random) rationales on 1,000 validation examples. Increasing (α) generally reduces accuracy with random rationales, while excessively large values degrade accuracy with self-generated rationales, illustrating the trade-off be-tween rationale reliance and answer accuracy. 
+
+the results. Relative to CoT, RCD increases the ob-served end-to-end latency by only 1.5% and peak VRAM by 1.4% in our batch-parallel implementa-tion. Thus, although RCD increases answer-stage model computation, its measured wall-clock and memory overhead are small in this setting. 
+
+H Compatibility with Self-Consistency 
+
+We further examine whether RCD can be combined with Self-Consistency (SC; Wang et al. (2023)), which aggregates predictions from multiple sam-pled rationales. Unlike SC, which improves answer selection through multiple reasoning paths, RCD modifies the answer decoding distribution condi-tioned on each rationale. We evaluate their com-bination on GSM8K using Qwen3-8B with three sampled rationales ( k = 3 ). Table 7 presents the results. Standard SC achieves 89.58% accuracy, whereas combining SC with RCD improves accuracy to 90.79%. Simi-larly, in the single-rationale setting, RCD improves standard CoT from 89.16% to 89.91%. These re-sults suggest that RCD is complementary to multi-sample aggregation. Furthermore, RCD incurs only a 1.5% increase in end-to-end latency over standard CoT, indicating that its additional computational overhead is small in this setting. 
+
+I Human Annotation 
+
+We annotated binary labels for the correctness of the generated rationales in the analysis of Sec-Table 5: GSM8K test accuracy (%) across different model families and sizes, including Qwen3, Gemma3, and Llama-3.1. We compare direct answering (Direct), standard CoT, and RCD with ( α = 1 ). CoT and RCD share the same generated rationales. RCD consistently improves accuracy over standard CoT across all eval-uated models, demonstrating its applicability across model architectures and scales.                         
+
+> GSM8K
+> Model Direct CoT RCD Qwen3-0.6B 23.49 ±.11 47.44 ±.18 47.96 ±.22 Qwen3-8B 50.14 ±.17 89.16 ±.13 89.91 ±.28
+> Qwen3-14B 38.38 ±.43 89.61 ±.22 90.31 ±.20
+> Qwen3-32B 48.23 ±.37 91.31 ±.33 93.27 ±.28
+> Gemma3-4B 8.59 ±.03 80.69 ±.13 81.93 ±.03
+> Gemma3-12B 18.38 ±.07 88.41 ±.21 90.18 ±.16
+> Llama3.1-8B 54.63 ±.20 84.35 ±.12 85.59 ±.22
+
+Table 6: Computational Analysis (GSM8K) 
+
+Latency (s/query) Peak VRAM (GB) Qwen3-8B 
+
+Direct 1.506 15.33 CoT 2.823 15.64 RCD 2.864 15.86 tion 4.5. For each triple of query, generated ra-tionale, and ground truth answer, we asked “Is the rationales behind this query and answer correct?” We used one annotator for this annotation process. 
+
+Table 7: Comparison with Self-Consistency (SC) on GSM8K using Qwen3-8B. k denotes the number of sampled rationales. Latency is measured end-to-end per query. 
+
+Method k Accuracy (%) Latency (s/query) CoT 1 89.16 2.82 RCD 1 89.91 2.86 SC 3 89.58 8.63 SC + RCD 3 90.79 8.65
