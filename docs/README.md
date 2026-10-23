@@ -6,49 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-22
-- 运行时间：2026-10-22 22:14:54 UTC
+- 最新运行日期：2026-10-23
+- 运行时间：2026-10-23 22:10:57 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：4
+- 本次总论文数：7
+- 精读区：2
 - 速读区：5
 
 ### 今日简报（AI）
-1) 2026年10月22日日报新鲜出炉，今日精读4篇、速读5篇，聚焦多模态预测与提示词优化前沿。
-2) 最值得关注多模态预测的免训练持续学习，以及角色增强的零样本思维链提示词大规模评估。
-3) 建议普通读者从高分精读论文入手，重点掌握提示词演化与上下文解码的最新应用方法。
-- 详情：[/202610/22/README](/202610/22/README)
+1) 2026年10月23日日报：成功完成7篇前沿论文精读与速读。
+2) 重点关注领域泛化中的领域提示学习与图软提示中的Token坍缩现象。
+3) 建议普通读者优先精读得分最高的两篇提示学习与图学习核心论文。
+- 详情：[/202610/23/README](/202610/23/README)
 
 ### 精读区论文标签
-1. [Training-Free Continual Learning for Multimodal Forecasting via Prompt Evolution](/202610/22/2610.27468v1-training-free-continual-learning-for-multimodal-forecasting-via-prompt-evolution)  
+1. [Zero-Shot Domain Generalization via Domain Prompt Learning](/202610/23/2610.30680v1-zero-shot-domain-generalization-via-domain-prompt-learning)  
    标签：评分：8.0/10、query:bopl
-   evidence：通过结果驱动反思进行提示词演化
-2. [A Large-Scale Evaluation of Role-Enhanced Zero-Shot Chain-of-Thought Prompting](/202610/22/2610.29073v1-a-large-scale-evaluation-of-role-enhanced-zero-shot-chain-of-thought-prompting)  
+   evidence：通过在CLIP上进行提示学习来学习目标领域知识
+2. [On the Token Collapse Phenomenon in Textual Graph Soft Prompting](/202610/23/2610.31572v1-on-the-token-collapse-phenomenon-in-textual-graph-soft-prompting)  
    标签：评分：8.0/10、query:bopl
-   evidence：动态角色选择以实现自适应任务角色对齐
-3. [Recovering Plausible Transmission Outage Scenarios](/202610/22/2610.29872v1-recovering-plausible-transmission-outage-scenarios)  
-   标签：评分：8.0/10、query:bopl
-   evidence：构建双层优化问题并使用梯度下降更新上层变量
-4. [Robust Soft Skill Adaptation via Behavioral Localization in Tool-Using Agents](/202610/22/2610.30041v1-robust-soft-skill-adaptation-via-behavioral-localization-in-tool-using-agents)  
-   标签：评分：8.0/10、query:bopl
-   evidence：通过行为定位监督短软提示
+   evidence：图软提示与标记折叠现象分析
 
 ### 速读区论文标签
-1. [Let Agents Design How They Search: Automatic Interface Optimization for Agentic Search](/202610/22/2610.29250v1-let-agents-design-how-they-search-automatic-interface-optimization-for-agentic-search)  
+1. [The Instruction Tax on Factual Recall: Base Models Can Beat Their Instruction-Tuned Counterparts](/202610/23/2610.28407v1-the-instruction-tax-on-factual-recall-base-models-can-beat-their-instruction-tuned-counterparts)  
    标签：评分：7.0/10、query:bopl
-   evidence：自动搜索界面优化，包括使用指令的优化
-2. [Mitigating Query Shortcuts in Chain-of-Thought with Context-Aware Decoding](/202610/22/2610.29518v1-mitigating-query-shortcuts-in-chain-of-thought-with-context-aware-decoding)  
+   evidence：基础模型事实召回的提示方法学
+2. [Prompt Sensitivity in Tool-Augmented Model Comparisons](/202610/23/2610.31148v1-prompt-sensitivity-in-tool-augmented-model-comparisons)  
    标签：评分：7.0/10、query:bopl
-   evidence：思维链提示与推理优化
-3. [S-EDL: Eliciting Self-Evidence from Sequence Likelihoods for Semantic Calibration of LLMs](/202610/22/2610.29832v1-s-edl-eliciting-self-evidence-from-sequence-likelihoods-for-semantic-calibration-of-llms)  
+   evidence：模型比较中的提示敏感性与措辞
+3. [HERD: Harness-Evolving Recursive Distillation for Continual Learning](/202610/23/2610.31401v1-herd-harness-evolving-recursive-distillation-for-continual-learning)  
    标签：评分：7.0/10、query:bopl
-   evidence：提示特定类别的可微狄利克雷先验
-4. [PhysiCalWorld: In-Context Physics Calibration for World Models](/202610/22/2610.30125v1-physicalworld-in-context-physics-calibration-for-world-models)  
-   标签：评分：7.0/10、query:bopl
-   evidence：通过上下文提示校准世界模型
-5. [Best of Both Worlds: Fine-Tuned Small Models Complement LLMs for Cost and Performance Benefits](/202610/22/2610.24260v1-best-of-both-worlds-fine-tuned-small-models-complement-llms-for-cost-and-performance-benefits)  
+   evidence：在持续学习中使用提示词和上下文学习
+4. [WRDO: Weighted Refusal Direction Optimization in Aligned Language Models](/202610/23/2610.29555v1-wrdo-weighted-refusal-direction-optimization-in-aligned-language-models)  
    标签：评分：6.0/10、query:bopl
-   evidence：探索 GPT-3.5 在文本分类中的最佳提示方法
+   evidence：结合特定提示方向进行优化
+5. [CVP-BAA: Efficiently Adapting Segment Anything Model for Medical Image Segmentation](/202610/23/2610.30672v1-cvp-baa-efficiently-adapting-segment-anything-model-for-medical-image-segmentation)  
+   标签：评分：6.0/10、query:bopl
+   evidence：包含提示微调在内的参数高效微调
 
 
 <div class="dpr-home-promo-card">
