@@ -6,41 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-24
-- 运行时间：2026-10-24 21:55:35 UTC
+- 最新运行日期：2026-10-25
+- 运行时间：2026-10-25 21:40:01 UTC
 - 运行状态：成功
-- 本次总论文数：6
+- 本次总论文数：3
 - 精读区：0
-- 速读区：6
+- 速读区：3
 
 ### 今日简报（AI）
-1) 今日成功速读6篇前沿AI论文，聚焦分布外泛化与高效微调技术。
-2) 推荐关注“认知解耦元归纳提升OOD泛化能力”及“Muace动态调整Muon加速LoRA微调”两大方向。
-3) 普通读者可优先尝试探索提示词风格对AI编程准确率与速度的具体影响。
-- 详情：[/202610/24/README](/202610/24/README)
+1) 今日速读 3 篇前沿 AI 论文，聚焦大模型数据清洗、评测纠偏与推理控制。
+2) 重点推荐从嘈杂数据中提炼高价值训练集，以及大模型利用自我意识实现评测去偏的方法。
+3) 建议普通读者优先关注如何利用特征放大技术在推理阶段优化大模型表现。
+- 详情：[/202610/25/README](/202610/25/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Cognitively Decoupled Meta-Induction for Out-of-Distribution Generalization](/202610/24/2610.25749v1-cognitively-decoupled-meta-induction-for-out-of-distribution-generalization)  
+1. [High-Value Training Data from Noisy, Diverse Sources](/202610/25/2610.30421v1-high-value-training-data-from-noisy-diverse-sources)  
    标签：评分：7.0/10、query:bopl
-   evidence：用于上下文学习的双回路元归纳学习
-2. [MuPACE: Learning to Pace Muon for LoRA Fine-Tuning](/202610/24/2610.28072v1-mupace-learning-to-pace-muon-for-lora-fine-tuning)  
-   标签：评分：7.0/10、query:bopl
-   evidence：在微调问题中元学习全局步长
-3. [How Prompt Style Affects AI Accuracy and Speed in Competitive Programming](/202610/24/2610.30223v1-how-prompt-style-affects-ai-accuracy-and-speed-in-competitive-programming)  
-   标签：评分：7.0/10、query:bopl
-   evidence：比较提示策略的准确性和速度
-4. [CVaR-RMD: CVaR Selection Pressure for Robust Metaheuristic Discovery](/202610/24/2610.25697v1-cvar-rmd-cvar-selection-pressure-for-robust-metaheuristic-discovery)  
+   evidence：通过训练过程中的元梯度来优化训练样本权重
+2. [The Judge Can Debias Itself: Awareness and Self-Debiasing for Reliable LLM-as-a-Judge](/202610/25/2610.24320v1-the-judge-can-debias-itself-awareness-and-self-debiasing-for-reliable-llm-as-a-judge)  
    标签：评分：6.0/10、query:bopl
-   evidence：使用LLM变异启发式程序进行自动化算法设计
-5. [Privacy-preserving inference on hosted models: a learned input-embedding transform for frozen Qwen3.8-27B](/202610/24/2610.27817v1-privacy-preserving-inference-on-hosted-models-a-learned-input-embedding-transform-for-frozen-qwen38-27b)  
+   evidence：用于大语言模型评估的偏见感知提示和自我去偏
+3. [From Black Box to Controller: Inference-Time Steering of LLM via Feature Amplification](/202610/25/2610.25700v1-from-black-box-to-controller-inference-time-steering-of-llm-via-feature-amplification)  
    标签：评分：6.0/10、query:bopl
-   evidence：针对冻结大语言模型的学习输入嵌入转换
-6. [IRAH: Hierarchical Agentic Tree Search for Retrieval Pipeline Optimization](/202610/24/2610.30167v1-irah-hierarchical-agentic-tree-search-for-retrieval-pipeline-optimization)  
-   标签：评分：6.0/10、query:bopl
-   evidence：数值超参数和结构组件的分层搜索
+   evidence：作为提示工程替代方案的大模型推理时引导
 
 
 <div class="dpr-home-promo-card">

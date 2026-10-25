@@ -1,0 +1,1211 @@
+Title: High-Value Training Data from Noisy, Diverse Sources
+
+URL Source: https://arxiv.org/pdf/2610.30421v1
+
+Published Time: Fri, 23 Oct 2026 00:17:14 GMT
+
+Number of Pages: 38
+
+Markdown Content:
+# High-Value Training Data from Noisy, Diverse Sources 
+
+## Hedi Driss 1, ∗, Evan Frick 2, ∗, Anastasios N. Angelopoulos 2, Cho-Jui Hsieh 2,3 ,Yejin Huh 1, Tijana Zrnic 2,4 , Andrew Ilyas 1,5 1Hiddenweights 2Arena 3UCLA 4Stanford 5CMU 
+
+> ∗
+
+Equal contribution 
+
+Abstract 
+
+Training state-of-the-art models increasingly requires learning from large, heterogeneous datasets whose examples vary in quality, domain relevance, and source of supervision. Dataweighting—assigning different weights to training examples—offers a general way to control how such data influences training, but learning effective weights at scale remains challenging. We develop a scalable approach to learning dataweights: given a small, high-quality target dataset, we use metagradients through the training process to efficiently optimize training-example weights directly for performance on the target domain. To scale beyond a fixed dataset and model, we learn parametric weighting rules that generalize to new and streaming examples and transfer from smaller models to substantially larger ones. We study reward modeling as a prototypical application, where preference data may be noisy, adversarial, synthetic, or mismatched with the target domain. Learned dataweights improve held-out performance, automatically adapt reward models to specialized domains, and allow mixtures of human and synthetic supervision to outperform either source alone. 
+
+# 1 Introduction 
+
+In modern machine learning, we increasingly want to train reliable, specialized models using heterogeneous, general-purpose data. For example, large language models are trained on massive corpora scraped from the internet; vision models are trained on heterogeneous collections of web images. Domain-specific models are often adapted from such general-purpose models using much smaller, specialized datasets. This process poses several challenges, including low-quality or missing data, distribution shift, and mismatches between the training objective and the downstream evaluation criterion. Standard approaches to these challenges are often bespoke. For example, we might design heuristic filters to remove low-quality data [e.g., PMH+23]; synthesize labels where they are missing [e.g., XLH+20]; or explore data mixing strategies between general and target-specific data [e.g., XPD+23]. While these techniques can be effective, they require substantial problem-specific design and often rely on human judgments about what constitutes “good” or “bad” data—judgments that may themselves be unreliable or unavailable in many domains. As the need for customizable models and the amount of available general-purpose data grow, it is natural to seek a more scalable approach. An attractive general paradigm is to assign a weight to each training example [HGB+06; RZY+18; SXY+19]. We call this practice dataweighting . In theory, dataweighting can reduce the influence of outliers and low-quality examples and reshape the effective training distribution to better align with the downstream task. In practice, however, choosing the right weights is difficult, particularly when little is known a priori about the relationship between the training data and the target domain. In this paper, we therefore ask: 
+
+Is there a scalable way to learn dataweights for training on diverse, heterogeneous data? 
+
+Contributions. In this work, we revisit dataweighting as a unified, scalable way of reducing both the human effort and subjective decision-making involved in training specialized models. Our central premise is that 1arXiv:2610.30421v1 [stat.ML] 21 Oct 2026 a training sample’s utility should be determined by its impact on the performance of the resulting model, rather than by external heuristics. Instead of predefining quality criteria, we infer data usefulness directly from the learning process itself, and reweight the data’s impact appropriately. We provide algorithms and principles for instantiating dataweighting at scale . We leverage tools from data attribution (and specifically metadifferentiation [IE25; EIC+25]) to quantify how individual training examples influence a model’s behavior. In this way, data reweighting becomes an adaptive procedure that is directly aligned with the target objective. We show how to go beyond a fixed training dataset and training architecture by implementing a parametric dataweighting model and showing that dataweights learned with a smaller model can transfer to substantially larger ones. We identify reward modeling as a prototypical application of the challenges we study. Preference data is heterogeneous and may contain spam, bot-generated responses, inconsistent judgments, or subjective preferences. Large pretrained language models offer an attractive source of auxiliary supervision, but their labels can introduce additional uncertainty and bias. Moreover, the reward models’ training objective (Bradley-Terry loss) is often not aligned with the downstream uses that we care about, such as providing accurate model rankings. Our experiments with human and synthetic preference data support four main takeaways, validated at scale with models whose size is on the order of billions of parameters: 1. Improved performance with heterogeneous, noisy data. Learned dataweights improve model perfor-mance by upweighting helpful data points and downweighting harmful ones, such as outliers and adversarial examples. 2. Domain customization. When the target dataset comes from a specialized domain such as coding or STEM question answering, dataweights automatically identify relevant examples within diverse training data. 3. Effective integration of synthetic supervision. When data consists of a mix of human and synthetic labels, dataweights can automatically adapt to the quality of the synthetic labels, upweighting the helpful ones and downweighting the harmful ones. This results in improved performance over both (a) using real human data alone, and (b) using all human and synthetic data while treating them equally. 4. Alignment with downstream objectives. Dataweighting allows us to close the gap between the training loss and the downstream task we care about; in the reward modeling case, we can optimize dataweights for model ranking accuracy while retaining the standard Bradley–Terry training objective. Finally, in Section 4 we provide a few stylized examples illustrating these same benefits of dataweighting in theory, with the goal of providing further intuition about how dataweights work. Our work builds on validation-guided example reweighting [RZY+18; SXY+19; CFK+25] and scalable metagradient computation [EIC+25; IE25]. We investigate how these tools can improve training through continuous reweighting over long training segments, transfer of learned weighting functions to new data and larger models, and optimization of downstream ranking objectives; Section 5 gives the detailed comparisons. 
+
+# 2 Learning dataweights at scale 
+
+We describe the general problem of model training from noisy, heterogeneous data using dataweights. We then describe how we instantiate dataweighting for this problem at scale. 
+
+## 2.1 Problem statement 
+
+We are given a training dataset of size n and a target dataset of size n′. The training dataset is a large, heterogeneous dataset composed of many potentially noisy sources. In contrast, the target dataset is a small, highly-curated gold-standard dataset that represents the target domain. Our goal is to train a model θ, using all the available samples, that performs well on the target domain. Write the training examples as {zi}ni=1
+
+2and the target examples as {z′
+
+> j
+
+}n′
+
+> j=1
+
+, with each example in a space Z. Let ℓ(z; θ) denote the per-example training loss of the model with parameters θ.Dataweighting modifies the training objective by assigning weights to each training data point. For any vector of nonnegative weights w ∈ Rn
+
+> ≥0
+
+, define the reweighted loss function 
+
+Lw(θ) = 
+
+> n
+
+# ∑
+
+> i=1
+
+wiℓ(zi; θ). (1) Also define A(w, θ0, k) to be any iterative model training procedure that optimizes the weighted loss Lw(θ)
+
+starting from initialization θ0 for k steps; note that here, A captures the model architecture, optimizer, hyperparameters, and in general everything about training other than the weight vector w, initialization 
+
+θ0, and step count k. Let T be the total number of steps that can be taken by A (i.e., the total length of the algorithm’s learning rate schedule). Our ultimate objective is to train a model with good performance on the target domain. Let L′(θ) denote the target objective evaluated on the model with parameters θ. For example, this could be the average loss on the target set: 
+
+L′(θ) = 1
+
+n′
+
+> n′
+
+# ∑
+
+> j=1
+
+ℓ(z′
+
+> j
+
+; θ).In general, however, the target objective need not use the same loss as training; later we explore more complex target objectives. Our methods leverage the target dataset to learn dataweights that place more mass on relevant training data. Formally, we learn a choice of weights w such that the model obtained by optimizing Lw performs well on the target loss L′(θ). In essence, our dataweights seek to solve the following problem: minimize 
+
+> w∈Rn
+> ≥0
+
+L′(A(w, θ0, T)) , (2) given an initialization θ0. This objective encourages weights that improve target performance by changing how strongly each training example influences the model. However, solving (2) outright is computationally infeasible. We discuss strategies that approximate solving (2), while remaining feasible even for models with billions of parameters. 
+
+## 2.2 Scalable dataweighting 
+
+We now describe our procedure for approximating (2) at the scale of modern models and datasets. Acore primitive in our method is computation of the metagradient ∇w L′(A(w, θ0, k)) , the derivative of the target objective with respect to the data weights (i.e., through the algorithm A). Despite the complexity of computing this quantity, a line of work in data attribution [KL17; GZ19; IPE+22; GBA+23; PGI+23; IGE+24] offers efficient ways to compute approximate metagradients, and recent work shows how to compute these gradients exactly for moderate-sized models and datasets [EIC+25; IE25]. Using metagradient computation as a primitive, we describe a modular framework for learning optimal dataweights. 
+
+Backbone: scalable metagradient descent. For algorithm A, set of dataweights w, initial parameters θ,and number of training steps k < T, we take as given the ability to compute a metagradient of the form 
+
+g(w, θ, k) := ∇w L′(A(w, θ, k)) ,which captures the effect of infinitesimally up- or down-weighting each point in the training set on the final target objective after training. Note that we will not discuss the efficient computation of metagradients here, and instead refer to Section 3.3 of Ilyas and Engstrom [IE25] for a thorough treatment. With this primitive in hand, our algorithm at a high level will be that of metagradient descent (MGD), as introduced by Engstrom et al. [EIC+25]. In MGD, we initialize w(0) = 1n and θ0, and then repeatedly apply 
+
+w(t+1) ←
+
+h
+
+w(t) − η · g
+
+
+
+w(t), θ0, T
+
+i  
+
+> +
+
+, (3) 3where T is the number of steps used to train the model and [·]+ represents non-negative clipping. For clarity, we refer to steps taken by the algorithm A to update model parameters θ as inner steps , and metagradient steps taken on dataweights w as outer steps . While metagradient descent is the basis of our method, we introduce several extensions that allow us to apply it to bigger models trained on large, heterogenous, potentially streaming training data sets. 
+
+Parameterizing dataweights. We first extend (3) to large (and potentially streaming) training datasets by in-troducing parametric dataweights. Formally, parametric dataweights are defined by a function hψ : Z → R≥0,parameterized by ψ ∈ Rp. The corresponding dataweights are then obtained as wψ 
+
+> i
+
+= hψ(zi). We compute metagradients with respect to the underlying parameters ψ via the chain rule, i.e., 
+
+∇ψ L′ A wψ, θ, k =
+
+> n
+
+# ∑
+
+> i=1
+
+∇w L′ A wψ, θ, k  
+
+> i
+
+· ∇ ψhψ(zi). (4) We recover basic MGD via the identity parameterization, where we set p = n, such that 
+
+ψ ∈ Rn and wψ 
+
+> i
+
+= hψ(zi) = ψi. (5) There are two main drawbacks to this trivial parameterization. First, there is one learnable parameter per training point (the scalar weight ψi), making the dataweight optimization extremely high-dimensional and overparameterized. Second, it is unclear how to handle training data that arrives only after we have trained a model; for example, if we want to retrain or fine-tune the model on newly collected data. A solution to both of these challenges is to flexibly parameterize the dataweights w as a function of features of the corresponding training point. As a concrete example—which we call the linear parameterization—we let ϕ : Z → Rd be a fixed feature map (e.g., a frozen embedding of the example). We then let 
+
+ψ ∈ Rd+1 and wψ 
+
+> i
+
+= hψ(zi) = log (1 + exp (ϕ(zi)⊤ψ + ψ0)) . (6) By choosing d ≪ n and optimizing ψ ∈ Rd+1, rather than the per-example weights ψ ∈ Rn, we reduce the dimensionality of the optimization problem and also enable extrapolation to unseen training points. That is, we can incorporate new data that was not seen during the dataweight optimization process by simply assigning it a weight using the map hψ (6). Thus, even if a model is repeatedly retrained over time on freshly collected data, one can apply dataweighing by learning a parameterized dataweighting map only once .
+
+Segmenting the training trajectory. The next change we make is to differentiate with respect to segments of the training trajectory rather than over entire training runs. Specifically, rather than differentiating through 
+
+A(w, θ0, T) where T is the total number of training steps, we choose a relatively small number of segments K 
+
+such that T mod K = 0. In lieu of (3), we initialize both ψ(0) and θ(0) = θ0, then for t = 1, 2, . . . we: (a) compute w(t−1) ← [hψ(t−1) (zi)] ni=1, the dataweights induced by ψ(t−1);(b) update the model parameters θ(t) ← A (w(t−1), θ(t−1), TK ), resetting θ(t) ← θ0 if t mod K = 0; (c) compute ∇w L′(A(w(t−1), θ(t−1), TK )) and update the underlying ψ(t) using gradient (4): 
+
+ψ(t) ← ψ(t−1) − η · ∇ ψ L′ 
+
+A
+
+
+
+w(t−1), θ(t−1), T/K
+
+ 
+
+.Every K steps is a full run of A; we call this a meta-epoch and use Ω (= ⌊t/K⌋) to track the count. When K = 1(and we use the identity parameterization (5)), we recover the ordinary metagradient descent algorithm. On the other extreme, when K = T (or within a small constant factor of T), we recover a variation on prior approaches to dataweighting, which approximate the value of a given datapoint by differentiating through a few steps of the training procedure A (e.g., [RZY+18; CFK+25]). In our experiments, we use K = {1, 10, 20 }
+
+depending on the exact setting. We find that increasing K to be on the order of T significantly harms the method’s performance, which may partially explain some prior negative results. Segmentation increases the frequency with which we update the parameter ψ (and therefore the dataweights wi). In particular, updating the dataweights t times requires running the training procedure for  
+
+> t·TK
+
+total optimization steps, and so increasing K reduces the cost of optimization linearly. 4Transferring dataweights across scales. We further improve the scalability of the algorithm by leveraging 
+
+cross-algorithm transfer of learned dataweights w. The general idea here is that given an algorithm A that may be costly to run (e.g., full-parameter fine-tuning of a 70B-parameter language model), we can define a proxy algorithm A′ (e.g., LoRA fine-tuning of a 7B-parameter language model with appropriately scaled hyperparameters) and perform dataweight optimization using the proxy. Thus, we first optimize dataweights 
+
+wi using A′, and then retrain a model using A by plugging the learned weights into objective (1). 
+
+Optimizing complex downstream objectives. Finally, we explore the design of the target objective L′(θ).By default, we defined L′(θ) as the average loss of a model with parameters θ on a high-quality target set. Notice, however, that the metagradient ∇w L′(A′(w, θ, k)) depends on L′(θ) only through a final “target gradient” ∇θ L′(θ)—meaning that we can use any differentiable function of model parameters as the target objective. Furthermore, because the metagradient computation itself is computationally expensive relative to evaluation of a trained model, we can encode complex measurements of desired behavior into L′ (e.g., L′
+
+might take several minutes to evaluate and thus be totally impractical to train on) at essentially no wall-clock overhead to our algorithm, so long as evaluating and differentiating L′ costs less than T/K training steps. 
+
+# 3 Applying scalable dataweighting to reward models 
+
+We identify reward modeling as an ideal testbed for training specialized models from heterogeneous data. In re-ward modeling, our input is preference data : a collection of prompts, each paired with two candidate responses and a label indicating which response is preferred. The goal is to learn a model that takes a prompt and a re-sponse and assigns a numerical score, allowing us to compare new responses by predicting which one would be preferred. We train the model with the Bradley-Terry objective [BT52; CLB+17], which encourages higher scores for preferred responses. Formally, each training example is zi = ( prompt i, pref_resp i, unpref_resp i)
+
+and the corresponding training loss for a reward model rθ is 
+
+ℓ(zi; θ) := − log σ (rθ (prompt i, pref_resp i) − rθ (prompt i, unpref_resp i)) .Reward modeling is an excellent candidate for dataweighting: preference data is noisy, often based on LLM judges, and comes from diverse sources. We demonstrate the efficacy of dataweighting on real human preference data in a variety of settings. We begin by giving an overview of the training and target datasets we use, as well as our reward model training procedure. 
+
+## 3.1 Experimental setup 
+
+We demonstrate the efficacy of dataweighting for reward modeling across a variety of training datasets, target objectives, and model architectures. We also compare dataweighting to existing algorithms for data-centric adaptation from the literature. We provide a high-level summary of these settings here, with a more complete description available in Appendix B. 
+
+Data. We use preference data released by Arena in our analysis. Specifically, for training we make use of: • Human-155k [CZS+24]: 155,577 preference data points collected from Arena users; • Bot-10k : 10,000 Arena-flagged bot and adversarial examples; • Gemini-155k : Synthetic Gemini 3 Flash preference labels on the prompt-response pairs in Human-155k .Datasets such as Human-45k refer to random subsamples of the corresponding datasets; mixtures such as 
+
+Human-45k + Gemini-110k refer to combined subsamples with disjoint rows. As target datasets, we use: • Expert : a curated subset of Arena preferences for sophisticated, domain-specific prompts, testing gains on a niche part of the training distribution. • STEM : math, science, and coding preferences from HelpSteer3 and Tulu2.5 [WZD+25; IWL+24], with annotations from qualified human rubric labelers or ground-truth verifiers. 5Each domain is split into a target set used for optimizing dataweights and an entirely held-out test set: 3000/547 examples for Expert and 6796/6796 for STEM .
+
+Reward model training. We fine-tune Qwen2.5-0.5B-Instruct unless otherwise specified. Except where otherwise stated, for fair comparisons all methods use the same fixed-size checkpoint selection set of 100 examples for early stopping, disjoint from both the target and test sets. Comparisons between dataweighted and unweighted models use matched random seeds. Appendix B details dataset construction, sampling, and reward-head implementation. Appendix F lists the training hyperparameters, dataweight optimization settings, and parametric weighting model configuration. 
+
+## 3.2 Establishing the efficacy of dataweighting 
+
+We start by establishing the efficacy of our proposed method for dataweighting relative to existing ideas in the literature on data-centric model adaptation. Specifically, we compare our method to: • Attribution-based data selection methods (approximate influence [KL17], TracIn [PLK+20], and TRAK [PGI+23]), which assign a score to each training example based on its estimated contribution to the target objective, and then keep only the highest-scoring examples; • Metagradient-based methods over a short horizon (as in [RZY+18] and others), where we attempt to optimize dataweights w by differentiating through single inner optimization steps—in other words, our method but with K = T.• Fine-tuning , where we leverage the high-quality target data by training directly on it, instead of using it to optimize dataweights for the training data. Specifically, we study a method which first pre-trains 
+
+on the n datapoints from the heterogenous training set, and then fine-tunes on the n′ target samples. We also evaluate the unweighted baseline, which sets all weights wi equal to one. 
+
+Dataweighting outperforms attribution-based selection. In Figure 1, we compare our dataweighting approach with the aforementioned attribution baselines using Human-155k as the training set and the validation split of STEM as the target set, evaluating on the corresponding (unseen) test split. We use a small fixed pool of held-out examples to determine how many samples to remove for the baseline methods, and use the same fixed pool to decide when to early stop our dataweighting method. 10 30 50 70 90 99           
+
+> Pool retained (%)
+> 0.60.70.80.91.0
+> Test loss
+> 155k pure human →STEM
+> No selection TracIn Influence functions TRAK Dataweighting 0.683 0.643 (90%) 0.627 (90%) 0.619 (90%) 0.578 (all)
+> Best per method (% retained)
+> TRAK Influence functions TracIn Random Dataweighting
+
+Figure 1: Dataweighting outperforms attribution-based selection. Held-out STEM test loss after training on Human-155k . Left: 
+
+Baselines across different selection fractions, with the unweighted baseline and a gray band showing ±1 standard deviation over three seeds. Dataweighting reweights the full pool (keeping 100% of data points). Right: Each method at its best selection fraction (in parentheses); the leftmost bar is the unweighted baseline. Dataweighting reaches 0.578, compared with 0.619 for TRAK, the strongest selection baseline. See Appendix E.4 for other training datasets. 
+
+Overall, we find that dataweighting achieves a lower loss on the unseen STEM data than any of the baselines, and reduces test loss compared to unweighted training on Human-155k by 15%. Between the data 6selection methods surveyed, TRAK [PGI+23] appears to be both more effective than TracIn and influence functions in terms of the final test loss, as well as more robust to the choice of selection fraction. More qualitatively, at low selection fractions we find that selected preferences become skewed toward longer responses, particularly for TracIn and influence functions. Such a skew can encourage the reward model to use response length as a shortcut, assigning low probability to preferences favoring longer responses and incurring large losses on those pairs. This offers a plausible explanation for the sharp loss increases under aggressive selection (see Appendix E.3 for a more thorough investigation). 5 10 20 50 100 200            
+
+> Compute (GPU-hours, log scale)
+> 0.58 0.60 0.62 0.64 0.66 0.68 0.70
+> Test loss
+> 012345678910 11 12 13 14 012345
+> Dataweighting Single-step differentiation TRAK TracIn Unweighted ( ±1 SD) Influence functions Pareto-optimal
+
+Figure 2: Dataweighting improves the cost–performance tradeoff. Held-out STEM loss versus compute for 
+
+Human-30k , comparing dataweighting, single-step differentiation, and attribution-based selection. Point labels indicate meta-epochs Ω (i.e., complete runs of the algorithm A); black rings mark Pareto-optimal observations. The gray band shows the unweighted baseline mean and ±1 standard deviation across three seeds. Additional results appear in Appendix E.2. 
+
+Dataweighting achieves Pareto-optimal cost-performance tradeoffs. In our method, the number of outer steps provides a cost-performance tradeoff: later iterations can improve test loss at higher cumulative compute. Figure 2 compares the trajectory of dataweighting with single-step differentiation and attribution-based selection in terms of the achieved test loss and compute. We observe that dataweighting is Pareto optimal when there are at least four meta-epochs. Appendix E provides additional details and results. 500 1k Quarter Half Threequarter Full 
+
+> STEM pairs available
+> 0.45 0.50 0.55 0.60 0.65 0.70
+> Target loss
+
+Target loss    
+
+> 500 1k Quarter Half Threequarter Full
+> STEM pairs available
+> 0.575 0.600 0.625 0.650 0.675 0.700
+> Test loss
+
+Test loss 
+
+Human-33k: allocating STEM pairs to training and meta-optimization    
+
+> Pure A (ordinary training) Pure B (meta-optimization) A+B ( C= 250, 5 seeds)
+
+Figure 3: A small STEM target set complements direct training on STEM data. Target loss (left) and held-out test loss (right) with a Human-33k training base. Target-domain ( STEM ) pairs are allocated entirely to ordinary training (Pure A), entirely to the meta-optimization target (Pure B), or split, with 250 target pairs and the rest used for training (A+B). Full denotes 6,796 pairs; Quarter, Half, and Threequarter are fractions of the full target set. 
+
+Dataweighting outperforms fine-tuning, especially when high-quality data is scarce. A natural question is whether reserving target-domain data for dataweighting is more beneficial than using it directly for training. Given a budget of B STEM preference pairs, we allocate C to the dataweighting target and B − C to training. We compare C = 0 (no dataweighting), C = B (all pairs reserved for dataweighting), and C = 250 7(split). The split achieves the lowest held-out test loss at every budget (Figure 3), outperforming ordinary training even though it uses fewer target-domain pairs for training. 
+
+## 3.3 Revisiting our motivating challenges 
+
+Having established the efficacy of our dataweighting method relative to natural baselines, we now turn to the motivating applications of dataweights. Specifically, we show how dataweights allows us to circumvent many of the named challenges of building reliable models from heterogenous, noisy, and partially synthetic data. Figure 4 summarizes our results. Human-45k Human-77k Human-155k   
+
+> Training Dataset
+> 0.56 0.58 0.60 0.62 0.64 0.66
+> Test Loss
+> 0.631 0.622 0.608 0.603 0.586 0.583
+
+(a) Train: Human; Test: Expert        
+
+> 10k 30k 45k 60k 100k
+> Quantity of Human Data Mixed With 10k Bot Data
+> 0.56 0.58 0.60 0.62 0.64 0.66
+> Test Loss
+> 0.634 0.632 0.630 0.609 0.617 0.609 0.614 0.612 0.610 0.610
+
+(b) Train: Bot-Poisoned Human; Test: Expert           
+
+> No Dataweights w/ Dataweights
+> 012345678910 11 12 13 14 15 16 17 18 19
+> Segment
+> 0.550 0.575 0.600 0.625 0.650 0.675 0.700
+> Test Loss
+
+(c) Train: Human; Test: STEM; Test Loss by Segment     
+
+> Human-45k Gemini-110k Human-45k +Gemini-110k
+> Training Dataset
+> 0.56 0.58 0.60 0.62 0.64 0.66 0.68
+> Test Loss  0.631 0.622 0.659 0.627 0.636 0.613
+
+(d) Train: Human, Synthetic, and Mixed; Test: Expert           
+
+> Ω = 0123456789
+
+Figure 4: Dataweighting consistently improves reward models across a variety of settings. Each plot depicts the test loss of reward models trained with and without dataweighting across different training data sources and evaluation sets. In (a), we apply dataweights to a heterogeneous corpus of human preference data, targeting the curated Expert target set, and show that dataweighting improves test-set performance. In (b), we apply dataweighting to a training set comprising heterogeneous human data that has been “poisoned” with data suspected to be from bots; dataweighting allows us to recover performance. In (c), we plot the test loss as a function of the training segment for dataweights that are further and further optimized for the STEM target set. Finally, in (d), we plot the test loss of models trained with and without dataweighting on real, synthetic, and mixed data; dataweighting enables us to leverage human and synthetic sources to outperform either source in isolation. 
+
+Challenge 1: Leveraging heterogeneous data. Our first main point is that dataweights can be used to improve in-distribution performance. To demonstrate this, we train a reward model on varying-sized samples of Human-155k and show the test loss with and without dataweighting; see Figure 4(a). Across all dataset sizes, dataweighting noticeably decreases the test loss on Expert preferences. We provide test and target loss curves in Appendix D.1. 
+
+Challenge 2: Automatically downweighting noisy or adversarial data. Next, we mix human preference data with noisy and adversarial bot data, varying the human-to-bot data ratio. We again target the clean 8Expert preference set. Figure 4(b) demonstrates that naive training with such low-quality data can harm per-formance, especially when the human-to-bot ratio is low. At the same time, in almost all cases, dataweighting restores performance. Plots of test and target training curves are found in Appendix D.2, in addition to dataweight distributions that show how bot dataweights shift downward during optimization. 
+
+Challenge 3: Customizing to specific domains. Next, we demonstrate how dataweighting enables cus-tomization of reward models to specific domains. We target the STEM preference set, which contains math, science, and coding preference pairs. The annotation of this dataset follows a substantially different process from the crowdsourced annotation process on Arena. Without dataweighting, training on Human-155k yields a test loss of 0.6631 on the STEM preference set. This makes sense: the target domain is significantly out-of-distribution with respect to the training data. However, once we apply dataweighting, our learned dataweights bring the test loss down to 0.5572. We provide the test loss “meta-training” curves in Figure 4(c). Each line denotes a new meta-epoch Ω (i.e., a full run of the algorithmm A). With each meta-epoch, we decrease the test loss nearly monotonically. Note that the curve for Ω = 0 corresponds to a normal training procedure where all data points are weighted equally. The target loss curves, which follow a similar trend to the test loss curves, can be found in Appendix D.3. 
+
+Challenge 4: Safely incorporating synthetic data. We study whether dataweighting allows us to use synthetic LLM-as-a-judge labels in place of human labels while preserving performance. Specifically, we train three reward models on Human-45k , Gemini-110k , and Human-45k + Gemini-110k , respectively. We do this with and without dataweights. We use unequal dataset sizes to reflect real-world constraints: synthetic data is cheap to generate at scale, while human-curated data remains expensive and limited. In Figure 4(d), we observe that under a standard, non-dataweighted procedure, purely training on 
+
+Human-45k gives the best test loss. Training on only synthetic data, Gemini-110k , yields poor test loss. Lastly, although mixing synthetic and real data ( Human-45k + Gemini-110k ) improves performance over synthetic data alone, it does not exceed training on only the real human subset. Under the dataweighting procedure, training on purely synthetic data results in much closer performance to real human data. Furthermore, with dataweighting, combining both human and synthetic data together reaches the best performance, better than using the real human preference set alone. Full test and target loss curves for Human-45k and Gemini-110k 
+
+are in Appendices D.1 and D.4; Appendix D.4 compares learning curves on synthetic and human data. 
+
+## 3.4 Parametric dataweights and larger-scale transfer 
+
+So far our dataweights have used the identity parameterization described in Section 2. The number of learned weights therefore grows with the dataset size n, which might be prohibitively expensive for large training sets; moreover, this rules out direct transfer of the dataweights to new training datasets. We now study the parametric variant (6): a small head hψ maps fixed example features ϕ(zi) to nonnegative weights 
+
+wψ 
+
+> i
+
+= hψ(ϕ(zi)) . Specifically, we define: 
+
+hψ(ϕ(z)) = softplus (ϕ(z)⊤a + b), ψ = ( a, b).Here, ϕ(z) ∈ R4608 concatenates frozen OpenAI text-embedding-3-small embeddings of the prompt and the two responses, each with 1,536 dimensions. The learnable projection a and scalar bias b give p = 4,609 parameters, independent of the training dataset size n.
+
+Same-scale comparison. We extend the customization setup of Section 3.3 by varying how many STEM 
+
+preference examples are mixed into a 45k-row human-preference base, with sizes {0, 500, 1000, 2000 }, and optimize the parameterizations across three random seeds. Figure 5(a) shows comparable losses for the per-sample dataweights and the parametric dataweights across different data sizes, despite the linear parameterization having a roughly tenfold smaller parameter count. 90 500 1000 2000 STEM pairs added 0.58 0.62 0.66 0.70 STEM test loss       
+
+> (a) Same-scale comparison
+> 0.40.50.6STEM test loss 0.5B 1.5B 3B 7B Reward model size
+> (b) Model transfer
+> 0.40.50.6STEM test loss 0.5B 1.5B 3B 7B
+> (c) Data transfer
+> No dataweights Per-sample dataweights Parametric dataweights 1
+
+Figure 5: Parametric dataweights transfer to larger models and new training data. (a) STEM test loss when training on Human-45k 
+
+plus {0, 500, 1000, 2000 } STEM examples. Curves show means over three seeds; error bars show their minimum and maximum. (b) Transferring dataweights learned at model size 0.5B to 1.5B, 3B, and 7B reward models on Human-45k plus 5,000 STEM examples (50k total). (c) Same setup as (b), transferring the linear dataweighting map to the full Human-155k 
+
+training base, with approximately 3.5 times as many human examples; the new examples were not seen while learning the dataweighting map. 
+
+Cross-scale transfer. A key practical question is whether dataweights learned with a small reward model can be reused when training larger models. We therefore learn dataweights at the 0.5B scale, freeze them, and apply them unchanged when training 1.5B, 3B, and 7B reward models for a single weighted epoch. This 
+
+forward-only transfer requires no additional metagradient computation at the larger scales. Figure 5(b) shows that both identity and linear dataweights improve over the unweighted baseline across all scales. These results suggest that dataweighting can be amortized: the expensive meta-optimization can be performed at a smaller scale, and the resulting weighting rule can be deployed directly in training runs of a larger model. 
+
+Generalizing to unseen training examples. A limitation of per-sample dataweights is that they only assign weights to examples seen during meta-optimization. The linear parameterization removes this restriction: because it maps an example embedding to a weight, it can be evaluated on new training examples without relearning a separate scalar for each one. We test this by applying a linear head learned on the smaller 45k-row base to the full Human-155k training set. This transfer requires only computing embeddings and a forward pass through the learned weighting rule, rather than running metagradient optimization on the larger dataset. Figure 5(c) shows that the resulting weights continue to improve over the unweighted baseline across model scales. Thus, parametric dataweights provide a way to amortize data curation across datasets: a weighting rule learned on a manageable subset can be deployed directly on larger pools containing previously unseen training examples. 
+
+## 3.5 Optimizing a complex target objective 
+
+So far the target L′ has shared the Bradley-Terry form of the training loss. We now consider a target objective that is not a training loss: ranking the response-generating LLMs. In Arena’s data, each LLM response is accompanied by the model identity. For each model i, let si(θ) denote the average reward assigned by the reward model to responses from model i, and let bi denote the ground-truth Bradley-Terry coefficient fit from the original pairwise annotations. The evaluation metrics are (a) Spearman ρ between the model-induced ranking {si(θ)} and the ground-truth ranking {bi}, as well as (b) Rank MAE, the mean absolute error in model rank. Because Spearman ρ is non-differentiable, we use a differentiable soft-rank surrogate as L′. For a score vector u, define 
+
+eri(u) = 1 + ∑ 
+
+> j̸=i
+
+σ (uj − ui)/τ , (7) where σ(t) = 1/ (1 + e−t) is the logistic function and τ > 0 is the temperature. We take eL′(θ) to be the negative Pearson correlation between er(s(θ)) and er(b). During meta-optimization, this surrogate is used 10 Training loss ( ℓ) Target loss ( L′) Spearman ρ ↑ Rank MAE ↓
+
+BT N/A 0.541 7.91 BT BT 0.565 7.67 Spearman N/A 0.325 9.05 BT Spearman 0.625 7.31 
+
+Table 1: Dataweighting allows for complex target objectives that are difficult to train for directly. Here, standard Bradley-Terry (BT) training with dataweights optimized for downstream ranking correlation outperforms (a) unweighted BT training (b) training with dataweights optimized for BT loss on the target dataset; and (c) attempting to train directly for correlation on the training set. Depicted graphically in Appendix C.1. Target loss ( L′) Spearman ρ ↑ Rank MAE ↓
+
+N/A 0.83 [0.79, 0.94] 9.33 [8.00, 9.88] BT 0.88 [0.82, 0.94] 7.89 [7.33, 8.22] Spearman 0.95 [0.91, 0.96] 6.17 [4.67, 6.47] Table 2: Re-evaluating the best three methods from Table 1 (BT training with no dataweights, dataweights optimized for target BT, and dataweights optimized for target Spearman correlation) with nine model-disjoint holdout splits. Medians [25th, 75th percentiles], also depicated graphically in Appendix C.1. 
+
+only as the target objective for learning dataweights; the reward model itself is still trained with the standard (weighted) Bradley-Terry loss. Table 1 compares this rank-targeted dataweighting with standard Bradley-Terry training, with and without dataweighting, as well as a baseline that trains the reward model directly using the soft-Spearman loss. Direct soft-Spearman training performs worse than Bradley-Terry training, suggesting that the rank surrogate is a weak inner-loop learning signal. In contrast, using the rank surrogate as a target objective improves both Rank MAE and Spearman ρ. This suggests a useful separation of roles: Bradley-Terry captures the local signal needed to fit the reward model, while the rank surrogate operates one level up, selecting the BT-trained trajectory whose induced model ordering best matches the ground-truth downstream ranking. 
+
+Consistency across held-out splits. To verify that the improvement in Table 1 is not an artifact of a single model split, we repeat the comparison on nine model-disjoint holdout splits, each holding out a different set of response-generating models from the leaderboard (Table 2). Across splits, Spearman-targeted meta-optimization attains a consistently higher held-out Spearman ρ and lower Rank MAE than both unweighted Bradley-Terry training and BT-targeted dataweighting, indicating that the rank surrogate selects dataweights whose induced ordering generalizes to unseen models. 
+
+Transferring parametric dataweights. The per-sample dataweights used above are tied to specific training rows. Following the parametric dataweighting of Section 3.4, we instead optimize a parametric map from a frozen text embedding of each preference pair to its scalar weight, fit on a small subset against the soft-Spearman objective, and then apply the learned map to assign weights to all 92k training pairs. We then train a reward model once with those fixed weights, without further meta-optimization (Figure 6). A map learned on 50k pairs increases held-out Spearman ρ from 0.648 (unweighted) to 0.915, approaching the 0.925 obtained by non-parametric, per-sample dataweights. The gain grows with the size of the subset used to learn the parametric mapping. Because the map depends only on the pair embedding, the same weighting can be applied to a different reward model without re-running the meta-optimization. No dataweights Parametric 10k Parametric 25k Parametric 50k Per-sample dataweights  
+
+> 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95
+> Test Spearman  ρ
+> 0.648 0.697 0.830 0.915 0.925
+> Transferring dataweights to the full training pool (0.5B reward model)
+
+Figure 6: Parametric rank-dataweights transfer to unseen train-ing points. A parametric dataweight map is optimized against the soft-Spearman objective on a small subset (10k/25k/50k pairs), then used to predict weights for all 92k training pairs; a new reward model is then trained once under those weights. Held-out leaderboard Spearman ρ
+
+improves with the meta-training size and approaches non-parametric, per-sample dataweights, while unweighted training lags well behind. 
+
+11 4 Theoretical intuition for dataweighting 
+
+We provide a few stylized theoretical results illustrating how a small target set can guide dataweighting. We study linear regression with two signal features and many weak nuisance features. For simplicity, we consider a simplified version of dataweighting that selects the fixed-size source subset minimizing the empirical target loss, sidestepping any potential optimization issues. That is, we assume access to an oracle solving: arg min 
+
+> w∈{ 0,1 }n
+> ∥w∥0=kn′
+
+# ∑
+
+> j=1
+
+ℓ(z′
+
+> j
+
+; bθ(w)) , where bθ(w) ∈ arg min 
+
+> θ
+> n
+
+# ∑
+
+> i=1
+
+wi · ℓ(zi; θ). (8) Here, bθ(w) represents minimum-norm weighted least-squares regression on the training set (i.e., A(w, 0d, ∞)
+
+in our prior notation). Note that our empirical results do not rely on such an oracle and instead apply (meta-)gradient descent to solve a problem similar to (8) (albeit with continuous, unrestricted weights and for a more complex learning algorithm A). We compare this algorithm to a baseline of pretraining on the source data followed by fine-tuning on the same target set. To ensure our proofs do not rely on pathologies of overparameterized regression, we compare to both pretraining on the entire source dataset ( w = 1n) as well as pretraining on a random k-subset of the source data. In this section, we present the high-level results and corresponding intuition, while Appendix G provides the precise assumptions, statements, and proofs. 
+
+Setting and intuition. We study minimum-norm d-dimensional linear regression with n source data points and n′ < n target points, with n′ < d. Both source and target points have Gaussian covariates with mean zero and covariance matrices ΣS and ΣT respectively. Target labels are given by 
+
+f ∗(x) := x1,and so the optimal target parameter is the first canonical vector, θ∗ = e1. For the first two results below, source labels are given by ˆf̸ = f ∗, where the two labeling functions agree on the halfspace x3 ≤ 0 and otherwise disagree by δ > 0. We let RDW (n, n′, k, d) be the expected population risk of finding and using the optimal k-subset of the training data using the oracle (8). We then let RFT (n, n′, k, d) denote the minimum expected population risk between (a) first fitting on all the data then fine-tuning on the target data; (b) fitting on k random data points then fine-tuning on the target data. Since n′ < d, the fine-tuning step corresponds to finding the minimum-norm perturbation to the estimator from pre-training that interpolates the target data. The main idea behind the proofs is that we have insufficient target data to learn f ∗(x) directly, and so fine-tuning heavily overfits to the n′ target samples. Using the unweighted source data leads to reliance on spurious features that the target data is insufficient to unlearn during fine-tuning. It turns out, however, that the target data suffices to guide least-squares regression on the source data towards a good solution. 
+
+Correcting biased labels. Even arbitrarily small label errors (e.g., from a synthetic labeler) can induce a spurious dependence that fine-tuning cannot fully remove. In Theorem G.1, we show that as we take the number of source data points n → ∞ the risk of dataweighting converges to zero, while the risk of pretraining and fine-tuning stays bounded away from zero, formalizing the following informal result: 
+
+Informal Theorem 4.1. Fix any n ′ ≥ 4, α ∈ (0, 12 ), and δ > 0. There exists a family of covariance matrices 
+
+(ΣS(d), ΣT (d)) and a source label function ˆf (x) and dimension function d (n) > n + n′ such that 
+
+∥ f ∗ − ˆf ∥∞ ≤ δ
+
+lim  
+
+> n→∞
+
+RFT (n, n′, ⌊αn⌋, d(n)) ≥ cn′ · δ2
+
+lim  
+
+> n→∞
+
+RDW (n, n′, ⌊αn⌋, d(n)) = 0, 
+
+where c n′ > 0 is a positive constant depending only on n ′.
+
+12 The key idea is that upweighting only the examples within the halfspace x3 ≤ 0 (i.e., the examples on which the labeling functions agree) yields an estimator with zero asymptotic risk. Even a finite-size validation set suffices to select such examples (or examples whose population risk is comparable), and so dataweighting attains zero asymptotic risk. Meanwhile, unweighted training on the source data (whether n
+
+samples or k = αn samples) results in an estimator that places non-trivial weight on components other than 
+
+e1, and there is not enough target fine-tuning data to unlearn these spurious features. 
+
+Filtering severe corruption. Extending the previous result, we can show that even at fixed sample size n
+
+and dimension d, and as the label corruption size δ := ∥ f − ˆf ∥ grows, dataweighting identifies an entirely clean subset (i.e., a subset on which ˆf (x) = f ∗(x)) with probability tending to one, conditional on enough clean examples existing. The probability of error is exponentially small in the source pool size. In particular, Theorem G.2 formalizes the following informal result: 
+
+Informal Theorem 4.2. Fix n , n′, d with n ′ > 1 and d > n + n′. Let ˆw(n, n′, k, d) be the output of the dataweighting oracle (8) , and take the source and target labels ˆf and f ∗ from Informal Theorem 4.1, parameterized by their discrepancy 
+
+δ. Then, for α ∈ (0, 1/2), the probability that dataweighting assigns positive weight to a training data point on which f ∗ and ˆf disagree decays as: 
+
+lim  
+
+> δ→∞
+
+P
+
+
+
+∃ i : f ∗(x(i))̸ = ˆf (x(i)) and ˆw(n, n′, ⌊αn⌋, d)i > 0
+
+
+
+≤ exp {− n(1/2 − α)2}.The main idea behind the proof is that as δ → ∞, the target loss of a sample containing even a single point where f ∗ and ˆf disagree diverges with high probability. 
+
+Adapting to covariate shift. Finally, we show that even when the source data is labeled correctly, selecting examples can change the learner’s inductive bias to favor features important in the target domain. To show this, we study the case where the source data is labeled with the true labeling function f ∗, but the source and target covariances vary systematically. In particular, Theorem G.3 formalizes the following informal theorem: 
+
+Informal Theorem 4.3. Fix α ∈ (0, 1/2) and n ′ ≥ 4. There exist source and target covariances (ΣS(n, d), ΣT (n, d)) 
+
+and a dimension function d (n) such that, even with ˆf = f ∗ = x1,
+
+lim  
+
+> n→∞
+
+RFT (n, n′, ⌊αn⌋, d(n)) ≥ cα > 0, lim  
+
+> n→∞
+
+RDW (n, n′, ⌊αn⌋, d(n)) = 0, 
+
+where c α > 0 is a positive constant depending only on α.
+
+Note that the construction in Appendix G yields this statement after an orthogonal change of basis. 
+
+# 5 Related work 
+
+We discuss prior approaches to leveraging heterogeneous and noisy data sources, particularly focusing on reweighting methods and aggregating heterogeneous preferences. Closest to our work are papers on automatic data selection using data attribution methods [GZ19; XMG+24; XPD+23] and metagradient descent [EIC+25; CFK+25; DKE+25], as well as prior work on learning to reweight data [RZY+18]. 
+
+Reweighting methods. Our dataweights approach relates to a number of existing studies proposing reweighting strategies for deep learning [HGB+06; RZY+18; BL19; LWS18; WCH+21], often motivated by particular models of distribution shift such as covariate shift and label shift. Most related is the work of Ren et al. [RZY+18], who similarly assume a clean target set and aim to optimize training data weights, although their update differentiates through a single SGD step. Also relatedly, Meta-Weight-Net [SXY+19] and DataRater [CFK+25] learn parametric weighting functions using meta-objectives. Our implementation 13 computes exact metagradients within long training segments (typically 5–10% of total training), using scalable attribution methods that support differentiation through general optimizers. As described in Section 2, these segment-level updates approximate differentiation through the full training run. Despite mixed evidence on the effectiveness of reweighting [WCH+21; SKH+19], we find it effective for model customization and for combining human and synthetic preferences. We also study how a parametric weighting function transfers to unseen examples and larger reward models, and how dataweights can be optimized for downstream ranking objectives rather than the standard Bradley-Terry loss. 
+
+Data attribution. Data attribution methods [KL17; GZ19; IPE+22; GBA+23; PGI+23] seek to quantify the influence of individual training data points on the model’s downstream behavior. Compared with methods that use attribution scores or metagradients to select training examples [EIC+25; DKE+25; XMG+24], we optimize continuous example weights directly in the training loss. We build on the R EPLAY algorithm [EIC+25; IE25] to compute exact “metagradients” of the model’s performance on the clean target data with respect to dataweights, allowing us to automatically discover—and thus downweight—noisy and irrelevant parts of the training data. 
+
+Distributional robustness and domain adaptation. A central issue with heterogeneous data is that training examples may come from a mixture of domains that differ from the test distribution. A large body of work studies how to learn predictors that robustly generalize under such shifts via domain adaptation [BBC+06; BBC+10; ZZW+18], distributionally robust optimization (DRO) that optimizes worst-case performance over groups [SKH+19], and invariance-based objectives such as invariant risk minimization [ABG+19]. Rather than seeking a single representation that is invariant across environments, we directly use a small, high-quality target set to reweight heterogeneous training data toward the target distribution. Recent work in language model pretraining similarly uses robust or minimax objectives to tune mixture weights over data domains (as opposed to per-example weights) to improve downstream performance [XPD+23]. 
+
+Robust statistics. Heterogeneity is often caused by corrupted observations—e.g., mislabeled examples or adversarial outliers. Robust statistics formalizes this through contamination models and offers robust estimators that take the contamination into account [Hub64; DKK+19]. A parallel literature in machine learning studies learning with label noise [NDR+13; LSH20]. All these works aim to detect corruption from internal inconsistency; our work is different in that we exploit an additional, high-quality target sample that specifies the desired test distribution, and we use it to determine how much each training example should influence the learned model. 
+
+Synthetic data. An increasingly common cause of heterogeneity is mixing real and synthetic data. Synthetic data has proven useful for improving power in statistical inference [ABF+23; HSR+20], training better machine learning models in domains such as robotics [TFR+17] and computer vision [ZPI+17], and improving efficiency in language model evaluations [ZCS+23]. A key challenge with synthetic data is knowing which examples are useful and which are potentially even harmful. Our method can be seen as learning how to weight each synthetic example based on how it improves performance on the target set. 
+
+Reward modeling, RLHF, heterogeneous preferences. Reward modeling and reinforcement learning from human feedback (RLHF) operationalize “alignment” by learning a reward function from human-labeled comparisons and then optimizing a policy against that reward [CLB+17; OWJ+22]. Humans may provide noisy feedback, or even vote adversarially. By optimizing against a clean target dataset, our method downweights such noisy and adversarial votes. At a high level, our work relates to social choice theory [BCE+16; FG06; AOW03], which studies principled ways for aggregating heterogeneous preferences. Some recent works proposed data selection algorithms for reward model training [FKZ+25; SST25]; however, these approaches primarily focus on reducing data volume. In the alignment context, recent work formalizes heterogeneous preferences through latent user types and analyzes what it means to align a single policy when reward functions vary across users [SNA+25]. 14 References 
+
+[ABF+23] Anastasios N Angelopoulos, Stephen Bates, Clara Fannjiang, Michael I Jordan, and Tijana Zrnic. “Prediction-powered inference”. In: Science . 2023. [ABG+19] Martin Arjovsky, Léon Bottou, Ishaan Gulrajani, and David Lopez-Paz. “Invariant risk mini-mization”. In: Arxiv preprint arXiv:1907.02893 . 2019. [AOW03] Toh-Kyeong Ahn, Elinor Ostrom, and James M Walker. “Heterogeneous preferences and collective action”. In: Public Choice . 2003. [BBC+06] Shai Ben-David, John Blitzer, Koby Crammer, and Fernando Pereira. “Analysis of representa-tions for domain adaptation”. In: Advances in Neural Information Processing Systems (NeurIPS) .2006. [BBC+10] Shai Ben-David, John Blitzer, Koby Crammer, Alex Kulesza, Fernando Pereira, and Jennifer Wortman Vaughan. “A theory of learning from different domains”. In: Machine Learning . 2010. [BCE+16] Felix Brandt, Vincent Conitzer, Ulle Endriss, Jérôme Lang, and Ariel D Procaccia. “Handbook of computational social choice”. In: Cambridge University Press . 2016. [BL19] Jonathon Byrd and Zachary Lipton. “What is the effect of importance weighting in deep learning?” In: International Conference on Machine Learning (ICML) . 2019. [BT52] Ralph Allan Bradley and Milton E Terry. “Rank analysis of incomplete block designs: I. the method of paired comparisons”. In: Biometrika . 1952. [CFK+25] Dan A. Calian, Gregory Farquhar, Iurii Kemaev, Luisa M. Zintgraf, Matteo Hessel, Jeremy Shar, Junhyuk Oh, András György, Tom Schaul, Jeffrey Dean, Hado van Hasselt, and David Silver. “DataRater: Meta-Learned Dataset Curation”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2025. [CLB+17] Paul F Christiano, Jan Leike, Tom Brown, Miljan Martic, Shane Legg, and Dario Amodei. “Deep reinforcement learning from human preferences”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2017. [CZS+24] Wei-Lin Chiang, Lianmin Zheng, Ying Sheng, Anastasios Nikolas Angelopoulos, Tianle Li, Dacheng Li, Banghua Zhu, Hao Zhang, Michael Jordan, Joseph E. Gonzalez, and Ion Stoica. “Chatbot Arena: An Open Platform for Evaluating LLMs by Human Preference”. In: International Conference on Machine Learning (ICML) . 2024. [DKE+25] Shivin Dass, Alaa Khaddaj, Logan Engstrom, Aleksander Madry, Andrew Ilyas, and Roberto Martín-Martín. “DataMIL: Selecting Data for Robot Imitation Learning with Datamodels”. In: 
+
+International Conference on Learning Representations (ICLR) . 2025. [DKK+19] Ilias Diakonikolas, Gautam Kamath, Daniel Kane, Jerry Li, Ankur Moitra, and Alistair Stewart. “Robust estimators in high-dimensions without the computational intractability”. In: SIAM Journal on Computing . 2019. [EIC+25] Logan Engstrom, Andrew Ilyas, Benjamin Chen, Axel Feldmann, William Moses, and Alek-sander Madry. “Optimizing ML training with metagradient descent”. In: Arxiv preprint arXiv:2503.13751 . 2025. [FG06] Urs Fischbacher and Simon Gächter. “Heterogeneous social preferences and the dynamics of free riding in public goods”. In: IZA Discussion Papers . 2006. [FKZ+25] Yunzhen Feng, Ariel Kwiatkowski, Kunhao Zheng, Julia Kempe, and Yaqi Duan. “Pilaf: Optimal human preference sampling for reward modeling”. In: Arxiv preprint arXiv:2502.04270 . 2025. [GBA+23] Roger Grosse, Juhan Bae, Cem Anil, Nelson Elhage, Alex Tamkin, Amirhossein Tajdini, Benoit Steiner, Dustin Li, Esin Durmus, Ethan Perez, et al. “Studying large language model generaliza-tion with influence functions”. In: Arxiv preprint arXiv:2308.03296 . 2023. [GZ19] Amirata Ghorbani and James Zou. “Data shapley: Equitable valuation of data for machine learning”. In: International Conference on Machine Learning (ICML) . 2019. 15 [HGB+06] Jiayuan Huang, Arthur Gretton, Karsten Borgwardt, Bernhard Schölkopf, and Alex Smola. “Cor-recting sample selection bias by unlabeled data”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2006. [HSR+20] Dongming Huang, Nathan Stein, Donald B Rubin, and SC Kou. “Catalytic prior distributions with application to generalized linear models”. In: Proceedings of the National Academy of Sciences .2020. [Hub64] Peter J. Huber. “Robust Estimation of a Location Parameter”. In: The Annals of Mathematical Statistics . 1964. [IE25] Andrew Ilyas and Logan Engstrom. “MAGIC: Near-Optimal Data Attribution for Deep Learn-ing”. In: Arxiv preprint arXiv:2504.16430 . 2025. [IGE+24] Andrew Ilyas, Kristian Georgiev, Logan Engstrom, and Sung Min (Sam) Park. “Data Attribution at Scale”. In: International Conference on Machine Learning (ICML), Tutorial . 2024. [IPE+22] Andrew Ilyas, Sung Min Park, Logan Engstrom, Guillaume Leclerc, and Aleksander Madry. “Datamodels: Predicting predictions from training data”. In: Arxiv preprint arXiv:2202.00622 .2022. [IWL+24] Hamish Ivison, Yizhong Wang, Jiacheng Liu, Ellen Wu, Valentina Pyatkin, Nathan Lambert, Yejin Choi, Noah A. Smith, and Hannaneh Hajishirzi. “Unpacking DPO and PPO: Disentangling Best Practices for Learning from Preference Feedback”. In: Arxiv preprint arXiv:2406.09279 . 2024. [KL17] Pang Wei Koh and Percy Liang. “Understanding black-box predictions via influence functions”. In: International Conference on Machine Learning (ICML) . 2017. [LKB+23] Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri Edwards, Bowen Baker, Teddy Lee, Jan Leike, John Schulman, Ilya Sutskever, and Karl Cobbe. “Let’s Verify Step by Step”. In: Arxiv preprint arXiv:2305.20050 . 2023. [LSH20] Junnan Li, Richard Socher, and Steven CH Hoi. “DivideMix: Learning with Noisy Labels as Semi-supervised Learning”. In: International Conference on Learning Representations (ICLR) . 2020. [LWS18] Zachary Lipton, Yu-Xiang Wang, and Alexander Smola. “Detecting and correcting for label shift with black box predictors”. In: International Conference on Machine Learning (ICML) . 2018. [NDR+13] Nagarajan Natarajan, Inderjit S Dhillon, Pradeep K Ravikumar, and Ambuj Tewari. “Learning with noisy labels”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2013. [OWJ+22] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. “Training language models to follow instructions with human feedback”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2022. [PGI+23] Sung Min Park, Kristian Georgiev, Andrew Ilyas, Guillaume Leclerc, and Aleksander Madry. “Trak: Attributing model behavior at scale”. In: Arxiv preprint arXiv:2303.14186 . 2023. [PLK+20] Garima Pruthi, Frederick Liu, Satyen Kale, and Mukund Sundararajan. “Estimating training data influence by tracing gradient descent”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2020. [PMH+23] Guilherme Penedo, Quentin Malartic, Daniel Hesslow, Ruxandra Cojocaru, Hamza Alobeidli, Alessandro Cappelli, Baptiste Pannier, Ebtesam Almazrouei, and Julien Launay. “The refined-web dataset for falcon llm: Outperforming curated corpora with web data only”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2023. [RZY+18] Mengye Ren, Wenyuan Zeng, Bin Yang, and Raquel Urtasun. “Learning to reweight examples for robust deep learning”. In: International Conference on Machine Learning (ICML) . 2018. [SKH+19] Shiori Sagawa, Pang Wei Koh, Tatsunori B. Hashimoto, and Percy Liang. “Distributionally Robust Neural Networks for Group Shifts: On the Importance of Regularization for Worst-Case Generalization”. In: Arxiv preprint arXiv:1911.08731 . 2019. 16 [SNA+25] Ali Shirali, Arash Nasr-Esfahany, Abdullah Alomar, Parsa Mirtaheri, Rediet Abebe, and Ariel Procaccia. “Direct alignment with heterogeneous preferences”. In: Arxiv preprint arXiv:2502.16320 . 2025. [SST25] Yunyi Shen, Hao Sun, and Jean-Francois Ton. “Active Reward Modeling: Adaptive Preference Labeling for Large Language Model Alignment”. In: International Conference on Machine Learning (ICML) . 2025. [SXY+19] Jun Shu, Qi Xie, Lixuan Yi, Qian Zhao, Sanping Zhou, Zongben Xu, and Deyu Meng. “Meta-weight-net: Learning an explicit mapping for sample weighting”. In: Advances in Neural Infor-mation Processing Systems (NeurIPS) . 2019. [TFR+17] Josh Tobin, Rachel Fong, Alex Ray, Jonas Schneider, Wojciech Zaremba, and Pieter Abbeel. “Domain randomization for transferring deep neural networks from simulation to the real world”. In: IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . 2017. [WCH+21] Ke Alexander Wang, Niladri S Chatterji, Saminul Haque, and Tatsunori Hashimoto. “Is impor-tance weighting incompatible with interpolating classifiers?” In: Arxiv preprint arXiv:2112.12986 .2021. [WZD+25] Zhilin Wang, Jiaqi Zeng, Olivier Delalleau, Hoo-Chang Shin, Felipe Soares, Alexander Bukharin, Ellie Evans, Yi Dong, and Oleksii Kuchaiev. “HelpSteer3-Preference: Open Human-Annotated Preference Data across Diverse Tasks and Languages”. In: Arxiv preprint arXiv:2505.11475 . 2025. [XLH+20] Qizhe Xie, Minh-Thang Luong, Eduard Hovy, and Quoc V Le. “Self-training with noisy student improves imagenet classification”. In: IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . 2020. [XMG+24] Mengzhou Xia, Sadhika Malladi, Suchin Gururangan, Sanjeev Arora, and Danqi Chen. “LESS: Selecting Influential Data for Targeted Instruction Tuning”. In: International Conference on Machine Learning (ICML) . 2024. [XPD+23] Sang Michael Xie, Hieu Pham, Xuanyi Dong, Nan Du, Hanxiao Liu, Yifeng Lu, Percy S Liang, Quoc V Le, Tengyu Ma, and Adams Wei Yu. “Doremi: Optimizing data mixtures speeds up language model pretraining”. In: Advances in Neural Information Processing Systems (NeurIPS) .2023. [ZCS+23] Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, et al. “Judging llm-as-a-judge with mt-bench and chatbot arena”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2023. [ZPI+17] Jun-Yan Zhu, Taesung Park, Phillip Isola, and Alexei A Efros. “Unpaired image-to-image translation using cycle-consistent adversarial networks”. In: IEEE International Conference on Computer Vision (ICCV) . 2017. [ZZW+18] Han Zhao, Shanghang Zhang, Guanhang Wu, José MF Moura, Joao P Costeira, and Geoffrey J Gordon. “Adversarial multiple source domain adaptation”. In: Advances in Neural Information Processing Systems (NeurIPS) . 2018. 17 A Full algorithm 
+
+We describe our end-to-end algorithm for training models from heterogenous data. Fix a training algorithm 
+
+A, a training set of n samples and a target set of n′ samples. Putting all the ideas from Section 2 together, our final procedure for learning dataweights is as follows: 1. Select a proxy algorithm A′ that runs on a subset ˜ n ≤ n of the training data; a number of segments K; a target function L′ matching our downstream objective; and a dataweight parameterization hψ(·)
+
+2. Initialize dataweighting parameters ψ(0) and model parameters θ(0)
+
+3. Initialize the meta-epoch count Ω = 04. Repeat for t = 1, . . . until convergence: (a) Compute w from ψ(t−1) using (6) or (5). (b) Set θ(t) ← A ′(w, θ(t−1), TK ) if t mod K̸ = 0, otherwise set θ(t) = θ0 and increment Ω
+
+(c) Compute the metagradient ∇w L′(A′(w, θ(t−1), TK )) 
+
+(d) Compute the metagradient with respect to ψ(t−1) via (4) (e) Update ψ(t) with a first-order method (e.g., SignSGD) 5. (If applicable) Compute dataweights for all n training samples via wi := hψ(zi)
+
+6. (If applicable) Compute and return the final model A(w, θ(0), T)
+
+# B Dataset construction and reward model training 
+
+Training data. We use two public preference datasets, arena-human-preference-100k and arena-human-preference-140k [CZS+24]. From these datasets, we filter for single-turn, non-tie examples, yielding a combined dataset of 155,577 rows of human-labeled pairwise preference data—we hereby refer to this dataset as Human-155k . We also obtained 10, 000 examples of bot and adversarial activity flagged by Arena in their preference data, henceforth referred to as Bot-10k .Using the prompts and response pairs found in Human-155k , we generate a synthetic preference dataset by replacing the human label with an LLM-as-a-judge label [ZCS+23]. Specifically, we prompt Gemini 3 Flash to pick the best response given the prompt and response pair. Measured against the original human labels, the LLM-as-a-judge labels reached an accuracy rate of 0.6812. We will refer to this synthetic dataset as 
+
+Gemini-155k .From Human-155k and Gemini-155k we randomly subsample to derive the dataset pairs ( Human-45k ,
+
+Gemini-110k ) and ( Human-77k , Gemini-77k ). Sampled data rows are disjoint within each pair. The first dataset pair illustrates a setting in which collecting synthetic labels is much cheaper than collecting real human labels, while the second dataset pair keeps the sample size fixed so we isolate the effect of using noisy labels. 
+
+Target datasets. We evaluate dataweighting on two different target datasets: Expert and STEM . Expert 
+
+is sourced from Arena’s arena-expert-5k : a heavily filtered subset of Arena’s preference data aimed at identifying sophisticated, domain-specific prompts. Around 5.5% of Arena’s preference data is labeled as “expert.” Since Expert is a subset of Arena’s general human preference data, we use it to evaluate in-distribution performance gains of dataweighting, albeit a niche part of the distribution. 
+
+STEM is sourced from both HelpSteer3 and Tulu2.5 preference datasets [WZD+25; IWL+24]. From HelpSteer3, we filter for only rows labeled as “stem” or “code” and for rows where the responses were not tied. These preference rows contain a prompt, two responses, and an overall preference score labeled by ScaleAI annotators noted to have a relevant degree and/or software engineering work experience [WZD+25]. From Tulu2.5, we filter for the prm800k_pairs_phase2 subset, where chosen and rejected preference pairs 18 have been selected based on mathematical correctness [IWL+24; LKB+23]. Since STEM annotations come from ground truth verifiers and/or hired human rubric labelers with relevant domain expertise, rather than crowdsourced organic usage like in Human-155k , we use this dataset to evaluate out-of-distribution performance of dataweighting. For each domain, we use a meta-optimization target split and a held-out test split, in addition to the separate checkpoint selection set described below. The target split supplies the objective in Section 2; the test split is used only for evaluation. Expert has a target/test split of 3000/547. STEM has a target/test split of 6796/6796. 
+
+Reward model training procedure. We adopt a standard reward model training procedure where we minimize the Bradley-Terry objective, as discussed in Section 3. Unless specified otherwise, the base pre-trained model we start from is Qwen2.5-0.5B-Instruct . The 1.5B experiments use Qwen2.5-1.5B-Instruct ;the transfer experiments also include 3B and 7B reward models (Section 3.4). When training a reward model, we remove the vocab_head and replace it with a linear reward_head that takes in the hidden dimension output from a <|cls|> token and outputs a scalar reward. We use the same separate 100-example checkpoint selection set across methods for early stopping. This simple protocol lets us evaluate dataweighting; we leave alternatives such as cross-validation to future work. 
+
+## B.1 LLM-as-a-judge prompt 
+
+We detail the prompt used for synthetic labels below. Synthetic labels were generated by Gemini 3 Flash with default settings. 
+
+You will be shown a user prompt followed by two responses generated by AI assistants. Your task is to determine which response better satisfies the user’s intent. Evaluate the responses from the *user’s perspective*, focusing on the following criteria: 
+
+• Helpfulness : Does the response effectively assist or inform the user? 
+
+• Relevance : Does it directly address the user’s question or request? 
+
+• Accuracy : Are the facts and reasoning correct? 
+
+• Depth and Detail : Does it provide sufficient explanation or insight? 
+
+• Creativity (when applicable): Is the response original or engaging? Important guidelines: Your evaluation must be impartial and based solely on quality and alignment with the user’s needs. Return your decision for the winner, either A or B in the tags <winner> ... </winner>. 
+
+19 C Additional ranking experiments 
+
+This appendix provides graphical versions of the ranking comparisons in Section 3.5 and examines alternative rank surrogates. The parametric ranking-transfer experiment is reported in Figure 6 in the main text. 
+
+## C.1 Ranking performance on held-out models BT no meta-opt BT meta-opt Spearman meta-opt Spearman no meta-opt 
+
+> 7.07.58.08.59.09.510 .010 .5
+
+Rank MAE 
+
+> BT no meta-opt BT meta-opt Spearman meta-opt Spearman no meta-opt
+> 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70
+
+Spearman ρ
+
+Ranking metrics on held-out models 
+
+Figure 7: BT and Spearman: standard vs. meta-optimized reward models. Rank MAE (lower is better) and Spearman ρ (higher is better) on held-out test models. No dataweights BT meta-opt Spearman meta-opt 0.60.70.80.9  
+
+> Spearman ρ(higher is better)
+> No dataweights BT meta-opt Spearman meta-opt 45678910 11
+> Rank MAE (lower is better)
+
+Held-out ranking metrics across nine splits 
+
+> 1
+
+Figure 8: Rank-targeted meta-optimization improves held-out ranking across splits. Held-out Spearman ρ (left, higher is better) and Rank MAE (right, lower is better) across nine model-disjoint holdout splits, comparing unweighted Bradley-Terry training, BT-targeted meta-optimization, and Spearman-targeted meta-optimization. The Spearman-targeted objective shifts the whole distribution toward better rankings (higher ρ, lower MAE) relative to both baselines. 
+
+## C.2 Alternative rank surrogates 
+
+The soft-Spearman surrogate is one of several differentiable choices for the target objective. Replacing it with a smooth footrule distance (a smooth-ℓ1 penalty on the soft ranks, aligned with Rank MAE) performs comparably—matching or slightly exceeding soft-Spearman on held-out ρ (e.g. 0.965 vs. 0.957 on one split), consistent with its closer alignment to the MAE metric—whereas a soft-Kendall-τ surrogate is consistently weaker. We therefore use soft-Spearman by default. 20 D Additional results 
+
+## D.1 Leveraging heterogeneous data 0.58 0.60 0.62 0.64 0.66 
+
+> Test Loss
+
+0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 
+
+Segment 
+
+0.55 0.60 0.65 
+
+> Target Loss
+
+Ω = 0 1 2 3 4 5 6 7 8 9
+
+> Train: Human-155k; Test: Expert; Test and Target Loss by Segment
+
+Figure 9: Test and target loss by segment for model trained on Human-155k , targeting Expert . This example shows notable overfitting. Although the first few metagradient steps improve test loss, further steps overfit the target. 0.62 0.63 0.64 0.65 0.66 
+
+> Test Loss
+
+0 1 2 3 4 5
+
+Segment 
+
+0.62 0.64 0.66 
+
+> Target Loss
+
+Ω = 0 1 2 3 4 5 6 7 8 9
+
+> Train: Human-45k; Test: Expert; Test and Target Loss by Segment
+
+Figure 10: Test and target loss by segment for model trained on Human-45k , targeting Expert .
+
+21 0.60 0.62 0.64 0.66 
+
+> Test Loss
+
+0 1 2 3 4 5 6 7 8 9
+
+Segment 
+
+0.58 0.60 0.62 0.64 0.66 
+
+> Target Loss
+
+Ω = 0 1 2 3 4
+
+> Train: Human-77k; Test: Expert; Test and Target Loss by Segment
+
+Figure 11: Test and target loss by segment for model trained on Human-77k , targeting Expert .
+
+## D.2 Downweighting noisy and adversarial data 
+
+Evolution of bot and human dataweights. In Figure 12, we plot the distribution of dataweights for bot and human datapoints. We observe the dataweight distribution for bots shifting down throughout the dataweighting process. 012345678910 11 12 13 14 15 16 17 19 20 21 23 25 26 28 30 32 34 37 39 41 44 47 49 52 55 59 62 65 69 73 77 81 85 89 94 98 103 108 113 119 124 130 136 142 149 155 162 169 176 184 192 200 
+
+Checkpoint 0.00.51.01.5Dataweight value 
+
+Dataweights Distribution Evolution: Human-30k Poisoned with Bot-10k 
+
+Bot Human 
+
+Figure 12: Dataweighting automatically separates bot and human data. Here, we visualize a KDE ridge plot of the learned dataweight distribution for human and bot data points throughout the dataweight learning procedure. Each horizontal ridge shows a kernel density estimate of the dataweights at one checkpoint. Bot data points decrease in weight over time. 
+
+22 0.0 0.5 1.0 1.5 2.0 2.5 3.0
+
+Dataweights 
+
+0.00.20.40.60.81.0
+
+> Density
+
+KDE of Dataweights: Bot vs Human, Test STEM 
+
+Bot Human Figure 13: Kernel density estimate of learned dataweights for Bot versus Human examples, targeting STEM .0.64 0.66 0.68 0.70 
+
+> Test Loss
+
+0 1 2 3 4 5 6 7 8 9
+
+Segment 
+
+0.64 0.66 0.68 0.70                     
+
+> Target Loss
+> Ω = 012345678910 11 12 13 14 15 16 17 18 19 Train: Human-10k + Bot-10k; Test: Expert; Test and Target Loss by Segment
+
+Figure 14: Test and target loss by segment for model trained on Human-10k + Bot-10k , targeting Expert .
+
+23 0.62 0.64 0.66 0.68 
+
+> Test Loss
+
+0 1 2 3 4 5 6 7 8 9
+
+Segment 
+
+0.62 0.64 0.66 0.68                     
+
+> Target Loss
+> Ω = 012345678910 11 12 13 14 15 16 17 18 19 Train: Human-30k + Bot-10k; Test: Expert; Test and Target Loss by Segment
+
+Figure 15: Test and target loss by segment for model trained on Human-30k + Bot-10k , targeting Expert .0.62 0.64 0.66 0.68 
+
+> Test Loss
+
+0 1 2 3 4 5 6
+
+Segment 
+
+0.60 0.62 0.64 0.66 0.68                     
+
+> Target Loss
+> Ω = 012345678910 11 12 13 14 15 16 17 18 19 Train: Human-45k + Bot-10k; Test: Expert; Test and Target Loss by Segment
+
+Figure 16: Test and target loss by segment for model trained on Human-45k + Bot-10k , targeting Expert .
+
+24 0.62 0.64 0.66 
+
+> Test Loss
+
+0 1 2 3 4 5 6 7 8 9
+
+Segment 
+
+0.58 0.60 0.62 0.64 0.66 0.68                     
+
+> Target Loss
+> Ω = 012345678910 11 12 13 14 15 16 17 18 19 Train: Human-60k + Bot-10k; Test: Expert; Test and Target Loss by Segment
+
+Figure 17: Test and target loss by segment for model trained on Human-60k + Bot-10k , targeting Expert . Notable overfitting to target observed. 0.62 0.64 0.66 0.68 
+
+> Test Loss
+
+0 1 2 3 4 5 6 7 8 9
+
+Segment 
+
+0.575 0.600 0.625 0.650 0.675                     
+
+> Target Loss
+> Ω = 012345678910 11 12 13 14 15 16 17 18 19 Train: Human-100k + Bot-10k; Test: Expert; Test and Target Loss by Segment
+
+Figure 18: Test and target loss by segment for model trained on Human-100k + Bot-10k , targeting Expert . Notable overfitting to target observed. 
+
+25 D.3 Customizing to specific domains 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 
+
+Segment 
+
+> 0.55 0.60 0.65 0.70
+> Target Loss
+
+Train: Human; Test: STEM; Target Loss by Segment           
+
+> Ω = 0123456789
+
+Figure 19: Target loss by segment for model trained on Human-155k , targeting STEM .
+
+## D.4 Incorporating synthetic data 
+
+The human-only training trajectories appear in Appendix D.1. The following figures show the synthetic-only and mixed-data trajectories and an equal-size comparison. 10000 20000 30000 40000 50000 60000 70000 80000 
+
+# Train Datapoints 
+
+> 0.625 0.650 0.675 0.700 0.725 0.750
+> Test Loss
+
+Training on Synthetic Data 
+
+Synthetic Synthetic w/ Dataweights Human 
+
+Figure 20: Test loss curves on Expert domain, while training on pure synthetic data ( Gemini-77k ), with and without dataweights. Test loss from training on Human-77k is shown for reference. 
+
+26 0.625 0.650 0.675 0.700 0.725              
+
+> Test Loss
+> 012345678910 11 12 13
+
+Segment           
+
+> 0.60 0.65 0.70
+> Target Loss
+> Ω = 0123456789
+> Train: Gemini-110k; Test: Expert; Test and Target Loss by Segment
+
+Figure 21: Test and target loss by segment for model trained on Gemini-110k , targeting Expert .0.62 0.64 0.66 0.68                     
+
+> Test Loss
+> 012345678910 11 12 13 14 15 16 17 18 19
+> Segment
+> 0.600 0.625 0.650 0.675 0.700
+> Target Loss
+> Ω = 0123456789
+
+Train: Human-45k+Gemini-110k; Test: Expert; Test and Target Loss by Segment 
+
+Figure 22: Test and target loss for model trained on Human-45k + Gemini-110k , targeting Expert .
+
+In particular, we notice test loss does not decrease significantly when dataweights are uniform. As metagradient steps are taken and dataweights are learned, test loss begins decreasing. In this example, the target and test curves are not perfectly in step, suggesting some overfitting may be occurring. 27 Human-77k Gemini-77k Human-77k + Gemini-77k 
+
+Training Dataset 
+
+0.56 0.58 0.60 0.62 0.64 0.66 0.68 
+
+> Test Loss
+
+0.608 0.660 0.621 0.603 0.621 0.603 
+
+Train: Equal Sized Human, Synthetic, and Mixed; Test: Expert 
+
+No Dataweights w/ Dataweights Figure 23: Test loss comparison for equal-sized Human , Synthetic , and mixed training sets, targeting Expert .0.625 0.650 0.675 0.700 0.725 0.750          
+
+> Test Loss
+> 0123456789
+
+Segment      
+
+> 0.60 0.65 0.70 0.75
+> Target Loss
+> Ω = 01234
+> Train: Gemini-77k; Test: Expert; Test and Target Loss by Segment
+
+Figure 24: Test and target loss by segment for model trained on Gemini-77k , targeting Expert .
+
+28 0.60 0.62 0.64 0.66           
+
+> Test Loss
+> 012345678910 11 12 13 14 15 16 17 18 19
+
+Segment      
+
+> 0.575 0.600 0.625 0.650 0.675
+> Target Loss
+> Ω = 01234
+> Train: Human-77k+Gemini-77k; Test: Expert; Test and Target Loss by Segment
+
+Figure 25: Test and target loss by segment for model trained on Human-77k + Gemini-77k , targeting Expert .
+
+## D.5 Transferring dataweights to larger models 0.62 0.64 0.66 0.68 
+
+> Test Loss
+
+No Dataweights w/ Dataweights 
+
+20000 40000 60000 80000 100000 120000 140000 160000 
+
+# Train Datapoints 
+
+0.62 0.64 0.66 0.68 
+
+> Target Loss
+
+Transferring Dataweights to 1.5B: Train: Human; Test: STEM 
+
+Figure 26: Per-sample dataweights learned at 0.5B transfer to a 1.5B reward model. Target and test loss curves on the STEM 
+
+domain for a 1.5B reward model, with and without dataweights learned at the 0.5B scale. 
+
+29 0.62 0.64 0.66 0.68 
+
+> Test Loss
+
+No Dataweights w/ Dataweights        
+
+> 20000 40000 60000 80000 100000 120000 140000 160000
+
+# Train Datapoints 
+
+> 0.60 0.62 0.64 0.66
+> Target Loss
+
+Transferring Dataweights to 1.5B: Train: Human; Test: Expert Figure 27: Transfer of learned dataweights to a 1.5B-parameter reward model trained on Human data, targeting Expert .0.64 0.66 0.68 0.70 
+
+> Test Loss
+
+No Dataweights w/ Dataweights        
+
+> 20000 40000 60000 80000 100000 120000 140000 160000
+
+# Train Datapoints 
+
+> 0.62 0.64 0.66 0.68
+> Target Loss
+
+Transferring Dataweights to 1.5B: Train: Gemini; Test: Expert 
+
+Figure 28: Transfer of learned dataweights to a 1.5B-parameter reward model trained on Gemini data, targeting Expert .
+
+30 E Selection-baseline comparison: protocol and additional results 
+
+This appendix details the protocol behind Section 3.2 and reports additional pool comparisons. Figure 2 in the main text compares the methods’ cost–performance tradeoffs. We give the compute-cost accounting and additional two-pool trajectories below. 
+
+## E.1 Evaluation protocol and scorer configurations 
+
+Every scorer produces one score per training example (higher = keep) for the same pool/target pair. For each keep fraction k ∈ { 10, 20, . . . , 90, 95, 99 } we retain the top-scoring k% and tile the kept rows back to the original pool size, so every arm performs an identical number of optimizer steps regardless of k
+
+(selection is therefore not confounded with a reduced compute budget). Each arm trains with the same reward-model training procedure as all other experiments, split into ten segments; we select the segment with the lowest loss on the checkpoint selection set and report the loss on the disjoint held-out test split, so checkpoint selection does not use the held-out test set. Every keep fraction has a random-drop control, and the unweighted baseline is replicated over three seeds to establish the noise band. Target and test splits were verified disjoint from each other and from the training pools. Individual keep-fraction points are single-seed. 
+
+Scorer configurations. TRAK: per-example gradients are projected to 1,024 dimensions with a sparse Johnson–Lindenstrauss transform; scores follow the primal form q⊤ 
+
+> i
+
+(Q⊤ Q + λI)−1qtgt , z-scored per (model, checkpoint, projection) and averaged. Here, qi is the projected gradient for training example i, Q has rows 
+
+q⊤ 
+
+> i
+
+, qtgt is the projected target-loss gradient, and λ is the regularization parameter. 
+
+## E.2 Cost–performance tradeoffs 
+
+Figure 29 shows the full dataweight-optimization trajectory. Selection costs retain the original scoring-plus-one-retrain estimates, excluding source-checkpoint generation and the keep-fraction search. Under this accounting, dataweighting first reaches the observed Pareto frontier at Ω = 3 on Human-77k (58.3 GPU-hours, test loss 0.635) and at Ω = 4 on Human-30k +Bot-10k (48.8 GPU-hours, 0.637). 2 5 10 20 50 100        
+
+> GPU-hours (log scale)
+> 0.60 0.62 0.64 0.66 0.68 0.70
+> STEM test loss
+> 012345 6789
+> Human-77k
+> 2510 20 50 100
+> GPU-hours (log scale)
+> 0123456789
+> Human-30k + Bot-10k
+> Dataweighting TRAK Influence functions TracIn Random Unweighted ( ±1 SD) Pareto frontier
+
+Figure 29: Dataweighting’s cost–performance trajectory on the STEM target. Held-out test loss versus compute for two training pools; lower and left is better. Each dataweighting point is one completed meta-epoch, labelled by its zero-based index 
+
+Ω = 0, . . . , 9, including the continuation run. At each budget, we report the test loss of the checkpoint with the lowest selection-set loss available so far. Baselines are shown at their best keep fraction, using the original scoring-plus-one-retrain cost estimates. Black rings mark the non-dominated points among the plotted observations. The grey band is ±1standard deviation over three unweighted seeds. Dataweighting requires no separate retraining stage. 
+
+31 E.3 Response-length audit 
+
+We inspect the retained Human-155k pairs before repetition, using the preference labels to identify the chosen and rejected responses. Length is the number of characters across response turns before tokenization or truncation; responses are identified by turn position, since some STEM responses are stored with a user-role tag rather than an assistant-role tag. Equal-length pairs remain in the denominator. At 10% retention, the fraction preferring the shorter response is 80.6% for TracIn, 57.2% for influence functions, and 45.3% for TRAK, compared with 39.9% for random selection and 40.3% in the full pool. Whitespace-delimited word counts give the same pattern (80.1%, 56.6%, 44.3%, 39.8%, and 40.1%, respectively). At 90% retention, the character-based fractions return closer to the pool distribution: 41.7%, 41.3%, and 40.1% for TracIn, influence functions, and TRAK. Their test losses also decrease from 1.739, 1.764, and 1.023 at 10% retention to 0.643, 0.627, and 0.619 at 90%. This descriptive audit identifies a selection-induced distribution shift, not whether the original preferences were caused by length or whether length skew causes the generalization degradation. 10 30 50 70 90 99 
+
+> Pool retained (%)
+> 40 50 60 70 80
+> Pairs with shorter chosen response (%)
+
+Shorter-response preferences (words)      
+
+> 10 30 50 70 90 99
+> Pool retained (%)
+> 0.60.81.01.21.41.61.8
+> Test loss
+
+Corresponding STEM test loss 
+
+Human-155k selection audit: 11 keep fractions, 10–99% (seed 0) 
+
+> TRAK Influence functions TracIn Random Full human pool STEM target STEM test 1
+
+Figure 30: Aggressive selection skews response-length preferences. Audit of Human-155k subsets retained by TRAK, influence functions, TracIn, and random selection across eleven keep fractions (one seed). Left and middle: fraction of retained pairs whose chosen response is shorter than the rejected response, measured in characters and words, respectively; equal-length pairs remain in the denominator. Horizontal lines show the full human pool and the STEM target and test distributions. Right: corresponding test loss at the checkpoint selected using the selection set. TracIn and influence functions increasingly favor shorter-response preferences at low retention. These curves describe the selected data, rather than directly measuring the trained models’ reliance on response length. 
+
+32 E.4 Comparisons across training pools 10 30 50 70 90 99 0.60.70.80.91.0
+
+> Test loss
+
+155k pure human → STEM     
+
+> No selection TracIn Influence functions TRAK Dataweighting 0.683 0.643 (90%) 0.627 (90%) 0.619 (90%) 0.578 (all)
+
+Best per method (% retained) 
+
+10 30 50 70 90 99 0.60.70.80.91.0
+
+> Test loss
+
+30k human + 10k bot → STEM    
+
+> No selection TracIn Influence functions TRAK Dataweighting 0.692 0.685 (90%) 0.662 (80%) 0.642 (80%) 0.615 (all)
+
+Best per method (% retained) 
+
+10 30 50 70 90 99 0.60.70.80.91.0
+
+> Test loss
+
+30k pure human → STEM   
+
+> No selection TracIn Influence functions TRAK Dataweighting 0.697 0.683 (95%) 0.663 (80%) 0.638 (70%) 0.613 (all)
+
+Best per method (% retained) 
+
+10 30 50 70 90 99 
+
+Pool retained (%) 
+
+0.60.70.80.91.0
+
+> Test loss
+
+77k pure human → STEM    
+
+> No selection TracIn Influence functions TRAK Dataweighting 0.693 0.680 (95%) 0.661 (90%) 0.639 (80%) 0.606 (all)
+
+Best per method (% retained) 
+
+TRAK Influence functions TracIn Random Dataweighting 
+
+Figure 31: The main-paper comparison, on every pool. Figure 1 repeated for all four training pools against the STEM target, same protocol and same panels throughout. Rows 2–3 are a paired pool: Human-30k is the poisoned pool with its 10,000 bot rows removed and nothing else changed, so reading them adjacently separates what the contamination costs each scorer from what pool size costs it. Dataweighting attains the lowest test loss on all four pools, followed by TRAK and influence functions. Dataweighting’s margin over the strongest baseline is 0.041/0.028/0.025/0.033 (155k, poisoned 40k, clean 30k, 77k). 
+
+33 Table 3: Reward-model training hyperparameters (inner optimization). Hyperparameter Setting Base model Qwen2.5-Instruct, 0.5B by default; larger models for transfer Reward head Linear scalar head on the <|cls|> hidden state Training objective Bradley–Terry loss Optimizer AdamW Learning rate 2 × 10 −6
+
+Batch size 128 preference pairs by default Epochs per inner-training pass 1Mixed-precision training FP32/BF16 Maximum context length 4,096 tokens Table 4: Dataweight optimization settings and the corresponding figures. Setup Figure Optimizer LR K O I
+
+STEM, per-sample Fig. 5(a) AdamW 0.1 10 10 1STEM, linear source Fig. 5(a–c) AdamW 0.1 10 10 1Ranking, linear source Fig. 6 AdamW 0.1 10 10 1Ranking, per-sample Fig. 8 SignSGD 0.1 10 10 1Selection, per-sample Fig. 1; Fig. 31 SignSGD 0.1 10 5–10 1Human-30k, full-pass Fig. 2 SignSGD 0.1 1 15 1Human-30k, single-step Fig. 2 SignSGD 0.1 234 15 1Forward-only transfer Fig. 5(b,c); Fig. 6 — — 1 1 0
+
+> “Source” denotes learning dataweights at 0.5B; destination models use fixed weights. Selection budgets refer to individual origi-nal/continuation configurations.
+
+Table 5: Parametric linear dataweight model used for Fig. 5 and Fig. 6. Component Setting Embedding model OpenAI text-embedding-3-small , frozen Input texts Prompt and the two candidate responses, embedded separately Embedding dimensions 3 × 1,536 = 4,608 per preference pair Feature normalization ℓ2 normalization of the concatenated feature vector Weighting head Single affine map si = a⊤ϕ(zi ) + b; no hidden layers Trainable parameters 4,609: 4,608 coefficients and one bias Transfer Freeze the learned head and apply it to destination-pool embeddings 
+
+# F Experimental setup 
+
+Tables 3–5 summarize reward-model training, dataweight optimization, and the parametric weighting model. One training pass is one epoch over the pool. K denotes segments per pass, O the configured number of outer passes, and I the inner repeats per segment ( inner_repeats ). Each inner repeat replays the segment from its starting model state, computes a metagradient, and updates the dataweights. Thus I = 1 means one meta-optimization traversal per segment, not one model-optimizer step; each traversal can contain multiple optimizer steps. Forward-only training uses I = 0. Autodiff recomputation and optional extra forward passes are not counted in I.34 G Stylized theoretical results for dataweighting 
+
+This appendix gives the formal results underlying Section 4. The constructions isolate three benefits of target-guided dataweighting: correcting systematic synthetic-label bias, filtering severe corruption, and adapting the training distribution to a specialized target. They concern global optimization over fixed-size subsets, a restricted family of dataweights; they do not assert that a particular metagradient algorithm finds the optimum. 
+
+## G.1 Shared model and learning procedures 
+
+We use overparameterized linear regression, where fitting a small target set can leave prediction error on unseen examples. Inputs have two signal features and D weak nuisance features, so the full dimension is 
+
+d = D + 2: 
+
+x =  g, √λ/D h , h ∼ N (0, ID ), λ > 0. (9) Source inputs have g ∼ N (0, I2); target inputs have g ∼ N (0, T), with T ≻ 0. In both domains, g and h
+
+are independent. Thus ΣS and ΣT are block diagonal with signal blocks I2 and T, respectively, and a shared nuisance block (λ/D)ID. Throughout, define 
+
+f ∗(x) = g⊤θ∗, bf (x) = f ∗(x) + δ sign (g2)1{h1 > 0}, δ ≥ 0. (10) Each result specifies the parameter choices in this construction. We observe n source examples and n′ target examples, all independent, with D + 2 > n + n′. Source labels are bf (x); target labels are f ∗(x). Write their design matrices as X, Z and label vectors as y, t.
+
+Learning procedures. Fix 1 ≤ k ≤ n. For each k-element source subset S, fit the minimum-norm interpola-tor βS = X†
+
+> S
+
+yS. Dataweighting (DW) returns the fit minimizing (n′)−1∥ZβS − t∥2, breaking ties uniformly, without further fine-tuning. This corresponds to weights wi = 1{i ∈ S}. The baselines fit either all source examples (full + FT) or a uniformly random k-subset (random + FT), then fine-tune all parameters on the same target set by squared-loss gradient flow to convergence. The main text denotes the minimum of these two expected risks at dimension d by RFT (n, n′, k, d).
+
+Risk and limits. We write the full parameter as β = ( θ, v) ∈ Rd, where θ ∈ R2 contains the signal coefficients and v ∈ RD the nuisance coefficients. Its target population risk is 
+
+RD (β) = ( θ − θ∗)⊤ T(θ − θ∗) + λ
+
+D ∥v∥2. (11) For each procedure A, define 
+
+RA(n) = lim sup 
+
+> D→∞
+
+ERD (βA). (12) Expectations include sampling and tie-breaking. We take D → ∞ before n → ∞, keeping n′ fixed; the filtering result instead fixes n, n′, D. Each theorem specifies λ and T, which may depend on n but remain fixed as D → ∞.
+
+## G.2 Reduction to two dimensions and validation control 
+
+Let G and V contain the source and target signal features. Standard Gaussian Gram-matrix limits and minimum-norm regression identities give the limiting source coefficients 
+
+θS = ( G⊤ 
+
+> S
+
+GS + λI2)−1G⊤ 
+
+> S
+
+yS. (13) 35 Thus nuisance features induce an effective ridge penalty λ. Fine-tuning from limiting source coefficients θ0
+
+gives 
+
+θFT − θ∗ = λ(V⊤V + λI2)−1(θ0 − θ∗). (14) The nuisance contribution to risk vanishes, leaving predictions that depend on only two coefficients, regardless of how many subsets we search. This yields a useful selection guarantee. Write RT (θ) = (θ − θ∗)⊤ T(θ − θ∗). For n′ ≥ 4 and any reference subset S0 chosen using source data alone, with a definition independent of D,
+
+RDW (n) ≤ Cn′ ERT (θS0 ), Cn′ = 4(n′ − 1)
+
+n′ − 3 ≤ 12. (15) The constant Cn′ is independent of T, so the bound applies at each n when the target covariance varies with the source sample size. 
+
+Proof of the selection bound. Write V = UT 1/2 with U standard Gaussian and W = U⊤U. Comparing empiri-cal and population quadratic forms, target-loss minimization gives RT (θDW ) ≤ κ(W)RT (θS0 ) in the limiting problem. Here κ(W) = λmax (W)/λmin (W), and standard Wishart moments give Eκ(W) ≤ E[tr W tr W−1] = 
+
+Cn′ . Independence of target and source data proves the bound in the limiting problem. At fixed n, convergence is joint over the finitely many subsets. Labels depend on nuisance features only through h1, so standard inverse-Wishart moment bounds on the remaining independent features give uniform integrability of the risks. Fine-tuning orthogonally projects the coefficient error, preserving this control. The bound therefore also holds in expectation as D → ∞ for the finite-D selector, even if its minimizing subset changes with D.
+
+## G.3 Correcting small synthetic-label bias 
+
+Take T = I2, θ∗ = e1, and fixed λ, δ > 0 in (10). Half the source labels are correct; the rest have a small systematic error correlated with the irrelevant feature g2. Averaging more source data preserves this bias, while a growing clean subset allows consistent learning. 
+
+Theorem G.1 (Bias correction) . Fix 0 < α < 1/2 , n ′ ≥ 4, and λ, δ > 0, and set k = ⌊αn⌋. Then 
+
+RDW (n) −→ 0, lim inf  
+
+> n→∞
+
+min {R full +FT (n), Rrandom +FT (n)} ≥ cλ,n′ δ2 > 0, (16) 
+
+where c λ,n′ = ( 2π)−1[λ/(λ + n′)] 2 is valid. The two baselines have the same limiting risk. Proof. Put b = δ/√2π. Since E[g( bf − f ∗)] = ( 0, b)⊤, both full-data and random-subset fits converge to e1 + be 2. The convergence holds in mean square by Gaussian covariance concentration: the squared coefficient error is bounded on well-conditioned designs and is O(1 + N) otherwise, for a fit on N examples; the latter event has exponentially small probability. Rotational invariance and Jensen’s inequality give the fine-tuning risk factor 
+
+qλ,n′ = 12 E tr λ2(V⊤V + λI2)−2 ≥
+
+ λλ + n′
+
+2
+
+. (17) Both baselines therefore have limiting risk qλ,n′ b2 ≥ cλ,n′ δ2.For dataweighting, use the first k clean examples as a comparator, falling back to the first k examples if necessary. Cleanliness depends only on h1, so the clean signal features remain independent standard Gaussians. Their ridge bias has norm at most one and vanishes as k → ∞ with fixed λ. Hoeffding’s inequality bounds the fallback probability by e−cα n, where cα = 2(1/2 − α)2; its contribution to expected risk is O(( 1 + k)e−cα n) by the same coefficient bound. Thus the comparator’s expected risk vanishes, and (15) proves the claim. The selector itself never observes the corruption indicators. 36 G.4 Filtering an unknown corrupted set 
+
+Keep T = I2 and θ∗ = e1. Now hold n, n′, D, λ fixed and let δ → ∞ in (10). Every contaminated subset’s target loss eventually diverges as δ grows, while clean fits are unaffected. Selection therefore rejects all corruption whenever a clean subset exists. 
+
+Theorem G.2 (Filtering) . Fix finite n , n′, D with n ′ ≥ 1 and D + 2 > n + n′, and fix λ > 0. Let 0 < α < 1/2 and k = ⌊αn⌋ ≥ 1. Then 
+
+lim  
+
+> δ→∞
+
+P{the selected subset is entirely clean } = P{Bin (n, 1/2 ) ≥ k}≥ 1 − e−cα n, cα = 2(1/2 − α)2.(18) 
+
+Conditional on the existence of a clean k-subset, the filtering probability tends to one. Proof. Fix the source and target inputs across values of δ. With ri = sign (gi2)1{hi1 > 0}, linearity gives 
+
+βS(δ) = βS(0) + δuS, where uS = X†
+
+> S
+
+rS. For a contaminated subset, full row rank implies uS̸ = 0. The independent Gaussian target inputs have positive-definite covariance, so ∥Zu S∥2 > 0 almost surely, even for 
+
+n′ = 1. Its target loss therefore grows quadratically with δ; a clean subset’s loss stays constant. There are finitely many subsets, so every minimizer is eventually clean exactly when at least k clean examples exist. Bounded convergence and Hoeffding’s inequality for their Bin (n, 1/2 ) count give the result. 
+
+## G.5 Covariate shift with correct labels 
+
+Set δ = 0, so bf = f ∗ and both source and target labels are correct. Selecting data can still help by changing the learner’s inductive bias. Set T = Tn = diag (1, 1/ n), so the target variance in the second coordinate shrinks as the source pool grows. Selecting examples with g1 g2 > 0 correlates the signal features; the coefficients below make the limiting ridge error point entirely along that second coordinate, giving vanishing target risk. Set λ = k, so with fixed n′, fine-tuning makes a vanishing correction to the signal coefficients as the source pool grows. 
+
+ρ = E|g1 g2| = 2
+
+π , L =
+
+q
+
+ρ2 + 4, θ∗ = 1
+
+L
+
+ρ
+
+2
+
+
+
+. (19) In particular, θ∗ is a unit vector independent of α and n.
+
+Theorem G.3 (Covariate shift) . Fix 0 < α < 1/2 and n ′ ≥ 4. Set k = ⌊αn⌋, λ = k, and T = Tn = diag (1, 1/ n),and use the parameter vector in (19) . Then 
+
+lim  
+
+> n→∞
+
+RDW (n) = 0, lim  
+
+> n→∞
+
+min {R full +FT (n), Rrandom +FT (n)} ≥ α2
+
+25 > 0. (20) 
+
+For the same θ∗ and procedures with T = I2,
+
+lim inf  
+
+> n→∞
+
+RDW (n) ≥
+
+ α
+
+1 + α
+
+2
+
+= lim  
+
+> n→∞
+
+Rfull +FT (n). (21) 
+
+Proof. The source fits converge to θ∗/(1 + α) and θ∗/2 for full-data and random-subset training, respectively. Couple the target signal matrices as Vn = UT 1/2  
+
+> n
+
+with a fixed standard Gaussian n′ × 2 matrix U. Since 
+
+Tn ⪯ I2, we have ∥V⊤ 
+
+> n
+
+Vn∥op ≤ ∥ U∥2op . The fine-tuning error map in (14) therefore tends to I2 as λ = k → ∞.Their coefficient errors have norm at most one before and after fine-tuning; with Tn = diag (1, 1/ n), bounded convergence gives 
+
+Rfull +FT (n) −→ 
+
+ α
+
+1 + α
+
+2 ρ2
+
+L2 , Rrandom +FT (n) −→ ρ2
+
+4L2 . (22) 37 The full-data limit is smaller and equals α2/[( 1 + α)2(1 + π2)] ≥ α2/25. For a comparator, take the first k examples with g1 g2 > 0, falling back to the first k examples if necessary. The fallback probability is exponentially small, and the selected signal covariance and limiting error are 
+
+B =
+
+1 ρρ 1
+
+
+
+, θS0 − θ∗ −→ − (B + I2)−1θ∗ = − e2
+
+L . (23) Here B = E[gg ⊤ | g1 g2 > 0], and (B + I2)e2 = Lθ∗ explains the chosen coefficients. Write en = θS0 − θ∗. Its norm is at most one even on fallback, and en,1 → 0, so bounded convergence gives 
+
+ERTn (θS0 ) = Ee2 
+
+> n,1
+
++ n−1e2
+
+> n,2
+
+ ≤ Ee2 
+
+> n,1
+
++ n−1 −→ 0. (24) Applying (15) at each n, with the same constant Cn′ , proves RDW (n) → 0. Finally, take T = I2. Write AS = G⊤ 
+
+> S
+
+GS/n, Aall = G⊤ G/n, and an = k/n. Since AS ⪯ Aall → I2, every subset’s ridge error satisfies 
+
+∥θS − θ∗∥2 = a2
+
+> n
+
+∥(AS + an I2)−1θ∗∥2 ≥
+
+ an
+
+λmax (Aall ) + an
+
+2
+
+−→ 
+
+ α
+
+1 + α
+
+2
+
+. (25) This uniform bound also holds for target-selected subsets. Taking the finite-D limit and applying Fatou’s lemma as n → ∞ proves the lower bound. For full-data training, the coefficient error tends to −αθ ∗/(1 + α),and fine-tuning’s error map tends to I2. Since ∥θ∗∥ = 1, bounded convergence gives the matching risk limit 
+
+[α/(1 + α)] 2.
+
+Connection to the informal statements. For each sufficiently large n, choose d(n) > n + n′ so that the finite-dimensional expected risk of dataweighting is at most RDW (n) + 1/ n, and each baseline’s expected risk is within 1/ n of its D → ∞ limit. Such a choice follows from the definition of lim sup and the convergence of the baseline risks proved above. The limits as n → ∞ then give the statements in the main text. For bias correction, taking λ = 1 gives cn′ = 1/ [2π(1 + n′)2].For covariate shift, an orthogonal rotation of the two signal coordinates maps the unit vector θ∗ to e1,giving bf = f ∗ = x1. The source signal covariance remains I2, while the target signal covariance rotates with the coordinates. Minimum-norm fitting, gradient-flow fine-tuning, subset selection, and population risks are preserved by this change of basis. 38
